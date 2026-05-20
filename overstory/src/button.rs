@@ -14,7 +14,7 @@ use imaging::Painter;
 use imaging::record::Scene;
 use kurbo::{Rect, RoundedRect};
 use peniko::Brush;
-use understory_property::DependencyObjectExt;
+use understory_property_binding::PropertyEndpoint;
 
 use crate::behavior::{ElementBehavior, PaintContext};
 use crate::element::{Element, ElementId, ElementKind};
@@ -42,34 +42,28 @@ struct ButtonTemplate;
 
 impl Template for ButtonTemplate {
     fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
-        // Capture the button's initial content / foreground so the label
-        // shows them. Phase 1f-6 will replace this snapshot with a
-        // TemplateBinding subscription so later writes propagate.
         let content_prop = ui.properties().content;
         let foreground_prop = ui.properties().foreground;
         let font_size_prop = ui.properties().font_size;
 
-        let initial_content = ui
-            .get(owner)
-            .and_then(|e| e.get_local_value(content_prop).cloned())
-            .unwrap_or_default();
-        let initial_foreground = ui
-            .get(owner)
-            .and_then(|e| e.get_local_value(foreground_prop).cloned());
-        let initial_font_size = ui
-            .get(owner)
-            .and_then(|e| e.get_local_value(font_size_prop).copied());
-
-        // The button's layout is whatever its containing flex sets up;
-        // inside, the label sits in the center.
         let label = ui.insert_child(owner, ELEMENT_KIND_TEXT);
-        ui.set_local(label, content_prop, initial_content);
-        if let Some(brush) = initial_foreground {
-            ui.set_local(label, foreground_prop, brush);
-        }
-        if let Some(font_size) = initial_font_size {
-            ui.set_local(label, font_size_prop, font_size);
-        }
+
+        // One-way template bindings: as the owner's Content / Foreground /
+        // FontSize change at runtime, the label tracks them. The initial
+        // values propagate on the next `flush_bindings` (which the frame
+        // loop calls at the start of `compute_layout`).
+        let _ = ui.bind(
+            PropertyEndpoint::new(owner, content_prop),
+            PropertyEndpoint::new(label, content_prop),
+        );
+        let _ = ui.bind(
+            PropertyEndpoint::new(owner, foreground_prop),
+            PropertyEndpoint::new(label, foreground_prop),
+        );
+        let _ = ui.bind(
+            PropertyEndpoint::new(owner, font_size_prop),
+            PropertyEndpoint::new(label, font_size_prop),
+        );
     }
 }
 

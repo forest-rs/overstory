@@ -38,3 +38,8 @@ pub const PAINT: Channel = Channel::new(3);
 /// Marked whenever the tree structure or per-element transforms change even
 /// when no element's paint recording is stale.
 pub const COMPOSE: Channel = Channel::new(4);
+
+/// Binding-internal channel used by `understory_property_binding::BindingSet`
+/// to track dirty bindings. Not part of the regular cascade; Overstory
+/// reserves channel id 5 so the binding set has a unique slot.
+pub const BINDING: Channel = Channel::new(5);

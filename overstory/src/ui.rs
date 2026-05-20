@@ -6,9 +6,10 @@
 //! cache.
 //!
 //! Phase 1c added the style cascade integration; Phase 1d added pointer
-//! dispatch + `:hover` lifecycle; Phase 1e added taffy layout via a
-//! `Property<taffy::Style>` and `Ui::compute_layout`. Later phases add
-//! templates, text, and the full responder routing.
+//! dispatch + `:hover` lifecycle; Phase 1e added taffy layout; Phase 1f
+//! added template substrate, text rendering, `:pressed`, the Button
+//! control, and property bindings via `understory_property_binding`. Later
+//! phases bring the full responder routing, more controls, and animations.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -19,14 +20,19 @@ use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
 use ui_events::pointer::{PointerButton, PointerEvent};
-use understory_property::{DependencyObjectExt, Property, PropertyRegistry};
+use understory_property::{
+    DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
+};
+use understory_property_binding::{
+    BindingError, BindingHost, BindingId, BindingSet, BindingWrite, EndpointKey, PropertyEndpoint,
+};
 use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
 };
 
 use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PaintContext};
 use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
-use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE};
+use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
@@ -67,6 +73,11 @@ pub struct Ui {
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
+    /// One-way property bindings. Held as `Option` because `flush_bindings`
+    /// temporarily takes ownership: `BindingSet::drain` mutates the set
+    /// while also taking `&mut Self` (Ui) as the `BindingHost`, and we'd
+    /// otherwise overlap. The set is always `Some` outside `flush_bindings`.
+    bindings: Option<BindingSet<ElementId>>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -131,6 +142,7 @@ impl Ui {
             element_to_taffy: HashMap::new(),
             currently_expanding: None,
             text: RefCell::new(TextEngine::new()),
+            bindings: Some(BindingSet::new(BINDING)),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -366,6 +378,10 @@ impl Ui {
     }
 
     /// Writes a property value with notification.
+    ///
+    /// Marks affected channels in the invalidation tracker and notifies the
+    /// binding set so any binding whose source is this endpoint will fire
+    /// on the next `flush_bindings`.
     pub fn set_local<T: Clone + PartialEq + 'static>(
         &mut self,
         id: ElementId,
@@ -380,6 +396,49 @@ impl Ui {
             element.set_local_notifying(property, value, registry)
         };
         self.mark_channels(id, channels);
+        if let Some(bindings) = self.bindings.as_mut() {
+            bindings.mark_endpoint_changed(EndpointKey::new(id, property.id()));
+        }
+    }
+
+    /// Registers a one-way binding from `source` to `target`. Both
+    /// endpoints' value types must match. Returns the new [`BindingId`]
+    /// or a [`BindingError`] if the registration would self-loop or
+    /// introduce a cycle.
+    ///
+    /// The binding will fire on the next `flush_bindings` if its source
+    /// endpoint has been written since the last drain (or has not yet
+    /// drained at all). Bindings are typically registered during template
+    /// expansion via [`Template::instantiate`].
+    pub fn bind<T>(
+        &mut self,
+        source: PropertyEndpoint<ElementId, T>,
+        target: PropertyEndpoint<ElementId, T>,
+    ) -> Result<BindingId, BindingError<ElementId>>
+    where
+        T: Clone + 'static,
+    {
+        let bindings = self
+            .bindings
+            .as_mut()
+            .expect("bindings always Some outside flush_bindings");
+        let id = bindings.bind(source, target)?;
+        // Schedule the binding so its initial value propagates on the next
+        // drain. Without this, freshly-registered bindings stay clean
+        // (the binding crate only marks on subsequent source changes).
+        bindings.mark_binding_dirty(id);
+        Ok(id)
+    }
+
+    /// Drains the binding set, propagating dirty bindings through the host.
+    /// Channels affected by binding writes are unioned into the invalidation
+    /// tracker as a side effect of the host's `set_erased` impl.
+    pub fn flush_bindings(&mut self) {
+        let Some(mut bindings) = self.bindings.take() else {
+            return;
+        };
+        let _ = bindings.drain(self);
+        self.bindings = Some(bindings);
     }
 
     /// Adds `class` to `id` and re-styles the affected subtree.
@@ -593,11 +652,15 @@ impl Ui {
     /// Computes layout for the tree against the given viewport size and
     /// writes each element's `Bounds` (via the cascade-resolved `Layout`).
     ///
-    /// Flushes the LAYOUT channel: any element whose `Layout` style has
-    /// changed gets its taffy style pushed before taffy is asked to
-    /// recompute. `Bounds` writes use the standard `set_local_notifying`
-    /// path so PAINT cascades naturally for elements whose box changed.
+    /// Drains pending property bindings first so binding-driven writes
+    /// participate in this frame's layout. Then flushes the LAYOUT
+    /// channel: any element whose `Layout` style has changed gets its
+    /// taffy style pushed before taffy is asked to recompute. `Bounds`
+    /// writes use the standard `set_local_notifying` path so PAINT
+    /// cascades naturally for elements whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
+        // Bindings first — they may dirty LAYOUT/PAINT for their targets.
+        self.flush_bindings();
         // Push any pending Layout changes into taffy. We collect first to
         // separate the immutable cascade walk from the mutable taffy update.
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(LAYOUT).collect();
@@ -929,6 +992,52 @@ impl Default for Ui {
     }
 }
 
+/// `BindingHost` adapter for `Ui`. `get_erased` reads a property's effective
+/// local value (Animation > local-layer winner) through the new erased
+/// accessors on `understory_property::PropertyStore`; `set_erased` writes
+/// into the `LocalValueSource::TemplateBinding` slot so the user's
+/// `LocalValueSource::Local` value (if any) keeps winning.
+impl BindingHost<ElementId> for Ui {
+    fn get_erased(&self, endpoint: EndpointKey<ElementId>) -> Option<ErasedValue> {
+        let element = self.get(endpoint.owner())?;
+        element
+            .property_store()
+            .effective_local_erased(endpoint.property())
+            .cloned()
+    }
+
+    fn set_erased(&mut self, endpoint: EndpointKey<ElementId>, value: ErasedValue) -> BindingWrite {
+        let id = endpoint.owner();
+        let prop_id = endpoint.property();
+        let channels = {
+            // Disjoint-field split-borrow: registry is read-only, slots is
+            // mutated through `element_mut`. Both are direct field borrows of
+            // `self`, so the borrow checker accepts the pair.
+            let registry = &self.registry;
+            let Some(element) = element_mut(&mut self.slots, id) else {
+                return BindingWrite::unchanged();
+            };
+            match element
+                .property_store_mut()
+                .set_local_erased_with_source_notifying(
+                    prop_id,
+                    value,
+                    understory_property::LocalValueSource::TemplateBinding,
+                    registry,
+                ) {
+                Ok(channels) => channels,
+                Err(_) => return BindingWrite::unchanged(),
+            }
+        };
+        if channels.is_empty() {
+            BindingWrite::unchanged()
+        } else {
+            self.mark_channels(id, channels);
+            BindingWrite::changed(channels)
+        }
+    }
+}
+
 /// Translates taffy's `AvailableSpace` into kurbo's `f64`. `Definite(v)`
 /// becomes `v` as `f64`. Both `MinContent` and `MaxContent` become
 /// `f64::INFINITY` for now — behaviors receiving infinity report their
@@ -1234,6 +1343,79 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn flush_bindings_propagates_template_binding() {
+        // Two generic elements; binding from source.content → target.content.
+        // Writing source.content then flushing should propagate the value
+        // into target's `TemplateBinding` slot so its effective value reads
+        // the new content.
+        use alloc::string::String;
+        use understory_property_binding::PropertyEndpoint;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let source = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let target = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        let content_prop = ui.properties().content;
+        ui.bind(
+            PropertyEndpoint::new(source, content_prop),
+            PropertyEndpoint::new(target, content_prop),
+        )
+        .expect("binding registers");
+
+        ui.set_local(source, content_prop, String::from("hello"));
+
+        // Before flush, the binding is dirty; target still has its default.
+        assert_eq!(ui.get(target).unwrap().get_local_value(content_prop), None);
+
+        ui.flush_bindings();
+
+        // After flush, target's effective local content is "hello".
+        let stored = ui
+            .get(target)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(content_prop.id())
+            .and_then(|v| v.downcast_ref::<String>().cloned());
+        assert_eq!(stored.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn flush_bindings_respects_local_precedence() {
+        // If the target has a user `Local` value, the binding's
+        // `TemplateBinding` write should be shadowed — `Local` outranks
+        // `TemplateBinding`.
+        use alloc::string::String;
+        use understory_property_binding::PropertyEndpoint;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let source = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let target = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        let content_prop = ui.properties().content;
+        // User sets a Local first.
+        ui.set_local(target, content_prop, String::from("user"));
+        ui.bind(
+            PropertyEndpoint::new(source, content_prop),
+            PropertyEndpoint::new(target, content_prop),
+        )
+        .expect("binding registers");
+        ui.set_local(source, content_prop, String::from("from-binding"));
+        ui.flush_bindings();
+
+        // Target's effective value is still the user's "user" because Local
+        // wins over TemplateBinding.
+        let stored = ui
+            .get(target)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(content_prop.id())
+            .and_then(|v| v.downcast_ref::<String>().cloned());
+        assert_eq!(stored.as_deref(), Some("user"));
     }
 
     #[test]

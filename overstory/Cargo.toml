@@ -18,6 +18,7 @@ peniko.workspace = true
 imaging.workspace = true
 
 understory_property = { workspace = true, default-features = false }
+understory_property_binding = { workspace = true, default-features = false }
 understory_style = { workspace = true, default-features = false }
 
 ui-events.workspace = true

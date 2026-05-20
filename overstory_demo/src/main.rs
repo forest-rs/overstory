@@ -335,11 +335,10 @@ fn build_ui() -> Ui {
     };
     ui.set_local(root, layout_prop, root_layout);
 
-    // The button itself. Content + foreground (text color) must be set
-    // *before* the template expands so the label picks them up at
-    // instantiation. `insert_child_with` runs the closure before template
-    // expansion; without TemplateBinding (Phase 1f-6), this is how initial
-    // values reach the templated label.
+    // The button itself. `Content` / `Foreground` / `FontSize` are bound
+    // by the Button's default template to the label inside, so any later
+    // write to the button propagates to the label on the next
+    // `compute_layout` (which flushes bindings).
     let button_layout = overstory::taffy::Style {
         // Generous padding so the label has room to breathe.
         padding: overstory::taffy::Rect {
@@ -354,16 +353,15 @@ fn build_ui() -> Ui {
         align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
     };
-    let _button = ui.insert_child_with(root, ELEMENT_KIND_BUTTON, |ui, button| {
-        ui.set_local(button, layout_prop, button_layout);
-        ui.set_local(button, ui.properties().content, "Click me".to_owned());
-        ui.set_local(
-            button,
-            ui.properties().foreground,
-            Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
-        );
-        ui.set_local(button, ui.properties().font_size, 22.0_f64);
-    });
+    let button = ui.insert_child(root, ELEMENT_KIND_BUTTON);
+    ui.set_local(button, layout_prop, button_layout);
+    ui.set_local(button, ui.properties().content, "Click me".to_owned());
+    ui.set_local(
+        button,
+        ui.properties().foreground,
+        Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
+    );
+    ui.set_local(button, ui.properties().font_size, 22.0_f64);
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
