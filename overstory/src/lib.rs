@@ -35,7 +35,10 @@ pub mod pseudos;
 mod template;
 mod ui;
 
-pub use behavior::{BehaviorRegistry, ElementBehavior, MeasureContext, PaintContext};
+pub use behavior::{
+    BehaviorRegistry, ElementBehavior, KnownDimensions, MeasureConstraints, MeasureContext,
+    PaintContext,
+};
 pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;

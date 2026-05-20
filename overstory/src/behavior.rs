@@ -11,6 +11,7 @@ use core::fmt;
 
 use hashbrown::HashMap;
 use imaging::record::Scene;
+use kurbo::Size;
 use understory_property::PropertyRegistry;
 use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
 
@@ -18,6 +19,33 @@ use crate::element::{Element, ElementId, ElementKind};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::template::Template;
+
+/// Per-axis known dimensions handed to a behavior's `measure` callback.
+///
+/// `Some(value)` means the parent has already chosen that axis's size, and
+/// the behavior should respect it. `None` means the behavior is free to
+/// decide that axis.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct KnownDimensions {
+    /// Pre-chosen width, in logical pixels.
+    pub width: Option<f64>,
+    /// Pre-chosen height, in logical pixels.
+    pub height: Option<f64>,
+}
+
+/// Constraints passed to [`ElementBehavior::measure`].
+///
+/// `available` reports how much room the parent has on each axis;
+/// `f64::INFINITY` means "unconstrained." `known` carries any axis that the
+/// parent has already decided.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct MeasureConstraints {
+    /// Maximum size the parent can give. `f64::INFINITY` on an axis means the
+    /// parent imposes no upper bound.
+    pub available: Size,
+    /// Axes whose size the parent has already fixed.
+    pub known: KnownDimensions,
+}
 
 /// Read-only context handed to [`ElementBehavior::paint`].
 ///
@@ -121,20 +149,19 @@ pub trait ElementBehavior: Sync {
     /// Optional custom measure callback for leaf-like behaviors that compute
     /// their own desired size (text, images, custom-drawn primitives).
     ///
-    /// Returns `None` (the default) to let taffy size purely from the
-    /// element's `Layout` style. Returns `Some(size)` to override.
+    /// Returns `None` (the default) to let the layout engine size the element
+    /// purely from its `Layout` style. Returns `Some(size)` to override.
     ///
-    /// `known_dimensions` carries any pre-constrained axis sizes; behaviors
-    /// should respect them. `available_space` reports how much room the
-    /// parent has on each axis.
+    /// Behaviors receive kurbo-based [`MeasureConstraints`]; the toolkit
+    /// translates between these and the underlying layout engine's types
+    /// (currently `taffy`), so behaviors don't depend on a specific engine.
     fn measure(
         &self,
         element: &Element,
         ctx: &MeasureContext<'_>,
-        known_dimensions: taffy::Size<Option<f32>>,
-        available_space: taffy::Size<taffy::AvailableSpace>,
-    ) -> Option<taffy::Size<f32>> {
-        let _ = (element, ctx, known_dimensions, available_space);
+        constraints: MeasureConstraints,
+    ) -> Option<Size> {
+        let _ = (element, ctx, constraints);
         None
     }
 }
