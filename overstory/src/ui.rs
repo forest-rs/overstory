@@ -6,8 +6,9 @@
 //! cache.
 //!
 //! Phase 1c added the style cascade integration; Phase 1d added pointer
-//! dispatch + `:hover` lifecycle. Later phases add taffy layout, templates,
-//! and the full responder routing.
+//! dispatch + `:hover` lifecycle; Phase 1e added taffy layout via a
+//! `Property<taffy::Style>` and `Ui::compute_layout`. Later phases add
+//! templates, text, and the full responder routing.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -15,7 +16,7 @@ use alloc::vec::Vec;
 use hashbrown::HashMap;
 use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
-use kurbo::{Affine, Point, Rect};
+use kurbo::{Affine, Point, Rect, Size};
 use ui_events::pointer::PointerEvent;
 use understory_property::{DependencyObjectExt, Property, PropertyRegistry};
 use understory_style::{
@@ -23,7 +24,7 @@ use understory_style::{
 };
 
 use crate::behavior::{BehaviorRegistry, PaintContext};
-use crate::channels::{COMPOSE, PAINT, STYLE};
+use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
@@ -49,6 +50,8 @@ pub struct Ui {
     theme: Theme,
     match_states: HashMap<ElementId, MatchState>,
     hovered: Option<ElementId>,
+    taffy: taffy::TaffyTree<ElementId>,
+    element_to_taffy: HashMap<ElementId, taffy::NodeId>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -106,6 +109,8 @@ impl Ui {
             theme,
             match_states: HashMap::new(),
             hovered: None,
+            taffy: taffy::TaffyTree::new(),
+            element_to_taffy: HashMap::new(),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None);
         me.root = root;
@@ -448,6 +453,90 @@ impl Ui {
         true
     }
 
+    /// Resolves the effective `Layout` (`taffy::Style`) for `id` through the
+    /// cascade.
+    #[must_use]
+    pub fn effective_layout(&self, id: ElementId) -> taffy::Style {
+        let Some(element) = self.get(id) else {
+            return taffy::Style::default();
+        };
+        let lookup = UiStoreLookup::new(self);
+        let cx = ResolveCx::new(&self.registry, &self.theme, lookup);
+        let match_state = self.match_state(id);
+        cx.get_value(
+            element,
+            self.properties.layout,
+            Some((&self.cascade, match_state)),
+        )
+    }
+
+    /// Computes layout for the tree against the given viewport size and
+    /// writes each element's `Bounds` (via the cascade-resolved `Layout`).
+    ///
+    /// Flushes the LAYOUT channel: any element whose `Layout` style has
+    /// changed gets its taffy style pushed before taffy is asked to
+    /// recompute. `Bounds` writes use the standard `set_local_notifying`
+    /// path so PAINT cascades naturally for elements whose box changed.
+    pub fn compute_layout(&mut self, viewport: Size) {
+        // Push any pending Layout changes into taffy. We collect first to
+        // separate the immutable cascade walk from the mutable taffy update.
+        let dirty: Vec<ElementId> = self.invalidation.drain_sorted(LAYOUT).collect();
+        let updates: Vec<(taffy::NodeId, taffy::Style)> = dirty
+            .into_iter()
+            .filter_map(|id| {
+                let taffy_node = *self.element_to_taffy.get(&id)?;
+                let style = self.effective_layout(id);
+                Some((taffy_node, style))
+            })
+            .collect();
+        for (node, style) in updates {
+            let _ = self.taffy.set_style(node, style);
+        }
+
+        let Some(root_taffy) = self.element_to_taffy.get(&self.root).copied() else {
+            return;
+        };
+        let available = taffy::Size {
+            #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
+            width: taffy::AvailableSpace::Definite(viewport.width as f32),
+            #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
+            height: taffy::AvailableSpace::Definite(viewport.height as f32),
+        };
+        let _ = self.taffy.compute_layout(root_taffy, available);
+
+        // Walk the tree and write absolute bounds for every element.
+        self.write_bounds_recursive(self.root, Point::ZERO);
+    }
+
+    fn write_bounds_recursive(&mut self, id: ElementId, parent_origin: Point) {
+        let Some(taffy_node) = self.element_to_taffy.get(&id).copied() else {
+            return;
+        };
+        let Ok(layout) = self.taffy.layout(taffy_node).copied() else {
+            return;
+        };
+        let origin = Point::new(
+            parent_origin.x + f64::from(layout.location.x),
+            parent_origin.y + f64::from(layout.location.y),
+        );
+        let rect = Rect::new(
+            origin.x,
+            origin.y,
+            origin.x + f64::from(layout.size.width),
+            origin.y + f64::from(layout.size.height),
+        );
+        let bounds_prop = self.properties.bounds;
+        self.set_local(id, bounds_prop, rect);
+
+        let children: Vec<ElementId> = self
+            .get(id)
+            .map(|el| el.children().to_vec())
+            .unwrap_or_default();
+        for child in children {
+            self.write_bounds_recursive(child, origin);
+        }
+    }
+
     /// Drains the STYLE channel, recomputing the match state of any dirty
     /// element subtree. Channels affected by changed styled properties are
     /// unioned into the invalidation tracker.
@@ -586,10 +675,18 @@ impl Ui {
         self.scene_cache.remove(&id);
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
+        if let Some(taffy_node) = self.element_to_taffy.remove(&id) {
+            // `taffy.remove` also detaches from its parent and frees children
+            // recursively — but we've already walked our subtree top-down and
+            // recursed into our children before reaching this point, so the
+            // children's taffy nodes are already gone. Removing the (now
+            // childless) taffy node here just finalizes the leaf.
+            let _ = self.taffy.remove(taffy_node);
+        }
     }
 
     fn alloc_element(&mut self, kind: ElementKind, parent: Option<ElementId>) -> ElementId {
-        if let Some(slot_index) = self.free.pop() {
+        let id = if let Some(slot_index) = self.free.pop() {
             let slot = &mut self.slots[slot_index as usize];
             let generation = match slot {
                 Slot::Vacant { generation } => *generation,
@@ -611,7 +708,22 @@ impl Ui {
                 element: Box::new(Element::new(id, kind, parent)),
             });
             id
+        };
+
+        // Mirror into taffy.
+        let taffy_node = self
+            .taffy
+            .new_leaf(taffy::Style::default())
+            .expect("taffy leaf allocation should succeed");
+        self.element_to_taffy.insert(id, taffy_node);
+        if let Some(parent_id) = parent
+            && let Some(parent_node) = self.element_to_taffy.get(&parent_id).copied()
+        {
+            self.taffy
+                .add_child(parent_node, taffy_node)
+                .expect("taffy add_child should succeed for fresh node");
         }
+        id
     }
 }
 
@@ -910,6 +1022,54 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn compute_layout_writes_taffy_bounds() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        let layout_prop = ui.properties().layout;
+        // Root fills the viewport with 10px padding.
+        let inset = taffy::LengthPercentage::length(10.0);
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::percent(1.0),
+                    height: taffy::Dimension::percent(1.0),
+                },
+                padding: taffy::Rect {
+                    left: inset,
+                    right: inset,
+                    top: inset,
+                    bottom: inset,
+                },
+                ..Default::default()
+            },
+        );
+        // Child fills the padded content.
+        ui.set_local(
+            child,
+            layout_prop,
+            taffy::Style {
+                flex_grow: 1.0,
+                align_self: Some(taffy::AlignSelf::Stretch),
+                ..Default::default()
+            },
+        );
+
+        ui.compute_layout(Size::new(200.0, 100.0));
+        // Root is the full viewport.
+        assert_eq!(ui.effective_bounds(root), Rect::new(0.0, 0.0, 200.0, 100.0));
+        // Child fills (10, 10) → (190, 90).
+        assert_eq!(
+            ui.effective_bounds(child),
+            Rect::new(10.0, 10.0, 190.0, 90.0)
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ use kurbo::Rect;
 use peniko::Brush;
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
-use crate::channels::PAINT;
+use crate::channels::{LAYOUT, PAINT};
 
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
@@ -28,6 +28,15 @@ pub struct BuiltInProperties {
 
     /// Corner radius for the background fill. Default `0.0` (rectangular).
     pub corner_radius: Property<f64>,
+
+    /// `taffy::Style` driving this element's contribution to layout. Default
+    /// is `taffy::Style::default()` (an empty leaf). Writes mark the
+    /// `LAYOUT` channel so the next `Ui::compute_layout` picks them up.
+    ///
+    /// Phase 1e exposes the whole `taffy::Style` as one property. Later
+    /// phases will likely split into per-attribute properties so selectors
+    /// can target individual layout attributes.
+    pub layout: Property<taffy::Style>,
 }
 
 impl BuiltInProperties {
@@ -51,6 +60,12 @@ impl BuiltInProperties {
                 "CornerRadius",
                 PropertyMetadataBuilder::new(0.0_f64)
                     .affects_channels(PAINT.into_set())
+                    .build(),
+            ),
+            layout: registry.register(
+                "Layout",
+                PropertyMetadataBuilder::new(taffy::Style::default())
+                    .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
         }

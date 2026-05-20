@@ -40,3 +40,7 @@ pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
 pub use ui::Ui;
+
+// Re-export `taffy` so consumers don't have to add a direct dependency for
+// the `Layout` property's style type.
+pub use taffy;

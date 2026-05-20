@@ -21,6 +21,7 @@ understory_property = { workspace = true, default-features = false }
 understory_style = { workspace = true, default-features = false }
 
 ui-events.workspace = true
+taffy.workspace = true
 
 [lints]
 workspace = true

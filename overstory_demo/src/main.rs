@@ -4,16 +4,18 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The Phase 1d tree is two elements: a full-viewport dark background and a
+//! The Phase 1e tree is two elements: a full-viewport dark background and a
 //! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes,
 //! distinguished by a `ClassId`. Their backgrounds and the foreground's
 //! corner radius come from an implicit stylesheet installed via
 //! `Ui::set_cascade`; hovering the foreground swaps in a brighter blue via
-//! the `:hover` rule. Only bounds are still set imperatively (taffy lands in
-//! Phase 1e). The host translates winit events through
-//! `ui_events_winit::WindowEventReducer` into normalized `ui-events`
-//! pointers, which `Ui::dispatch_pointer_event` consumes to drive the
-//! `:hover` pseudoclass.
+//! the `:hover` rule. Layout is driven by taffy via the `Layout` property:
+//! the root is a flex container with padding, the foreground fills its
+//! padded content. `Ui::compute_layout(viewport)` writes Bounds back, then
+//! `Ui::paint` produces the output scene. The host translates winit events
+//! through `ui_events_winit::WindowEventReducer` into normalized
+//! `ui-events` pointers, which `Ui::dispatch_pointer_event` consumes to
+//! drive the `:hover` pseudoclass.
 //!
 //! ## Render path
 //!
@@ -33,9 +35,9 @@ use std::sync::Arc;
 use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
-use kurbo::Rect;
+use kurbo::Size;
 use overstory::pseudos::PSEUDO_HOVER;
-use overstory::{ELEMENT_KIND_GENERIC, ElementId, Ui};
+use overstory::{ELEMENT_KIND_GENERIC, Ui};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
@@ -105,8 +107,6 @@ struct WindowState {
     renderer: VelloRenderer,
     blit: BlitState,
     ui: Ui,
-    background: ElementId,
-    foreground: ElementId,
     scene: Scene,
     event_reducer: WindowEventReducer,
 }
@@ -182,26 +182,15 @@ impl WindowState {
         self.surface.configure(&self.device, &self.surface_config);
         // Invalidate the offscreen target so it's reallocated at the new size.
         self.blit.invalidate_offscreen();
-        // Resize the demo's elements to fill the new viewport.
-        self.update_layout();
     }
 
     fn size(&self) -> (u32, u32) {
         (self.surface_config.width, self.surface_config.height)
     }
 
-    fn update_layout(&mut self) {
+    fn viewport(&self) -> Size {
         let (w, h) = self.size();
-        let (w, h) = (f64::from(w), f64::from(h));
-        let bounds_prop = self.ui.properties().bounds;
-        self.ui
-            .set_local(self.background, bounds_prop, Rect::new(0.0, 0.0, w, h));
-        let inset = (w.min(h) * 0.15).max(24.0);
-        self.ui.set_local(
-            self.foreground,
-            bounds_prop,
-            Rect::new(inset, inset, w - inset, h - inset),
-        );
+        Size::new(f64::from(w), f64::from(h))
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -212,7 +201,8 @@ impl WindowState {
         // Ensure the offscreen target matches the current surface size.
         self.blit.ensure_offscreen(&self.device, width, height);
 
-        // Drive the imaging scene from the element tree.
+        // Compute layout against the current viewport, then paint.
+        self.ui.compute_layout(self.viewport());
         self.ui.paint(&mut self.scene);
 
         let offscreen_view = self
@@ -291,8 +281,8 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
     let blit = BlitState::new(&device, surface_config.format);
 
-    let (ui, background, foreground) = build_ui();
-    let mut state = WindowState {
+    let ui = build_ui();
+    let state = WindowState {
         window,
         surface,
         surface_config,
@@ -301,27 +291,49 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         renderer,
         blit,
         ui,
-        background,
-        foreground,
         scene: Scene::new(),
         event_reducer: WindowEventReducer::default(),
     };
-    state.update_layout();
     Ok(state)
 }
 
 /// Marks the centered foreground panel for the stylesheet.
 const CLASS_FOREGROUND: ClassId = ClassId(1);
 
-/// Builds the Phase 1c element tree: a full-viewport dark background with a
-/// blue rounded panel centered inside. Backgrounds and the foreground's
-/// corner radius come from a stylesheet; bounds are still set imperatively
-/// by `WindowState::update_layout` until taffy lands in Phase 1e.
-fn build_ui() -> (Ui, ElementId, ElementId) {
+/// Builds the Phase 1e element tree: a full-viewport dark background with a
+/// rounded blue panel centered inside via taffy layout. Hovering the panel
+/// brightens it.
+fn build_ui() -> Ui {
     let mut ui = Ui::new();
     let root = ui.root();
     let foreground = ui.insert_child(root, ELEMENT_KIND_GENERIC);
     ui.add_class(foreground, CLASS_FOREGROUND);
+
+    // Layout: root fills the viewport and applies a fixed inset via padding;
+    // the foreground child fills the padded content area.
+    let layout_prop = ui.properties().layout;
+    let inset = overstory::taffy::LengthPercentage::length(50.0);
+    let root_layout = overstory::taffy::Style {
+        display: overstory::taffy::Display::Flex,
+        size: overstory::taffy::Size {
+            width: overstory::taffy::Dimension::percent(1.0),
+            height: overstory::taffy::Dimension::percent(1.0),
+        },
+        padding: overstory::taffy::Rect {
+            left: inset,
+            right: inset,
+            top: inset,
+            bottom: inset,
+        },
+        ..Default::default()
+    };
+    ui.set_local(root, layout_prop, root_layout);
+    let foreground_layout = overstory::taffy::Style {
+        flex_grow: 1.0,
+        align_self: Some(overstory::taffy::AlignSelf::Stretch),
+        ..Default::default()
+    };
+    ui.set_local(foreground, layout_prop, foreground_layout);
 
     // Implicit style for any generic element: dark background.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
@@ -366,7 +378,7 @@ fn build_ui() -> (Ui, ElementId, ElementId) {
         .build();
     ui.set_cascade(cascade);
 
-    (ui, root, foreground)
+    ui
 }
 
 /// Owns the WGSL blit pipeline and the cached offscreen target it samples.
