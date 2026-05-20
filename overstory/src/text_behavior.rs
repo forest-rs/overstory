@@ -44,19 +44,17 @@ impl ElementBehavior for TextBehavior {
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = cx.get_value(element, ctx.properties.font_size, style) as f32;
 
-        // Use the element's bounds width as the wrap width.
         let bounds = cx.get_value(element, ctx.properties.bounds, style);
-        #[expect(clippy::cast_possible_truncation, reason = "width fits f32")]
-        let max_advance = if bounds.width().is_finite() && bounds.width() > 0.0 {
-            Some(bounds.width() as f32)
-        } else {
-            None
-        };
 
+        // Shape without a wrap constraint at paint time. The element's bounds
+        // were sized by the layout pass from the same measure that runs
+        // here, so the natural unwrapped layout fits. Feeding `bounds.width`
+        // back as `max_advance` reintroduces sub-pixel rounding wobble that
+        // can flip wrap decisions and break "Click me" into "Click" / "me".
         let layout = ctx
             .text
             .borrow_mut()
-            .shape(&content, font_size, foreground, max_advance);
+            .shape(&content, font_size, foreground, None);
 
         let mut painter = Painter::new(scene);
         let origin = bounds.origin();
