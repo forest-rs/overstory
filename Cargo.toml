@@ -27,6 +27,7 @@ peniko = { default-features = true, version = "0.6.1" }
 
 # Understory primitives (path deps — closely coupled).
 understory_property = { default-features = false, path = "../understory/understory_property" }
+understory_style = { default-features = false, path = "../understory/understory_style" }
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["std"], version = "0.0.1" }

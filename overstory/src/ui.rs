@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The root [`Ui`] context: owns the visual tree, property registry, behavior
-//! registry, invalidation tracker, and per-element scene cache.
+//! registry, style cascade, invalidation tracker, and per-element scene
+//! cache.
 //!
-//! In Phase 1b only paint flows through here; later phases add style cascade,
-//! layout (taffy), templates, and input dispatch.
+//! Phase 1c adds the style cascade integration; later phases add taffy
+//! layout, templates, and input dispatch.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -15,20 +16,22 @@ use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::Affine;
 use understory_property::{DependencyObjectExt, Property, PropertyRegistry};
+use understory_style::{
+    MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
+};
 
 use crate::behavior::{BehaviorRegistry, PaintContext};
-use crate::channels::{COMPOSE, PAINT};
+use crate::channels::{COMPOSE, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
+use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 
 /// Root context for an Overstory UI instance.
 ///
 /// Owns the visual tree, the slot allocator, the property and behavior
-/// registries, the invalidation tracker, and a per-element [`Scene`] cache.
-///
-/// Phase 1b wires only paint through this struct; style cascade, taffy
-/// layout, templates, and input dispatch come in later phases.
+/// registries, the style cascade and theme, the invalidation tracker, and a
+/// per-element [`Scene`] cache plus a per-element [`MatchState`] cache.
 pub struct Ui {
     slots: Vec<Slot>,
     /// Free list of slot indices available for reuse. LIFO for locality.
@@ -39,6 +42,9 @@ pub struct Ui {
     behaviors: BehaviorRegistry,
     invalidation: InvalidationTracker<ElementId>,
     scene_cache: HashMap<ElementId, Scene>,
+    cascade: StyleCascade,
+    theme: Theme,
+    match_states: HashMap<ElementId, MatchState>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -47,6 +53,7 @@ impl core::fmt::Debug for Ui {
             .field("elements", &(self.slots.len() - self.free.len()))
             .field("free_slots", &self.free.len())
             .field("paint_dirty", &self.invalidation.has_invalidated(PAINT))
+            .field("style_dirty", &self.invalidation.has_invalidated(STYLE))
             .finish_non_exhaustive()
     }
 }
@@ -68,30 +75,36 @@ enum Slot {
 
 impl Ui {
     /// Creates a new [`Ui`] with an empty root element of kind
-    /// [`ELEMENT_KIND_GENERIC`], the built-in properties registered, and the
-    /// generic behavior installed for `ELEMENT_KIND_GENERIC`.
+    /// [`ELEMENT_KIND_GENERIC`], built-in properties registered, the generic
+    /// behavior installed, and an empty cascade and theme.
+    ///
+    /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
+    /// application-supplied styling.
     #[must_use]
     pub fn new() -> Self {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
         let mut behaviors = BehaviorRegistry::new();
         behaviors.register(ELEMENT_KIND_GENERIC, &GENERIC_BEHAVIOR);
+        let cascade = StyleCascadeBuilder::new().build();
+        let theme = Theme::default();
 
         let mut me = Self {
             slots: Vec::new(),
             free: Vec::new(),
-            root: ElementId {
-                slot: 0,
-                generation: 0,
-            },
+            root: ElementId::new(0, 0),
             registry,
             properties,
             behaviors,
             invalidation: InvalidationTracker::new(),
             scene_cache: HashMap::new(),
+            cascade,
+            theme,
+            match_states: HashMap::new(),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None);
         me.root = root;
+        me.style_one(root);
         me
     }
 
@@ -123,8 +136,7 @@ impl Ui {
         &self.properties
     }
 
-    /// Returns the behavior registry. Application code can register its own
-    /// behaviors for new element kinds.
+    /// Returns the behavior registry.
     #[must_use]
     #[inline]
     pub fn behaviors(&self) -> &BehaviorRegistry {
@@ -137,6 +149,46 @@ impl Ui {
         &mut self.behaviors
     }
 
+    /// Returns the active style cascade.
+    #[must_use]
+    #[inline]
+    pub fn cascade(&self) -> &StyleCascade {
+        &self.cascade
+    }
+
+    /// Returns the active theme.
+    #[must_use]
+    #[inline]
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Swaps in a new style cascade and restyles the entire tree.
+    ///
+    /// Every element is marked PAINT-dirty since styled values may now resolve
+    /// differently. Match states from the previous cascade are discarded —
+    /// the [`MatchState`] type is bound to its originating cascade, so they
+    /// can't be reused after a swap.
+    pub fn set_cascade(&mut self, cascade: StyleCascade) {
+        self.cascade = cascade;
+        self.match_states.clear();
+        let ids = collect_preorder(self, self.root);
+        for id in ids {
+            self.style_one(id);
+            self.invalidation.mark(id, PAINT);
+        }
+    }
+
+    /// Swaps in a new theme. All elements are marked PAINT-dirty since theme
+    /// resource lookups are read-time and may now resolve differently.
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        let ids: Vec<ElementId> = self.match_states.keys().copied().collect();
+        for id in ids {
+            self.invalidation.mark(id, PAINT);
+        }
+    }
+
     /// Returns the total number of live elements (including the root).
     #[must_use]
     pub fn len(&self) -> usize {
@@ -144,16 +196,13 @@ impl Ui {
     }
 
     /// Returns `true` if no elements are live.
-    ///
-    /// (`Ui::new` always inserts a root, so this is `false` for any [`Ui`]
-    /// constructed via [`Self::new`].)
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns a reference to the element with the given id, or `None` if the
-    /// id is stale (the slot has been recycled or removed).
+    /// id is stale.
     #[must_use]
     pub fn get(&self, id: ElementId) -> Option<&Element> {
         match self.slots.get(id.slot() as usize)? {
@@ -165,8 +214,7 @@ impl Ui {
         }
     }
 
-    /// Returns a mutable reference to the element with the given id, or `None`
-    /// if the id is stale.
+    /// Returns a mutable reference to the element with the given id.
     #[must_use]
     pub fn get_mut(&mut self, id: ElementId) -> Option<&mut Element> {
         match self.slots.get_mut(id.slot() as usize)? {
@@ -178,10 +226,20 @@ impl Ui {
         }
     }
 
+    /// Returns the match state for `id`, falling back to the cascade root
+    /// state if the element has not yet been styled.
+    #[must_use]
+    pub fn match_state(&self, id: ElementId) -> MatchState {
+        self.match_states
+            .get(&id)
+            .copied()
+            .unwrap_or_else(|| self.cascade.root_state())
+    }
+
     /// Inserts a new child of the given `kind` under `parent` and returns its id.
     ///
-    /// The new element is marked PAINT-dirty so the next [`Self::paint`] will
-    /// record it.
+    /// The new element is styled against the current cascade, marked
+    /// PAINT-dirty, and the parent is marked COMPOSE-dirty.
     ///
     /// # Panics
     ///
@@ -192,9 +250,8 @@ impl Ui {
             "insert_child: parent id is stale"
         );
         let child = self.alloc_element(kind, Some(parent));
-        // SAFETY of unwrap: we asserted `parent` is live above and `alloc_element`
-        // only mutates the child slot.
         self.get_mut(parent).unwrap().children_mut().push(child);
+        self.style_one(child);
         self.invalidation.mark(child, PAINT);
         self.invalidation.mark(parent, COMPOSE);
         child
@@ -202,20 +259,13 @@ impl Ui {
 
     /// Removes `id` and all of its descendants from the tree.
     ///
-    /// Each removed slot's generation is incremented so subsequent reuse
-    /// invalidates outstanding handles. The parent (if any) is marked
-    /// `COMPOSE`-dirty so the next frame re-assembles without the removed
-    /// subtree.
-    ///
     /// # Panics
     ///
-    /// Panics if `id` is the root (the root cannot be removed) or if `id` is
-    /// stale.
+    /// Panics if `id` is the root or stale.
     pub fn remove(&mut self, id: ElementId) {
         assert!(id != self.root, "remove: cannot remove the tree root");
         assert!(self.get(id).is_some(), "remove: id is stale");
 
-        // Detach from parent's children list and dirty the parent for compose.
         let parent = self.get(id).and_then(Element::parent);
         if let Some(parent) = parent {
             if let Some(parent_node) = self.get_mut(parent) {
@@ -227,11 +277,6 @@ impl Ui {
     }
 
     /// Writes a property value with notification.
-    ///
-    /// Calls [`DependencyObjectExt::set_local_notifying`] and unions the
-    /// returned channel set into the invalidation tracker for `id`. This is
-    /// the blessed write path; direct mutation through [`Self::get_mut`] is
-    /// available but apps must mark dirty themselves.
     pub fn set_local<T: Clone + PartialEq + 'static>(
         &mut self,
         id: ElementId,
@@ -248,6 +293,54 @@ impl Ui {
         self.mark_channels(id, channels);
     }
 
+    /// Adds `class` to `id` and re-styles the affected subtree.
+    pub fn add_class(&mut self, id: ElementId, class: understory_style::ClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.add_class(class))
+            .unwrap_or(false);
+        if changed {
+            self.invalidation.mark(id, STYLE);
+            self.restyle_subtree(id);
+        }
+    }
+
+    /// Removes `class` from `id` and re-styles the affected subtree.
+    pub fn remove_class(&mut self, id: ElementId, class: understory_style::ClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.remove_class(class))
+            .unwrap_or(false);
+        if changed {
+            self.invalidation.mark(id, STYLE);
+            self.restyle_subtree(id);
+        }
+    }
+
+    /// Adds `pseudo` to `id` and re-styles the affected subtree.
+    pub fn add_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.add_pseudo(pseudo))
+            .unwrap_or(false);
+        if changed {
+            self.invalidation.mark(id, STYLE);
+            self.restyle_subtree(id);
+        }
+    }
+
+    /// Removes `pseudo` from `id` and re-styles the affected subtree.
+    pub fn remove_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.remove_pseudo(pseudo))
+            .unwrap_or(false);
+        if changed {
+            self.invalidation.mark(id, STYLE);
+            self.restyle_subtree(id);
+        }
+    }
+
     /// Marks every channel in `set` dirty for `id` in the tracker.
     pub fn mark_channels(&mut self, id: ElementId, set: ChannelSet) {
         for channel in set.iter() {
@@ -262,36 +355,55 @@ impl Ui {
         &self.invalidation
     }
 
+    /// Drains the STYLE channel, recomputing the match state of any dirty
+    /// element subtree. Channels affected by changed styled properties are
+    /// unioned into the invalidation tracker.
+    pub fn flush_style(&mut self) {
+        let dirty: Vec<ElementId> = self.invalidation.drain_sorted(STYLE).collect();
+        for id in dirty {
+            self.restyle_subtree(id);
+        }
+    }
+
     /// Paints the dirty elements into per-element scene caches, then
     /// assembles every element's cached scene into `output` in document
     /// (depth-first preorder) order.
     pub fn paint(&mut self, output: &mut Scene) {
-        // 1. Re-record any element marked PAINT-dirty.
+        // 1. Flush any pending STYLE work first; it may dirty PAINT.
+        self.flush_style();
+        // 2. Re-record any PAINT-dirty elements.
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
         for id in dirty {
             self.repaint_element(id);
         }
-        // 2. Walk the tree depth-first and append each cached scene into output.
+        // 3. Walk the tree depth-first and append each cached scene into output.
         output.clear();
         self.assemble_into(self.root, output);
-        // 3. Clear the COMPOSE channel; the assembly above is the response.
+        // 4. Clear the COMPOSE channel; the assembly above is the response.
         self.invalidation.clear(COMPOSE);
     }
 
     fn repaint_element(&mut self, id: ElementId) {
         let Some(element) = self.get(id) else {
-            // Stale; drop any cached scene.
             self.scene_cache.remove(&id);
             return;
         };
         let Some(behavior) = self.behaviors.get(element.kind()) else {
-            // No behavior registered for this kind; clear any stale cache.
             self.scene_cache.remove(&id);
             return;
         };
+        let match_state = self
+            .match_states
+            .get(&id)
+            .copied()
+            .unwrap_or_else(|| self.cascade.root_state());
         let ctx = PaintContext {
             registry: &self.registry,
             properties: &self.properties,
+            theme: &self.theme,
+            cascade: &self.cascade,
+            match_state,
+            lookup: UiStoreLookup::new(self),
         };
         let mut scene = Scene::new();
         behavior.paint(element, &ctx, &mut scene);
@@ -314,6 +426,51 @@ impl Ui {
         }
     }
 
+    /// Restyles `id` and its descendants in preorder. Channels affected by
+    /// each element's styled-property changes are marked in the tracker.
+    fn restyle_subtree(&mut self, id: ElementId) {
+        let order: Vec<ElementId> = collect_preorder(self, id);
+        for id in order {
+            self.style_one(id);
+        }
+    }
+
+    /// Recomputes the match state for one element. If a previous state exists
+    /// for `id`, the cascade's `restyle_subject` is used to surface changed
+    /// channels into the tracker; otherwise the new state is just stored.
+    fn style_one(&mut self, id: ElementId) {
+        let Some(element) = self.get(id) else {
+            self.match_states.remove(&id);
+            return;
+        };
+        let kind = element.kind();
+        let parent = element.parent();
+        // Copy out the slices so the `&Element` borrow of `self` can end
+        // before we mutate `self.match_states`.
+        let classes: smallvec::SmallVec<[understory_style::ClassId; 4]> =
+            smallvec::SmallVec::from_slice(element.classes());
+        let pseudos: smallvec::SmallVec<[understory_style::PseudoClassId; 4]> =
+            smallvec::SmallVec::from_slice(element.pseudos());
+
+        let parent_state = parent
+            .and_then(|p| self.match_states.get(&p).copied())
+            .unwrap_or_else(|| self.cascade.root_state());
+
+        let inputs = SelectorInputs::new(Some(TypeTag(kind.tag())), &classes, &pseudos);
+        let old_state = self.match_states.get(&id).copied();
+        let new_state = self.cascade.enter_subject(parent_state, &inputs);
+        self.match_states.insert(id, new_state);
+
+        if let Some(old) = old_state
+            && old != new_state
+        {
+            let restyle = self
+                .cascade
+                .restyle_subject(&self.registry, old, parent_state, &inputs);
+            self.mark_channels(id, restyle.changed_channels());
+        }
+    }
+
     fn remove_subtree(&mut self, id: ElementId) {
         let children: Vec<ElementId> = self
             .get(id)
@@ -330,6 +487,7 @@ impl Ui {
             self.free.push(id.slot());
         }
         self.scene_cache.remove(&id);
+        self.match_states.remove(&id);
         self.invalidation.remove_key(id);
     }
 
@@ -367,8 +525,7 @@ impl Default for Ui {
 }
 
 /// Direct slot accessor used by `set_local` so we can re-borrow the registry
-/// for the notifying call without conflicting with the slot vec borrow. Not
-/// exposed publicly — callers go through [`Ui::get_mut`].
+/// for the notifying call without conflicting with the slot vec borrow.
 fn element_mut(slots: &mut [Slot], id: ElementId) -> Option<&mut Element> {
     match slots.get_mut(id.slot() as usize)? {
         Slot::Live {
@@ -379,11 +536,28 @@ fn element_mut(slots: &mut [Slot], id: ElementId) -> Option<&mut Element> {
     }
 }
 
+/// Collects `start` and all of its descendants in depth-first preorder.
+fn collect_preorder(ui: &Ui, start: ElementId) -> Vec<ElementId> {
+    let mut out = Vec::new();
+    walk_preorder(ui, start, &mut out);
+    out
+}
+
+fn walk_preorder(ui: &Ui, id: ElementId, out: &mut Vec<ElementId>) {
+    let Some(element) = ui.get(id) else { return };
+    out.push(id);
+    let children: Vec<ElementId> = element.children().to_vec();
+    for child in children {
+        walk_preorder(ui, child, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kurbo::Rect;
     use peniko::{Brush, Color};
+    use understory_style::{ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleOrigin};
 
     #[test]
     fn new_ui_has_root() {
@@ -408,10 +582,8 @@ mod tests {
         assert_eq!(ui.get(a).unwrap().parent(), Some(root));
         assert_eq!(ui.get(b).unwrap().parent(), Some(root));
 
-        // Both children should be PAINT-dirty for their first frame.
         assert!(ui.invalidation().is_invalidated(a, PAINT));
         assert!(ui.invalidation().is_invalidated(b, PAINT));
-        // The parent gets a COMPOSE dirty.
         assert!(ui.invalidation().is_invalidated(root, COMPOSE));
     }
 
@@ -425,7 +597,6 @@ mod tests {
 
         ui.remove(a);
 
-        // `a` and `grandchild` are gone; `b` survives.
         assert!(ui.get(a).is_none());
         assert!(ui.get(grandchild).is_none());
         assert!(ui.get(b).is_some());
@@ -472,7 +643,6 @@ mod tests {
         let bounds = ui.properties().bounds;
         let background = ui.properties().background;
 
-        // Drain the initial dirty marks from insert.
         let _ = ui
             .invalidation
             .drain_sorted(PAINT)
@@ -481,12 +651,10 @@ mod tests {
         ui.set_local(root, bounds, Rect::new(0.0, 0.0, 100.0, 50.0));
         assert!(ui.invalidation().is_invalidated(root, PAINT));
 
-        // Subsequent identical write should be a no-op (effective unchanged).
         ui.invalidation.clear(PAINT);
         ui.set_local(root, bounds, Rect::new(0.0, 0.0, 100.0, 50.0));
         assert!(!ui.invalidation().is_invalidated(root, PAINT));
 
-        // Background write dirties.
         ui.set_local(
             root,
             background,
@@ -512,9 +680,7 @@ mod tests {
         let mut output = Scene::new();
         ui.paint(&mut output);
 
-        // After paint, the PAINT channel is drained.
         assert!(!ui.invalidation().has_invalidated(PAINT));
-        // The output scene should contain at least one command (the fill).
         assert!(!output.is_empty());
     }
 
@@ -524,7 +690,6 @@ mod tests {
         let root = ui.root();
         let background = ui.properties().background;
 
-        // No bounds set → defaults to Rect::ZERO → behavior bails early.
         ui.set_local(
             root,
             background,
@@ -534,5 +699,52 @@ mod tests {
         let mut output = Scene::new();
         ui.paint(&mut output);
         assert!(output.is_empty(), "zero-area element should record nothing");
+    }
+
+    #[test]
+    fn styled_background_resolves_through_cascade() {
+        // A style for `Type(ELEMENT_KIND_GENERIC)` should supply the
+        // background value for elements that don't have a local override.
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let bounds = ui.properties().bounds;
+        let background = ui.properties().background;
+
+        // Build a cascade with one rule.
+        let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
+        let style = StyleBuilder::new().set(background, red).build();
+        let selector =
+            SelectorBuilder::new(SelectorStep::type_tag(TypeTag(ELEMENT_KIND_GENERIC.tag())))
+                .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(StyleOrigin::Base, selector, style)
+            .build();
+        ui.set_cascade(cascade);
+
+        ui.set_local(root, bounds, Rect::new(0.0, 0.0, 10.0, 10.0));
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+        // Resolution should have surfaced the styled red brush, so the scene
+        // is non-empty.
+        assert!(
+            !output.is_empty(),
+            "cascade should supply the background and produce paint output"
+        );
+    }
+
+    #[test]
+    fn add_class_marks_style_and_restyles_subtree() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let _ = ui
+            .invalidation
+            .drain_sorted(STYLE)
+            .collect::<Vec<ElementId>>();
+        ui.add_class(root, ClassId(1));
+        // STYLE dirty was marked by add_class; restyle drained it via
+        // restyle_subtree (called inline). With an empty cascade nothing
+        // changes channel-wise.
+        assert!(ui.get(root).unwrap().classes().contains(&ClassId(1)));
     }
 }

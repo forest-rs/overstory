@@ -1304,6 +1304,7 @@ dependencies = [
  "peniko",
  "smallvec",
  "understory_property",
+ "understory_style",
 ]
 
 [[package]]
@@ -1317,6 +1318,7 @@ dependencies = [
  "overstory",
  "peniko",
  "pollster",
+ "understory_style",
  "wgpu",
  "winit",
 ]
@@ -1968,6 +1970,14 @@ dependencies = [
  "hashbrown 0.17.1",
  "invalidation",
  "smallvec",
+]
+
+[[package]]
+name = "understory_style"
+version = "0.1.0"
+dependencies = [
+ "invalidation",
+ "understory_property",
 ]
 
 [[package]]

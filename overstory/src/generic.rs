@@ -11,7 +11,6 @@ use imaging::Painter;
 use imaging::record::Scene;
 use kurbo::{Rect, RoundedRect};
 use peniko::Brush;
-use understory_property::DependencyObjectExt;
 
 use crate::behavior::{ElementBehavior, PaintContext};
 use crate::element::Element;
@@ -25,17 +24,18 @@ pub(crate) static GENERIC_BEHAVIOR: GenericBehavior = GenericBehavior;
 
 impl ElementBehavior for GenericBehavior {
     fn paint(&self, element: &Element, ctx: &PaintContext<'_>, scene: &mut Scene) {
-        let bounds: Rect = element.get_effective_local(ctx.properties.bounds, ctx.registry);
+        let cx = ctx.resolve_cx();
+        let style = Some((ctx.cascade, ctx.match_state));
+
+        let bounds: Rect = cx.get_value(element, ctx.properties.bounds, style);
         if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
             return;
         }
-        let background: Option<Brush> =
-            element.get_effective_local(ctx.properties.background, ctx.registry);
+        let background: Option<Brush> = cx.get_value(element, ctx.properties.background, style);
         let Some(brush) = background else {
             return;
         };
-        let corner_radius: f64 =
-            element.get_effective_local(ctx.properties.corner_radius, ctx.registry);
+        let corner_radius: f64 = cx.get_value(element, ctx.properties.corner_radius, style);
 
         let mut painter = Painter::new(scene);
         if corner_radius > 0.0 {

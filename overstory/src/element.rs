@@ -8,6 +8,7 @@ use core::fmt;
 use invalidation::DenseKey;
 use smallvec::SmallVec;
 use understory_property::{DependencyObject, PropertyStore};
+use understory_style::{ClassId, PseudoClassId};
 
 /// Open-ended type tag identifying an element's behavior in the
 /// [`crate::BehaviorRegistry`].
@@ -122,6 +123,12 @@ pub struct Element {
     parent: Option<ElementId>,
     children: SmallVec<[ElementId; CHILDREN_INLINE]>,
     store: PropertyStore<ElementId>,
+    /// Class identifiers this element participates in. Kept sorted+deduped so
+    /// `understory_style`'s `SelectorInputs` can borrow the slice directly.
+    classes: SmallVec<[ClassId; 2]>,
+    /// Pseudoclass identifiers currently active on this element (e.g. `:hover`,
+    /// `:checked`). Kept sorted+deduped for the same reason.
+    pseudos: SmallVec<[PseudoClassId; 2]>,
 }
 
 impl Element {
@@ -132,6 +139,69 @@ impl Element {
             parent,
             children: SmallVec::new(),
             store: PropertyStore::new(id),
+            classes: SmallVec::new(),
+            pseudos: SmallVec::new(),
+        }
+    }
+
+    /// Returns this element's active class identifiers in ascending order.
+    #[must_use]
+    #[inline]
+    pub fn classes(&self) -> &[ClassId] {
+        &self.classes
+    }
+
+    /// Returns this element's active pseudoclass identifiers in ascending
+    /// order.
+    #[must_use]
+    #[inline]
+    pub fn pseudos(&self) -> &[PseudoClassId] {
+        &self.pseudos
+    }
+
+    /// Adds `class` to this element if not already present. Returns `true` if
+    /// the set changed.
+    pub fn add_class(&mut self, class: ClassId) -> bool {
+        match self.classes.binary_search(&class) {
+            Ok(_) => false,
+            Err(idx) => {
+                self.classes.insert(idx, class);
+                true
+            }
+        }
+    }
+
+    /// Removes `class` from this element. Returns `true` if it was present.
+    pub fn remove_class(&mut self, class: ClassId) -> bool {
+        match self.classes.binary_search(&class) {
+            Ok(idx) => {
+                self.classes.remove(idx);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Adds `pseudo` to this element if not already present. Returns `true` if
+    /// the set changed.
+    pub fn add_pseudo(&mut self, pseudo: PseudoClassId) -> bool {
+        match self.pseudos.binary_search(&pseudo) {
+            Ok(_) => false,
+            Err(idx) => {
+                self.pseudos.insert(idx, pseudo);
+                true
+            }
+        }
+    }
+
+    /// Removes `pseudo` from this element. Returns `true` if it was present.
+    pub fn remove_pseudo(&mut self, pseudo: PseudoClassId) -> bool {
+        match self.pseudos.binary_search(&pseudo) {
+            Ok(idx) => {
+                self.pseudos.remove(idx);
+                true
+            }
+            Err(_) => false,
         }
     }
 

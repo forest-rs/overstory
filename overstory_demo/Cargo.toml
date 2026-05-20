@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 overstory = { path = "../overstory" }
+understory_style.workspace = true
 imaging.workspace = true
 imaging_vello.workspace = true
 imaging_wgpu.workspace = true

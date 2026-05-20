@@ -29,11 +29,13 @@ mod behavior;
 pub mod channels;
 mod element;
 mod generic;
+mod lookup;
 mod properties;
 mod ui;
 
 pub use behavior::{BehaviorRegistry, ElementBehavior, PaintContext};
 pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
+pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
 pub use ui::Ui;

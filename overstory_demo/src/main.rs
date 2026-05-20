@@ -4,11 +4,14 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The Phase 1b tree is two elements: a full-viewport dark background and a
-//! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes;
-//! `Ui::paint` walks the tree, dispatches each element's behavior, and
-//! assembles the per-element scene caches into one output scene the host
-//! hands to vello.
+//! The Phase 1c tree is two elements: a full-viewport dark background and a
+//! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes,
+//! distinguished by a `ClassId`. Their backgrounds and the foreground's
+//! corner radius come from an implicit stylesheet installed via
+//! `Ui::set_cascade`; only bounds are still set imperatively (taffy lands in
+//! Phase 1e). `Ui::paint` walks the tree, dispatches each element's
+//! behavior, and assembles the per-element scene caches into one output
+//! scene the host hands to vello.
 //!
 //! ## Render path
 //!
@@ -31,6 +34,9 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Rect;
 use overstory::{ELEMENT_KIND_GENERIC, ElementId, Ui};
 use peniko::{Brush, Color};
+use understory_style::{
+    ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, TypeTag,
+};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
@@ -279,29 +285,46 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
-/// Builds the Phase 1b element tree: a full-viewport dark background with a
-/// blue rounded panel centered inside. Bounds are populated by
-/// `WindowState::update_layout` on the first paint and on resize.
+/// Marks the centered foreground panel for the stylesheet.
+const CLASS_FOREGROUND: ClassId = ClassId(1);
+
+/// Builds the Phase 1c element tree: a full-viewport dark background with a
+/// blue rounded panel centered inside. Backgrounds and the foreground's
+/// corner radius come from a stylesheet; bounds are still set imperatively
+/// by `WindowState::update_layout` until taffy lands in Phase 1e.
 fn build_ui() -> (Ui, ElementId, ElementId) {
     let mut ui = Ui::new();
     let root = ui.root();
-    let props = *ui.properties();
-
-    // The root spans the full viewport with a dark background. Phase 1b leaves
-    // bounds to be set per-frame by the host.
-    ui.set_local(
-        root,
-        props.background,
-        Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff))),
-    );
-
     let foreground = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-    ui.set_local(
-        foreground,
-        props.background,
-        Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff))),
-    );
-    ui.set_local(foreground, props.corner_radius, 16.0_f64);
+    ui.add_class(foreground, CLASS_FOREGROUND);
+
+    // Implicit style for any generic element: dark background.
+    let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
+    let generic_style = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff))),
+        )
+        .build();
+    let generic_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
+
+    // Override for the foreground class: blue with a corner radius.
+    let foreground_style = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff))),
+        )
+        .set(ui.properties().corner_radius, 16.0_f64)
+        .build();
+    let foreground_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(generic_kind).with_class(CLASS_FOREGROUND))
+            .build();
+
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(StyleOrigin::Base, generic_selector, generic_style)
+        .push_rule(StyleOrigin::Base, foreground_selector, foreground_style)
+        .build();
+    ui.set_cascade(cascade);
 
     (ui, root, foreground)
 }
