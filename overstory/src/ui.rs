@@ -52,6 +52,10 @@ pub struct Ui {
     hovered: Option<ElementId>,
     taffy: taffy::TaffyTree<ElementId>,
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
+    /// While a `Template::instantiate` call is on the stack, every element
+    /// created via `insert_child` is tagged with this id as
+    /// `templated_parent`. Saved/restored around nested template expansions.
+    currently_expanding: Option<ElementId>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -111,8 +115,9 @@ impl Ui {
             hovered: None,
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
+            currently_expanding: None,
         };
-        let root = me.alloc_element(ELEMENT_KIND_GENERIC, None);
+        let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
         me.style_one(root);
         me
@@ -249,7 +254,16 @@ impl Ui {
     /// Inserts a new child of the given `kind` under `parent` and returns its id.
     ///
     /// The new element is styled against the current cascade, marked
-    /// PAINT-dirty, and the parent is marked COMPOSE-dirty.
+    /// PAINT-dirty, and the parent is marked COMPOSE-dirty. If `kind`'s
+    /// behavior provides a `default_template`, it is invoked immediately;
+    /// any elements created during that expansion are tagged with
+    /// `templated_parent = Some(child)`.
+    ///
+    /// If this call is happening *inside* another template's expansion,
+    /// `templated_parent` is inherited from the outer template's owner — so
+    /// elements created during a Button's template expansion all share
+    /// `templated_parent = button_id`, even when they're created several
+    /// levels deep.
     ///
     /// # Panics
     ///
@@ -259,12 +273,34 @@ impl Ui {
             self.get(parent).is_some(),
             "insert_child: parent id is stale"
         );
-        let child = self.alloc_element(kind, Some(parent));
+        let templated_parent = self.currently_expanding;
+        let child = self.alloc_element(kind, Some(parent), templated_parent);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
         self.invalidation.mark(child, PAINT);
         self.invalidation.mark(parent, COMPOSE);
+        self.expand_default_template(child);
         child
+    }
+
+    /// Expands `kind`'s default template under `owner`, if any. Sets
+    /// `currently_expanding = Some(owner)` for the duration of the
+    /// expansion so any `insert_child` calls inside `Template::instantiate`
+    /// tag their elements with the right `templated_parent`.
+    fn expand_default_template(&mut self, owner: ElementId) {
+        let Some(element) = self.get(owner) else {
+            return;
+        };
+        let kind = element.kind();
+        let Some(behavior) = self.behaviors.get(kind) else {
+            return;
+        };
+        let Some(template) = behavior.default_template() else {
+            return;
+        };
+        let outer = self.currently_expanding.replace(owner);
+        template.instantiate(self, owner);
+        self.currently_expanding = outer;
     }
 
     /// Removes `id` and all of its descendants from the tree.
@@ -685,7 +721,12 @@ impl Ui {
         }
     }
 
-    fn alloc_element(&mut self, kind: ElementKind, parent: Option<ElementId>) -> ElementId {
+    fn alloc_element(
+        &mut self,
+        kind: ElementKind,
+        parent: Option<ElementId>,
+        templated_parent: Option<ElementId>,
+    ) -> ElementId {
         let id = if let Some(slot_index) = self.free.pop() {
             let slot = &mut self.slots[slot_index as usize];
             let generation = match slot {
@@ -697,7 +738,7 @@ impl Ui {
             let id = ElementId::new(slot_index, generation);
             *slot = Slot::Live {
                 generation,
-                element: Box::new(Element::new(id, kind, parent)),
+                element: Box::new(Element::new(id, kind, parent, templated_parent)),
             };
             id
         } else {
@@ -705,7 +746,7 @@ impl Ui {
             let id = ElementId::new(slot_index, 0);
             self.slots.push(Slot::Live {
                 generation: 0,
-                element: Box::new(Element::new(id, kind, parent)),
+                element: Box::new(Element::new(id, kind, parent, templated_parent)),
             });
             id
         };
@@ -1022,6 +1063,57 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn template_expansion_inserts_parts_under_owner() {
+        use crate::Template;
+        use crate::behavior::ElementBehavior;
+
+        // A unit-test kind whose default_template inserts two generic
+        // children. Both should have templated_parent = the owner.
+        const TEST_OWNER_KIND: ElementKind = ElementKind::new(0xFEED_BEEF);
+
+        struct TestTemplate;
+        impl Template for TestTemplate {
+            fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
+                let _a = ui.insert_child(owner, ELEMENT_KIND_GENERIC);
+                let _b = ui.insert_child(owner, ELEMENT_KIND_GENERIC);
+            }
+        }
+        static TEST_TEMPLATE: TestTemplate = TestTemplate;
+
+        struct TestBehavior;
+        impl ElementBehavior for TestBehavior {
+            fn paint(&self, _: &Element, _: &PaintContext<'_>, _: &mut Scene) {}
+            fn default_template(&self) -> Option<&'static dyn Template> {
+                Some(&TEST_TEMPLATE)
+            }
+        }
+        static TEST_BEHAVIOR: TestBehavior = TestBehavior;
+
+        let mut ui = Ui::new();
+        ui.behaviors_mut().register(TEST_OWNER_KIND, &TEST_BEHAVIOR);
+
+        let root = ui.root();
+        let owner = ui.insert_child(root, TEST_OWNER_KIND);
+
+        // The template should have created two children under owner, each
+        // tagged with templated_parent = Some(owner).
+        let owner_children = ui.get(owner).unwrap().children().to_vec();
+        assert_eq!(owner_children.len(), 2, "template should insert 2 parts");
+        for part_id in owner_children {
+            let part = ui.get(part_id).unwrap();
+            assert_eq!(
+                part.templated_parent(),
+                Some(owner),
+                "part should track owner"
+            );
+            assert_eq!(part.parent(), Some(owner), "part is a child of owner");
+        }
+
+        // The owner itself has no templated parent (it's a logical child of root).
+        assert_eq!(ui.get(owner).unwrap().templated_parent(), None);
     }
 
     #[test]

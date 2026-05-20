@@ -121,6 +121,14 @@ pub struct Element {
     id: ElementId,
     kind: ElementKind,
     parent: Option<ElementId>,
+    /// The control whose template instantiated this element, if any.
+    ///
+    /// `Some` for template parts (e.g. the `Border` + `ContentPresenter` inside
+    /// a templated `Button`), `None` for logical-tree elements (the `Button`
+    /// itself, items in an `ItemsControl`). Tagged automatically by
+    /// [`crate::Ui`] when elements are inserted inside a
+    /// [`crate::Template::instantiate`] call.
+    templated_parent: Option<ElementId>,
     children: SmallVec<[ElementId; CHILDREN_INLINE]>,
     store: PropertyStore<ElementId>,
     /// Class identifiers this element participates in. Kept sorted+deduped so
@@ -132,11 +140,17 @@ pub struct Element {
 }
 
 impl Element {
-    pub(crate) fn new(id: ElementId, kind: ElementKind, parent: Option<ElementId>) -> Self {
+    pub(crate) fn new(
+        id: ElementId,
+        kind: ElementKind,
+        parent: Option<ElementId>,
+        templated_parent: Option<ElementId>,
+    ) -> Self {
         Self {
             id,
             kind,
             parent,
+            templated_parent,
             children: SmallVec::new(),
             store: PropertyStore::new(id),
             classes: SmallVec::new(),
@@ -225,6 +239,15 @@ impl Element {
     #[inline]
     pub fn parent(&self) -> Option<ElementId> {
         self.parent
+    }
+
+    /// Returns the templated parent — the control whose template
+    /// instantiated this element — if any. Logical-tree children return
+    /// `None`.
+    #[must_use]
+    #[inline]
+    pub fn templated_parent(&self) -> Option<ElementId> {
+        self.templated_parent
     }
 
     /// Returns this element's children in document order.

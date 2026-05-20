@@ -32,13 +32,15 @@ mod generic;
 mod lookup;
 mod properties;
 pub mod pseudos;
+mod template;
 mod ui;
 
-pub use behavior::{BehaviorRegistry, ElementBehavior, PaintContext};
+pub use behavior::{BehaviorRegistry, ElementBehavior, MeasureContext, PaintContext};
 pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
+pub use template::Template;
 pub use ui::Ui;
 
 // Re-export `taffy` so consumers don't have to add a direct dependency for

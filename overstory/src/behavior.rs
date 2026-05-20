@@ -17,6 +17,7 @@ use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
 use crate::element::{Element, ElementId, ElementKind};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
+use crate::template::Template;
 
 /// Read-only context handed to [`ElementBehavior::paint`].
 ///
@@ -60,6 +61,41 @@ impl fmt::Debug for PaintContext<'_> {
     }
 }
 
+/// Read-only context handed to [`ElementBehavior::measure`].
+///
+/// Holds the same resolution surface as [`PaintContext`] minus the
+/// per-element [`Scene`] target. Behaviors call [`Self::resolve_cx`] to
+/// build a transient [`ResolveCx`] that reads styled values.
+#[derive(Copy, Clone)]
+pub struct MeasureContext<'a> {
+    /// The property registry every property write is checked against.
+    pub registry: &'a PropertyRegistry,
+    /// Type-safe handles for the toolkit's built-in properties.
+    pub properties: &'a BuiltInProperties,
+    /// Active theme.
+    pub theme: &'a Theme,
+    /// The compiled style cascade.
+    pub cascade: &'a StyleCascade,
+    /// The match state for the element currently being measured.
+    pub match_state: MatchState,
+    /// Parent-walking lookup for inheritance.
+    pub(crate) lookup: UiStoreLookup<'a>,
+}
+
+impl<'a> MeasureContext<'a> {
+    /// Builds a [`ResolveCx`] tied to this context.
+    #[must_use]
+    pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiStoreLookup<'a>> {
+        ResolveCx::new(self.registry, self.theme, self.lookup)
+    }
+}
+
+impl fmt::Debug for MeasureContext<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MeasureContext").finish_non_exhaustive()
+    }
+}
+
 /// Per-kind behavior contract.
 ///
 /// Behaviors are registered once at startup as `&'static dyn ElementBehavior`
@@ -72,6 +108,35 @@ pub trait ElementBehavior: Sync {
     /// `scene` is a fresh, owned [`Scene`] dedicated to this element; the
     /// caller will compose it into the frame's output scene.
     fn paint(&self, element: &Element, ctx: &PaintContext<'_>, scene: &mut Scene);
+
+    /// Returns the default template factory for this kind, if any.
+    ///
+    /// When an element of this kind is inserted, the toolkit invokes the
+    /// returned template's `instantiate` method to build its visual subtree.
+    /// Primitive kinds (e.g. `ELEMENT_KIND_GENERIC`) return `None`.
+    fn default_template(&self) -> Option<&'static dyn Template> {
+        None
+    }
+
+    /// Optional custom measure callback for leaf-like behaviors that compute
+    /// their own desired size (text, images, custom-drawn primitives).
+    ///
+    /// Returns `None` (the default) to let taffy size purely from the
+    /// element's `Layout` style. Returns `Some(size)` to override.
+    ///
+    /// `known_dimensions` carries any pre-constrained axis sizes; behaviors
+    /// should respect them. `available_space` reports how much room the
+    /// parent has on each axis.
+    fn measure(
+        &self,
+        element: &Element,
+        ctx: &MeasureContext<'_>,
+        known_dimensions: taffy::Size<Option<f32>>,
+        available_space: taffy::Size<taffy::AvailableSpace>,
+    ) -> Option<taffy::Size<f32>> {
+        let _ = (element, ctx, known_dimensions, available_space);
+        None
+    }
 }
 
 /// Maps each [`ElementKind`] to its `'static` behavior implementation.
