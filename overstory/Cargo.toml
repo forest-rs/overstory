@@ -1,0 +1,21 @@
+[package]
+name = "overstory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WPF / WinUI 3-inspired UI toolkit built on understory and imaging."
+publish = false
+
+[dependencies]
+hashbrown.workspace = true
+invalidation.workspace = true
+smallvec.workspace = true
+kurbo.workspace = true
+peniko.workspace = true
+
+understory_property = { workspace = true, default-features = false }
+
+[lints]
+workspace = true
