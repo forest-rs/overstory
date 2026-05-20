@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
-//! paint a single rectangle through `imaging_vello` each frame.
+//! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! This is Phase 1a scaffolding — the host pipeline. The lib's `Element` /
-//! `Ui` types are not yet integrated into the paint loop; that lands in
-//! Phase 1b alongside the behavior registry, style cascade, and template
-//! machinery.
+//! The Phase 1b tree is two elements: a full-viewport dark background and a
+//! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes;
+//! `Ui::paint` walks the tree, dispatches each element's behavior, and
+//! assembles the per-element scene caches into one output scene the host
+//! hands to vello.
 //!
 //! ## Render path
 //!
@@ -24,10 +25,11 @@
 
 use std::sync::Arc;
 
-use imaging::{Painter, record::Scene};
+use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
-use kurbo::{Rect, RoundedRect};
+use kurbo::Rect;
+use overstory::{ELEMENT_KIND_GENERIC, ElementId, Ui};
 use peniko::{Brush, Color};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -92,6 +94,10 @@ struct WindowState {
     queue: wgpu::Queue,
     renderer: VelloRenderer,
     blit: BlitState,
+    ui: Ui,
+    background: ElementId,
+    foreground: ElementId,
+    scene: Scene,
 }
 
 #[derive(Default)]
@@ -146,10 +152,26 @@ impl WindowState {
         self.surface.configure(&self.device, &self.surface_config);
         // Invalidate the offscreen target so it's reallocated at the new size.
         self.blit.invalidate_offscreen();
+        // Resize the demo's elements to fill the new viewport.
+        self.update_layout();
     }
 
     fn size(&self) -> (u32, u32) {
         (self.surface_config.width, self.surface_config.height)
+    }
+
+    fn update_layout(&mut self) {
+        let (w, h) = self.size();
+        let (w, h) = (f64::from(w), f64::from(h));
+        let bounds_prop = self.ui.properties().bounds;
+        self.ui
+            .set_local(self.background, bounds_prop, Rect::new(0.0, 0.0, w, h));
+        let inset = (w.min(h) * 0.15).max(24.0);
+        self.ui.set_local(
+            self.foreground,
+            bounds_prop,
+            Rect::new(inset, inset, w - inset, h - inset),
+        );
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -160,16 +182,16 @@ impl WindowState {
         // Ensure the offscreen target matches the current surface size.
         self.blit.ensure_offscreen(&self.device, width, height);
 
-        // Render the imaging scene into the Rgba8Unorm offscreen target.
-        let mut scene = Scene::new();
-        paint_frame(&mut scene, (width, height));
+        // Drive the imaging scene from the element tree.
+        self.ui.paint(&mut self.scene);
+
         let offscreen_view = self
             .blit
             .offscreen_view()
             .expect("offscreen target should exist after ensure_offscreen");
         let target = TextureViewTarget::new(offscreen_view, width, height);
         self.renderer
-            .render_source_into_texture(&mut &scene, target)?;
+            .render_source_into_texture(&mut &self.scene, target)?;
 
         // Acquire the swapchain image and blit the offscreen into it.
         let output = match self.surface.get_current_texture() {
@@ -239,7 +261,8 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
     let blit = BlitState::new(&device, surface_config.format);
 
-    Ok(WindowState {
+    let (ui, background, foreground) = build_ui();
+    let mut state = WindowState {
         window,
         surface,
         surface_config,
@@ -247,20 +270,40 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         queue,
         renderer,
         blit,
-    })
+        ui,
+        background,
+        foreground,
+        scene: Scene::new(),
+    };
+    state.update_layout();
+    Ok(state)
 }
 
-fn paint_frame(scene: &mut Scene, size: (u32, u32)) {
-    let mut painter = Painter::new(scene);
-    let (w, h) = (f64::from(size.0), f64::from(size.1));
-    let background = Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff));
-    let foreground = Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff));
+/// Builds the Phase 1b element tree: a full-viewport dark background with a
+/// blue rounded panel centered inside. Bounds are populated by
+/// `WindowState::update_layout` on the first paint and on resize.
+fn build_ui() -> (Ui, ElementId, ElementId) {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let props = *ui.properties();
 
-    painter.fill(Rect::new(0.0, 0.0, w, h), &background).draw();
+    // The root spans the full viewport with a dark background. Phase 1b leaves
+    // bounds to be set per-frame by the host.
+    ui.set_local(
+        root,
+        props.background,
+        Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff))),
+    );
 
-    let inset = (w.min(h) * 0.15).max(24.0);
-    let rect = RoundedRect::from_rect(Rect::new(inset, inset, w - inset, h - inset), 16.0);
-    painter.fill(rect, &foreground).draw();
+    let foreground = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+    ui.set_local(
+        foreground,
+        props.background,
+        Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff))),
+    );
+    ui.set_local(foreground, props.corner_radius, 16.0_f64);
+
+    (ui, root, foreground)
 }
 
 /// Owns the WGSL blit pipeline and the cached offscreen target it samples.
@@ -457,12 +500,4 @@ impl OffscreenTarget {
             height,
         }
     }
-}
-
-/// Compile-time witness that the `overstory` lib is wired in. The demo
-/// doesn't drive the element tree in Phase 1a; this just keeps the dep
-/// honest until Phase 1b plugs the tree into the paint loop.
-#[allow(dead_code, reason = "scaffolding for Phase 1b integration")]
-fn _overstory_smoke() -> overstory::Ui {
-    overstory::Ui::new()
 }

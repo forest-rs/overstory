@@ -1,12 +1,48 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Element identity and the per-element node.
+//! Element identity, kind tags, and the per-element node.
 
 use core::fmt;
 
+use invalidation::DenseKey;
 use smallvec::SmallVec;
 use understory_property::{DependencyObject, PropertyStore};
+
+/// Open-ended type tag identifying an element's behavior in the
+/// [`crate::BehaviorRegistry`].
+///
+/// `ElementKind` is a plain `u32` newtype rather than an enum so applications
+/// can register their own kinds without modifying the toolkit. Reserve low
+/// values (0..256) for Overstory built-ins; apps should pick values above.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ElementKind(u32);
+
+impl ElementKind {
+    /// Constructs a new kind tag.
+    #[must_use]
+    #[inline]
+    pub const fn new(tag: u32) -> Self {
+        Self(tag)
+    }
+
+    /// Returns the raw tag value.
+    #[must_use]
+    #[inline]
+    pub const fn tag(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Debug for ElementKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ElementKind({})", self.0)
+    }
+}
+
+/// Generic element kind: a panel-like leaf that fills its bounds with the
+/// `Background` brush (rounded by `CornerRadius`). The Phase 1b default.
+pub const ELEMENT_KIND_GENERIC: ElementKind = ElementKind::new(0);
 
 /// Stable, generational handle to an [`Element`].
 ///
@@ -20,6 +56,14 @@ pub struct ElementId {
 }
 
 impl ElementId {
+    /// Constructs an id with explicit slot and generation. Used by [`crate::Ui`]
+    /// when issuing new ids; consumers should not normally build their own.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new(slot: u32, generation: u32) -> Self {
+        Self { slot, generation }
+    }
+
     /// Returns the slot index this id was issued for.
     ///
     /// Slot indices are reused after an element is removed; pair with
@@ -48,6 +92,17 @@ impl fmt::Debug for ElementId {
     }
 }
 
+impl DenseKey for ElementId {
+    /// Dense storage index in [`invalidation`] sets is the slot index — the
+    /// generation only disambiguates stale handles, it doesn't affect
+    /// dirty-marking storage. Stale ids can't reach the tracker through the
+    /// `Ui` API (every entry point validates the id first).
+    #[inline]
+    fn index(self) -> usize {
+        self.slot as usize
+    }
+}
+
 /// Inline capacity for an element's children list.
 ///
 /// Most container elements have a handful of children; this keeps the common
@@ -63,15 +118,17 @@ const CHILDREN_INLINE: usize = 4;
 #[derive(Debug)]
 pub struct Element {
     id: ElementId,
+    kind: ElementKind,
     parent: Option<ElementId>,
     children: SmallVec<[ElementId; CHILDREN_INLINE]>,
     store: PropertyStore<ElementId>,
 }
 
 impl Element {
-    pub(crate) fn new(id: ElementId, parent: Option<ElementId>) -> Self {
+    pub(crate) fn new(id: ElementId, kind: ElementKind, parent: Option<ElementId>) -> Self {
         Self {
             id,
+            kind,
             parent,
             children: SmallVec::new(),
             store: PropertyStore::new(id),
@@ -83,6 +140,14 @@ impl Element {
     #[inline]
     pub fn id(&self) -> ElementId {
         self.id
+    }
+
+    /// Returns this element's [`ElementKind`], used by the
+    /// [`crate::BehaviorRegistry`] to dispatch paint/event handlers.
+    #[must_use]
+    #[inline]
+    pub fn kind(&self) -> ElementKind {
+        self.kind
     }
 
     /// Returns the parent element's id, or `None` for the tree root.

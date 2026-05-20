@@ -25,8 +25,15 @@
 
 extern crate alloc;
 
+mod behavior;
+pub mod channels;
 mod element;
+mod generic;
+mod properties;
 mod ui;
 
-pub use element::{Element, ElementId};
+pub use behavior::{BehaviorRegistry, ElementBehavior, PaintContext};
+pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
+pub use generic::GenericBehavior;
+pub use properties::BuiltInProperties;
 pub use ui::Ui;

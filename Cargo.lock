@@ -1298,6 +1298,7 @@ name = "overstory"
 version = "0.1.0"
 dependencies = [
  "hashbrown 0.17.1",
+ "imaging",
  "invalidation",
  "kurbo",
  "peniko",
