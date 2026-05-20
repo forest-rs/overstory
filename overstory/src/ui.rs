@@ -19,7 +19,9 @@ use hashbrown::HashMap;
 use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
+use smallvec::SmallVec;
 use ui_events::pointer::{PointerButton, PointerEvent};
+use understory_box_tree::{LocalNode, NodeId, QueryFilter, Tree};
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
@@ -78,6 +80,16 @@ pub struct Ui {
     /// while also taking `&mut Self` (Ui) as the `BindingHost`, and we'd
     /// otherwise overlap. The set is always `Some` outside `flush_bindings`.
     bindings: Option<BindingSet<ElementId>>,
+    /// Spatially-indexed render tree from `understory_box_tree`. Each
+    /// element maps to one or more `NodeId`s (primary plus optional
+    /// auxiliary nodes for decorations). The tree owns local geometry
+    /// (bounds, transform, clip, z-order, flags) and produces a damage
+    /// summary on [`Tree::commit`]; paint walks it and hit-testing
+    /// uses [`Tree::hit_test_point`].
+    tree: Tree,
+    /// Element → its node(s) in `tree`, primary first. `SmallVec`
+    /// inline capacity of 1 keeps the common no-auxiliary case heap-free.
+    element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -143,6 +155,8 @@ impl Ui {
             currently_expanding: None,
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
+            tree: Tree::new(),
+            element_to_nodes: HashMap::new(),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -512,31 +526,32 @@ impl Ui {
         self.hovered
     }
 
-    /// Walks the tree top-down and returns the deepest, topmost element whose
-    /// effective `Bounds` contains `point`, if any. Bounds are read through
-    /// the cascade so styled values participate.
+    /// Hit-tests `point` against the box tree and returns the topmost,
+    /// deepest element whose node covers it.
     ///
-    /// For Phase 1d this is a simple O(N) recursive walk; later phases switch
-    /// to `understory_box_tree` for a proper spatial index.
+    /// Internally delegates to [`Tree::hit_test_point`], which uses
+    /// `understory_box_tree`'s spatial index. Returns `None` if no
+    /// node is hit. Requires that the most recent geometry mutation
+    /// has been followed by a [`Tree::commit`] — `compute_layout`
+    /// commits as its last step, and read-only consumers in tests
+    /// either go through layout or write nothing first.
     #[must_use]
     pub fn hit_test(&self, point: Point) -> Option<ElementId> {
-        self.hit_test_at(self.root, point)
+        let hit = self.tree.hit_test_point(point, QueryFilter::new())?;
+        self.node_to_element(hit.node)
     }
 
-    fn hit_test_at(&self, id: ElementId, point: Point) -> Option<ElementId> {
-        let element = self.get(id)?;
-        let bounds = self.effective_bounds(id);
-        if !bounds.contains(point) {
-            return None;
-        }
-        // Walk children in reverse z-order so the last-painted (topmost) wins.
-        let children: Vec<ElementId> = element.children().iter().rev().copied().collect();
-        for child in children {
-            if let Some(hit) = self.hit_test_at(child, point) {
-                return Some(hit);
+    /// Returns the element that owns a given `NodeId`, if any. Helper
+    /// for callers that bridge between the box tree's id-space and
+    /// the element id-space (e.g. responder integration).
+    #[must_use]
+    pub fn node_to_element(&self, node: NodeId) -> Option<ElementId> {
+        for (element_id, nodes) in &self.element_to_nodes {
+            if nodes.contains(&node) {
+                return Some(*element_id);
             }
         }
-        Some(id)
+        None
     }
 
     /// Resolves the effective `Bounds` for `id` through the cascade.
@@ -758,6 +773,10 @@ impl Ui {
 
         // Walk the tree and write absolute bounds for every element.
         self.write_bounds_recursive(self.root, Point::ZERO);
+        // Finalize the box tree: refresh world-space data and the
+        // spatial index so the next `hit_test` (or any other tree
+        // query) reflects this frame's geometry.
+        self.tree.commit();
     }
 
     fn write_bounds_recursive(&mut self, id: ElementId, parent_origin: Point) {
@@ -779,6 +798,14 @@ impl Ui {
         );
         let bounds_prop = self.properties.bounds;
         self.set_local(id, bounds_prop, rect);
+
+        // Mirror the world-space bounds into the box tree's primary
+        // node for this element. Since every node is currently a
+        // tree root with IDENTITY transform, `local_bounds == world_bounds`
+        // and `Tree::hit_test_point` matches the old element-bounds walk.
+        if let Some(&primary) = self.element_to_nodes.get(&id).and_then(|v| v.first()) {
+            self.tree.set_local_bounds(primary, rect);
+        }
 
         let children: Vec<ElementId> = self
             .get(id)
@@ -888,10 +915,10 @@ impl Ui {
         let kind = element.kind();
         // Copy out the slices so the `&Element` borrow of `self` can end
         // before we mutate `self.match_states`.
-        let classes: smallvec::SmallVec<[understory_style::ClassId; 4]> =
-            smallvec::SmallVec::from_slice(element.classes());
-        let pseudos: smallvec::SmallVec<[understory_style::PseudoClassId; 4]> =
-            smallvec::SmallVec::from_slice(element.pseudos());
+        let classes: SmallVec<[understory_style::ClassId; 4]> =
+            SmallVec::from_slice(element.classes());
+        let pseudos: SmallVec<[understory_style::PseudoClassId; 4]> =
+            SmallVec::from_slice(element.pseudos());
 
         let parent_state = self.cascade.root_state();
 
@@ -935,6 +962,11 @@ impl Ui {
             // children's taffy nodes are already gone. Removing the (now
             // childless) taffy node here just finalizes the leaf.
             let _ = self.taffy.remove(taffy_node);
+        }
+        if let Some(nodes) = self.element_to_nodes.remove(&id) {
+            for node in nodes {
+                self.tree.remove(node);
+            }
         }
     }
 
@@ -982,6 +1014,27 @@ impl Ui {
                 .add_child(parent_node, taffy_node)
                 .expect("taffy add_child should succeed for fresh node");
         }
+
+        // Mirror into the box tree. The new node hangs off its
+        // parent element's primary tree node so the box tree mirrors
+        // the element-tree structure. `LocalNode::default()` gives
+        // IDENTITY transform / no clip / visible + pickable flags;
+        // arrange writes `local_bounds` per element. Bounds are
+        // stored in world coords for now (paired with IDENTITY
+        // transforms at every level), so `world_bounds == local_bounds`
+        // and the tree's hit testing matches what the element-bounds
+        // walk used to do — with `understory_index`'s spatial index
+        // doing the heavy lifting. A future phase will refactor
+        // behaviors to paint in local coords and exercise the tree's
+        // world-transform composition for compositor animation.
+        let parent_node = parent
+            .and_then(|p| self.element_to_nodes.get(&p))
+            .and_then(|v| v.first())
+            .copied();
+        let tree_node = self.tree.insert(parent_node, LocalNode::default());
+        let mut nodes = SmallVec::<[NodeId; 1]>::new();
+        nodes.push(tree_node);
+        self.element_to_nodes.insert(id, nodes);
         id
     }
 }
@@ -1330,19 +1383,79 @@ mod tests {
 
     #[test]
     fn hit_test_picks_topmost_child() {
+        // Hit testing now goes through `understory_box_tree`'s
+        // spatially-indexed `Tree::hit_test_point`, which reads the
+        // tree's `local_bounds` populated by `compute_layout`. Drive
+        // the test through the layout pipeline: root 200×200 with
+        // 50px padding all around; child fills the content area,
+        // giving it 50..150 × 50..150.
         let mut ui = Ui::new();
         let root = ui.root();
-        let bounds = ui.properties().bounds;
-        ui.set_local(root, bounds, Rect::new(0.0, 0.0, 200.0, 200.0));
+        let layout_prop = ui.properties().layout;
+        let inset = taffy::LengthPercentage::length(50.0);
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(200.0),
+                    height: taffy::Dimension::length(200.0),
+                },
+                padding: taffy::Rect {
+                    left: inset,
+                    right: inset,
+                    top: inset,
+                    bottom: inset,
+                },
+                ..Default::default()
+            },
+        );
         let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        ui.set_local(child, bounds, Rect::new(50.0, 50.0, 150.0, 150.0));
+        ui.set_local(
+            child,
+            layout_prop,
+            taffy::Style {
+                flex_grow: 1.0,
+                align_self: Some(taffy::AlignSelf::Stretch),
+                ..Default::default()
+            },
+        );
+        ui.compute_layout(Size::new(200.0, 200.0));
 
-        // Inside child's bounds → child wins.
+        // Inside child's bounds → child wins (deepest, topmost).
         assert_eq!(ui.hit_test(Point::new(100.0, 100.0)), Some(child));
         // Inside root only.
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn element_to_tree_node_round_trips() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        // Every element has at least one node; `node_to_element`
+        // recovers it.
+        for elem in [root, a, b] {
+            let nodes = &ui.element_to_nodes[&elem];
+            assert!(!nodes.is_empty(), "element should have a tree node");
+            for &node in nodes {
+                assert_eq!(ui.node_to_element(node), Some(elem));
+            }
+        }
+
+        // Tree structure mirrors element-tree structure: `a` and `b`
+        // are children of `root`'s tree node.
+        let root_node = ui.element_to_nodes[&root][0];
+        let a_node = ui.element_to_nodes[&a][0];
+        let b_node = ui.element_to_nodes[&b][0];
+        let children = ui.tree.children_of(root_node);
+        assert_eq!(children, &[a_node, b_node]);
+        assert_eq!(ui.tree.parent_of(a_node), Some(root_node));
     }
 
     #[test]

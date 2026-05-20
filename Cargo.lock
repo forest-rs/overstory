@@ -1040,6 +1040,7 @@ checksum = "4b60dfc32f652b926df6192e55525b16d186c69d47876c3ead4da5cc9f8450e2"
 dependencies = [
  "arrayvec",
  "euclid",
+ "libm",
  "polycool",
  "smallvec",
 ]
@@ -1548,8 +1549,11 @@ dependencies = [
  "smallvec",
  "taffy",
  "ui-events",
+ "understory_box_tree",
+ "understory_event_state",
  "understory_property",
  "understory_property_binding",
+ "understory_responder",
  "understory_style",
 ]
 
@@ -1738,6 +1742,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6"
 dependencies = [
  "arrayvec",
+ "libm",
 ]
 
 [[package]]
@@ -2348,6 +2353,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "understory_box_tree"
+version = "0.0.1"
+dependencies = [
+ "bitflags 2.11.1",
+ "kurbo",
+ "understory_index",
+]
+
+[[package]]
+name = "understory_event_state"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+]
+
+[[package]]
+name = "understory_index"
+version = "0.0.1"
+dependencies = [
+ "hashbrown 0.17.1",
+ "smallvec",
+]
+
+[[package]]
+name = "understory_precise_hit"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+]
+
+[[package]]
 name = "understory_property"
 version = "0.1.0"
 dependencies = [
@@ -2363,6 +2399,15 @@ dependencies = [
  "hashbrown 0.17.1",
  "invalidation",
  "understory_property",
+]
+
+[[package]]
+name = "understory_responder"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "understory_box_tree",
+ "understory_precise_hit",
 ]
 
 [[package]]
