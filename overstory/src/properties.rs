@@ -3,6 +3,8 @@
 
 //! Built-in dependency properties that every Overstory element understands.
 
+use alloc::string::String;
+
 use kurbo::Rect;
 use peniko::Brush;
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
@@ -37,6 +39,17 @@ pub struct BuiltInProperties {
     /// phases will likely split into per-attribute properties so selectors
     /// can target individual layout attributes.
     pub layout: Property<taffy::Style>,
+
+    /// Textual content for elements that render strings (e.g.
+    /// `ELEMENT_KIND_TEXT`). Default `String::new()`. Writes mark both
+    /// `LAYOUT` (text size depends on content) and `PAINT`.
+    pub content: Property<String>,
+
+    /// Foreground brush used to paint text. Default solid black.
+    pub foreground: Property<Brush>,
+
+    /// Font size in pixels per em. Default `14.0`.
+    pub font_size: Property<f64>,
 }
 
 impl BuiltInProperties {
@@ -66,6 +79,26 @@ impl BuiltInProperties {
                 "Layout",
                 PropertyMetadataBuilder::new(taffy::Style::default())
                     .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            content: registry.register(
+                "Content",
+                PropertyMetadataBuilder::new(String::new())
+                    .affects_channels(LAYOUT.into_set() | PAINT.into_set())
+                    .build(),
+            ),
+            foreground: registry.register(
+                "Foreground",
+                PropertyMetadataBuilder::new(Brush::Solid(peniko::Color::from_rgba8(
+                    0, 0, 0, 0xff,
+                )))
+                .affects_channels(PAINT.into_set())
+                .build(),
+            ),
+            font_size: registry.register(
+                "FontSize",
+                PropertyMetadataBuilder::new(14.0_f64)
+                    .affects_channels(LAYOUT.into_set() | PAINT.into_set())
                     .build(),
             ),
         }

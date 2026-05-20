@@ -4,18 +4,15 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The Phase 1e tree is two elements: a full-viewport dark background and a
-//! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes,
-//! distinguished by a `ClassId`. Their backgrounds and the foreground's
-//! corner radius come from an implicit stylesheet installed via
-//! `Ui::set_cascade`; hovering the foreground swaps in a brighter blue via
-//! the `:hover` rule. Layout is driven by taffy via the `Layout` property:
-//! the root is a flex container with padding, the foreground fills its
-//! padded content. `Ui::compute_layout(viewport)` writes Bounds back, then
-//! `Ui::paint` produces the output scene. The host translates winit events
-//! through `ui_events_winit::WindowEventReducer` into normalized
-//! `ui-events` pointers, which `Ui::dispatch_pointer_event` consumes to
-//! drive the `:hover` pseudoclass.
+//! The Phase 1f tree is three elements: a full-viewport dark background, a
+//! centered rounded blue panel, and a text label inside the panel that
+//! reads "Click me". The panel cycles through normal → hover → pressed
+//! colors as the user mouses over and clicks it. Layout is driven by taffy
+//! via the `Layout` property; text is shaped by parley and rendered as
+//! glyph runs through imaging. The host translates winit events through
+//! `ui_events_winit::WindowEventReducer` into normalized `ui-events`
+//! pointers, which `Ui::dispatch_pointer_event` consumes to drive
+//! `:hover` and `:pressed`.
 //!
 //! ## Render path
 //!
@@ -37,7 +34,7 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
 use overstory::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
-use overstory::{ELEMENT_KIND_GENERIC, Ui};
+use overstory::{ELEMENT_KIND_GENERIC, ELEMENT_KIND_TEXT, Ui};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
@@ -331,9 +328,23 @@ fn build_ui() -> Ui {
     let foreground_layout = overstory::taffy::Style {
         flex_grow: 1.0,
         align_self: Some(overstory::taffy::AlignSelf::Stretch),
+        // Center the text content inside the foreground.
+        display: overstory::taffy::Display::Flex,
+        justify_content: Some(overstory::taffy::JustifyContent::Center),
+        align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
     };
     ui.set_local(foreground, layout_prop, foreground_layout);
+
+    // Text label inside the foreground.
+    let label = ui.insert_child(foreground, ELEMENT_KIND_TEXT);
+    ui.set_local(label, ui.properties().content, "Click me".to_owned());
+    ui.set_local(
+        label,
+        ui.properties().foreground,
+        Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
+    );
+    ui.set_local(label, ui.properties().font_size, 18.0_f64);
 
     // Implicit style for any generic element: dark background.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());

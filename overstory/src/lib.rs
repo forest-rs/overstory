@@ -33,6 +33,8 @@ mod lookup;
 mod properties;
 pub mod pseudos;
 mod template;
+mod text;
+mod text_behavior;
 mod ui;
 
 pub use behavior::{
@@ -44,6 +46,8 @@ pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
 pub use template::Template;
+pub use text::TextEngine;
+pub use text_behavior::{ELEMENT_KIND_TEXT, TextBehavior};
 pub use ui::Ui;
 
 // Re-export `taffy` so consumers don't have to add a direct dependency for

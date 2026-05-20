@@ -12,6 +12,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 use hashbrown::HashMap;
 use imaging::record::Scene;
@@ -23,13 +24,15 @@ use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
 };
 
-use crate::behavior::{BehaviorRegistry, PaintContext};
+use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PaintContext};
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::text::TextEngine;
+use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
 
 /// Root context for an Overstory UI instance.
 ///
@@ -60,6 +63,9 @@ pub struct Ui {
     /// created via `insert_child` is tagged with this id as
     /// `templated_parent`. Saved/restored around nested template expansions.
     currently_expanding: Option<ElementId>,
+    /// Shared text shaping engine. `RefCell` because text behaviors borrow
+    /// it mutably while the owning `&Ui` borrow is otherwise immutable.
+    text: RefCell<TextEngine>,
 }
 
 impl core::fmt::Debug for Ui {
@@ -101,6 +107,7 @@ impl Ui {
         let properties = BuiltInProperties::register(&mut registry);
         let mut behaviors = BehaviorRegistry::new();
         behaviors.register(ELEMENT_KIND_GENERIC, &GENERIC_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_TEXT, &TEXT_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
@@ -121,6 +128,7 @@ impl Ui {
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
             currently_expanding: None,
+            text: RefCell::new(TextEngine::new()),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -584,7 +592,76 @@ impl Ui {
             #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
             height: taffy::AvailableSpace::Definite(viewport.height as f32),
         };
-        let _ = self.taffy.compute_layout(root_taffy, available);
+
+        // Run taffy with a measure callback that dispatches to the elements'
+        // behaviors. Split-borrow the disjoint Ui fields so the closure can
+        // read everything it needs while the taffy tree is &mut.
+        {
+            let taffy = &mut self.taffy;
+            let behaviors = &self.behaviors;
+            let registry = &self.registry;
+            let properties = &self.properties;
+            let theme = &self.theme;
+            let cascade = &self.cascade;
+            let match_states = &self.match_states;
+            let slots = &self.slots;
+            let text = &self.text;
+            let _ = taffy.compute_layout_with_measure(
+                root_taffy,
+                available,
+                |known, avail, _node_id, ctx_id, _style| {
+                    let Some(&id) = ctx_id.map(|v| &*v) else {
+                        return taffy::Size::ZERO;
+                    };
+                    let Some(slot) = slots.get(id.slot() as usize) else {
+                        return taffy::Size::ZERO;
+                    };
+                    let element = match slot {
+                        Slot::Live {
+                            element,
+                            generation,
+                        } if *generation == id.generation() => element.as_ref(),
+                        _ => return taffy::Size::ZERO,
+                    };
+                    let Some(behavior) = behaviors.get(element.kind()) else {
+                        return taffy::Size::ZERO;
+                    };
+                    let match_state = match_states
+                        .get(&id)
+                        .copied()
+                        .unwrap_or_else(|| cascade.root_state());
+                    let measure_ctx = crate::behavior::MeasureContext {
+                        registry,
+                        properties,
+                        theme,
+                        cascade,
+                        match_state,
+                        text,
+                    };
+                    let constraints = MeasureConstraints {
+                        available: Size::new(
+                            available_to_f64(avail.width),
+                            available_to_f64(avail.height),
+                        ),
+                        known: KnownDimensions {
+                            width: known.width.map(f64::from),
+                            height: known.height.map(f64::from),
+                        },
+                    };
+                    match behavior.measure(element, &measure_ctx, constraints) {
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "measured size fits f32"
+                        )]
+                        Some(size) => taffy::Size {
+                            width: size.width as f32,
+                            height: size.height as f32,
+                        },
+                        None => taffy::Size::ZERO,
+                    }
+                },
+            );
+        }
 
         // Walk the tree and write absolute bounds for every element.
         self.write_bounds_recursive(self.root, Point::ZERO);
@@ -668,6 +745,7 @@ impl Ui {
             cascade: &self.cascade,
             match_state,
             lookup: UiStoreLookup::new(self),
+            text: &self.text,
         };
         let mut scene = Scene::new();
         behavior.paint(element, &ctx, &mut scene);
@@ -797,10 +875,11 @@ impl Ui {
             id
         };
 
-        // Mirror into taffy.
+        // Mirror into taffy. The element id is stored as the node context so
+        // taffy's measure callback can identify which element it's measuring.
         let taffy_node = self
             .taffy
-            .new_leaf(taffy::Style::default())
+            .new_leaf_with_context(taffy::Style::default(), id)
             .expect("taffy leaf allocation should succeed");
         self.element_to_taffy.insert(id, taffy_node);
         if let Some(parent_id) = parent
@@ -817,6 +896,18 @@ impl Ui {
 impl Default for Ui {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Translates taffy's `AvailableSpace` into kurbo's `f64`. `MaxContent`
+/// becomes `f64::INFINITY`; `MinContent` becomes `0.0`; `Definite(v)`
+/// becomes `v` as `f64`. The boundary loses some fidelity around min-content
+/// sizing, which we'll revisit if/when an existing behavior needs it.
+fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
+    match s {
+        taffy::AvailableSpace::Definite(v) => f64::from(v),
+        taffy::AvailableSpace::MinContent => 0.0,
+        taffy::AvailableSpace::MaxContent => f64::INFINITY,
     }
 }
 

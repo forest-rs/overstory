@@ -7,6 +7,7 @@
 //! handlers / template-apply hooks. The trait stays narrow until the toolkit
 //! actually needs each surface.
 
+use core::cell::RefCell;
 use core::fmt;
 
 use hashbrown::HashMap;
@@ -19,6 +20,7 @@ use crate::element::{Element, ElementId, ElementKind};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::template::Template;
+use crate::text::TextEngine;
 
 /// Per-axis known dimensions handed to a behavior's `measure` callback.
 ///
@@ -69,6 +71,9 @@ pub struct PaintContext<'a> {
     pub match_state: MatchState,
     /// Parent-walking lookup the [`ResolveCx`] uses for inheritance.
     pub(crate) lookup: UiStoreLookup<'a>,
+    /// Shared text shaping engine (parley). Behaviors that render text
+    /// `borrow_mut()` it for the duration of a shape/paint call.
+    pub text: &'a RefCell<TextEngine>,
 }
 
 impl<'a> PaintContext<'a> {
@@ -91,9 +96,11 @@ impl fmt::Debug for PaintContext<'_> {
 
 /// Read-only context handed to [`ElementBehavior::measure`].
 ///
-/// Holds the same resolution surface as [`PaintContext`] minus the
-/// per-element [`Scene`] target. Behaviors call [`Self::resolve_cx`] to
-/// build a transient [`ResolveCx`] that reads styled values.
+/// Mirrors [`PaintContext`] minus the cascade-inheritance lookup —
+/// `measure` is called from inside the layout engine's split-borrow walk so
+/// the toolkit can't hand out a `&Ui`. Behaviors that need inherited
+/// cascade values in measure should read them from the cascade and match
+/// state directly; the simple per-property local read covers most cases.
 #[derive(Copy, Clone)]
 pub struct MeasureContext<'a> {
     /// The property registry every property write is checked against.
@@ -106,16 +113,8 @@ pub struct MeasureContext<'a> {
     pub cascade: &'a StyleCascade,
     /// The match state for the element currently being measured.
     pub match_state: MatchState,
-    /// Parent-walking lookup for inheritance.
-    pub(crate) lookup: UiStoreLookup<'a>,
-}
-
-impl<'a> MeasureContext<'a> {
-    /// Builds a [`ResolveCx`] tied to this context.
-    #[must_use]
-    pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiStoreLookup<'a>> {
-        ResolveCx::new(self.registry, self.theme, self.lookup)
-    }
+    /// Shared text shaping engine.
+    pub text: &'a RefCell<TextEngine>,
 }
 
 impl fmt::Debug for MeasureContext<'_> {
