@@ -22,6 +22,8 @@ use kurbo::{Affine, Point, Rect, Size};
 use smallvec::SmallVec;
 use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_box_tree::{LocalNode, NodeId, QueryFilter, Tree};
+use understory_event_state::click::{ClickResult, ClickState};
+use understory_event_state::hover::{HoverEvent, HoverState};
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
@@ -61,10 +63,22 @@ pub struct Ui {
     cascade: StyleCascade,
     theme: Theme,
     match_states: HashMap<ElementId, MatchState>,
-    hovered: Option<ElementId>,
-    /// The element that received the most recent primary-button `Down` event
-    /// and has not yet seen an `Up`. Stays set until release or cancel so
-    /// `:pressed` survives the cursor leaving the original element.
+    /// Path-based hover state machine from `understory_event_state`.
+    /// Tracks the current root→target hover path; `update_path` returns
+    /// the minimal Enter/Leave sequence to move from the old path to a
+    /// new one. We apply the events to `:hover` pseudoclass state.
+    hover: HoverState<ElementId>,
+    /// Transform-aware click recognizer from `understory_event_state`.
+    /// Records primary-button presses + matches them against later ups
+    /// to produce [`ClickResult::Click`]s. We use it to drive the
+    /// `:pressed` lifecycle on `press_target` and (in a future phase)
+    /// to dispatch `Click` events to elements.
+    clicks: ClickState<ElementId>,
+    /// The element currently in the `:pressed` visual state — the one
+    /// that received the most recent primary-button `Down` and has not
+    /// yet been cleared by an `Up` or `Cancel`. Cached alongside
+    /// `clicks` so we can flip pseudos without re-querying its
+    /// per-pointer press map.
     press_target: Option<ElementId>,
     taffy: taffy::TaffyTree<ElementId>,
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
@@ -148,7 +162,8 @@ impl Ui {
             cascade,
             theme,
             match_states: HashMap::new(),
-            hovered: None,
+            hover: HoverState::new(),
+            clicks: ClickState::new(),
             press_target: None,
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
@@ -517,13 +532,14 @@ impl Ui {
         &self.invalidation
     }
 
-    /// Returns the element currently considered "hovered" by the input
-    /// pipeline (the deepest element whose bounds contain the last reported
-    /// pointer position), if any.
+    /// Returns the deepest element currently in the `:hover` state, if
+    /// any. Higher-up ancestors along the hover path are also
+    /// `:hover` (see [`HoverState`]) — this is just the leaf for
+    /// convenience.
     #[must_use]
     #[inline]
     pub fn hovered(&self) -> Option<ElementId> {
-        self.hovered
+        self.hover.current_path().last().copied()
     }
 
     /// Hit-tests `point` against the box tree and returns the topmost,
@@ -587,35 +603,103 @@ impl Ui {
         match event {
             PointerEvent::Move(update) => {
                 let pos = Point::new(update.current.position.x, update.current.position.y);
-                let hit = self.hit_test(pos);
-                self.set_hovered(hit)
+                self.update_hover_at(pos)
             }
             PointerEvent::Down(button_event) => {
                 if button_event.button != Some(PointerButton::Primary) {
                     return false;
                 }
                 let pos = Point::new(button_event.state.position.x, button_event.state.position.y);
-                let hit = self.hit_test(pos);
-                // Update hover first (a Down without a preceding Move can
-                // arrive in some platforms).
-                let mut changed = self.set_hovered(hit);
-                changed |= self.set_press_target(hit);
+                let time_ms = button_event.state.time / 1_000_000;
+                // A Down without a preceding Move can arrive on some
+                // platforms; refresh hover first so any newly-entered
+                // path is set up before we press.
+                let mut changed = self.update_hover_at(pos);
+                if let Some(target) = self.hit_test(pos) {
+                    self.clicks.on_down(None, None, target, pos, time_ms);
+                    changed |= self.set_press_target(Some(target));
+                } else {
+                    changed |= self.set_press_target(None);
+                }
                 changed
             }
             PointerEvent::Up(button_event) => {
                 if button_event.button != Some(PointerButton::Primary) {
                     return false;
                 }
+                let pos = Point::new(button_event.state.position.x, button_event.state.position.y);
+                let time_ms = button_event.state.time / 1_000_000;
+                let hit = self.hit_test(pos);
+                // Hand the up to ClickState — produces a
+                // `ClickResult::Click(target)` when the press is
+                // recognized. We don't dispatch click handlers yet
+                // (that lands when we wire `understory_responder`'s
+                // dispatcher for application event handlers), but the
+                // result is computed cleanly here for future use.
+                let _result = match hit {
+                    Some(target) => self.clicks.on_up(None, None, &target, pos, time_ms),
+                    None => {
+                        // Up off any element — cancel any open press
+                        // so it doesn't dangle and pretend to click
+                        // later.
+                        let _ = self.clicks.cancel(None);
+                        ClickResult::Suppressed(None)
+                    }
+                };
                 self.set_press_target(None)
             }
-            PointerEvent::Leave(_) => self.set_hovered(None),
+            PointerEvent::Leave(_) => self.clear_hover(),
             PointerEvent::Cancel(_) => {
-                let h = self.set_hovered(None);
+                let _ = self.clicks.cancel(None);
+                let h = self.clear_hover();
                 let p = self.set_press_target(None);
                 h || p
             }
             _ => false,
         }
+    }
+
+    /// Updates the hover state to reflect a pointer at `pos`. Computes
+    /// the element path from the box tree's hit-test result and feeds
+    /// it to [`HoverState`], applying its `Enter`/`Leave` events to
+    /// pseudoclass state.
+    fn update_hover_at(&mut self, pos: Point) -> bool {
+        let path: Vec<ElementId> = self
+            .tree
+            .hit_test_point(pos, QueryFilter::new())
+            .map(|hit| {
+                hit.path
+                    .into_iter()
+                    .filter_map(|n| self.node_to_element(n))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let events = self.hover.update_path(&path);
+        self.apply_hover_events(events)
+    }
+
+    /// Clears the hover state (e.g. on pointer Leave). Returns `true`
+    /// if anything changed.
+    fn clear_hover(&mut self) -> bool {
+        let events = self.hover.clear();
+        self.apply_hover_events(events)
+    }
+
+    fn apply_hover_events(&mut self, events: Vec<HoverEvent<ElementId>>) -> bool {
+        let mut changed = false;
+        for event in events {
+            match event {
+                HoverEvent::Enter(id) => {
+                    self.add_pseudo(id, PSEUDO_HOVER);
+                    changed = true;
+                }
+                HoverEvent::Leave(id) => {
+                    self.remove_pseudo(id, PSEUDO_HOVER);
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     fn set_press_target(&mut self, new: Option<ElementId>) -> bool {
@@ -629,21 +713,6 @@ impl Ui {
             self.add_pseudo(new_id, PSEUDO_PRESSED);
         }
         self.press_target = new;
-        true
-    }
-
-    fn set_hovered(&mut self, new: Option<ElementId>) -> bool {
-        if self.hovered == new {
-            return false;
-        }
-        let old = self.hovered.take();
-        if let Some(old_id) = old {
-            self.remove_pseudo(old_id, PSEUDO_HOVER);
-        }
-        if let Some(new_id) = new {
-            self.add_pseudo(new_id, PSEUDO_HOVER);
-        }
-        self.hovered = new;
         true
     }
 
@@ -1429,6 +1498,71 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn hover_path_marks_ancestor_pseudoclasses() {
+        // A child hover should mark every element along the
+        // root→target path as `:hover` — the more correct CSS/WPF
+        // behavior we get from `HoverState::update_path`. Sanity-check
+        // by laying out a parent with a smaller padded child, hovering
+        // over the child, and verifying both elements have :hover.
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let layout_prop = ui.properties().layout;
+        let inset = taffy::LengthPercentage::length(50.0);
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(200.0),
+                    height: taffy::Dimension::length(200.0),
+                },
+                padding: taffy::Rect {
+                    left: inset,
+                    right: inset,
+                    top: inset,
+                    bottom: inset,
+                },
+                ..Default::default()
+            },
+        );
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        ui.set_local(
+            child,
+            layout_prop,
+            taffy::Style {
+                flex_grow: 1.0,
+                align_self: Some(taffy::AlignSelf::Stretch),
+                ..Default::default()
+            },
+        );
+        ui.compute_layout(Size::new(200.0, 200.0));
+
+        // Hover via update_hover_at-equivalent path.
+        let changed = ui.update_hover_at(Point::new(100.0, 100.0));
+        assert!(changed);
+
+        // Both root and child have :hover; the child is the deepest.
+        assert!(ui.get(root).unwrap().pseudos().contains(&PSEUDO_HOVER));
+        assert!(ui.get(child).unwrap().pseudos().contains(&PSEUDO_HOVER));
+        assert_eq!(ui.hovered(), Some(child));
+
+        // Move pointer outside the child but still in the root's
+        // padding band: leaves the child, keeps the root hovered.
+        let changed = ui.update_hover_at(Point::new(10.0, 10.0));
+        assert!(changed);
+        assert!(ui.get(root).unwrap().pseudos().contains(&PSEUDO_HOVER));
+        assert!(!ui.get(child).unwrap().pseudos().contains(&PSEUDO_HOVER));
+        assert_eq!(ui.hovered(), Some(root));
+
+        // Out of root entirely.
+        let changed = ui.update_hover_at(Point::new(500.0, 500.0));
+        assert!(changed);
+        assert!(!ui.get(root).unwrap().pseudos().contains(&PSEUDO_HOVER));
+        assert_eq!(ui.hovered(), None);
     }
 
     #[test]
