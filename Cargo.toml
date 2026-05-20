@@ -34,6 +34,10 @@ imaging = { default-features = false, features = ["std"], version = "0.0.1" }
 imaging_vello = { default-features = false, features = ["vello-0-8"], version = "0.0.1" }
 imaging_wgpu = { default-features = false, features = ["wgpu-28"], version = "0.0.1" }
 
+# Input event normalization.
+ui-events = { default-features = false, features = ["std", "kurbo"], version = "0.3" }
+ui-events-winit = { version = "0.3" }
+
 # Host runtime for the demo binary.
 winit = { default-features = true, version = "0.30" }
 wgpu = { default-features = false, features = ["std"], version = "28.0.0" }

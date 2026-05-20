@@ -4,14 +4,16 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The Phase 1c tree is two elements: a full-viewport dark background and a
+//! The Phase 1d tree is two elements: a full-viewport dark background and a
 //! centered rounded blue panel. Both are plain `ELEMENT_KIND_GENERIC` nodes,
 //! distinguished by a `ClassId`. Their backgrounds and the foreground's
 //! corner radius come from an implicit stylesheet installed via
-//! `Ui::set_cascade`; only bounds are still set imperatively (taffy lands in
-//! Phase 1e). `Ui::paint` walks the tree, dispatches each element's
-//! behavior, and assembles the per-element scene caches into one output
-//! scene the host hands to vello.
+//! `Ui::set_cascade`; hovering the foreground swaps in a brighter blue via
+//! the `:hover` rule. Only bounds are still set imperatively (taffy lands in
+//! Phase 1e). The host translates winit events through
+//! `ui_events_winit::WindowEventReducer` into normalized `ui-events`
+//! pointers, which `Ui::dispatch_pointer_event` consumes to drive the
+//! `:hover` pseudoclass.
 //!
 //! ## Render path
 //!
@@ -32,8 +34,10 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Rect;
+use overstory::pseudos::PSEUDO_HOVER;
 use overstory::{ELEMENT_KIND_GENERIC, ElementId, Ui};
 use peniko::{Brush, Color};
+use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
     ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, TypeTag,
 };
@@ -104,6 +108,7 @@ struct WindowState {
     background: ElementId,
     foreground: ElementId,
     scene: Scene,
+    event_reducer: WindowEventReducer,
 }
 
 #[derive(Default)]
@@ -132,6 +137,25 @@ impl ApplicationHandler for App {
         let Some(state) = self.state.as_mut() else {
             return;
         };
+
+        // Translate winit events into normalized `ui-events` types. Hover /
+        // focus state lives inside `Ui`, so we just forward the translation.
+        if let Some(translation) = state
+            .event_reducer
+            .reduce(state.window.scale_factor(), &event)
+        {
+            match translation {
+                WindowEventTranslation::Pointer(pointer) => {
+                    if state.ui.dispatch_pointer_event(&pointer) {
+                        state.window.request_redraw();
+                    }
+                }
+                WindowEventTranslation::Keyboard(_) => {
+                    // Keyboard routing lands in Phase 1f.
+                }
+            }
+        }
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new_size) => {
@@ -280,6 +304,7 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         background,
         foreground,
         scene: Scene::new(),
+        event_reducer: WindowEventReducer::default(),
     };
     state.update_layout();
     Ok(state)
@@ -320,9 +345,24 @@ fn build_ui() -> (Ui, ElementId, ElementId) {
         SelectorBuilder::new(SelectorStep::type_tag(generic_kind).with_class(CLASS_FOREGROUND))
             .build();
 
+    // Brighter background while the foreground is hovered.
+    let hovered_style = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x9d, 0xc4, 0xff, 0xff))),
+        )
+        .build();
+    let hovered_selector = SelectorBuilder::new(
+        SelectorStep::type_tag(generic_kind)
+            .with_class(CLASS_FOREGROUND)
+            .with_pseudo(PSEUDO_HOVER),
+    )
+    .build();
+
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, generic_selector, generic_style)
         .push_rule(StyleOrigin::Base, foreground_selector, foreground_style)
+        .push_rule(StyleOrigin::Base, hovered_selector, hovered_style)
         .build();
     ui.set_cascade(cascade);
 

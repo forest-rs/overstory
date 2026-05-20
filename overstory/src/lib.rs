@@ -31,6 +31,7 @@ mod element;
 mod generic;
 mod lookup;
 mod properties;
+pub mod pseudos;
 mod ui;
 
 pub use behavior::{BehaviorRegistry, ElementBehavior, PaintContext};
