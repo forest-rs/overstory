@@ -46,6 +46,11 @@ impl TextEngine {
     /// Shapes `text` with the given font size and brush, applying line
     /// wrapping if `max_advance` is `Some`. Returns the built parley
     /// `Layout` ready for rendering or measuring.
+    ///
+    /// Phase 1f-4 uses platform-default UI font, medium weight, and a
+    /// touch of positive letter-spacing for crisp button labels. Apps
+    /// will eventually be able to override these via per-element style
+    /// properties; for now the defaults are baked in here.
     pub fn shape(
         &mut self,
         text: &str,
@@ -56,7 +61,17 @@ impl TextEngine {
         let mut builder =
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);
+        builder.push_default(parley::StyleProperty::FontFamily(
+            parley::FontFamily::Source("system-ui, sans-serif".into()),
+        ));
+        builder.push_default(parley::StyleProperty::FontWeight(
+            parley::FontWeight::MEDIUM,
+        ));
         builder.push_default(parley::StyleProperty::FontSize(font_size));
+        builder.push_default(parley::StyleProperty::LineHeight(
+            parley::LineHeight::FontSizeRelative(1.2),
+        ));
+        builder.push_default(parley::StyleProperty::LetterSpacing(0.4));
         builder.push_default(parley::StyleProperty::Brush(brush));
         let mut layout = builder.build(text);
         layout.break_all_lines(max_advance);

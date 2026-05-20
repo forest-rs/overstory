@@ -34,11 +34,11 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
 use overstory::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
-use overstory::{ELEMENT_KIND_GENERIC, ELEMENT_KIND_TEXT, Ui};
+use overstory::{ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, Ui};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
-    ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, TypeTag,
+    SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, TypeTag,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -294,24 +294,21 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
-/// Marks the centered foreground panel for the stylesheet.
-const CLASS_FOREGROUND: ClassId = ClassId(1);
-
-/// Builds the Phase 1e element tree: a full-viewport dark background with a
-/// rounded blue panel centered inside via taffy layout. Hovering the panel
-/// brightens it.
+/// Builds the Phase 1f-5 element tree: a full-viewport dark background with
+/// a templated Button centered inside that reads "Click me" and cycles
+/// through hover/pressed colors as the user interacts with it.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
     let root = ui.root();
-    let foreground = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-    ui.add_class(foreground, CLASS_FOREGROUND);
 
-    // Layout: root fills the viewport and applies a fixed inset via padding;
-    // the foreground child fills the padded content area.
+    // Root: full-viewport flex container with padding so the button sits
+    // away from the edges.
     let layout_prop = ui.properties().layout;
     let inset = overstory::taffy::LengthPercentage::length(50.0);
     let root_layout = overstory::taffy::Style {
         display: overstory::taffy::Display::Flex,
+        justify_content: Some(overstory::taffy::JustifyContent::Center),
+        align_items: Some(overstory::taffy::AlignItems::Center),
         size: overstory::taffy::Size {
             width: overstory::taffy::Dimension::percent(1.0),
             height: overstory::taffy::Dimension::percent(1.0),
@@ -325,84 +322,78 @@ fn build_ui() -> Ui {
         ..Default::default()
     };
     ui.set_local(root, layout_prop, root_layout);
-    let foreground_layout = overstory::taffy::Style {
-        flex_grow: 1.0,
-        align_self: Some(overstory::taffy::AlignSelf::Stretch),
-        // Center the text content inside the foreground.
+
+    // The button itself. Content + foreground (text color) are set before
+    // the template expands so the label picks them up at instantiation.
+    let button = ui.insert_child(root, ELEMENT_KIND_BUTTON);
+    let button_layout = overstory::taffy::Style {
+        // Generous padding so the label has room to breathe.
+        padding: overstory::taffy::Rect {
+            left: overstory::taffy::LengthPercentage::length(32.0),
+            right: overstory::taffy::LengthPercentage::length(32.0),
+            top: overstory::taffy::LengthPercentage::length(18.0),
+            bottom: overstory::taffy::LengthPercentage::length(18.0),
+        },
+        // Center the label.
         display: overstory::taffy::Display::Flex,
         justify_content: Some(overstory::taffy::JustifyContent::Center),
         align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
     };
-    ui.set_local(foreground, layout_prop, foreground_layout);
-
-    // Text label inside the foreground.
-    let label = ui.insert_child(foreground, ELEMENT_KIND_TEXT);
-    ui.set_local(label, ui.properties().content, "Click me".to_owned());
+    ui.set_local(button, layout_prop, button_layout);
+    ui.set_local(button, ui.properties().content, "Click me".to_owned());
     ui.set_local(
-        label,
+        button,
         ui.properties().foreground,
         Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
     );
-    ui.set_local(label, ui.properties().font_size, 18.0_f64);
+    ui.set_local(button, ui.properties().font_size, 22.0_f64);
 
-    // Implicit style for any generic element: dark background.
+    // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
-    let generic_style = StyleBuilder::new()
+    let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
+
+    let backdrop = StyleBuilder::new()
         .set(
             ui.properties().background,
             Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff))),
         )
         .build();
-    let generic_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
+    let backdrop_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
 
-    // Override for the foreground class: blue with a corner radius.
-    let foreground_style = StyleBuilder::new()
+    let button_idle = StyleBuilder::new()
         .set(
             ui.properties().background,
             Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff))),
         )
         .set(ui.properties().corner_radius, 16.0_f64)
         .build();
-    let foreground_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(generic_kind).with_class(CLASS_FOREGROUND))
-            .build();
+    let button_selector = SelectorBuilder::new(SelectorStep::type_tag(button_kind)).build();
 
-    // Brighter background while the foreground is hovered.
-    let hovered_style = StyleBuilder::new()
+    let button_hover = StyleBuilder::new()
         .set(
             ui.properties().background,
             Some(Brush::Solid(Color::from_rgba8(0x9d, 0xc4, 0xff, 0xff))),
         )
         .build();
-    let hovered_selector = SelectorBuilder::new(
-        SelectorStep::type_tag(generic_kind)
-            .with_class(CLASS_FOREGROUND)
-            .with_pseudo(PSEUDO_HOVER),
-    )
-    .build();
+    let button_hover_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_HOVER)).build();
 
-    // Darker background while the foreground is pressed (overrides hover via
-    // higher specificity? Same specificity — last rule wins. We push pressed
-    // last so it beats hovered when both apply.).
-    let pressed_style = StyleBuilder::new()
+    let button_pressed = StyleBuilder::new()
         .set(
             ui.properties().background,
             Some(Brush::Solid(Color::from_rgba8(0x40, 0x6f, 0xc7, 0xff))),
         )
         .build();
-    let pressed_selector = SelectorBuilder::new(
-        SelectorStep::type_tag(generic_kind)
-            .with_class(CLASS_FOREGROUND)
-            .with_pseudo(PSEUDO_PRESSED),
-    )
-    .build();
+    let button_pressed_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_PRESSED))
+            .build();
 
     let cascade = StyleCascadeBuilder::new()
-        .push_rule(StyleOrigin::Base, generic_selector, generic_style)
-        .push_rule(StyleOrigin::Base, foreground_selector, foreground_style)
-        .push_rule(StyleOrigin::Base, hovered_selector, hovered_style)
-        .push_rule(StyleOrigin::Base, pressed_selector, pressed_style)
+        .push_rule(StyleOrigin::Base, backdrop_selector, backdrop)
+        .push_rule(StyleOrigin::Base, button_selector, button_idle)
+        .push_rule(StyleOrigin::Base, button_hover_selector, button_hover)
+        .push_rule(StyleOrigin::Base, button_pressed_selector, button_pressed)
         .build();
     ui.set_cascade(cascade);
 

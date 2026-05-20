@@ -25,6 +25,7 @@ use understory_style::{
 };
 
 use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PaintContext};
+use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
@@ -108,6 +109,7 @@ impl Ui {
         let mut behaviors = BehaviorRegistry::new();
         behaviors.register(ELEMENT_KIND_GENERIC, &GENERIC_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_TEXT, &TEXT_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_BUTTON, &BUTTON_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 

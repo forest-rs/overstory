@@ -26,6 +26,7 @@
 extern crate alloc;
 
 mod behavior;
+mod button;
 pub mod channels;
 mod element;
 mod generic;
@@ -41,6 +42,7 @@ pub use behavior::{
     BehaviorRegistry, ElementBehavior, KnownDimensions, MeasureConstraints, MeasureContext,
     PaintContext,
 };
+pub use button::{ButtonBehavior, ELEMENT_KIND_BUTTON};
 pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
