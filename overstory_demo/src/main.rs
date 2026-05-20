@@ -377,19 +377,21 @@ fn build_ui() -> Ui {
         .build();
     let backdrop_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
 
+    // Saturated blue → white text gives proper contrast; hover brightens,
+    // press deepens.
     let button_idle = StyleBuilder::new()
         .set(
             ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff))),
+            Some(Brush::Solid(Color::from_rgba8(0x3a, 0x69, 0xd6, 0xff))),
         )
-        .set(ui.properties().corner_radius, 16.0_f64)
+        .set(ui.properties().corner_radius, 10.0_f64)
         .build();
     let button_selector = SelectorBuilder::new(SelectorStep::type_tag(button_kind)).build();
 
     let button_hover = StyleBuilder::new()
         .set(
             ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x9d, 0xc4, 0xff, 0xff))),
+            Some(Brush::Solid(Color::from_rgba8(0x4d, 0x81, 0xf2, 0xff))),
         )
         .build();
     let button_hover_selector =
@@ -398,7 +400,7 @@ fn build_ui() -> Ui {
     let button_pressed = StyleBuilder::new()
         .set(
             ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x40, 0x6f, 0xc7, 0xff))),
+            Some(Brush::Solid(Color::from_rgba8(0x29, 0x4d, 0xa3, 0xff))),
         )
         .build();
     let button_pressed_selector =

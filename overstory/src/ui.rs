@@ -929,15 +929,19 @@ impl Default for Ui {
     }
 }
 
-/// Translates taffy's `AvailableSpace` into kurbo's `f64`. `MaxContent`
-/// becomes `f64::INFINITY`; `MinContent` becomes `0.0`; `Definite(v)`
-/// becomes `v` as `f64`. The boundary loses some fidelity around min-content
-/// sizing, which we'll revisit if/when an existing behavior needs it.
+/// Translates taffy's `AvailableSpace` into kurbo's `f64`. `Definite(v)`
+/// becomes `v` as `f64`. Both `MinContent` and `MaxContent` become
+/// `f64::INFINITY` for now — behaviors receiving infinity report their
+/// "natural" unwrapped size, which taffy uses as both min and max content.
+/// That's a conservative answer that prevents over-aggressive wrapping
+/// (e.g. text breaking on every word) at the cost of tight min-content
+/// packing. A later refinement can distinguish the two and let behaviors
+/// report a tighter min-content (e.g. the longest unbreakable word width
+/// for text).
 fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
         taffy::AvailableSpace::Definite(v) => f64::from(v),
-        taffy::AvailableSpace::MinContent => 0.0,
-        taffy::AvailableSpace::MaxContent => f64::INFINITY,
+        taffy::AvailableSpace::MinContent | taffy::AvailableSpace::MaxContent => f64::INFINITY,
     }
 }
 
