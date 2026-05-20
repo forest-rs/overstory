@@ -531,13 +531,19 @@ impl Ui {
     /// Recomputes the match state for one element. If a previous state exists
     /// for `id`, the cascade's `restyle_subject` is used to surface changed
     /// channels into the tracker; otherwise the new state is just stored.
+    ///
+    /// Each Element is an *independent* style subject — selectors match it as
+    /// a root-level subject anchored at `cascade.root_state()`, not from its
+    /// parent's `MatchState`. The cascade's parent-state argument is for
+    /// template parts (a Toggle's track entered from its Toggle owner's
+    /// state), not logical-tree children. Phase 1f will revisit this when
+    /// templates land.
     fn style_one(&mut self, id: ElementId) {
         let Some(element) = self.get(id) else {
             self.match_states.remove(&id);
             return;
         };
         let kind = element.kind();
-        let parent = element.parent();
         // Copy out the slices so the `&Element` borrow of `self` can end
         // before we mutate `self.match_states`.
         let classes: smallvec::SmallVec<[understory_style::ClassId; 4]> =
@@ -545,9 +551,7 @@ impl Ui {
         let pseudos: smallvec::SmallVec<[understory_style::PseudoClassId; 4]> =
             smallvec::SmallVec::from_slice(element.pseudos());
 
-        let parent_state = parent
-            .and_then(|p| self.match_states.get(&p).copied())
-            .unwrap_or_else(|| self.cascade.root_state());
+        let parent_state = self.cascade.root_state();
 
         let inputs = SelectorInputs::new(Some(TypeTag(kind.tag())), &classes, &pseudos);
         let old_state = self.match_states.get(&id).copied();
@@ -823,6 +827,71 @@ mod tests {
         assert!(
             !output.is_empty(),
             "cascade should supply the background and produce paint output"
+        );
+    }
+
+    #[test]
+    fn three_rule_cascade_picks_class_over_type() {
+        // Mirror the demo: rules at Base origin keyed on ELEMENT_KIND_GENERIC.
+        use understory_style::{ClassId, SelectorBuilder, SelectorStep};
+
+        const CLASS_FG: ClassId = ClassId(1);
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let fg = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        ui.add_class(fg, CLASS_FG);
+
+        let kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
+        let dark = Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff)));
+        let blue = Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff)));
+        let bg_prop = ui.properties().background;
+
+        let generic = StyleBuilder::new().set(bg_prop, dark.clone()).build();
+        let foreground = StyleBuilder::new().set(bg_prop, blue.clone()).build();
+
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(kind)).build(),
+                generic,
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(kind).with_class(CLASS_FG)).build(),
+                foreground,
+            )
+            .build();
+        ui.set_cascade(cascade);
+
+        // Confirm the class survived set_cascade (which clears match_states).
+        assert_eq!(
+            ui.get(fg).unwrap().classes(),
+            &[CLASS_FG],
+            "class should survive set_cascade"
+        );
+
+        let lookup = UiStoreLookup::new(&ui);
+        let cx = ResolveCx::new(ui.registry(), ui.theme(), lookup);
+
+        // Root: only the generic rule matches → dark.
+        let root_el = ui.get(root).unwrap();
+        let resolved_root: Option<Brush> =
+            cx.get_value(root_el, bg_prop, Some((ui.cascade(), ui.match_state(root))));
+        assert_eq!(resolved_root, dark, "root should resolve to dark");
+
+        // Foreground: both rules match; the class-bearing rule has higher
+        // specificity → blue.
+        let fg_el = ui.get(fg).unwrap();
+        let resolved_fg: Option<Brush> =
+            cx.get_value(fg_el, bg_prop, Some((ui.cascade(), ui.match_state(fg))));
+        assert_eq!(resolved_fg, blue, "foreground should resolve to blue");
+
+        // The class survived set_cascade (which clears match_states).
+        assert_eq!(
+            ui.get(fg).unwrap().classes(),
+            &[CLASS_FG],
+            "class should survive set_cascade"
         );
     }
 
