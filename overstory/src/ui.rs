@@ -17,7 +17,7 @@ use hashbrown::HashMap;
 use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
-use ui_events::pointer::PointerEvent;
+use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_property::{DependencyObjectExt, Property, PropertyRegistry};
 use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
@@ -29,7 +29,7 @@ use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
-use crate::pseudos::PSEUDO_HOVER;
+use crate::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
 
 /// Root context for an Overstory UI instance.
 ///
@@ -50,6 +50,10 @@ pub struct Ui {
     theme: Theme,
     match_states: HashMap<ElementId, MatchState>,
     hovered: Option<ElementId>,
+    /// The element that received the most recent primary-button `Down` event
+    /// and has not yet seen an `Up`. Stays set until release or cancel so
+    /// `:pressed` survives the cursor leaving the original element.
+    press_target: Option<ElementId>,
     taffy: taffy::TaffyTree<ElementId>,
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
     /// While a `Template::instantiate` call is on the stack, every element
@@ -113,6 +117,7 @@ impl Ui {
             theme,
             match_states: HashMap::new(),
             hovered: None,
+            press_target: None,
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
             currently_expanding: None,
@@ -455,13 +460,17 @@ impl Ui {
 
     /// Dispatches a normalized pointer event.
     ///
-    /// Phase 1d handles only the hover lifecycle: a `Move` updates the hovered
-    /// element (toggling `:hover` on/off via `add_pseudo`/`remove_pseudo`);
-    /// `Leave` and `Cancel` clear it. Down/Up/Scroll/Gesture are ignored for
-    /// now — they'll land alongside the responder integration in Phase 1f.
+    /// Handles the hover lifecycle (Move/Leave/Cancel) and the `:pressed`
+    /// lifecycle (Down/Up/Cancel for the primary button). Scroll/Gesture and
+    /// non-primary button presses are ignored for now — they'll land
+    /// alongside the responder integration in a later phase.
     ///
-    /// Returns `true` if the dispatch caused a state change (caller should
-    /// `request_redraw`).
+    /// `:pressed` follows WPF semantics: a primary-button press marks the
+    /// hit element pressed and that element stays pressed even if the cursor
+    /// leaves it (no capture API yet, but the visual state survives). The
+    /// matching Up — wherever it lands — clears the press.
+    ///
+    /// Returns `true` if the dispatch caused a state change.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> bool {
         match event {
             PointerEvent::Move(update) => {
@@ -469,9 +478,46 @@ impl Ui {
                 let hit = self.hit_test(pos);
                 self.set_hovered(hit)
             }
-            PointerEvent::Leave(_) | PointerEvent::Cancel(_) => self.set_hovered(None),
+            PointerEvent::Down(button_event) => {
+                if button_event.button != Some(PointerButton::Primary) {
+                    return false;
+                }
+                let pos = Point::new(button_event.state.position.x, button_event.state.position.y);
+                let hit = self.hit_test(pos);
+                // Update hover first (a Down without a preceding Move can
+                // arrive in some platforms).
+                let mut changed = self.set_hovered(hit);
+                changed |= self.set_press_target(hit);
+                changed
+            }
+            PointerEvent::Up(button_event) => {
+                if button_event.button != Some(PointerButton::Primary) {
+                    return false;
+                }
+                self.set_press_target(None)
+            }
+            PointerEvent::Leave(_) => self.set_hovered(None),
+            PointerEvent::Cancel(_) => {
+                let h = self.set_hovered(None);
+                let p = self.set_press_target(None);
+                h || p
+            }
             _ => false,
         }
+    }
+
+    fn set_press_target(&mut self, new: Option<ElementId>) -> bool {
+        if self.press_target == new {
+            return false;
+        }
+        if let Some(old_id) = self.press_target.take() {
+            self.remove_pseudo(old_id, PSEUDO_PRESSED);
+        }
+        if let Some(new_id) = new {
+            self.add_pseudo(new_id, PSEUDO_PRESSED);
+        }
+        self.press_target = new;
+        true
     }
 
     fn set_hovered(&mut self, new: Option<ElementId>) -> bool {

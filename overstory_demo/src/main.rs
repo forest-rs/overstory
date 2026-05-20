@@ -36,7 +36,7 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
-use overstory::pseudos::PSEUDO_HOVER;
+use overstory::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{ELEMENT_KIND_GENERIC, Ui};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -371,10 +371,27 @@ fn build_ui() -> Ui {
     )
     .build();
 
+    // Darker background while the foreground is pressed (overrides hover via
+    // higher specificity? Same specificity — last rule wins. We push pressed
+    // last so it beats hovered when both apply.).
+    let pressed_style = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x40, 0x6f, 0xc7, 0xff))),
+        )
+        .build();
+    let pressed_selector = SelectorBuilder::new(
+        SelectorStep::type_tag(generic_kind)
+            .with_class(CLASS_FOREGROUND)
+            .with_pseudo(PSEUDO_PRESSED),
+    )
+    .build();
+
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, generic_selector, generic_style)
         .push_rule(StyleOrigin::Base, foreground_selector, foreground_style)
         .push_rule(StyleOrigin::Base, hovered_selector, hovered_style)
+        .push_rule(StyleOrigin::Base, pressed_selector, pressed_style)
         .build();
     ui.set_cascade(cascade);
 
