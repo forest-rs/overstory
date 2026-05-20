@@ -267,11 +267,23 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     let initial_width = inner.width.max(1);
     let initial_height = inner.height.max(1);
 
-    // Negotiate a surface format the platform actually supports. On Metal this
-    // will be `Bgra8Unorm`/`Bgra8UnormSrgb`; on most other platforms similar.
+    // Negotiate a surface format the platform actually supports. On Metal the
+    // default is `Bgra8UnormSrgb`, but vello renders sRGB-encoded 8-bit
+    // values into the offscreen `Rgba8Unorm`; pushing those through an
+    // sRGB-encoding swapchain double-encodes and washes the picture out.
+    // Prefer the non-sRGB Bgra variant when available.
     let mut surface_config = surface
         .get_default_config(&adapter, initial_width, initial_height)
         .ok_or("surface not compatible with adapter")?;
+    let caps = surface.get_capabilities(&adapter);
+    if let Some(unorm) = caps.formats.iter().copied().find(|f| {
+        matches!(
+            *f,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
+        )
+    }) {
+        surface_config.format = unorm;
+    }
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
@@ -323,9 +335,11 @@ fn build_ui() -> Ui {
     };
     ui.set_local(root, layout_prop, root_layout);
 
-    // The button itself. Content + foreground (text color) are set before
-    // the template expands so the label picks them up at instantiation.
-    let button = ui.insert_child(root, ELEMENT_KIND_BUTTON);
+    // The button itself. Content + foreground (text color) must be set
+    // *before* the template expands so the label picks them up at
+    // instantiation. `insert_child_with` runs the closure before template
+    // expansion; without TemplateBinding (Phase 1f-6), this is how initial
+    // values reach the templated label.
     let button_layout = overstory::taffy::Style {
         // Generous padding so the label has room to breathe.
         padding: overstory::taffy::Rect {
@@ -340,14 +354,16 @@ fn build_ui() -> Ui {
         align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
     };
-    ui.set_local(button, layout_prop, button_layout);
-    ui.set_local(button, ui.properties().content, "Click me".to_owned());
-    ui.set_local(
-        button,
-        ui.properties().foreground,
-        Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
-    );
-    ui.set_local(button, ui.properties().font_size, 22.0_f64);
+    let _button = ui.insert_child_with(root, ELEMENT_KIND_BUTTON, |ui, button| {
+        ui.set_local(button, layout_prop, button_layout);
+        ui.set_local(button, ui.properties().content, "Click me".to_owned());
+        ui.set_local(
+            button,
+            ui.properties().foreground,
+            Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
+        );
+        ui.set_local(button, ui.properties().font_size, 22.0_f64);
+    });
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());

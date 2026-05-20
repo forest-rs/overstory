@@ -280,10 +280,37 @@ impl Ui {
     /// `templated_parent = button_id`, even when they're created several
     /// levels deep.
     ///
+    /// For controls whose default template reads initial property values
+    /// from the owner (e.g. a Button's template copying its `Content` to
+    /// the label), use [`insert_child_with`](Self::insert_child_with) so
+    /// the configuration closure can write those properties *before* the
+    /// template expands. Until Phase 1f-6's `TemplateBinding` lands, this
+    /// is the only way to make the initial snapshot pick up app values.
+    ///
     /// # Panics
     ///
     /// Panics if `parent` is a stale id.
     pub fn insert_child(&mut self, parent: ElementId, kind: ElementKind) -> ElementId {
+        self.insert_child_with(parent, kind, |_, _| {})
+    }
+
+    /// Like [`insert_child`](Self::insert_child), but runs `configure` on
+    /// the new element *before* its default template expands. Apps use
+    /// this to seed properties whose values the template will snapshot
+    /// (e.g. `Content` for Button).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parent` is a stale id.
+    pub fn insert_child_with<F>(
+        &mut self,
+        parent: ElementId,
+        kind: ElementKind,
+        configure: F,
+    ) -> ElementId
+    where
+        F: FnOnce(&mut Self, ElementId),
+    {
         assert!(
             self.get(parent).is_some(),
             "insert_child: parent id is stale"
@@ -294,6 +321,7 @@ impl Ui {
         self.style_one(child);
         self.invalidation.mark(child, PAINT);
         self.invalidation.mark(parent, COMPOSE);
+        configure(self, child);
         self.expand_default_template(child);
         child
     }
