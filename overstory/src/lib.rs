@@ -58,7 +58,7 @@ pub use controls::toggle::{
 };
 pub use element::{Element, ElementId};
 pub use generic::present_surface;
-pub use lookup::UiStoreLookup;
+pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use properties::BuiltInProperties;
 pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,

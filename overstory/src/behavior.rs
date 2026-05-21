@@ -16,10 +16,9 @@ use understory_property::{DependencyObject, Property, PropertyRegistry};
 use understory_style::{MatchState, ResolveCx, StyleCascade, StyleValueRef, Theme};
 
 use crate::element::{Element, ElementId};
-use crate::lookup::UiStoreLookup;
+use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
 use crate::text::TextEngine;
-use crate::ui::Ui;
 
 /// Per-axis known dimensions handed to a behavior's `measure`
 /// callback.
@@ -67,32 +66,26 @@ pub struct PresentContext<'a> {
     pub cascade: &'a StyleCascade,
     /// The match state for the element currently being presented.
     pub match_state: MatchState,
-    /// Parent-walking lookup the [`ResolveCx`] uses for inheritance.
-    pub(crate) lookup: UiStoreLookup<'a>,
-    /// Owning UI used for Overstory's style-aware inherited value helper.
-    pub(crate) ui: &'a Ui,
+    /// Parent-walking lookup the [`ResolveCx`] uses for style-aware inheritance.
+    pub(crate) lookup: UiResolveLookup<'a>,
 }
 
 impl<'a> PresentContext<'a> {
     /// Builds a raw [`ResolveCx`] tied to this context.
-    ///
-    /// Prefer [`Self::get_value`] for widget presentation. The raw Understory
-    /// resolver walks ancestor property stores for inherited values, but it does
-    /// not know each ancestor's Overstory match state and therefore cannot inherit
-    /// styled ancestor values.
     #[must_use]
-    pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiStoreLookup<'a>> {
+    pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiResolveLookup<'a>> {
         ResolveCx::new(self.registry, self.theme, self.lookup)
     }
 
-    /// Resolves `property` for `element` through Overstory's effective-value
-    /// path, including inherited styled values from ancestors.
+    /// Resolves `property` for `element` through [`understory_style::ResolveCx`],
+    /// including inherited styled values from ancestors.
     #[must_use]
     pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
     where
         T: Clone + 'static,
     {
-        self.ui.effective_value_for(element, property)
+        self.resolve_cx()
+            .get_value(element, property, Some((self.cascade, self.match_state)))
     }
 }
 

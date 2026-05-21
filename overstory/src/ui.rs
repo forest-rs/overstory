@@ -38,7 +38,7 @@ use understory_property_binding::{
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
-    MatchState, PartTag, SelectorInputs, StyleCascade, StyleCascadeBuilder, StyleValueRef, Theme,
+    MatchState, PartTag, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
 };
 use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
 
@@ -46,7 +46,7 @@ use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
-use crate::lookup::UiStoreLookup;
+use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
@@ -72,7 +72,7 @@ pub struct Ui {
     /// tree and lowers primitives + world bounds into draw commands.
     ///
     /// Held as `Option` so `present_element` can `take` it briefly
-    /// while it holds a `&Ui` borrow (for `UiStoreLookup`); always
+    /// while it holds a `&Ui` borrow (for `UiResolveLookup`); always
     /// `Some` outside that window.
     presentation: Option<PresentationStore<NodeId, ElementId>>,
     cascade: StyleCascade,
@@ -1342,49 +1342,11 @@ impl Ui {
         element: &Element,
         property: Property<T>,
     ) -> T {
-        if let Some(value) = self.own_effective_value(element, property) {
-            return value;
-        }
-
-        let metadata = self
-            .registry
-            .get_metadata(property)
-            .expect("property should be registered");
-        if metadata.inherits() {
-            let mut parent = element.parent();
-            while let Some(parent_id) = parent {
-                let Some(parent_element) = self.get(parent_id) else {
-                    break;
-                };
-                if let Some(value) = self.own_effective_value(parent_element, property) {
-                    return value;
-                }
-                parent = parent_element.parent();
-            }
-        }
-
-        metadata.default_value().clone()
-    }
-
-    fn own_effective_value<T: Clone + 'static>(
-        &self,
-        element: &Element,
-        property: Property<T>,
-    ) -> Option<T> {
-        if let Some(value) = element.property_store().get_animation(property) {
-            return Some(value.clone());
-        }
-        if let Some(value) = element.property_store().get_local(property) {
-            return Some(value.clone());
-        }
-
-        let match_state = self.match_state(element.id());
-        self.cascade
-            .get_entry_ref(match_state, property)
-            .and_then(|entry| match entry {
-                StyleValueRef::Value(value) => Some(value.clone()),
-                StyleValueRef::Resource(key) => self.theme.get::<T>(key).cloned(),
-            })
+        ResolveCx::new(&self.registry, &self.theme, UiResolveLookup::new(self)).get_value(
+            element,
+            property,
+            Some((&self.cascade, self.match_state(element.id()))),
+        )
     }
 
     /// Dispatches a normalized pointer event.
@@ -1810,7 +1772,7 @@ impl Ui {
     /// `remove_subtree` separately.
     fn present_element(&mut self, id: ElementId) {
         // Take the presentation store out first so we can later hold
-        // both a `&Ui` borrow (for `UiStoreLookup`) and a
+        // both a `&Ui` borrow (for `UiResolveLookup`) and a
         // `&mut PresentationStore` simultaneously. Always put it back
         // before returning.
         let mut presentation = self
@@ -1843,8 +1805,7 @@ impl Ui {
             theme: &self.theme,
             cascade: &self.cascade,
             match_state,
-            lookup: UiStoreLookup::new(self),
-            ui: self,
+            lookup: UiResolveLookup::new(self),
         };
         if let Some(widget) = element.widget() {
             widget.present(element, &ctx, presentation, node);
@@ -2516,7 +2477,7 @@ mod tests {
             "class should survive set_cascade"
         );
 
-        let lookup = UiStoreLookup::new(&ui);
+        let lookup = UiResolveLookup::new(&ui);
         let cx = ResolveCx::new(ui.registry(), ui.theme(), lookup);
 
         // Root: only the generic rule matches → dark.
