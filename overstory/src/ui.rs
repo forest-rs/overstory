@@ -1182,7 +1182,8 @@ impl Ui {
                 let mut changed = self.update_hover_at(pos);
                 if let Some(target) = self.hit_test(pos) {
                     self.clicks.on_down(None, None, target, pos, time_ms);
-                    changed |= self.set_press_target(Some(target));
+                    let visual = self.press_visual_target(target);
+                    changed |= self.set_press_target(Some(visual));
                     self.press_position = Some(pos);
                     self.last_drag_position = Some(pos);
                 } else {
@@ -1275,6 +1276,38 @@ impl Ui {
             }
         }
         changed
+    }
+
+    /// Resolves a hit element to the element that should carry the
+    /// `:pressed` pseudoclass.
+    ///
+    /// Hit-testing returns the deepest box under the pointer, which
+    /// for a templated control (Button → label `Text`) is the
+    /// template part rather than the control itself. Cascade rules
+    /// keyed on the control's `TypeTag` (`TYPE_BUTTON:pressed`, …)
+    /// would never match that part. To match WPF, climb the
+    /// `templated_parent` chain to the first ancestor whose widget
+    /// owns a default template — that ancestor is the templated
+    /// control the part belongs to. Non-template hits return
+    /// themselves.
+    fn press_visual_target(&self, hit: ElementId) -> ElementId {
+        let mut current = hit;
+        loop {
+            let Some(element) = self.get(current) else {
+                return hit;
+            };
+            if element
+                .widget()
+                .and_then(|w| w.default_template())
+                .is_some()
+            {
+                return current;
+            }
+            match element.templated_parent() {
+                Some(parent) => current = parent,
+                None => return current,
+            }
+        }
     }
 
     fn set_press_target(&mut self, new: Option<ElementId>) -> bool {
@@ -2835,6 +2868,26 @@ mod tests {
             ui.effective_bounds(child),
             Rect::new(10.0, 10.0, 190.0, 90.0)
         );
+    }
+
+    #[test]
+    fn press_marks_templated_control_not_inner_part() {
+        // Pressing on a templated control's part (Button's label
+        // `Text`) should put `:pressed` on the Button itself, not
+        // on the label. Without this, the cascade rule keyed on
+        // `TYPE_BUTTON:pressed` never matches and the button shows
+        // no press feedback. Use `press_visual_target` directly so
+        // the test doesn't depend on layout + hit-test plumbing.
+        use crate::Button;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Click me"));
+        let label = ui.get(button).unwrap().children()[0];
+
+        assert_eq!(ui.press_visual_target(label), button);
+        assert_eq!(ui.press_visual_target(button), button);
+        assert_eq!(ui.press_visual_target(root), root);
     }
 
     #[test]
