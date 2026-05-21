@@ -488,14 +488,15 @@ fn build_ui() -> Ui {
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_PRESSED))
             .build();
 
-    // :focused — a brighter sky-blue background to make the keyboard
-    // focus target obvious. (A real focus ring is a paint-time
-    // decoration that'd land alongside the presentation tree.)
+    // :focused — a white 2px border around the button. Real focus
+    // rings live on the `Border` field of `SurfacePrimitive`; the
+    // cascade resolves `BorderBrush` + `BorderWidth` for us.
     let button_focused = StyleBuilder::new()
         .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x6a, 0xa3, 0xff, 0xff))),
+            ui.properties().border_brush,
+            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
         )
+        .set(ui.properties().border_width, 2.0_f64)
         .build();
     let button_focused_selector =
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_FOCUSED))

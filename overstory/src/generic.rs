@@ -10,7 +10,7 @@
 
 use peniko::Brush;
 use understory_box_tree::NodeId;
-use understory_presentation::{BackgroundLayer, PresentationStore, RoundedRectRadii};
+use understory_presentation::{BackgroundLayer, Border, PresentationStore, RoundedRectRadii};
 
 use crate::behavior::{ElementBehavior, PresentContext};
 use crate::element::{Element, ElementId};
@@ -48,6 +48,8 @@ pub(crate) fn present_surface(
     let style = Some((ctx.cascade, ctx.match_state));
     let background: Option<Brush> = cx.get_value(element, ctx.properties.background, style);
     let corner_radius: f64 = cx.get_value(element, ctx.properties.corner_radius, style);
+    let border_brush: Option<Brush> = cx.get_value(element, ctx.properties.border_brush, style);
+    let border_width: f64 = cx.get_value(element, ctx.properties.border_width, style);
 
     let Some(surface) = store.surface_mut(node) else {
         return;
@@ -57,4 +59,8 @@ pub(crate) fn present_surface(
         surface.backgrounds.push(BackgroundLayer::new(brush));
     }
     surface.corner_radii = RoundedRectRadii::from_single_radius(corner_radius);
+    surface.border = match border_brush {
+        Some(brush) if border_width > 0.0 => Border::uniform(brush, border_width),
+        _ => Border::default(),
+    };
 }

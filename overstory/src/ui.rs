@@ -1562,8 +1562,25 @@ fn lower_presentation(
                         painter.fill(bounds, &layer.brush).draw();
                     }
                 }
-                // Border / shadow lowering — TODO when controls need
-                // them.
+                // Border. We only lower a uniform border for now —
+                // the same brush + width on all four sides. The top
+                // side carries the source of truth and the other
+                // sides are ignored. Stroked centered on the surface
+                // edge, which leaks half the width outside `bounds`;
+                // a more polished pass would inset by `width / 2`.
+                let side = &surface.border.top;
+                if let Some(brush) = side.brush.as_ref()
+                    && side.width > 0.0
+                {
+                    let stroke = kurbo::Stroke::new(side.width);
+                    if corner_radius > 0.0 {
+                        let rounded = RoundedRect::from_rect(bounds, corner_radius);
+                        painter.stroke(rounded, &stroke, brush).draw();
+                    } else {
+                        painter.stroke(bounds, &stroke, brush).draw();
+                    }
+                }
+                // Shadow lowering — TODO when controls need it.
             }
             Primitive::Text(boxed) => {
                 if let TextPrimitive::Plain(plain) = boxed.as_ref() {

@@ -50,6 +50,16 @@ pub struct BuiltInProperties {
 
     /// Font size in pixels per em. Default `14.0`.
     pub font_size: Property<f64>,
+
+    /// Border brush. `None` (the default) means the element has no
+    /// border. Stroked at [`Self::border_width`] around the same
+    /// rounded rect [`Self::background`] fills.
+    pub border_brush: Property<Option<Brush>>,
+
+    /// Border stroke width in logical pixels. Default `0.0` — the
+    /// border isn't drawn when either the brush is `None` or the
+    /// width is zero.
+    pub border_width: Property<f64>,
 }
 
 impl BuiltInProperties {
@@ -99,6 +109,18 @@ impl BuiltInProperties {
                 "FontSize",
                 PropertyMetadataBuilder::new(14.0_f64)
                     .affects_channels(LAYOUT.into_set() | PAINT.into_set())
+                    .build(),
+            ),
+            border_brush: registry.register(
+                "BorderBrush",
+                PropertyMetadataBuilder::<Option<Brush>>::new(None)
+                    .affects_channels(PAINT.into_set())
+                    .build(),
+            ),
+            border_width: registry.register(
+                "BorderWidth",
+                PropertyMetadataBuilder::new(0.0_f64)
+                    .affects_channels(PAINT.into_set())
                     .build(),
             ),
         }
