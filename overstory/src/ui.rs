@@ -38,7 +38,7 @@ use understory_property_binding::{
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
-    MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, StyleValueRef, Theme,
+    MatchState, PartTag, SelectorInputs, StyleCascade, StyleCascadeBuilder, StyleValueRef, Theme,
 };
 use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
 
@@ -100,6 +100,8 @@ pub struct Ui {
     /// created via `insert_child` is tagged with this id as
     /// `templated_parent`. Saved/restored around nested template expansions.
     currently_expanding: Option<ElementId>,
+    /// One-shot part tag applied to the next element appended by `append_part`.
+    pending_part_tag: Option<PartTag>,
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
@@ -351,6 +353,7 @@ impl Ui {
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
             currently_expanding: None,
+            pending_part_tag: None,
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
             tree: Tree::new(),
@@ -369,7 +372,7 @@ impl Ui {
             timer_handlers: HashMap::new(),
             now: 0,
         };
-        let root = me.alloc_element(None, None, Some(Box::new(PanelWidget)));
+        let root = me.alloc_element(None, None, None, Some(Box::new(PanelWidget)));
         me.root = root;
         me.style_one(root);
         me
@@ -520,7 +523,31 @@ impl Ui {
     /// widget's default template if it has one, and returns the new
     /// id. Most callers should use [`Self::append`] instead.
     pub fn append_widget(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
-        self.insert_child_inner(parent, Some(widget))
+        self.insert_child_inner(parent, None, Some(widget))
+    }
+
+    /// Inserts a control under `parent` and labels the inserted element as a
+    /// template part for selector matching.
+    pub(crate) fn append_part<S: crate::widget::AppendSpec>(
+        &mut self,
+        parent: ElementId,
+        part_tag: PartTag,
+        spec: S,
+    ) -> ElementId {
+        let outer = self.pending_part_tag.replace(part_tag);
+        let id = spec.append_to(self, parent);
+        self.pending_part_tag = outer;
+        id
+    }
+
+    /// Lower-level widget insertion for template parts.
+    pub(crate) fn append_part_widget(
+        &mut self,
+        parent: ElementId,
+        part_tag: PartTag,
+        widget: Box<dyn Widget>,
+    ) -> ElementId {
+        self.insert_child_inner(parent, Some(part_tag), Some(widget))
     }
 
     /// Inserts an anonymous container child. Used by tests + the
@@ -528,12 +555,13 @@ impl Ui {
     /// should prefer [`append(parent, Panel::new())`](Self::append).
     #[cfg(test)]
     pub(crate) fn insert_child(&mut self, parent: ElementId) -> ElementId {
-        self.insert_child_inner(parent, None)
+        self.insert_child_inner(parent, None, None)
     }
 
     fn insert_child_inner(
         &mut self,
         parent: ElementId,
+        part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
     ) -> ElementId {
         assert!(
@@ -541,7 +569,8 @@ impl Ui {
             "insert_child: parent id is stale"
         );
         let templated_parent = self.currently_expanding;
-        let child = self.alloc_element(Some(parent), templated_parent, widget);
+        let part_tag = part_tag.or_else(|| self.pending_part_tag.take());
+        let child = self.alloc_element(Some(parent), templated_parent, part_tag, widget);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
         // LAYOUT cascades to PAINT and COMPOSE via the tracker's
@@ -1706,7 +1735,8 @@ impl Ui {
             .and_then(|parent| self.match_states.get(&parent).copied())
             .unwrap_or_else(|| self.cascade.root_state());
 
-        let inputs = SelectorInputs::new(Some(type_tag), &classes, &pseudos);
+        let inputs =
+            SelectorInputs::with_part(Some(type_tag), element.part_tag(), &classes, &pseudos);
         let old_state = self.match_states.get(&id).copied();
         let new_state = self.cascade.enter_subject(parent_state, &inputs);
         self.match_states.insert(id, new_state);
@@ -1773,6 +1803,7 @@ impl Ui {
         &mut self,
         parent: Option<ElementId>,
         templated_parent: Option<ElementId>,
+        part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
     ) -> ElementId {
         let id = if let Some(slot_index) = self.free.pop() {
@@ -1786,7 +1817,7 @@ impl Ui {
             let id = ElementId::new(slot_index, generation);
             *slot = Slot::Live {
                 generation,
-                element: Box::new(Element::new(id, parent, templated_parent, widget)),
+                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
             };
             id
         } else {
@@ -1794,7 +1825,7 @@ impl Ui {
             let id = ElementId::new(slot_index, 0);
             self.slots.push(Slot::Live {
                 generation: 0,
-                element: Box::new(Element::new(id, parent, templated_parent, widget)),
+                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
             });
             id
         };
@@ -2446,8 +2477,44 @@ mod tests {
     }
 
     #[test]
-    fn slider_template_parts_match_single_step_type_selectors() {
-        use crate::{Slider, TYPE_SLIDER_TRACK};
+    fn default_templates_label_named_parts() {
+        use crate::{
+            Button, PART_BUTTON_LABEL, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB,
+            Slider, ToggleSwitch,
+        };
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+
+        let button = ui.append(root, Button::new("Run"));
+        let button_label = ui.get(button).unwrap().children()[0];
+        assert_eq!(
+            ui.get(button_label).unwrap().part_tag(),
+            Some(PART_BUTTON_LABEL)
+        );
+
+        let slider = ui.append(root, Slider::new());
+        let slider_children = ui.get(slider).unwrap().children();
+        assert_eq!(
+            ui.get(slider_children[0]).unwrap().part_tag(),
+            Some(PART_SLIDER_TRACK)
+        );
+        assert_eq!(
+            ui.get(slider_children[1]).unwrap().part_tag(),
+            Some(PART_SLIDER_THUMB)
+        );
+
+        let toggle = ui.append(root, ToggleSwitch::new());
+        let toggle_thumb = ui.get(toggle).unwrap().children()[0];
+        assert_eq!(
+            ui.get(toggle_thumb).unwrap().part_tag(),
+            Some(PART_TOGGLE_THUMB)
+        );
+    }
+
+    #[test]
+    fn slider_template_parts_match_owner_local_part_selectors() {
+        use crate::{PART_SLIDER_TRACK, Slider, TYPE_SLIDER};
 
         let mut ui = Ui::new();
         let root = ui.root();
@@ -2473,7 +2540,9 @@ mod tests {
         let cascade = StyleCascadeBuilder::new()
             .push_rule(
                 StyleOrigin::Base,
-                SelectorBuilder::new(SelectorStep::type_tag(TYPE_SLIDER_TRACK)).build(),
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_SLIDER))
+                    .child(SelectorStep::part_tag(PART_SLIDER_TRACK))
+                    .build(),
                 style,
             )
             .build();
@@ -2482,7 +2551,7 @@ mod tests {
         let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
         assert_eq!(
             background, red,
-            "single-step type rule should match the nested slider track"
+            "owner-local part rule should match the nested slider track"
         );
 
         ui.compute_layout(Size::new(300.0, 80.0));
@@ -2496,7 +2565,7 @@ mod tests {
 
     #[test]
     fn owner_pseudo_selector_can_style_template_descendant() {
-        use crate::{Button, TYPE_BUTTON, TYPE_TEXT};
+        use crate::{Button, PART_BUTTON_LABEL, TYPE_BUTTON};
 
         let mut ui = Ui::new();
         let root = ui.root();
@@ -2513,7 +2582,7 @@ mod tests {
                 SelectorBuilder::new(
                     SelectorStep::type_tag(TYPE_BUTTON).with_pseudo(PSEUDO_PRESSED),
                 )
-                .child(SelectorStep::type_tag(TYPE_TEXT))
+                .child(SelectorStep::part_tag(PART_BUTTON_LABEL))
                 .build(),
                 style,
             )

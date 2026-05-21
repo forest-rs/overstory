@@ -49,9 +49,9 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    Button, Navigation, Panel, Slider, Spinner, TYPE_BUTTON, TYPE_GENERIC, TYPE_SLIDER,
-    TYPE_SLIDER_THUMB, TYPE_SLIDER_TRACK, TYPE_TOGGLE, TYPE_TOGGLE_THUMB, Text, ToggleSwitch, Ui,
-    layouts, theme,
+    Button, Navigation, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB, Panel, Slider,
+    Spinner, TYPE_BUTTON, TYPE_GENERIC, TYPE_SLIDER, TYPE_TOGGLE, Text, ToggleSwitch, Ui, layouts,
+    theme,
 };
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
@@ -570,7 +570,7 @@ fn build_ui() -> Ui {
     // The Layout property is a single `taffy::Style`, so each rule
     // has to carry the full layout (we can't partially override).
     let toggle_kind = TYPE_TOGGLE;
-    let toggle_thumb_kind = TYPE_TOGGLE_THUMB;
+    let toggle_thumb_part = PART_TOGGLE_THUMB;
 
     let toggle_layout = |justify: overstory::taffy::JustifyContent| overstory::taffy::Style {
         display: overstory::taffy::Display::Flex,
@@ -635,28 +635,32 @@ fn build_ui() -> Ui {
             },
         )
         .build();
-    let thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_thumb_kind)).build();
+    let thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_kind))
+        .child(SelectorStep::part_tag(toggle_thumb_part))
+        .build();
 
     // Slider styling. Layout is set imperatively by the Slider's
     // template (fixed dimensions, absolute thumb positioning), so
     // the cascade only contributes color + corner radius.
     let slider_kind = TYPE_SLIDER;
-    let slider_track_kind = TYPE_SLIDER_TRACK;
-    let slider_thumb_kind = TYPE_SLIDER_THUMB;
+    let slider_track_part = PART_SLIDER_TRACK;
+    let slider_thumb_part = PART_SLIDER_THUMB;
 
     let slider_track_style = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::TRACK_BG)
         .set(ui.properties().corner_radius, 3.0_f64)
         .build();
-    let slider_track_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(slider_track_kind)).build();
+    let slider_track_selector = SelectorBuilder::new(SelectorStep::type_tag(slider_kind))
+        .child(SelectorStep::part_tag(slider_track_part))
+        .build();
 
     let slider_thumb_style = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::THUMB_BG)
         .set(ui.properties().corner_radius, 11.0_f64)
         .build();
-    let slider_thumb_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(slider_thumb_kind)).build();
+    let slider_thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(slider_kind))
+        .child(SelectorStep::part_tag(slider_thumb_part))
+        .build();
 
     let slider_focused_style = StyleBuilder::new()
         .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)

@@ -9,20 +9,22 @@
 //! tagged with a `templated_parent: Option<ElementId>` back-reference (see
 //! [`crate::Element::templated_parent`]).
 //!
-//! Application-supplied templates and named part metadata are future work. The
-//! current substrate supports default templates, template-parent tracking,
-//! property bindings, and owner-state style matching for template descendants.
+//! Default templates can also label generated nodes with owner-local part
+//! identities (see [`crate::Element::part_tag`]) so style rules can target
+//! `Button > label` or `Slider > thumb` without treating parts as globally
+//! unique widget types.
 
 use crate::element::ElementId;
 use crate::ui::Ui;
 
 /// Factory that builds a templated control's visual subtree.
 ///
-/// Implementations call `ui.append(owner, ...)` or `ui.append_widget(owner, ...)`
-/// for each part. Any elements created while `instantiate` is on the call stack
-/// are automatically tagged with `templated_parent = Some(owner)`; Overstory uses
-/// that today to style template descendants from the owner's match state and to
-/// clean binding graph edges when parts are removed.
+/// Implementations call `ui.append(owner, ...)`, `ui.append_widget(owner, ...)`,
+/// or their part-tagging counterparts for each generated node. Any elements
+/// created while `instantiate` is on the call stack are automatically tagged
+/// with `templated_parent = Some(owner)`; Overstory uses that today to route
+/// owner-state selectors through template descendants and to clean binding graph
+/// edges when parts are removed.
 ///
 /// Templates are stored as `&'static dyn Template`, so they should be unit
 /// structs or `LazyLock<...>`-style statics rather than per-instance values.

@@ -16,7 +16,7 @@ use core::fmt;
 use invalidation::DenseKey;
 use smallvec::SmallVec;
 use understory_property::{DependencyObject, PropertyStore};
-use understory_style::{ClassId, PseudoClassId};
+use understory_style::{ClassId, PartTag, PseudoClassId};
 
 use crate::widget::Widget;
 
@@ -82,6 +82,8 @@ pub struct Element {
     parent: Option<ElementId>,
     /// The control whose template instantiated this element, if any.
     templated_parent: Option<ElementId>,
+    /// Owner-local template part identity for selector matching.
+    part_tag: Option<PartTag>,
     children: SmallVec<[ElementId; CHILDREN_INLINE]>,
     store: PropertyStore<ElementId>,
     /// Class identifiers this element participates in. Kept
@@ -99,6 +101,8 @@ impl fmt::Debug for Element {
         f.debug_struct("Element")
             .field("id", &self.id)
             .field("parent", &self.parent)
+            .field("templated_parent", &self.templated_parent)
+            .field("part_tag", &self.part_tag)
             .field("children_len", &self.children.len())
             .field("widget", &self.widget)
             .field("classes", &self.classes.as_slice())
@@ -112,12 +116,14 @@ impl Element {
         id: ElementId,
         parent: Option<ElementId>,
         templated_parent: Option<ElementId>,
+        part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
     ) -> Self {
         Self {
             id,
             parent,
             templated_parent,
+            part_tag,
             children: SmallVec::new(),
             store: PropertyStore::new(id),
             classes: SmallVec::new(),
@@ -211,6 +217,13 @@ impl Element {
     #[inline]
     pub fn templated_parent(&self) -> Option<ElementId> {
         self.templated_parent
+    }
+
+    /// Returns this element's owner-local template part identity, if any.
+    #[must_use]
+    #[inline]
+    pub fn part_tag(&self) -> Option<PartTag> {
+        self.part_tag
     }
 
     /// Returns this element's children in document order.

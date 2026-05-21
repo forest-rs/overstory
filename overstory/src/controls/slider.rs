@@ -6,7 +6,7 @@
 use alloc::boxed::Box;
 
 use understory_property::DependencyObjectExt;
-use understory_style::TypeTag;
+use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::element::ElementId;
@@ -20,6 +20,10 @@ pub const TYPE_SLIDER: TypeTag = TypeTag(6);
 pub const TYPE_SLIDER_TRACK: TypeTag = TypeTag(7);
 /// Selector identity for the thumb part.
 pub const TYPE_SLIDER_THUMB: TypeTag = TypeTag(8);
+/// Owner-local part identity for the slider track.
+pub const PART_SLIDER_TRACK: PartTag = PartTag(1);
+/// Owner-local part identity for the slider thumb.
+pub const PART_SLIDER_THUMB: PartTag = PartTag(2);
 
 const SLIDER_WIDTH: f32 = 220.0;
 const SLIDER_HEIGHT: f32 = 32.0;
@@ -175,7 +179,7 @@ impl Template for SliderTemplate {
         let layout_prop = ui.properties().layout;
 
         // Track: full width, vertically centered.
-        let track = ui.append_widget(owner, Box::new(SliderTrackWidget));
+        let track = ui.append_part_widget(owner, PART_SLIDER_TRACK, Box::new(SliderTrackWidget));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
         ui.set_local(
             track,
@@ -197,7 +201,7 @@ impl Template for SliderTemplate {
         );
 
         // Thumb: absolute, recomputed left whenever Value changes.
-        let thumb = ui.append_widget(owner, Box::new(SliderThumbWidget));
+        let thumb = ui.append_part_widget(owner, PART_SLIDER_THUMB, Box::new(SliderThumbWidget));
         let thumb_top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
         let initial_left = thumb_left_for_value(
             read_or(ui, owner, ui.properties().value, 0.0),
