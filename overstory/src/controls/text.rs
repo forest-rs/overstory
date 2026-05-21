@@ -72,7 +72,13 @@ impl AppendSpec for Text {
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
-        ui.set_local(id, content_prop, self.content);
+        // Skip writing `Local` for empty content so a parent's
+        // binding (Button's template binds owner.content →
+        // label.content) isn't shadowed by `Local`-precedence over
+        // `TemplateBinding`.
+        if !self.content.is_empty() {
+            ui.set_local(id, content_prop, self.content);
+        }
         if let Some(size) = self.font_size {
             ui.set_local(id, font_size_prop, size);
         }

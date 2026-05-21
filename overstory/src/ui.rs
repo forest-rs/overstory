@@ -643,9 +643,10 @@ impl Ui {
             .as_mut()
             .expect("bindings always Some outside flush_bindings");
         let id = bindings.bind(source, target)?;
-        // Schedule the binding so its initial value propagates on the next
-        // drain. Without this, freshly-registered bindings stay clean
-        // (the binding crate only marks on subsequent source changes).
+        // Schedule the binding so its initial value propagates on the
+        // next drain. If the source is unset, `drain` treats it as a
+        // skip — the binding stays clean until `set_local` writes the
+        // source and re-marks it via the source-index path.
         bindings.mark_binding_dirty(id);
         Ok(id)
     }
@@ -2713,6 +2714,79 @@ mod tests {
 
         // The owner itself has no templated parent (it's a logical child of root).
         assert_eq!(ui.get(owner).unwrap().templated_parent(), None);
+    }
+
+    #[test]
+    fn two_independent_bindings_both_propagate() {
+        // Pure-binding analogue of the two-button scenario: two
+        // source/target pairs registered + written in sequence.
+        // Both targets should receive their bound value on flush.
+        use alloc::string::String;
+        use understory_property_binding::PropertyEndpoint;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let s1 = ui.insert_child(root);
+        let t1 = ui.insert_child(root);
+        let s2 = ui.insert_child(root);
+        let t2 = ui.insert_child(root);
+
+        let content_prop = ui.properties().content;
+        ui.bind(
+            PropertyEndpoint::new(s1, content_prop),
+            PropertyEndpoint::new(t1, content_prop),
+        )
+        .unwrap();
+        ui.set_local(s1, content_prop, String::from("one"));
+
+        ui.bind(
+            PropertyEndpoint::new(s2, content_prop),
+            PropertyEndpoint::new(t2, content_prop),
+        )
+        .unwrap();
+        ui.set_local(s2, content_prop, String::from("two"));
+
+        ui.flush_bindings();
+
+        let read = |ui: &Ui, id: ElementId| -> Option<String> {
+            ui.get(id)
+                .unwrap()
+                .property_store()
+                .effective_local_erased(content_prop.id())
+                .and_then(|v| v.downcast_ref::<String>().cloned())
+        };
+        assert_eq!(read(&ui, t1).as_deref(), Some("one"));
+        assert_eq!(read(&ui, t2).as_deref(), Some("two"));
+    }
+
+    #[test]
+    fn button_label_content_propagates_through_template_binding() {
+        // The button's template creates a `Text` label, then binds
+        // owner.content → label.content. If `Text::append_to` writes
+        // `Local=""` on the label, that Local would shadow the
+        // binding (Local outranks TemplateBinding) and the label
+        // would never display the button's text. Regression guard
+        // for two sibling buttons (each must propagate independently).
+        use crate::Button;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let b1 = ui.append(root, Button::new("Click me"));
+        let b2 = ui.append(root, Button::new("Or me"));
+
+        ui.flush_bindings();
+
+        let content_prop = ui.properties().content;
+        let read_label = |ui: &Ui, button: ElementId| -> Option<String> {
+            let label = ui.get(button).unwrap().children()[0];
+            ui.get(label)
+                .unwrap()
+                .property_store()
+                .effective_local_erased(content_prop.id())
+                .and_then(|v| v.downcast_ref::<String>().cloned())
+        };
+        assert_eq!(read_label(&ui, b1).as_deref(), Some("Click me"));
+        assert_eq!(read_label(&ui, b2).as_deref(), Some("Or me"));
     }
 
     #[test]
