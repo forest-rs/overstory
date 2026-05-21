@@ -50,7 +50,7 @@ use kurbo::Size;
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
     ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TEXT,
-    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts,
+    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts, theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -413,18 +413,19 @@ fn insert_column(ui: &mut Ui, parent: ElementId, gap: f32) -> ElementId {
     column
 }
 
-/// Inserts a `Text` label under `parent` with caption-sized, muted
-/// foreground. Useful for "Notifications" / "Loading…" style
-/// captions sitting beneath a control.
+/// Inserts a `Text` label under `parent` with caption-sized,
+/// muted foreground. Pulls the caption color from the active
+/// theme so palette swaps recolor every caption together.
 fn insert_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
     let label = ui.insert_child(parent, ELEMENT_KIND_TEXT);
     ui.set_local(label, ui.properties().content, text.to_owned());
     ui.set_local(label, ui.properties().font_size, 13.0_f64);
-    ui.set_local(
-        label,
-        ui.properties().foreground,
-        Brush::Solid(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)),
-    );
+    let muted = ui
+        .theme()
+        .get::<Brush>(theme::ON_SURFACE_MUTED_FG)
+        .cloned()
+        .unwrap_or_else(|| Brush::Solid(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)));
+    ui.set_local(label, ui.properties().foreground, muted);
     label
 }
 
@@ -512,6 +513,10 @@ fn add_button(ui: &mut Ui, parent: ElementId, initial_label: &str) -> ElementId 
 /// focus between them.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
+    // Install the palette early so `insert_label` / other inserts
+    // that read from the theme see real values rather than
+    // fallbacks.
+    ui.set_theme(theme::default_theme());
     let root = ui.root();
 
     // Root: full-viewport row-flex container with 24px gap so the
@@ -552,51 +557,36 @@ fn build_ui() -> Ui {
     let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
 
     let backdrop = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::SURFACE_BG)
         .build();
     let backdrop_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
 
     // Saturated blue → white text gives proper contrast; hover brightens,
     // press deepens.
     let button_idle = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x3a, 0x69, 0xd6, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::ACCENT_BG)
         .set(ui.properties().corner_radius, 10.0_f64)
         .build();
     let button_selector = SelectorBuilder::new(SelectorStep::type_tag(button_kind)).build();
 
     let button_hover = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x4d, 0x81, 0xf2, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::ACCENT_HOVER_BG)
         .build();
     let button_hover_selector =
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_HOVER)).build();
 
     let button_pressed = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x29, 0x4d, 0xa3, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::ACCENT_PRESSED_BG)
         .build();
     let button_pressed_selector =
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_PRESSED))
             .build();
 
-    // :focused — a white 2px border around the button. Real focus
-    // rings live on the `Border` field of `SurfacePrimitive`; the
-    // cascade resolves `BorderBrush` + `BorderWidth` for us.
+    // :focused — white 2px border around the button. The brush is
+    // resolved through the active theme so swapping themes recolors
+    // every focus ring in one place.
     let button_focused = StyleBuilder::new()
-        .set(
-            ui.properties().border_brush,
-            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
-        )
+        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
         .set(ui.properties().border_width, 2.0_f64)
         .build();
     let button_focused_selector =
@@ -629,10 +619,7 @@ fn build_ui() -> Ui {
     };
 
     let toggle_idle = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::TRACK_BG)
         .set(ui.properties().corner_radius, 16.0_f64)
         .set(
             ui.properties().layout,
@@ -642,10 +629,7 @@ fn build_ui() -> Ui {
     let toggle_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_kind)).build();
 
     let toggle_checked = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0x3a, 0xa3, 0x6d, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::SUCCESS_BG)
         .set(
             ui.properties().layout,
             toggle_layout(overstory::taffy::JustifyContent::End),
@@ -655,25 +639,18 @@ fn build_ui() -> Ui {
         SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_CHECKED))
             .build();
 
-    // Toggle:focused — same white 2px border ring as Button:focused.
+    // Toggle:focused — same focus ring as Button:focused.
     let toggle_focused = StyleBuilder::new()
-        .set(
-            ui.properties().border_brush,
-            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
-        )
+        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
         .set(ui.properties().border_width, 2.0_f64)
         .build();
     let toggle_focused_selector =
         SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_FOCUSED))
             .build();
 
-    // Thumb: a white pill — the thumb's parent (Toggle) provides
-    // `justify-content` which slides it.
+    // Thumb: the parent Toggle's `justify-content` slides it.
     let thumb_style = StyleBuilder::new()
-        .set(
-            ui.properties().background,
-            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
-        )
+        .set_resource(ui.properties().background, theme::THUMB_BG)
         .set(ui.properties().corner_radius, 12.0_f64)
         .set(
             ui.properties().layout,

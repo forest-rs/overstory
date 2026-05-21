@@ -38,6 +38,7 @@ mod spinner;
 mod template;
 mod text;
 mod text_behavior;
+pub mod theme;
 mod toggle;
 mod ui;
 
