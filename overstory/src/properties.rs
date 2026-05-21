@@ -66,6 +66,18 @@ pub struct BuiltInProperties {
     /// change with adding / removing the `:checked` pseudoclass so
     /// the cascade reflects the new state.
     pub is_checked: Property<bool>,
+
+    /// Numeric value for value-bearing controls (`Slider`,
+    /// `ProgressBar`, …). Default `0.0`. The semantic range is
+    /// `[Self::minimum, Self::maximum]`; consumers should clamp
+    /// writes that go outside it.
+    pub value: Property<f64>,
+
+    /// Lower bound for [`Self::value`]. Default `0.0`.
+    pub minimum: Property<f64>,
+
+    /// Upper bound for [`Self::value`]. Default `1.0`.
+    pub maximum: Property<f64>,
 }
 
 impl BuiltInProperties {
@@ -138,6 +150,27 @@ impl BuiltInProperties {
                     // No direct paint impact — state lives in the
                     // pseudoclass. The control's click handler is
                     // responsible for keeping `:checked` in sync.
+                    .build(),
+            ),
+            value: registry.register(
+                "Value",
+                PropertyMetadataBuilder::new(0.0_f64)
+                    // `Value` changes drive layout updates on
+                    // controls like Slider (thumb position) plus
+                    // the natural PAINT/COMPOSE cascade.
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            minimum: registry.register(
+                "Minimum",
+                PropertyMetadataBuilder::new(0.0_f64)
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            maximum: registry.register(
+                "Maximum",
+                PropertyMetadataBuilder::new(1.0_f64)
+                    .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
         }

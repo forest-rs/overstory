@@ -49,8 +49,9 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TEXT,
-    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts, theme,
+    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB,
+    ELEMENT_KIND_SLIDER_TRACK, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TEXT, ELEMENT_KIND_TOGGLE,
+    ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts, set_slider_value, theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -552,6 +553,15 @@ fn build_ui() -> Ui {
     let _spinner = ui.insert_child(spinner_col, ELEMENT_KIND_SPINNER);
     insert_label(&mut ui, spinner_col, "Loading…");
 
+    // A labeled Slider — column with the slider on top and a
+    // caption below. Initial value of 0.4 just to land the thumb
+    // somewhere other than `Minimum`.
+    let slider_col = insert_column(&mut ui, root, 6.0);
+    let slider = ui.insert_child(slider_col, ELEMENT_KIND_SLIDER);
+    ui.set_focusable(slider, true);
+    set_slider_value(&mut ui, slider, 0.4);
+    insert_label(&mut ui, slider_col, "Volume");
+
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
     let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
@@ -665,6 +675,36 @@ fn build_ui() -> Ui {
         .build();
     let thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_thumb_kind)).build();
 
+    // Slider styling. Layout is set imperatively by the Slider's
+    // template (fixed dimensions, absolute thumb positioning), so
+    // the cascade only contributes color + corner radius.
+    let slider_kind = TypeTag(ELEMENT_KIND_SLIDER.tag());
+    let slider_track_kind = TypeTag(ELEMENT_KIND_SLIDER_TRACK.tag());
+    let slider_thumb_kind = TypeTag(ELEMENT_KIND_SLIDER_THUMB.tag());
+
+    let slider_track_style = StyleBuilder::new()
+        .set_resource(ui.properties().background, theme::TRACK_BG)
+        .set(ui.properties().corner_radius, 3.0_f64)
+        .build();
+    let slider_track_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(slider_track_kind)).build();
+
+    let slider_thumb_style = StyleBuilder::new()
+        .set_resource(ui.properties().background, theme::THUMB_BG)
+        .set(ui.properties().corner_radius, 11.0_f64)
+        .build();
+    let slider_thumb_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(slider_thumb_kind)).build();
+
+    let slider_focused_style = StyleBuilder::new()
+        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
+        .set(ui.properties().border_width, 2.0_f64)
+        .set(ui.properties().corner_radius, 4.0_f64)
+        .build();
+    let slider_focused_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(slider_kind).with_pseudo(PSEUDO_FOCUSED))
+            .build();
+
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, backdrop_selector, backdrop)
         .push_rule(StyleOrigin::Base, button_selector, button_idle)
@@ -675,6 +715,13 @@ fn build_ui() -> Ui {
         .push_rule(StyleOrigin::Base, toggle_checked_selector, toggle_checked)
         .push_rule(StyleOrigin::Base, toggle_focused_selector, toggle_focused)
         .push_rule(StyleOrigin::Base, thumb_selector, thumb_style)
+        .push_rule(StyleOrigin::Base, slider_track_selector, slider_track_style)
+        .push_rule(StyleOrigin::Base, slider_thumb_selector, slider_thumb_style)
+        .push_rule(
+            StyleOrigin::Base,
+            slider_focused_selector,
+            slider_focused_style,
+        )
         .build();
     ui.set_cascade(cascade);
 

@@ -34,6 +34,7 @@ pub mod layouts;
 mod lookup;
 mod properties;
 pub mod pseudos;
+mod slider;
 mod spinner;
 mod template;
 mod text;
@@ -51,6 +52,10 @@ pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
+pub use slider::{
+    ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB, ELEMENT_KIND_SLIDER_TRACK, SliderBehavior,
+    SliderThumbBehavior, SliderTrackBehavior, set_slider_value,
+};
 pub use spinner::{ELEMENT_KIND_SPINNER, SpinnerBehavior};
 pub use template::Template;
 pub use text::TextEngine;
@@ -60,7 +65,7 @@ pub use toggle::{
     toggle_checked,
 };
 pub use ui::TimerEvent;
-pub use ui::{ClickEvent, KeyEvent, Ui};
+pub use ui::{ClickEvent, DragEvent, KeyEvent, Ui};
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
 // Re-export the responder's `Phase` so callers can read `ClickEvent::phase`

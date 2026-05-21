@@ -49,6 +49,10 @@ use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::slider::{
+    ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB, ELEMENT_KIND_SLIDER_TRACK, SLIDER_BEHAVIOR,
+    SLIDER_THUMB_BEHAVIOR, SLIDER_TRACK_BEHAVIOR,
+};
 use crate::spinner::{ELEMENT_KIND_SPINNER, SPINNER_BEHAVIOR};
 use crate::text::TextEngine;
 use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
@@ -128,6 +132,18 @@ pub struct Ui {
     /// click is recognized by [`ClickState`]. One handler per
     /// element for now; subsequent `on_click` calls replace.
     click_handlers: HashMap<ElementId, ClickHandler>,
+    /// Per-element drag handlers. Fire on every primary-button
+    /// `Move` while a press is active, along the responder path
+    /// rooted at the press target.
+    drag_handlers: HashMap<ElementId, DragHandler>,
+    /// Pointer position captured at the most recent primary-button
+    /// `Down`. Used by the drag dispatch to compute total offset
+    /// from the press anchor. Cleared on `Up` / `Cancel`.
+    press_position: Option<Point>,
+    /// Pointer position at the previous drag dispatch. Used to
+    /// compute per-dispatch deltas. Cleared together with
+    /// `press_position`.
+    last_drag_position: Option<Point>,
     /// Per-element key handlers. Invoked along the responder
     /// sequence rooted at the currently focused element. Same
     /// one-handler-per-element model as `click_handlers`.
@@ -161,6 +177,7 @@ pub struct Ui {
 }
 
 type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent)>;
+type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent)>;
 type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 type TimerHandler = Box<dyn FnMut(&mut Ui, TimerEvent)>;
 
@@ -212,6 +229,38 @@ pub struct KeyEvent<'a> {
     pub key: &'a KeyboardEvent,
 }
 
+/// Payload delivered to a drag handler as the primary pointer
+/// moves while pressed. Drag handlers fire along the
+/// capture → target → bubble path rooted at the press target — so
+/// e.g. a Slider's drag handler fires when the user drags the
+/// thumb (Bubble phase) or the slider itself (Target phase).
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug)]
+pub struct DragEvent {
+    /// The element captured when the press started — the deepest
+    /// hit at primary-button `Down`. Stable across the drag.
+    pub source: ElementId,
+    /// The element this handler is registered on (current node in
+    /// the responder sequence). Equal to `source` for the
+    /// target-phase invocation; differs for ancestors during
+    /// capture and bubble.
+    pub current: ElementId,
+    /// Propagation phase (capture, target, or bubble) for this
+    /// invocation.
+    pub phase: Phase,
+    /// Current pointer position in physical pixels.
+    pub position: Point,
+    /// Pointer position when the press started, in physical
+    /// pixels. Useful for computing total drag distance.
+    pub press_position: Point,
+    /// Movement since the previous drag dispatch in physical
+    /// pixels.
+    pub delta: kurbo::Vec2,
+}
+
 /// Payload delivered to a click handler.
 #[allow(
     unnameable_types,
@@ -229,6 +278,9 @@ pub struct ClickEvent {
     /// The propagation phase (capture, target, or bubble) this
     /// invocation belongs to.
     pub phase: Phase,
+    /// Pointer position at click-recognition time, in physical
+    /// pixels. Useful for hit-position-driven controls like Slider.
+    pub position: Point,
 }
 
 impl core::fmt::Debug for Ui {
@@ -275,6 +327,9 @@ impl Ui {
         behaviors.register(ELEMENT_KIND_TOGGLE, &TOGGLE_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_TOGGLE_THUMB, &TOGGLE_THUMB_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_SPINNER, &SPINNER_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_SLIDER, &SLIDER_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_SLIDER_TRACK, &SLIDER_TRACK_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_SLIDER_THUMB, &SLIDER_THUMB_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
@@ -321,6 +376,9 @@ impl Ui {
             tree: Tree::new(),
             element_to_nodes: HashMap::new(),
             click_handlers: HashMap::new(),
+            drag_handlers: HashMap::new(),
+            press_position: None,
+            last_drag_position: None,
             key_handlers: HashMap::new(),
             focused: None,
             focus_policy: DefaultPolicy {
@@ -984,11 +1042,74 @@ impl Ui {
         self.click_handlers.remove(&id);
     }
 
+    /// Registers a drag handler on `id`. Fires on every
+    /// primary-button `Move` while the press is active, along the
+    /// responder capture → target → bubble path rooted at the
+    /// press target. Useful for sliders, resizers, draggable
+    /// items. One handler per element; subsequent calls replace.
+    pub fn on_drag<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, DragEvent) + 'static,
+    {
+        self.drag_handlers.insert(id, Box::new(handler));
+    }
+
+    /// Removes a drag handler previously registered with
+    /// [`Self::on_drag`]. No-op if no handler is registered.
+    pub fn remove_drag_handler(&mut self, id: ElementId) {
+        self.drag_handlers.remove(&id);
+    }
+
+    /// Builds the responder dispatch sequence for the current
+    /// press target and runs each drag handler along it. Called
+    /// from `dispatch_pointer_event` on every `Move` while a press
+    /// is active.
+    fn dispatch_drag(&mut self, position: Point) {
+        let Some(source) = self.press_target else {
+            return;
+        };
+        let Some(press_position) = self.press_position else {
+            return;
+        };
+        let last = self.last_drag_position.unwrap_or(press_position);
+        let delta = position - last;
+        self.last_drag_position = Some(position);
+
+        let seq: Vec<(Phase, ElementId)> = {
+            let lookup = UiWidgetLookup;
+            let parent = UiParentLookup { ui: self };
+            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
+                Router::with_parent(lookup, parent);
+            router
+                .dispatch_for::<()>(source)
+                .into_iter()
+                .map(|d| (d.phase, d.node))
+                .collect()
+        };
+        for (phase, node) in seq {
+            let Some(mut handler) = self.drag_handlers.remove(&node) else {
+                continue;
+            };
+            let event = DragEvent {
+                source,
+                current: node,
+                phase,
+                position,
+                press_position,
+                delta,
+            };
+            handler(self, event);
+            if self.get(node).is_some() && !self.drag_handlers.contains_key(&node) {
+                self.drag_handlers.insert(node, handler);
+            }
+        }
+    }
+
     /// Builds the responder dispatch sequence for `target` and runs
     /// each element's click handler along it (capture, then target,
     /// then bubble). Called when [`ClickState::on_up`] returns
     /// [`ClickResult::Click`].
-    fn dispatch_click(&mut self, target: ElementId) {
+    fn dispatch_click(&mut self, target: ElementId, position: Point) {
         // Compute the sequence with `&self` borrows, drop them, then
         // run handlers with `&mut self`.
         let seq: Vec<(Phase, ElementId)> = {
@@ -1010,6 +1131,7 @@ impl Ui {
                 source: target,
                 current: node,
                 phase,
+                position,
             };
             handler(self, event);
             // Reinstate iff the element is still alive AND the
@@ -1060,7 +1182,19 @@ impl Ui {
         match event {
             PointerEvent::Move(update) => {
                 let pos = Point::new(update.current.position.x, update.current.position.y);
-                self.update_hover_at(pos)
+                let mut changed = self.update_hover_at(pos);
+                // If a primary press is active, fan the move out to
+                // drag handlers along the press target's responder
+                // path before returning. We can't tell whether any
+                // handler actually changed state, but redrawing on a
+                // hover change is sufficient for drag-induced
+                // updates because the drag handler typically writes
+                // properties that mark COMPOSE.
+                if self.press_target.is_some() {
+                    self.dispatch_drag(pos);
+                    changed = true;
+                }
+                changed
             }
             PointerEvent::Down(button_event) => {
                 if button_event.button != Some(PointerButton::Primary) {
@@ -1075,8 +1209,12 @@ impl Ui {
                 if let Some(target) = self.hit_test(pos) {
                     self.clicks.on_down(None, None, target, pos, time_ms);
                     changed |= self.set_press_target(Some(target));
+                    self.press_position = Some(pos);
+                    self.last_drag_position = Some(pos);
                 } else {
                     changed |= self.set_press_target(None);
+                    self.press_position = None;
+                    self.last_drag_position = None;
                 }
                 changed
             }
@@ -1102,8 +1240,10 @@ impl Ui {
                     }
                 };
                 let press_changed = self.set_press_target(None);
+                self.press_position = None;
+                self.last_drag_position = None;
                 if let ClickResult::Click(target) = result {
-                    self.dispatch_click(target);
+                    self.dispatch_click(target, pos);
                 }
                 press_changed
             }
@@ -1112,6 +1252,8 @@ impl Ui {
                 let _ = self.clicks.cancel(None);
                 let h = self.clear_hover();
                 let p = self.set_press_target(None);
+                self.press_position = None;
+                self.last_drag_position = None;
                 h || p
             }
             _ => false,
@@ -1539,6 +1681,7 @@ impl Ui {
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
         self.click_handlers.remove(&id);
+        self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
         self.timer_handlers.remove(&id);
         // Purge any pending timers targeting this element so they
@@ -2298,7 +2441,7 @@ mod tests {
             }
         });
 
-        ui.dispatch_click(child);
+        ui.dispatch_click(child, Point::ZERO);
 
         let (phase, source, current) = fired_with.get().expect("handler should have fired");
         assert!(matches!(phase, Phase::Target));
@@ -2333,7 +2476,7 @@ mod tests {
             });
         }
 
-        ui.dispatch_click(grand);
+        ui.dispatch_click(grand, Point::ZERO);
 
         let log = log.borrow().clone();
         assert_eq!(
@@ -2363,11 +2506,11 @@ mod tests {
             inc.set(inc.get() + 1);
         });
 
-        ui.dispatch_click(child);
+        ui.dispatch_click(child, Point::ZERO);
         assert_eq!(count.get(), 1);
 
         ui.remove_click_handler(child);
-        ui.dispatch_click(child);
+        ui.dispatch_click(child, Point::ZERO);
         assert_eq!(count.get(), 1, "removed handler should not fire");
     }
 
