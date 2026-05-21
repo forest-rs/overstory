@@ -9,14 +9,13 @@
 //! STYLE -> TEMPLATE -> LAYOUT -> PAINT -> COMPOSE
 //! ```
 //!
-//! Earlier phases dirty downstream channels: a style change can dirty layout
-//! and paint, a layout change can dirty paint, etc. The toolkit unions
-//! `affects_channels` from each property write into its
-//! [`invalidation::InvalidationTracker`].
-//!
-//! In Phase 1b only [`PAINT`] and [`COMPOSE`] are wired through `Ui::paint`;
-//! [`STYLE`], [`TEMPLATE`], and [`LAYOUT`] are reserved channel ids that later
-//! phases attach work to.
+//! These are wired as a channel cascade on
+//! [`invalidation::InvalidationTracker::add_cascade`] in
+//! [`crate::Ui::new`]: marking any upstream channel auto-marks every
+//! downstream channel for the same key, so call sites don't need to
+//! enumerate every channel a change touches. Per-property
+//! [`affects_channels`](understory_property::PropertyMetadataBuilder)
+//! contributes the initial mark; the tracker's cascade does the rest.
 
 use invalidation::Channel;
 

@@ -42,7 +42,7 @@ use understory_style::{
 
 use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PresentContext};
 use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
-use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE};
+use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
@@ -236,6 +236,26 @@ impl Ui {
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
+        // Channel-to-channel cascade in the invalidation tracker:
+        // STYLE → TEMPLATE → LAYOUT → PAINT → COMPOSE. Once
+        // registered, marking any upstream channel auto-marks every
+        // downstream one for the same key, so call sites don't have
+        // to enumerate every channel a change touches. Bindings live
+        // outside this chain.
+        let mut invalidation = InvalidationTracker::new();
+        invalidation
+            .add_cascade(STYLE, TEMPLATE)
+            .expect("STYLE → TEMPLATE cascade should be acyclic");
+        invalidation
+            .add_cascade(TEMPLATE, LAYOUT)
+            .expect("TEMPLATE → LAYOUT cascade should be acyclic");
+        invalidation
+            .add_cascade(LAYOUT, PAINT)
+            .expect("LAYOUT → PAINT cascade should be acyclic");
+        invalidation
+            .add_cascade(PAINT, COMPOSE)
+            .expect("PAINT → COMPOSE cascade should be acyclic");
+
         let mut me = Self {
             slots: Vec::new(),
             free: Vec::new(),
@@ -243,7 +263,7 @@ impl Ui {
             registry,
             properties,
             behaviors,
-            invalidation: InvalidationTracker::new(),
+            invalidation,
             presentation: Some(PresentationStore::new()),
             cascade,
             theme,
@@ -329,23 +349,21 @@ impl Ui {
 
     /// Swaps in a new style cascade and restyles the entire tree.
     ///
-    /// Every element is marked PAINT- and LAYOUT-dirty since styled
-    /// values may now resolve differently. (Match states from the
-    /// previous cascade are discarded — the [`MatchState`] type is
-    /// bound to its originating cascade, so they can't be reused
-    /// after a swap.) The conservative LAYOUT mark catches cascades
-    /// that contribute a `Layout` for an element whose previous
-    /// state didn't have one — `style_one`'s diff path only triggers
-    /// on state *transitions*, not first-time styling, so without
-    /// this mark a styled `Layout` would sit in the cascade but
-    /// never reach taffy.
+    /// Every element is marked LAYOUT-dirty since styled values may
+    /// now resolve differently; the channel cascade
+    /// (LAYOUT → PAINT → COMPOSE) handles the rest. Match states
+    /// from the previous cascade are discarded — the [`MatchState`]
+    /// type is bound to its originating cascade, so they can't be
+    /// reused after a swap. The LAYOUT mark catches cascades that
+    /// contribute a `Layout` for an element whose previous state
+    /// didn't have one — `style_one`'s diff path only triggers on
+    /// state *transitions*, not first-time styling.
     pub fn set_cascade(&mut self, cascade: StyleCascade) {
         self.cascade = cascade;
         self.match_states.clear();
         let ids = collect_preorder(self, self.root);
         for id in ids {
             self.style_one(id);
-            self.invalidation.mark(id, PAINT);
             self.invalidation.mark(id, LAYOUT);
         }
     }
@@ -460,12 +478,11 @@ impl Ui {
         let child = self.alloc_element(kind, Some(parent), templated_parent);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
-        // PAINT + LAYOUT: the cascade may have styled either kind of
-        // value for this newly-inserted element, and `style_one`'s
-        // diff path only marks channels for state *transitions* —
-        // first-time styling skips the diff, so a cascade-supplied
-        // `Layout` would otherwise never reach taffy on insert.
-        self.invalidation.mark(child, PAINT);
+        // LAYOUT cascades to PAINT and COMPOSE via the tracker's
+        // channel cascade. `style_one`'s diff path only marks
+        // channels on state transitions — first-time styling skips
+        // the diff, so without this explicit mark a cascade-supplied
+        // `Layout` would sit in the cascade but never reach taffy.
         self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
         configure(self, child);

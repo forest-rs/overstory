@@ -5,7 +5,7 @@
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
 //! The tree is a dark backdrop with two templated Buttons and a
-//! ToggleSwitch side by side. Each button cycles its own label on
+//! `ToggleSwitch` side by side. Each button cycles its own label on
 //! click or Space / Enter while focused; the toggle flips its
 //! `:checked` state. Tab and Shift+Tab walk focus across all three;
 //! the focused element paints a white border ring. Layout is driven
