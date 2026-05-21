@@ -30,6 +30,8 @@ use understory_property::{
 use understory_property_binding::{
     BindingError, BindingHost, BindingId, BindingSet, BindingWrite, EndpointKey, PropertyEndpoint,
 };
+use understory_responder::router::Router;
+use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
 };
@@ -104,6 +106,32 @@ pub struct Ui {
     /// Element → its node(s) in `tree`, primary first. `SmallVec`
     /// inline capacity of 1 keeps the common no-auxiliary case heap-free.
     element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
+    /// Per-element click handlers. Invoked along the responder
+    /// capture → target → bubble sequence when a primary-button
+    /// click is recognized by [`ClickState`]. One handler per
+    /// element for now; subsequent `on_click` calls replace.
+    click_handlers: HashMap<ElementId, ClickHandler>,
+}
+
+type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent)>;
+
+/// Payload delivered to a click handler.
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug)]
+pub struct ClickEvent {
+    /// The element the user actually clicked (the target).
+    pub source: ElementId,
+    /// The element this handler is registered on (where in the
+    /// responder path the dispatch is currently). Equal to `source`
+    /// for the target-phase invocation; differs for ancestors during
+    /// capture and bubble.
+    pub current: ElementId,
+    /// The propagation phase (capture, target, or bubble) this
+    /// invocation belongs to.
+    pub phase: Phase,
 }
 
 impl core::fmt::Debug for Ui {
@@ -172,6 +200,7 @@ impl Ui {
             bindings: Some(BindingSet::new(BINDING)),
             tree: Tree::new(),
             element_to_nodes: HashMap::new(),
+            click_handlers: HashMap::new(),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -570,6 +599,60 @@ impl Ui {
         None
     }
 
+    /// Registers a click handler on `id`. The handler runs along the
+    /// responder capture → target → bubble sequence when
+    /// [`ClickState`] recognizes a primary-button click whose target
+    /// path includes this element. One handler per element for now;
+    /// subsequent calls replace the previous handler.
+    pub fn on_click<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, ClickEvent) + 'static,
+    {
+        self.click_handlers.insert(id, Box::new(handler));
+    }
+
+    /// Removes a click handler previously registered with
+    /// [`Self::on_click`]. No-op if no handler is registered.
+    pub fn remove_click_handler(&mut self, id: ElementId) {
+        self.click_handlers.remove(&id);
+    }
+
+    /// Builds the responder dispatch sequence for `target` and runs
+    /// each element's click handler along it (capture, then target,
+    /// then bubble). Called when [`ClickState::on_up`] returns
+    /// [`ClickResult::Click`].
+    fn dispatch_click(&mut self, target: ElementId) {
+        // Compute the sequence with `&self` borrows, drop them, then
+        // run handlers with `&mut self`.
+        let seq: Vec<(Phase, ElementId)> = {
+            let lookup = UiWidgetLookup;
+            let parent = UiParentLookup { ui: self };
+            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
+                Router::with_parent(lookup, parent);
+            let dispatches = router.dispatch_for::<()>(target);
+            dispatches.into_iter().map(|d| (d.phase, d.node)).collect()
+        };
+
+        for (phase, node) in seq {
+            // Take the handler out so it can call `&mut self`, then
+            // put it back unless the handler removed itself.
+            let Some(mut handler) = self.click_handlers.remove(&node) else {
+                continue;
+            };
+            let event = ClickEvent {
+                source: target,
+                current: node,
+                phase,
+            };
+            handler(self, event);
+            // Reinstate iff the element is still alive AND the
+            // handler didn't replace itself during the call.
+            if self.get(node).is_some() && !self.click_handlers.contains_key(&node) {
+                self.click_handlers.insert(node, handler);
+            }
+        }
+    }
+
     /// Resolves the effective `Bounds` for `id` through the cascade.
     #[must_use]
     pub fn effective_bounds(&self, id: ElementId) -> Rect {
@@ -632,11 +715,9 @@ impl Ui {
                 let hit = self.hit_test(pos);
                 // Hand the up to ClickState — produces a
                 // `ClickResult::Click(target)` when the press is
-                // recognized. We don't dispatch click handlers yet
-                // (that lands when we wire `understory_responder`'s
-                // dispatcher for application event handlers), but the
-                // result is computed cleanly here for future use.
-                let _result = match hit {
+                // recognized; dispatch handlers along the responder
+                // path for that target.
+                let result = match hit {
                     Some(target) => self.clicks.on_up(None, None, &target, pos, time_ms),
                     None => {
                         // Up off any element — cancel any open press
@@ -646,7 +727,11 @@ impl Ui {
                         ClickResult::Suppressed(None)
                     }
                 };
-                self.set_press_target(None)
+                let press_changed = self.set_press_target(None);
+                if let ClickResult::Click(target) = result {
+                    self.dispatch_click(target);
+                }
+                press_changed
             }
             PointerEvent::Leave(_) => self.clear_hover(),
             PointerEvent::Cancel(_) => {
@@ -1160,6 +1245,30 @@ impl BindingHost<ElementId> for Ui {
     }
 }
 
+/// Identity `WidgetLookup` for the responder: each `ElementId` is
+/// its own widget id (overstory doesn't have a separate widget-vs-
+/// node identity).
+struct UiWidgetLookup;
+
+impl WidgetLookup<ElementId> for UiWidgetLookup {
+    type WidgetId = ElementId;
+    fn widget_of(&self, node: &ElementId) -> Option<ElementId> {
+        Some(*node)
+    }
+}
+
+/// `ParentLookup` adapter so the responder can reconstruct the
+/// root→target path from the element tree.
+struct UiParentLookup<'a> {
+    ui: &'a Ui,
+}
+
+impl<'a> ParentLookup<ElementId> for UiParentLookup<'a> {
+    fn parent_of(&self, node: &ElementId) -> Option<ElementId> {
+        self.ui.get(*node).and_then(Element::parent)
+    }
+}
+
 /// Translates taffy's `AvailableSpace` into kurbo's `f64`. `Definite(v)`
 /// becomes `v` as `f64`. Both `MinContent` and `MaxContent` become
 /// `f64::INFINITY` for now — behaviors receiving infinity report their
@@ -1498,6 +1607,99 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn dispatch_click_runs_target_handler() {
+        // Register a click handler on a child element; dispatch a
+        // click against it; the handler should run with phase Target
+        // and source == child.
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        let fired_with = Rc::new(Cell::new(None::<(Phase, ElementId, ElementId)>));
+        let fired = fired_with.clone();
+        ui.on_click(child, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                fired.set(Some((event.phase, event.source, event.current)));
+            }
+        });
+
+        ui.dispatch_click(child);
+
+        let (phase, source, current) = fired_with.get().expect("handler should have fired");
+        assert!(matches!(phase, Phase::Target));
+        assert_eq!(source, child);
+        assert_eq!(current, child);
+    }
+
+    #[test]
+    fn dispatch_click_walks_capture_target_bubble() {
+        // Register handlers on root, child, and grandchild; click the
+        // grandchild. Expected dispatch order: root capture, child
+        // capture, grandchild target, child bubble, root bubble.
+        use alloc::string::String;
+        use core::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let grand = ui.insert_child(child, ELEMENT_KIND_GENERIC);
+
+        let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
+            let log = log.clone();
+            ui.on_click(id, move |_ui, event| {
+                let phase = match event.phase {
+                    Phase::Capture => "capture",
+                    Phase::Target => "target",
+                    Phase::Bubble => "bubble",
+                };
+                log.borrow_mut().push(alloc::format!("{name}:{phase}"));
+            });
+        }
+
+        ui.dispatch_click(grand);
+
+        let log = log.borrow().clone();
+        assert_eq!(
+            log,
+            vec![
+                "root:capture".to_owned(),
+                "child:capture".to_owned(),
+                "grand:target".to_owned(),
+                "child:bubble".to_owned(),
+                "root:bubble".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn remove_click_handler_stops_firing() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        let count = Rc::new(Cell::new(0_u32));
+        let inc = count.clone();
+        ui.on_click(child, move |_ui, _event| {
+            inc.set(inc.get() + 1);
+        });
+
+        ui.dispatch_click(child);
+        assert_eq!(count.get(), 1);
+
+        ui.remove_click_handler(child);
+        ui.dispatch_click(child);
+        assert_eq!(count.get(), 1, "removed handler should not fire");
     }
 
     #[test]

@@ -363,6 +363,35 @@ fn build_ui() -> Ui {
     );
     ui.set_local(button, ui.properties().font_size, 22.0_f64);
 
+    // Wire a click handler. On each click, cycle the button's label
+    // through "Click me" → "Clicked!" → "Clicked 2×" → … via the
+    // template binding so the change propagates to the label.
+    //
+    // Bubble-style routed event: fire on `Target` when the button
+    // itself is the click target, or on `Bubble` when one of its
+    // template parts (the label child) is the actual hit. Either way
+    // the handler runs exactly once per click. `Capture` would
+    // double-fire for ancestor handlers, so skip it.
+    let content_prop = ui.properties().content;
+    let mut click_count: u32 = 0;
+    ui.on_click(button, move |ui, event| {
+        if !matches!(
+            event.phase,
+            overstory::Phase::Target | overstory::Phase::Bubble
+        ) {
+            return;
+        }
+        click_count += 1;
+        let label = match click_count {
+            1 => "Clicked!".to_owned(),
+            n => format!("Clicked {n}×"),
+        };
+        // Write to the button (NOT event.source — that's the label
+        // child the user actually clicked on). Template binding
+        // flows the new content out to the label.
+        ui.set_local(button, content_prop, label);
+    });
+
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
     let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
