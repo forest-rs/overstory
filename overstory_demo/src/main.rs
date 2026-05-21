@@ -33,8 +33,8 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
-use overstory::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
-use overstory::{ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, Ui};
+use overstory::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use overstory::{ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, Navigation, Ui};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
@@ -147,8 +147,24 @@ impl ApplicationHandler for App {
                         state.window.request_redraw();
                     }
                 }
-                WindowEventTranslation::Keyboard(_) => {
-                    // Keyboard routing lands in Phase 1f.
+                WindowEventTranslation::Keyboard(key) => {
+                    // Built-in Tab / Shift+Tab → focus navigation.
+                    // App-defined keys (Space/Enter on a button etc.)
+                    // are handled by element key handlers below.
+                    use ui_events::keyboard::{Key, KeyState, NamedKey};
+                    if key.state == KeyState::Down && matches!(key.key, Key::Named(NamedKey::Tab)) {
+                        let dir = if key.modifiers.shift() {
+                            Navigation::Prev
+                        } else {
+                            Navigation::Next
+                        };
+                        state.ui.focus_navigate(dir);
+                    }
+                    state.ui.dispatch_key(&key);
+                    // Keyboard input is rare enough that a redraw on
+                    // every key is fine; paint/style/binding flushes
+                    // make it a no-op when nothing changed.
+                    state.window.request_redraw();
                 }
             }
         }
@@ -362,35 +378,68 @@ fn build_ui() -> Ui {
         Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
     );
     ui.set_local(button, ui.properties().font_size, 22.0_f64);
+    // Make the button focusable. Tab will land on it; Space/Enter
+    // activate it via the key handler below.
+    ui.set_focusable(button, true);
 
-    // Wire a click handler. On each click, cycle the button's label
-    // through "Click me" → "Clicked!" → "Clicked 2×" → … via the
-    // template binding so the change propagates to the label.
-    //
-    // Bubble-style routed event: fire on `Target` when the button
-    // itself is the click target, or on `Bubble` when one of its
-    // template parts (the label child) is the actual hit. Either way
-    // the handler runs exactly once per click. `Capture` would
-    // double-fire for ancestor handlers, so skip it.
+    // Activation: clicked or Space/Enter while focused. Shared
+    // state cycles the button's label "Click me" → "Clicked!" →
+    // "Clicked 2×" → … via the template binding so the change flows
+    // out to the label child.
     let content_prop = ui.properties().content;
-    let mut click_count: u32 = 0;
-    ui.on_click(button, move |ui, event| {
-        if !matches!(
-            event.phase,
-            overstory::Phase::Target | overstory::Phase::Bubble
-        ) {
-            return;
+    let activations = std::rc::Rc::new(std::cell::Cell::new(0_u32));
+    let advance = {
+        let activations = activations.clone();
+        move |ui: &mut Ui| {
+            let n = activations.get() + 1;
+            activations.set(n);
+            let label = if n == 1 {
+                "Clicked!".to_owned()
+            } else {
+                format!("Clicked {n}×")
+            };
+            ui.set_local(button, content_prop, label);
         }
-        click_count += 1;
-        let label = match click_count {
-            1 => "Clicked!".to_owned(),
-            n => format!("Clicked {n}×"),
-        };
-        // Write to the button (NOT event.source — that's the label
-        // child the user actually clicked on). Template binding
-        // flows the new content out to the label.
-        ui.set_local(button, content_prop, label);
-    });
+    };
+
+    // Bubble-style routed click: fire on `Target` when the button is
+    // the click target, or on `Bubble` when a template part (the
+    // label) is the actual hit. Skips `Capture` to avoid
+    // double-firing for ancestor handlers.
+    {
+        let advance = advance.clone();
+        ui.on_click(button, move |ui, event| {
+            if !matches!(
+                event.phase,
+                overstory::Phase::Target | overstory::Phase::Bubble
+            ) {
+                return;
+            }
+            advance(ui);
+        });
+    }
+
+    // Keyboard activation: Space or Enter on key down while the
+    // button is focused.
+    {
+        ui.on_key(button, move |ui, event| {
+            use ui_events::keyboard::{Key, KeyState, NamedKey};
+            if !matches!(event.phase, overstory::Phase::Target) {
+                return;
+            }
+            if event.key.state != KeyState::Down {
+                return;
+            }
+            let activate = match &event.key.key {
+                Key::Named(NamedKey::Enter) => true,
+                Key::Character(s) if s == " " => true,
+                _ => false,
+            };
+            if activate {
+                advance(ui);
+            }
+        });
+    } // end keyboard scope
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
@@ -434,9 +483,23 @@ fn build_ui() -> Ui {
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_PRESSED))
             .build();
 
+    // :focused — a brighter sky-blue background to make the keyboard
+    // focus target obvious. (A real focus ring is a paint-time
+    // decoration that'd land alongside the presentation tree.)
+    let button_focused = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x6a, 0xa3, 0xff, 0xff))),
+        )
+        .build();
+    let button_focused_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_FOCUSED))
+            .build();
+
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, backdrop_selector, backdrop)
         .push_rule(StyleOrigin::Base, button_selector, button_idle)
+        .push_rule(StyleOrigin::Base, button_focused_selector, button_focused)
         .push_rule(StyleOrigin::Base, button_hover_selector, button_hover)
         .push_rule(StyleOrigin::Base, button_pressed_selector, button_pressed)
         .build();

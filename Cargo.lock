@@ -1551,6 +1551,7 @@ dependencies = [
  "ui-events",
  "understory_box_tree",
  "understory_event_state",
+ "understory_focus",
  "understory_property",
  "understory_property_binding",
  "understory_responder",
@@ -2366,6 +2367,15 @@ name = "understory_event_state"
 version = "0.1.0"
 dependencies = [
  "kurbo",
+]
+
+[[package]]
+name = "understory_focus"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "understory_box_tree",
+ "understory_index",
 ]
 
 [[package]]

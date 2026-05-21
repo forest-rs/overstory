@@ -20,10 +20,13 @@ use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
 use smallvec::SmallVec;
+use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::{PointerButton, PointerEvent};
-use understory_box_tree::{LocalNode, NodeId, QueryFilter, Tree};
+use understory_box_tree::{LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
 use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
+use understory_focus::adapters::box_tree::build_focus_space_for_scope;
+use understory_focus::{DefaultPolicy, FocusEntry, FocusPolicy, Navigation, WrapMode};
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
@@ -43,7 +46,7 @@ use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
-use crate::pseudos::{PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::text::TextEngine;
 use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
 
@@ -111,9 +114,50 @@ pub struct Ui {
     /// click is recognized by [`ClickState`]. One handler per
     /// element for now; subsequent `on_click` calls replace.
     click_handlers: HashMap<ElementId, ClickHandler>,
+    /// Per-element key handlers. Invoked along the responder
+    /// sequence rooted at the currently focused element. Same
+    /// one-handler-per-element model as `click_handlers`.
+    key_handlers: HashMap<ElementId, KeyHandler>,
+    /// Currently focused element (the keyboard target). `:focused`
+    /// is applied to this element's pseudoclass set.
+    focused: Option<ElementId>,
+    /// Focus navigation policy. Pluggable in future; for now
+    /// `DefaultPolicy` with scope-wrap so Tab cycles within the
+    /// element tree.
+    focus_policy: DefaultPolicy,
+    /// Reusable scratch buffer for building a `FocusSpace`. Kept on
+    /// `Ui` so each navigation call doesn't reallocate.
+    focus_buf: Vec<FocusEntry<NodeId>>,
 }
 
 type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent)>;
+type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
+
+/// Payload delivered to a key handler. Carries the normalized
+/// `ui_events`/`keyboard-types` event by reference plus the
+/// responder dispatch context. Handlers filter `key.state`,
+/// `key.key`, `key.modifiers`, etc. themselves — `Ui::on_key`
+/// does no internal filtering.
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Debug)]
+pub struct KeyEvent<'a> {
+    /// The element keyboard input was routed to (the focused
+    /// element at the time of dispatch).
+    pub source: ElementId,
+    /// The element this handler is registered on — the current
+    /// node in the responder sequence. Equal to `source` for the
+    /// target-phase invocation; differs for ancestors during
+    /// capture and bubble.
+    pub current: ElementId,
+    /// Propagation phase (capture, target, or bubble) for this
+    /// invocation.
+    pub phase: Phase,
+    /// The full normalized keyboard event.
+    pub key: &'a KeyboardEvent,
+}
 
 /// Payload delivered to a click handler.
 #[allow(
@@ -201,6 +245,12 @@ impl Ui {
             tree: Tree::new(),
             element_to_nodes: HashMap::new(),
             click_handlers: HashMap::new(),
+            key_handlers: HashMap::new(),
+            focused: None,
+            focus_policy: DefaultPolicy {
+                wrap: WrapMode::Scope,
+            },
+            focus_buf: Vec::new(),
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -597,6 +647,136 @@ impl Ui {
             }
         }
         None
+    }
+
+    /// Returns the primary box-tree node for `id`, or `None` for
+    /// stale ids.
+    #[must_use]
+    pub fn box_for(&self, id: ElementId) -> Option<NodeId> {
+        self.element_to_nodes
+            .get(&id)
+            .and_then(|nodes| nodes.first().copied())
+    }
+
+    /// Toggles the `Focusable` flag on `id`'s primary box-tree node.
+    /// Focusable elements participate in [`Self::focus_navigate`]
+    /// and can receive keyboard events via [`Self::on_key`]. No-op
+    /// for stale ids.
+    pub fn set_focusable(&mut self, id: ElementId, focusable: bool) {
+        let Some(primary) = self.box_for(id) else {
+            return;
+        };
+        let mut flags = self.tree.flags(primary).unwrap_or_default();
+        if focusable {
+            flags.insert(NodeFlags::FOCUSABLE);
+        } else {
+            flags.remove(NodeFlags::FOCUSABLE);
+        }
+        self.tree.set_flags(primary, flags);
+    }
+
+    /// Returns the element that currently has focus, if any.
+    #[must_use]
+    #[inline]
+    pub fn focused(&self) -> Option<ElementId> {
+        self.focused
+    }
+
+    /// Sets keyboard focus. Passes `None` to clear focus. Applies /
+    /// removes the `:focused` pseudoclass on the affected elements.
+    /// Returns `true` if the focus changed.
+    pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
+        if self.focused == new {
+            return false;
+        }
+        if let Some(old_id) = self.focused.take() {
+            self.remove_pseudo(old_id, PSEUDO_FOCUSED);
+        }
+        if let Some(new_id) = new
+            && self.get(new_id).is_some()
+        {
+            self.add_pseudo(new_id, PSEUDO_FOCUSED);
+            self.focused = Some(new_id);
+        } else {
+            self.focused = None;
+        }
+        true
+    }
+
+    /// Moves focus per `direction` (e.g. [`Navigation::Next`] for
+    /// Tab, [`Navigation::Prev`] for Shift+Tab). Uses
+    /// [`understory_focus::DefaultPolicy`] with `WrapMode::Scope` so
+    /// focus cycles within the tree. Returns the new focused element.
+    pub fn focus_navigate(&mut self, direction: Navigation) -> Option<ElementId> {
+        self.tree.commit();
+        let root_node = self.box_for(self.root)?;
+        // Resolve the current focus's node before we borrow `tree`
+        // and `focus_buf` to build the FocusSpace.
+        let current_node = self.focused.and_then(|id| self.box_for(id));
+        let new_node = {
+            let space =
+                build_focus_space_for_scope(&self.tree, root_node, &(), &mut self.focus_buf);
+            match current_node {
+                Some(current) => self.focus_policy.next(current, direction, &space),
+                None => self.focus_policy.initial::<NodeId>(direction, &space),
+            }
+        };
+        let new_element = new_node.and_then(|n| self.node_to_element(n));
+        self.set_focus(new_element);
+        new_element
+    }
+
+    /// Registers a key handler on `id`. The handler runs along the
+    /// responder capture → target → bubble sequence rooted at the
+    /// currently focused element when [`Self::dispatch_key`] is
+    /// called. One handler per element for now; subsequent calls
+    /// replace the previous handler.
+    pub fn on_key<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
+    {
+        self.key_handlers.insert(id, Box::new(handler));
+    }
+
+    /// Removes a key handler previously registered with
+    /// [`Self::on_key`]. No-op if none is registered.
+    pub fn remove_key_handler(&mut self, id: ElementId) {
+        self.key_handlers.remove(&id);
+    }
+
+    /// Routes `event` to the currently focused element and runs
+    /// every key handler along the responder capture → target →
+    /// bubble path. No-op when nothing is focused.
+    pub fn dispatch_key(&mut self, event: &KeyboardEvent) {
+        let Some(focused) = self.focused else {
+            return;
+        };
+        let seq: Vec<(Phase, ElementId)> = {
+            let lookup = UiWidgetLookup;
+            let parent = UiParentLookup { ui: self };
+            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
+                Router::with_parent(lookup, parent);
+            router
+                .dispatch_for::<()>(focused)
+                .into_iter()
+                .map(|d| (d.phase, d.node))
+                .collect()
+        };
+        for (phase, node) in seq {
+            let Some(mut handler) = self.key_handlers.remove(&node) else {
+                continue;
+            };
+            let ev = KeyEvent {
+                source: focused,
+                current: node,
+                phase,
+                key: event,
+            };
+            handler(self, ev);
+            if self.get(node).is_some() && !self.key_handlers.contains_key(&node) {
+                self.key_handlers.insert(node, handler);
+            }
+        }
     }
 
     /// Registers a click handler on `id`. The handler runs along the
@@ -1109,6 +1289,11 @@ impl Ui {
         self.scene_cache.remove(&id);
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
+        self.click_handlers.remove(&id);
+        self.key_handlers.remove(&id);
+        if self.focused == Some(id) {
+            self.focused = None;
+        }
         if let Some(taffy_node) = self.element_to_taffy.remove(&id) {
             // `taffy.remove` also detaches from its parent and frees children
             // recursively — but we've already walked our subtree top-down and
@@ -1607,6 +1792,120 @@ mod tests {
         assert_eq!(ui.hit_test(Point::new(10.0, 10.0)), Some(root));
         // Outside root entirely.
         assert_eq!(ui.hit_test(Point::new(300.0, 300.0)), None);
+    }
+
+    #[test]
+    fn set_focus_toggles_pseudoclass() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+
+        assert_eq!(ui.focused(), None);
+        assert!(ui.set_focus(Some(a)));
+        assert_eq!(ui.focused(), Some(a));
+        assert!(ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+
+        // Move focus to b — a should lose :focused, b should gain it.
+        assert!(ui.set_focus(Some(b)));
+        assert!(!ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert!(ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+
+        // Clear focus.
+        assert!(ui.set_focus(None));
+        assert!(!ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert_eq!(ui.focused(), None);
+    }
+
+    #[test]
+    fn focus_navigate_walks_focusables() {
+        // Lay out three focusable children. `Navigation::Next`
+        // cycles through them in document order with WrapMode::Scope.
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let layout_prop = ui.properties().layout;
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(300.0),
+                    height: taffy::Dimension::length(50.0),
+                },
+                ..Default::default()
+            },
+        );
+        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let c = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        for id in [a, b, c] {
+            ui.set_local(
+                id,
+                layout_prop,
+                taffy::Style {
+                    flex_grow: 1.0,
+                    align_self: Some(taffy::AlignSelf::Stretch),
+                    ..Default::default()
+                },
+            );
+            ui.set_focusable(id, true);
+        }
+        ui.compute_layout(Size::new(300.0, 50.0));
+
+        // Starting unfocused, Next picks the initial element.
+        let first = ui.focus_navigate(Navigation::Next).unwrap();
+        assert_eq!(first, a);
+        assert_eq!(ui.focus_navigate(Navigation::Next), Some(b));
+        assert_eq!(ui.focus_navigate(Navigation::Next), Some(c));
+        // WrapMode::Scope → back to the first.
+        assert_eq!(ui.focus_navigate(Navigation::Next), Some(a));
+        // Prev cycles backwards.
+        assert_eq!(ui.focus_navigate(Navigation::Prev), Some(c));
+    }
+
+    #[test]
+    fn dispatch_key_runs_target_handler() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        ui.set_focusable(child, true);
+        ui.set_focus(Some(child));
+
+        let fired = Rc::new(Cell::new(false));
+        let inc = fired.clone();
+        ui.on_key(child, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                inc.set(true);
+            }
+        });
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        ui.dispatch_key(&key);
+        assert!(fired.get(), "target-phase key handler should fire");
+    }
+
+    #[test]
+    fn dispatch_key_noop_without_focus() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let fired = Rc::new(Cell::new(false));
+        let inc = fired.clone();
+        ui.on_key(root, move |_ui, _event| inc.set(true));
+
+        // No focus set → dispatch should be a no-op even though root
+        // has a handler.
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        ui.dispatch_key(&key);
+        assert!(!fired.get(), "key handler should not fire without focus");
     }
 
     #[test]

@@ -50,11 +50,14 @@ pub use properties::BuiltInProperties;
 pub use template::Template;
 pub use text::TextEngine;
 pub use text_behavior::{ELEMENT_KIND_TEXT, TextBehavior};
-pub use ui::{ClickEvent, Ui};
+pub use ui::{ClickEvent, KeyEvent, Ui};
 
 // Re-export the responder's `Phase` so callers can read `ClickEvent::phase`
-// without depending on `understory_responder` directly.
+// / `KeyEvent::phase` without depending on `understory_responder` directly.
 pub use understory_responder::types::Phase;
+
+// Re-export the navigation intent enum for callers driving focus.
+pub use understory_focus::Navigation;
 
 // Re-export `taffy` so consumers don't have to add a direct dependency for
 // the `Layout` property's style type.
