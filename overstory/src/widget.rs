@@ -6,7 +6,7 @@
 //! Each control is a struct that implements both [`AppendSpec`] (the
 //! builder / construction surface) and produces a [`Widget`] instance
 //! that lives on the element. The widget is the toolkit-side runtime
-//! object: it exposes the element's selector identity, runs the
+//! object: it may expose the element's selector identity, runs the
 //! present pass, runs custom measure for leaf-like controls, and
 //! identifies the default template.
 //!
@@ -54,10 +54,13 @@ pub const TYPE_GENERIC: TypeTag = TypeTag(0);
 /// cascade — most controls' surface intent is exactly that.
 /// Controls with bespoke drawing (e.g. shaped text) override.
 pub trait Widget: Any + core::fmt::Debug + 'static {
-    /// Selector identity for cascade matching. Style rules keyed on
-    /// this tag match against the element this widget is attached
-    /// to.
-    fn type_tag(&self) -> TypeTag;
+    /// Selector identity for cascade matching, if this widget is a
+    /// globally addressable control kind.
+    ///
+    /// Pure template parts should usually return `None` and rely on
+    /// the element's owner-local `PartTag` instead. That keeps parts
+    /// from becoming accidental app-wide control types.
+    fn type_tag(&self) -> Option<TypeTag>;
 
     /// Resolves drawing intent into the presentation store. The
     /// default implementation runs [`present_surface`], which reads
@@ -93,6 +96,20 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// control creating its parts (e.g. `ToggleSwitch`'s thumb,
     /// `Slider`'s track + thumb).
     fn default_template(&self) -> Option<&'static dyn Template> {
+        None
+    }
+}
+
+/// Generic surface-only widget for template parts.
+///
+/// It has no global selector type. Style rules should target it with
+/// an owner-local `PartTag`, usually anchored under the owning control
+/// type.
+#[derive(Debug, Default)]
+pub(crate) struct SurfacePartWidget;
+
+impl Widget for SurfacePartWidget {
+    fn type_tag(&self) -> Option<TypeTag> {
         None
     }
 }

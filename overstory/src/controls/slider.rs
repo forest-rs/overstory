@@ -12,14 +12,10 @@ use crate::Phase;
 use crate::element::ElementId;
 use crate::template::Template;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `Slider`.
 pub const TYPE_SLIDER: TypeTag = TypeTag(6);
-/// Selector identity for the track part.
-pub const TYPE_SLIDER_TRACK: TypeTag = TypeTag(7);
-/// Selector identity for the thumb part.
-pub const TYPE_SLIDER_THUMB: TypeTag = TypeTag(8);
 /// Owner-local part identity for the slider track.
 pub const PART_SLIDER_TRACK: PartTag = PartTag(1);
 /// Owner-local part identity for the slider thumb.
@@ -140,32 +136,12 @@ impl AppendSpec for Slider {
 pub struct SliderWidget;
 
 impl Widget for SliderWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_SLIDER
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_SLIDER)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SLIDER_TEMPLATE)
-    }
-}
-
-/// Per-element widget for the slider's track.
-#[derive(Debug, Default)]
-pub struct SliderTrackWidget;
-
-impl Widget for SliderTrackWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_SLIDER_TRACK
-    }
-}
-
-/// Per-element widget for the slider's thumb.
-#[derive(Debug, Default)]
-pub struct SliderThumbWidget;
-
-impl Widget for SliderThumbWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_SLIDER_THUMB
     }
 }
 
@@ -179,7 +155,7 @@ impl Template for SliderTemplate {
         let layout_prop = ui.properties().layout;
 
         // Track: full width, vertically centered.
-        let track = ui.append_part_widget(owner, PART_SLIDER_TRACK, Box::new(SliderTrackWidget));
+        let track = ui.append_part_widget(owner, PART_SLIDER_TRACK, Box::new(SurfacePartWidget));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
         ui.set_local(
             track,
@@ -201,7 +177,7 @@ impl Template for SliderTemplate {
         );
 
         // Thumb: absolute, recomputed left whenever Value changes.
-        let thumb = ui.append_part_widget(owner, PART_SLIDER_THUMB, Box::new(SliderThumbWidget));
+        let thumb = ui.append_part_widget(owner, PART_SLIDER_THUMB, Box::new(SurfacePartWidget));
         let thumb_top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
         let initial_left = thumb_left_for_value(
             read_or(ui, owner, ui.properties().value, 0.0),

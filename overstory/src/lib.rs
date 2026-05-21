@@ -33,6 +33,7 @@ pub mod layouts;
 mod lookup;
 mod properties;
 pub mod pseudos;
+pub mod selectors;
 mod template;
 mod text;
 pub mod theme;
@@ -43,14 +44,12 @@ pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentC
 pub use controls::button::{Button, ButtonWidget, PART_BUTTON_LABEL, TYPE_BUTTON};
 pub use controls::panel::{Panel, PanelWidget};
 pub use controls::slider::{
-    PART_SLIDER_THUMB, PART_SLIDER_TRACK, Slider, SliderThumbWidget, SliderTrackWidget,
-    SliderWidget, TYPE_SLIDER, TYPE_SLIDER_THUMB, TYPE_SLIDER_TRACK, set_slider_value,
+    PART_SLIDER_THUMB, PART_SLIDER_TRACK, Slider, SliderWidget, TYPE_SLIDER, set_slider_value,
 };
 pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::toggle::{
-    PART_TOGGLE_THUMB, TYPE_TOGGLE, TYPE_TOGGLE_THUMB, ToggleSwitch, ToggleThumbWidget,
-    ToggleWidget, toggle_checked,
+    PART_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
 };
 pub use element::{Element, ElementId};
 pub use generic::present_surface;

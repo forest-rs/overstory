@@ -47,16 +47,10 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
-use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    Button, Navigation, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB, Panel, Slider,
-    Spinner, TYPE_BUTTON, TYPE_GENERIC, TYPE_SLIDER, TYPE_TOGGLE, Text, ToggleSwitch, Ui, layouts,
-    theme,
+    Button, Navigation, Panel, Slider, Spinner, Text, ToggleSwitch, Ui, layouts, theme,
 };
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
-use understory_style::{
-    SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin,
-};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
@@ -420,31 +414,12 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
-/// Padding shorthand. We apply it via the cascade rule keyed on
-/// `Button` so every demo button shares the same padding shape.
-fn button_layout() -> overstory::taffy::Style {
-    overstory::taffy::Style {
-        padding: overstory::taffy::Rect {
-            left: overstory::taffy::LengthPercentage::length(32.0),
-            right: overstory::taffy::LengthPercentage::length(32.0),
-            top: overstory::taffy::LengthPercentage::length(18.0),
-            bottom: overstory::taffy::LengthPercentage::length(18.0),
-        },
-        display: overstory::taffy::Display::Flex,
-        justify_content: Some(overstory::taffy::JustifyContent::Center),
-        align_items: Some(overstory::taffy::AlignItems::Center),
-        ..Default::default()
-    }
-}
-
 /// Caption-sized, muted `Text` spec used for the labels under the
 /// toggle / spinner / slider.
 fn caption(text: &str) -> Text {
     Text::new(text)
         .font_size(13.0)
-        .foreground(peniko::Brush::Solid(peniko::Color::from_rgba8(
-            0xc8, 0xc8, 0xd2, 0xff,
-        )))
+        .foreground(peniko::Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff))
 }
 
 /// Builds a click handler that cycles the button's label each time
@@ -522,174 +497,7 @@ fn build_ui() -> Ui {
     ui.append(slider_col, Slider::new().value(0.4));
     ui.append(slider_col, caption("Volume"));
 
-    // Stylesheet: dark backdrop for the root, button states for the button.
-    let generic_kind = TYPE_GENERIC;
-    let button_kind = TYPE_BUTTON;
-
-    let backdrop = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::SURFACE_BG)
-        .build();
-    let backdrop_selector = SelectorBuilder::new(SelectorStep::type_tag(generic_kind)).build();
-
-    // Saturated blue → white text gives proper contrast; hover brightens,
-    // press deepens.
-    let button_idle = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::ACCENT_BG)
-        .set_resource(ui.properties().foreground, theme::ON_ACCENT_FG)
-        .set(ui.properties().corner_radius, 10.0_f64)
-        .set(ui.properties().layout, button_layout())
-        .build();
-    let button_selector = SelectorBuilder::new(SelectorStep::type_tag(button_kind)).build();
-
-    let button_hover = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::ACCENT_HOVER_BG)
-        .build();
-    let button_hover_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_HOVER)).build();
-
-    let button_pressed = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::ACCENT_PRESSED_BG)
-        .build();
-    let button_pressed_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_PRESSED))
-            .build();
-
-    // :focused — white 2px border around the button. The brush is
-    // resolved through the active theme so swapping themes recolors
-    // every focus ring in one place.
-    let button_focused = StyleBuilder::new()
-        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
-        .set(ui.properties().border_width, 2.0_f64)
-        .build();
-    let button_focused_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_FOCUSED))
-            .build();
-
-    // ToggleSwitch styling. The thumb slides via Toggle's flex
-    // `justify-content` — `start` when unchecked, `end` when checked.
-    // The Layout property is a single `taffy::Style`, so each rule
-    // has to carry the full layout (we can't partially override).
-    let toggle_kind = TYPE_TOGGLE;
-    let toggle_thumb_part = PART_TOGGLE_THUMB;
-
-    let toggle_layout = |justify: overstory::taffy::JustifyContent| overstory::taffy::Style {
-        display: overstory::taffy::Display::Flex,
-        flex_direction: overstory::taffy::FlexDirection::Row,
-        justify_content: Some(justify),
-        align_items: Some(overstory::taffy::AlignItems::Center),
-        size: overstory::taffy::Size {
-            width: overstory::taffy::Dimension::length(64.0),
-            height: overstory::taffy::Dimension::length(32.0),
-        },
-        padding: overstory::taffy::Rect {
-            left: overstory::taffy::LengthPercentage::length(4.0),
-            right: overstory::taffy::LengthPercentage::length(4.0),
-            top: overstory::taffy::LengthPercentage::length(4.0),
-            bottom: overstory::taffy::LengthPercentage::length(4.0),
-        },
-        ..Default::default()
-    };
-
-    let toggle_idle = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::TRACK_BG)
-        .set(ui.properties().corner_radius, 16.0_f64)
-        .set(
-            ui.properties().layout,
-            toggle_layout(overstory::taffy::JustifyContent::Start),
-        )
-        .build();
-    let toggle_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_kind)).build();
-
-    let toggle_checked = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::SUCCESS_BG)
-        .set(
-            ui.properties().layout,
-            toggle_layout(overstory::taffy::JustifyContent::End),
-        )
-        .build();
-    let toggle_checked_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_CHECKED))
-            .build();
-
-    // Toggle:focused — same focus ring as Button:focused.
-    let toggle_focused = StyleBuilder::new()
-        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
-        .set(ui.properties().border_width, 2.0_f64)
-        .build();
-    let toggle_focused_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_FOCUSED))
-            .build();
-
-    // Thumb: the parent Toggle's `justify-content` slides it.
-    let thumb_style = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::THUMB_BG)
-        .set(ui.properties().corner_radius, 12.0_f64)
-        .set(
-            ui.properties().layout,
-            overstory::taffy::Style {
-                size: overstory::taffy::Size {
-                    width: overstory::taffy::Dimension::length(24.0),
-                    height: overstory::taffy::Dimension::length(24.0),
-                },
-                ..Default::default()
-            },
-        )
-        .build();
-    let thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_kind))
-        .child(SelectorStep::part_tag(toggle_thumb_part))
-        .build();
-
-    // Slider styling. Layout is set imperatively by the Slider's
-    // template (fixed dimensions, absolute thumb positioning), so
-    // the cascade only contributes color + corner radius.
-    let slider_kind = TYPE_SLIDER;
-    let slider_track_part = PART_SLIDER_TRACK;
-    let slider_thumb_part = PART_SLIDER_THUMB;
-
-    let slider_track_style = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::TRACK_BG)
-        .set(ui.properties().corner_radius, 3.0_f64)
-        .build();
-    let slider_track_selector = SelectorBuilder::new(SelectorStep::type_tag(slider_kind))
-        .child(SelectorStep::part_tag(slider_track_part))
-        .build();
-
-    let slider_thumb_style = StyleBuilder::new()
-        .set_resource(ui.properties().background, theme::THUMB_BG)
-        .set(ui.properties().corner_radius, 11.0_f64)
-        .build();
-    let slider_thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(slider_kind))
-        .child(SelectorStep::part_tag(slider_thumb_part))
-        .build();
-
-    let slider_focused_style = StyleBuilder::new()
-        .set_resource(ui.properties().border_brush, theme::FOCUS_RING_BORDER)
-        .set(ui.properties().border_width, 2.0_f64)
-        .set(ui.properties().corner_radius, 4.0_f64)
-        .build();
-    let slider_focused_selector =
-        SelectorBuilder::new(SelectorStep::type_tag(slider_kind).with_pseudo(PSEUDO_FOCUSED))
-            .build();
-
-    let cascade = StyleCascadeBuilder::new()
-        .push_rule(StyleOrigin::Base, backdrop_selector, backdrop)
-        .push_rule(StyleOrigin::Base, button_selector, button_idle)
-        .push_rule(StyleOrigin::Base, button_focused_selector, button_focused)
-        .push_rule(StyleOrigin::Base, button_hover_selector, button_hover)
-        .push_rule(StyleOrigin::Base, button_pressed_selector, button_pressed)
-        .push_rule(StyleOrigin::Base, toggle_selector, toggle_idle)
-        .push_rule(StyleOrigin::Base, toggle_checked_selector, toggle_checked)
-        .push_rule(StyleOrigin::Base, toggle_focused_selector, toggle_focused)
-        .push_rule(StyleOrigin::Base, thumb_selector, thumb_style)
-        .push_rule(StyleOrigin::Base, slider_track_selector, slider_track_style)
-        .push_rule(StyleOrigin::Base, slider_thumb_selector, slider_thumb_style)
-        .push_rule(
-            StyleOrigin::Base,
-            slider_focused_selector,
-            slider_focused_style,
-        )
-        .build();
-    ui.set_cascade(cascade);
+    ui.set_cascade(theme::default_cascade(ui.properties()));
 
     ui
 }

@@ -38,7 +38,18 @@
 //! tokens on top.
 
 use peniko::{Brush, Color};
-use understory_style::{ResourceKey, Theme, ThemeBuilder};
+use understory_style::{ResourceKey, StyleBuilder, StyleCascade, StyleCascadeBuilder, StyleOrigin};
+use understory_style::{Theme, ThemeBuilder};
+
+use crate::controls::button::TYPE_BUTTON;
+use crate::controls::slider::{PART_SLIDER_THUMB, PART_SLIDER_TRACK, TYPE_SLIDER};
+use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
+use crate::properties::BuiltInProperties;
+use crate::pseudos::{
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+};
+use crate::selectors;
+use crate::widget::TYPE_GENERIC;
 
 /// Window-wide background surface.
 pub const SURFACE_BG: ResourceKey = ResourceKey::new(0);
@@ -81,8 +92,186 @@ pub fn default_theme() -> Theme {
         .build()
 }
 
+/// Builds Overstory's default control stylesheet for the built-in controls.
+///
+/// The stylesheet uses control `TypeTag`s for owners and owner-local
+/// `PartTag`s for generated template parts. Apps can use it directly, layer
+/// additional rules after it, or replace it entirely.
+#[must_use]
+pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
+    let backdrop = StyleBuilder::new()
+        .set_resource(properties.background, SURFACE_BG)
+        .build();
+
+    let button_idle = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .set(properties.corner_radius, 10.0_f64)
+        .set(properties.layout, button_layout())
+        .build();
+    let button_hover = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_HOVER_BG)
+        .build();
+    let button_pressed = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_PRESSED_BG)
+        .build();
+    let button_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let button_disabled = StyleBuilder::new()
+        .set_resource(properties.background, TRACK_BG)
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
+
+    let toggle_layout = |justify: taffy::JustifyContent| taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        justify_content: Some(justify),
+        align_items: Some(taffy::AlignItems::Center),
+        size: taffy::Size {
+            width: taffy::Dimension::length(64.0),
+            height: taffy::Dimension::length(32.0),
+        },
+        padding: taffy::Rect {
+            left: taffy::LengthPercentage::length(4.0),
+            right: taffy::LengthPercentage::length(4.0),
+            top: taffy::LengthPercentage::length(4.0),
+            bottom: taffy::LengthPercentage::length(4.0),
+        },
+        ..Default::default()
+    };
+    let toggle_idle = StyleBuilder::new()
+        .set_resource(properties.background, TRACK_BG)
+        .set(properties.corner_radius, 16.0_f64)
+        .set(
+            properties.layout,
+            toggle_layout(taffy::JustifyContent::Start),
+        )
+        .build();
+    let toggle_checked = StyleBuilder::new()
+        .set_resource(properties.background, SUCCESS_BG)
+        .set(properties.layout, toggle_layout(taffy::JustifyContent::End))
+        .build();
+    let toggle_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let thumb_style = StyleBuilder::new()
+        .set_resource(properties.background, THUMB_BG)
+        .set(properties.corner_radius, 12.0_f64)
+        .set(
+            properties.layout,
+            taffy::Style {
+                size: taffy::Size {
+                    width: taffy::Dimension::length(24.0),
+                    height: taffy::Dimension::length(24.0),
+                },
+                ..Default::default()
+            },
+        )
+        .build();
+
+    let slider_track_style = StyleBuilder::new()
+        .set_resource(properties.background, TRACK_BG)
+        .set(properties.corner_radius, 3.0_f64)
+        .build();
+    let slider_thumb_style = StyleBuilder::new()
+        .set_resource(properties.background, THUMB_BG)
+        .set(properties.corner_radius, 11.0_f64)
+        .build();
+    let slider_focused_style = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .set(properties.corner_radius, 4.0_f64)
+        .build();
+
+    StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_GENERIC),
+            backdrop,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_BUTTON),
+            button_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_BUTTON, PSEUDO_FOCUSED),
+            button_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_BUTTON, PSEUDO_HOVER),
+            button_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_BUTTON, PSEUDO_PRESSED),
+            button_pressed,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_BUTTON, PSEUDO_DISABLED),
+            button_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_TOGGLE),
+            toggle_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TOGGLE, PSEUDO_CHECKED),
+            toggle_checked,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TOGGLE, PSEUDO_FOCUSED),
+            toggle_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_TOGGLE, PART_TOGGLE_THUMB),
+            thumb_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_SLIDER, PART_SLIDER_TRACK),
+            slider_track_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_SLIDER, PART_SLIDER_THUMB),
+            slider_thumb_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SLIDER, PSEUDO_FOCUSED),
+            slider_focused_style,
+        )
+        .build()
+}
+
+fn button_layout() -> taffy::Style {
+    taffy::Style {
+        padding: taffy::Rect {
+            left: taffy::LengthPercentage::length(32.0),
+            right: taffy::LengthPercentage::length(32.0),
+            top: taffy::LengthPercentage::length(18.0),
+            bottom: taffy::LengthPercentage::length(18.0),
+        },
+        display: taffy::Display::Flex,
+        justify_content: Some(taffy::JustifyContent::Center),
+        align_items: Some(taffy::AlignItems::Center),
+        ..Default::default()
+    }
+}
+
 fn solid(r: u8, g: u8, b: u8, a: u8) -> Brush {
-    Brush::Solid(Color::from_rgba8(r, g, b, a))
+    Color::from_rgba8(r, g, b, a).into()
 }
 
 fn opt_solid(r: u8, g: u8, b: u8, a: u8) -> Option<Brush> {

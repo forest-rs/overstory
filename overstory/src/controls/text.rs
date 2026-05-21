@@ -94,8 +94,8 @@ impl AppendSpec for Text {
 pub struct TextWidget;
 
 impl Widget for TextWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_TEXT
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_TEXT)
     }
 
     fn present(

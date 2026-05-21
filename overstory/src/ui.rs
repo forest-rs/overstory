@@ -48,7 +48,7 @@ use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
-use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::text::TextEngine;
 use crate::widget::{TYPE_GENERIC, Widget};
 
@@ -819,6 +819,37 @@ impl Ui {
         self.tree.set_flags(primary, flags);
     }
 
+    /// Returns whether `id` is currently enabled.
+    #[must_use]
+    pub fn is_enabled(&self, id: ElementId) -> bool {
+        self.get(id)
+            .map(|element| self.effective_value_for(element, self.properties.is_enabled))
+            .unwrap_or(false)
+    }
+
+    /// Enables or disables a control element.
+    ///
+    /// Disabling clears focus and the current press target for `id`, removes it
+    /// from focus traversal, and applies `:disabled` for style matching.
+    pub fn set_enabled(&mut self, id: ElementId, enabled: bool) {
+        if self.get(id).is_none() {
+            return;
+        }
+        self.set_local(id, self.properties.is_enabled, enabled);
+        if enabled {
+            self.remove_pseudo(id, PSEUDO_DISABLED);
+        } else {
+            self.add_pseudo(id, PSEUDO_DISABLED);
+            self.set_focusable(id, false);
+            if self.focused == Some(id) {
+                self.set_focus(None);
+            }
+            if self.press_target == Some(id) {
+                self.set_press_target(None);
+            }
+        }
+    }
+
     /// Returns the element that currently has focus, if any.
     #[must_use]
     #[inline]
@@ -826,19 +857,19 @@ impl Ui {
         self.focused
     }
 
-    /// Sets keyboard focus. Passes `None` to clear focus. Applies /
-    /// removes the `:focused` pseudoclass on the affected elements.
-    /// Returns `true` if the focus changed.
+    /// Sets keyboard focus. Passes `None` to clear focus. Disabled or stale
+    /// target ids are treated as `None`. Applies / removes the `:focused`
+    /// pseudoclass on the affected elements. Returns `true` if the focus
+    /// changed.
     pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
-        if self.focused == new {
+        let accepted = new.filter(|id| self.is_enabled(*id));
+        if self.focused == accepted {
             return false;
         }
         if let Some(old_id) = self.focused.take() {
             self.remove_pseudo(old_id, PSEUDO_FOCUSED);
         }
-        if let Some(new_id) = new
-            && self.get(new_id).is_some()
-        {
+        if let Some(new_id) = accepted {
             self.add_pseudo(new_id, PSEUDO_FOCUSED);
             self.focused = Some(new_id);
         } else {
@@ -1720,9 +1751,12 @@ impl Ui {
             self.match_states.remove(&id);
             return;
         };
-        // Anonymous containers fall back to `TYPE_GENERIC` for
-        // selector matching; widget elements supply their own tag.
-        let type_tag = element.widget().map_or(TYPE_GENERIC, |w| w.type_tag());
+        // Anonymous containers fall back to `TYPE_GENERIC` for selector
+        // matching. Widgets may opt out of a global type and rely only on an
+        // owner-local PartTag.
+        let type_tag = element
+            .widget()
+            .map_or(Some(TYPE_GENERIC), Widget::type_tag);
         // Copy out the slices so the `&Element` borrow of `self` can end
         // before we mutate `self.match_states`.
         let classes: SmallVec<[understory_style::ClassId; 4]> =
@@ -1735,8 +1769,7 @@ impl Ui {
             .and_then(|parent| self.match_states.get(&parent).copied())
             .unwrap_or_else(|| self.cascade.root_state());
 
-        let inputs =
-            SelectorInputs::with_part(Some(type_tag), element.part_tag(), &classes, &pseudos);
+        let inputs = SelectorInputs::with_part(type_tag, element.part_tag(), &classes, &pseudos);
         let old_state = self.match_states.get(&id).copied();
         let new_state = self.cascade.enter_subject(parent_state, &inputs);
         self.match_states.insert(id, new_state);
@@ -2513,6 +2546,35 @@ mod tests {
     }
 
     #[test]
+    fn surface_template_parts_do_not_match_generic_type_selector() {
+        use crate::Slider;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(root, Slider::new());
+        let track = ui.get(slider).unwrap().children()[0];
+
+        let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
+        let style = StyleBuilder::new()
+            .set(ui.properties().background, red)
+            .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                crate::selectors::type_tag(TYPE_GENERIC),
+                style,
+            )
+            .build();
+        ui.set_cascade(cascade);
+
+        let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+        assert_eq!(
+            background, None,
+            "surface-only template parts should not inherit TYPE_GENERIC as a fake type"
+        );
+    }
+
+    #[test]
     fn slider_template_parts_match_owner_local_part_selectors() {
         use crate::{PART_SLIDER_TRACK, Slider, TYPE_SLIDER};
 
@@ -2561,6 +2623,24 @@ mod tests {
             !output.is_empty(),
             "styled slider track should contribute painted output"
         );
+    }
+
+    #[test]
+    fn default_cascade_styles_template_parts_by_owner_part() {
+        use crate::{Slider, theme};
+
+        let mut ui = Ui::new();
+        ui.set_theme(theme::default_theme());
+        let cascade = theme::default_cascade(ui.properties());
+        ui.set_cascade(cascade);
+
+        let root = ui.root();
+        let slider = ui.append(root, Slider::new());
+        let track = ui.get(slider).unwrap().children()[0];
+        let expected = Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff)));
+        let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+
+        assert_eq!(background, expected);
     }
 
     #[test]
@@ -3108,8 +3188,8 @@ mod tests {
         #[derive(Debug)]
         struct TestWidget;
         impl Widget for TestWidget {
-            fn type_tag(&self) -> TypeTag {
-                TEST_OWNER_TAG
+            fn type_tag(&self) -> Option<TypeTag> {
+                Some(TEST_OWNER_TAG)
             }
             fn default_template(&self) -> Option<&'static dyn Template> {
                 Some(&TEST_TEMPLATE)
@@ -3283,6 +3363,58 @@ mod tests {
         assert_eq!(ui.press_visual_target(label), button);
         assert_eq!(ui.press_visual_target(button), button);
         assert_eq!(ui.press_visual_target(root), root);
+    }
+
+    #[test]
+    fn disabled_button_carries_state_and_ignores_builder_click() {
+        use alloc::rc::Rc;
+        use core::cell::Cell;
+
+        use crate::Button;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let fired = Rc::new(Cell::new(false));
+        let fired_for_handler = Rc::clone(&fired);
+        let button = ui.append(
+            root,
+            Button::new("No")
+                .disabled()
+                .on_click(move |_ui, _event| fired_for_handler.set(true)),
+        );
+
+        assert!(!ui.is_enabled(button));
+        assert!(ui.get(button).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+
+        ui.synthesize_click(button, Point::ZERO);
+        assert!(
+            !fired.get(),
+            "disabled button click handler should not fire"
+        );
+
+        assert!(!ui.set_focus(Some(button)));
+        assert_eq!(ui.focused(), None, "disabled button should reject focus");
+    }
+
+    #[test]
+    fn set_enabled_false_clears_focus_and_pressed_state() {
+        use crate::Button;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Run"));
+
+        assert!(ui.set_focus(Some(button)));
+        ui.set_press_target(Some(button));
+        ui.set_enabled(button, false);
+
+        assert!(!ui.is_enabled(button));
+        assert_eq!(ui.focused(), None);
+        assert_eq!(ui.press_target, None);
+        let pseudos = ui.get(button).unwrap().pseudos();
+        assert!(pseudos.contains(&PSEUDO_DISABLED));
+        assert!(!pseudos.contains(&PSEUDO_FOCUSED));
+        assert!(!pseudos.contains(&PSEUDO_PRESSED));
     }
 
     #[test]

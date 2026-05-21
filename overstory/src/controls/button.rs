@@ -41,6 +41,7 @@ pub struct Button {
     font_size: f64,
     foreground: Option<Brush>,
     focusable: bool,
+    enabled: bool,
     on_click: Option<BoxedClickHandler>,
     on_key: Option<BoxedKeyHandler>,
 }
@@ -66,6 +67,7 @@ impl Button {
             font_size: 22.0,
             foreground: None,
             focusable: true,
+            enabled: true,
             on_click: None,
             on_key: None,
         }
@@ -93,6 +95,21 @@ impl Button {
     pub fn focusable(mut self, focusable: bool) -> Self {
         self.focusable = focusable;
         self
+    }
+
+    /// Sets whether the button starts enabled. Disabled buttons are
+    /// removed from focus traversal, ignore their builder-installed
+    /// activation handlers, and carry `:disabled` for styling.
+    #[must_use]
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// Convenience for [`Self::enabled(false)`].
+    #[must_use]
+    pub fn disabled(self) -> Self {
+        self.enabled(false)
     }
 
     /// Registers a click handler. Fires on pointer click and on
@@ -133,11 +150,19 @@ impl AppendSpec for Button {
         if let Some(brush) = self.foreground {
             ui.set_local(id, fg_prop, brush);
         }
-        if self.focusable {
+        if self.focusable && self.enabled {
             ui.set_focusable(id, true);
         }
+        if !self.enabled {
+            ui.set_enabled(id, false);
+        }
         if let Some(handler) = self.on_click {
-            ui.on_click(id, handler);
+            let mut handler = handler;
+            ui.on_click(id, move |ui, event| {
+                if button_enabled(ui, id) {
+                    handler(ui, event);
+                }
+            });
         } else {
             // No custom handler — but Space / Enter should still
             // emit a *click* for handlers that subscribe via
@@ -164,8 +189,8 @@ impl AppendSpec for Button {
 pub struct ButtonWidget;
 
 impl Widget for ButtonWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_BUTTON
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_BUTTON)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -212,6 +237,9 @@ fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
         if event.key.state != KeyState::Down {
             return;
         }
+        if !button_enabled(ui, button) {
+            return;
+        }
         let activate = match &event.key.key {
             Key::Named(NamedKey::Enter) => true,
             Key::Character(s) if s == " " => true,
@@ -225,4 +253,8 @@ fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
             ui.synthesize_click(button, pos);
         }
     });
+}
+
+fn button_enabled(ui: &Ui, button: ElementId) -> bool {
+    ui.is_enabled(button)
 }

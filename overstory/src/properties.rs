@@ -66,6 +66,11 @@ pub struct BuiltInProperties {
     /// the cascade reflects the new state.
     pub is_checked: Property<bool>,
 
+    /// Whether an element can participate in control interaction. Default
+    /// `true`. Controls should keep this in sync with the `:disabled`
+    /// pseudoclass through [`crate::Ui::set_enabled`].
+    pub is_enabled: Property<bool>,
+
     /// Numeric value for value-bearing controls (`Slider`,
     /// `ProgressBar`, …). Default `0.0`. The semantic range is
     /// `[Self::minimum, Self::maximum]`; consumers should clamp
@@ -155,6 +160,14 @@ impl BuiltInProperties {
                     // No direct paint impact — state lives in the
                     // pseudoclass. The control's click handler is
                     // responsible for keeping `:checked` in sync.
+                    .build(),
+            ),
+            is_enabled: registry.register(
+                "IsEnabled",
+                PropertyMetadataBuilder::new(true)
+                    // No direct visual impact. `Ui::set_enabled`
+                    // updates `:disabled`, and the selector state
+                    // drives style invalidation.
                     .build(),
             ),
             value: registry.register(

@@ -125,8 +125,8 @@ impl AppendSpec for Spinner {
 pub struct SpinnerWidget;
 
 impl Widget for SpinnerWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_SPINNER
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_SPINNER)
     }
 }
 

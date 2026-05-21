@@ -125,7 +125,7 @@ impl AppendSpec for Panel {
 pub struct PanelWidget;
 
 impl Widget for PanelWidget {
-    fn type_tag(&self) -> TypeTag {
-        TYPE_GENERIC
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_GENERIC)
     }
 }
