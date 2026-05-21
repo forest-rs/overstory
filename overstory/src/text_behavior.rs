@@ -1,27 +1,26 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Behavior for the [`ELEMENT_KIND_TEXT`] kind: shapes a `Content` string
-//! via parley and emits glyph runs through imaging.
+//! Behavior for the [`ELEMENT_KIND_TEXT`] kind.
 //!
-//! Phase 1f-4 uses a fresh layout for each measure/paint call (no caching).
-//! A per-element layout cache lands in a later phase to amortize shaping
-//! across measure → paint within one frame.
+//! `present` resolves `Content` / `Foreground` / `FontSize` through the
+//! cascade and writes them into a `PlainTextPrimitive` on the element's
+//! presentation node. Text shaping (parley) happens later, at lower
+//! time, using the box tree's world bounds for sizing — keeping the
+//! presentation tree geometry-free.
 
 use alloc::string::String;
 
-use imaging::{Painter, record::Scene};
-use kurbo::{Affine, Size};
+use kurbo::Size;
 use peniko::Brush;
+use understory_box_tree::NodeId;
+use understory_presentation::{PresentationStore, TextContent};
 use understory_property::DependencyObjectExt;
 
-use crate::behavior::{ElementBehavior, MeasureConstraints, MeasureContext, PaintContext};
-use crate::element::{Element, ElementKind};
-use crate::text::render_text;
+use crate::behavior::{ElementBehavior, MeasureConstraints, MeasureContext, PresentContext};
+use crate::element::{Element, ElementId, ElementKind};
 
-/// Element kind for a text leaf. Reads `Content`, `Foreground`, `FontSize`
-/// from properties (and the style cascade); shapes via parley; emits glyph
-/// runs via imaging.
+/// Element kind for a text leaf.
 pub const ELEMENT_KIND_TEXT: ElementKind = ElementKind::new(1);
 
 /// Stateless text behavior; instantiated as a `'static`.
@@ -32,37 +31,27 @@ pub struct TextBehavior;
 pub(crate) static TEXT_BEHAVIOR: TextBehavior = TextBehavior;
 
 impl ElementBehavior for TextBehavior {
-    fn paint(&self, element: &Element, ctx: &PaintContext<'_>, scene: &mut Scene) {
+    fn present(
+        &self,
+        element: &Element,
+        ctx: &PresentContext<'_>,
+        store: &mut PresentationStore<NodeId, ElementId>,
+        node: NodeId,
+    ) {
         let cx = ctx.resolve_cx();
         let style = Some((ctx.cascade, ctx.match_state));
 
         let content: String = cx.get_value(element, ctx.properties.content, style);
-        if content.is_empty() {
-            return;
-        }
         let foreground: Brush = cx.get_value(element, ctx.properties.foreground, style);
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = cx.get_value(element, ctx.properties.font_size, style) as f32;
 
-        let bounds = cx.get_value(element, ctx.properties.bounds, style);
-
-        // Shape without a wrap constraint at paint time. The element's bounds
-        // were sized by the layout pass from the same measure that runs
-        // here, so the natural unwrapped layout fits. Feeding `bounds.width`
-        // back as `max_advance` reintroduces sub-pixel rounding wobble that
-        // can flip wrap decisions and break "Click me" into "Click" / "me".
-        let layout = ctx
-            .text
-            .borrow_mut()
-            .shape(&content, font_size, foreground, None);
-
-        let mut painter = Painter::new(scene);
-        let origin = bounds.origin();
-        render_text(
-            &mut painter,
-            Affine::translate((origin.x, origin.y)),
-            &layout,
-        );
+        let Some(text) = store.plain_text_mut(node) else {
+            return;
+        };
+        text.content = TextContent::plain(content);
+        text.foreground = Some(foreground);
+        text.style.font_size = font_size;
     }
 
     fn measure(
@@ -87,7 +76,6 @@ impl ElementBehavior for TextBehavior {
             None
         };
 
-        // We don't care about brush at measure time; use the default.
         let layout =
             ctx.text
                 .borrow_mut()

@@ -40,7 +40,7 @@ mod ui;
 
 pub use behavior::{
     BehaviorRegistry, ElementBehavior, KnownDimensions, MeasureConstraints, MeasureContext,
-    PaintContext,
+    PresentContext,
 };
 pub use button::{ButtonBehavior, ELEMENT_KIND_BUTTON};
 pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};

@@ -1552,6 +1552,7 @@ dependencies = [
  "understory_box_tree",
  "understory_event_state",
  "understory_focus",
+ "understory_presentation",
  "understory_property",
  "understory_property_binding",
  "understory_responder",
@@ -2391,6 +2392,16 @@ name = "understory_precise_hit"
 version = "0.1.0"
 dependencies = [
  "kurbo",
+]
+
+[[package]]
+name = "understory_presentation"
+version = "0.1.0"
+dependencies = [
+ "hashbrown 0.17.1",
+ "parlance",
+ "peniko",
+ "smallvec",
 ]
 
 [[package]]

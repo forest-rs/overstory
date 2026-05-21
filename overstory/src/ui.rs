@@ -27,6 +27,7 @@ use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
 use understory_focus::adapters::box_tree::build_focus_space_for_scope;
 use understory_focus::{DefaultPolicy, FocusEntry, FocusPolicy, Navigation, WrapMode};
+use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
@@ -39,7 +40,7 @@ use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
 };
 
-use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PaintContext};
+use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PresentContext};
 use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE};
 use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
@@ -64,7 +65,15 @@ pub struct Ui {
     properties: BuiltInProperties,
     behaviors: BehaviorRegistry,
     invalidation: InvalidationTracker<ElementId>,
-    scene_cache: HashMap<ElementId, Scene>,
+    /// Retained resolved drawing intent. Each element has one entry,
+    /// keyed by its primary box-tree node id. Behaviors write
+    /// primitives here during the present pass; paint walks the box
+    /// tree and lowers primitives + world bounds into draw commands.
+    ///
+    /// Held as `Option` so `present_element` can `take` it briefly
+    /// while it holds a `&Ui` borrow (for `UiStoreLookup`); always
+    /// `Some` outside that window.
+    presentation: Option<PresentationStore<NodeId, ElementId>>,
     cascade: StyleCascade,
     theme: Theme,
     match_states: HashMap<ElementId, MatchState>,
@@ -230,7 +239,7 @@ impl Ui {
             properties,
             behaviors,
             invalidation: InvalidationTracker::new(),
-            scene_cache: HashMap::new(),
+            presentation: Some(PresentationStore::new()),
             cascade,
             theme,
             match_states: HashMap::new(),
@@ -1160,31 +1169,79 @@ impl Ui {
         }
     }
 
-    /// Paints the dirty elements into per-element scene caches, then
-    /// assembles every element's cached scene into `output` in document
-    /// (depth-first preorder) order.
+    /// Runs the present pass and lowers the resulting presentation
+    /// primitives into `output`.
+    ///
+    /// Steps:
+    ///
+    /// 1. Flush any pending STYLE work (it may dirty PAINT).
+    /// 2. For every PAINT-dirty element, call its behavior's `present`
+    ///    so it resolves properties through the cascade and writes
+    ///    primitives into [`PresentationStore`].
+    /// 3. Drain the presentation store's dirty set (callers can hook
+    ///    in here later for damage-driven re-lowering).
+    /// 4. Walk the box tree depth-first; at each node, look up its
+    ///    presentation primitives and lower them — fill surfaces,
+    ///    shape and paint text — using the box tree's world bounds.
+    /// 5. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
-        // 1. Flush any pending STYLE work first; it may dirty PAINT.
         self.flush_style();
-        // 2. Re-record any PAINT-dirty elements.
+        // Make sure the box tree's world-space data and spatial index
+        // reflect any structural / bounds changes since the last
+        // commit. `compute_layout` already commits at the end, so
+        // when paint follows layout this is a cheap no-op; tests
+        // that paint without layout (or callers exploring partial
+        // pipelines) get a correct commit on demand.
+        self.tree.commit();
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
         for id in dirty {
-            self.repaint_element(id);
+            self.present_element(id);
         }
-        // 3. Walk the tree depth-first and append each cached scene into output.
+        // We don't yet drive incremental re-lowering off this, but
+        // draining keeps the dirty set bounded.
+        let _: Vec<NodeId> = self
+            .presentation
+            .as_mut()
+            .expect("presentation always Some outside present_element")
+            .take_dirty()
+            .collect();
+
         output.clear();
-        self.assemble_into(self.root, output);
-        // 4. Clear the COMPOSE channel; the assembly above is the response.
+        if let Some(root_box) = self.box_for(self.root) {
+            self.lower_subtree(root_box, output);
+        }
         self.invalidation.clear(COMPOSE);
     }
 
-    fn repaint_element(&mut self, id: ElementId) {
+    /// Runs `behavior.present` for one element, updating its
+    /// presentation node in the store. If the element or its behavior
+    /// is gone we drop silently; the presentation entry is removed in
+    /// `remove_subtree` separately.
+    fn present_element(&mut self, id: ElementId) {
+        // Take the presentation store out first so we can later hold
+        // both a `&Ui` borrow (for `UiStoreLookup`) and a
+        // `&mut PresentationStore` simultaneously. Always put it back
+        // before returning.
+        let mut presentation = self
+            .presentation
+            .take()
+            .expect("presentation always Some outside present_element");
+        self.present_element_inner(id, &mut presentation);
+        self.presentation = Some(presentation);
+    }
+
+    fn present_element_inner(
+        &self,
+        id: ElementId,
+        presentation: &mut PresentationStore<NodeId, ElementId>,
+    ) {
         let Some(element) = self.get(id) else {
-            self.scene_cache.remove(&id);
             return;
         };
         let Some(behavior) = self.behaviors.get(element.kind()) else {
-            self.scene_cache.remove(&id);
+            return;
+        };
+        let Some(node) = self.box_for(id) else {
             return;
         };
         let match_state = self
@@ -1192,34 +1249,42 @@ impl Ui {
             .get(&id)
             .copied()
             .unwrap_or_else(|| self.cascade.root_state());
-        let ctx = PaintContext {
+        let ctx = PresentContext {
             registry: &self.registry,
             properties: &self.properties,
             theme: &self.theme,
             cascade: &self.cascade,
             match_state,
             lookup: UiStoreLookup::new(self),
-            text: &self.text,
         };
-        let mut scene = Scene::new();
-        behavior.paint(element, &ctx, &mut scene);
-        if scene.is_empty() {
-            self.scene_cache.remove(&id);
-        } else {
-            self.scene_cache.insert(id, scene);
+        behavior.present(element, &ctx, presentation, node);
+    }
+
+    /// Recursively walks the box tree depth-first, lowering each
+    /// node's presentation primitives into `output` at its world
+    /// bounds.
+    fn lower_subtree(&self, node: NodeId, output: &mut Scene) {
+        self.lower_one(node, output);
+        let children: Vec<NodeId> = self.tree.children_of(node).to_vec();
+        for child in children {
+            self.lower_subtree(child, output);
         }
     }
 
-    fn assemble_into(&self, id: ElementId, output: &mut Scene) {
-        let Some(element) = self.get(id) else {
+    fn lower_one(&self, node: NodeId, output: &mut Scene) {
+        let Some(bounds) = self.tree.world_bounds(node) else {
             return;
         };
-        if let Some(cached) = self.scene_cache.get(&id) {
-            output.append_transformed(cached, Affine::IDENTITY);
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            return;
         }
-        for &child in element.children() {
-            self.assemble_into(child, output);
-        }
+        let Some(store) = self.presentation.as_ref() else {
+            return;
+        };
+        let Some(presentation) = store.node(node) else {
+            return;
+        };
+        lower_presentation(presentation.primitives(), bounds, output, &self.text);
     }
 
     /// Restyles `id` and its descendants in preorder. Channels affected by
@@ -1286,7 +1351,6 @@ impl Ui {
             };
             self.free.push(id.slot());
         }
-        self.scene_cache.remove(&id);
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
         self.click_handlers.remove(&id);
@@ -1304,6 +1368,9 @@ impl Ui {
         }
         if let Some(nodes) = self.element_to_nodes.remove(&id) {
             for node in nodes {
+                if let Some(store) = self.presentation.as_mut() {
+                    let _ = store.remove(node);
+                }
                 self.tree.remove(node);
             }
         }
@@ -1374,6 +1441,13 @@ impl Ui {
         let mut nodes = SmallVec::<[NodeId; 1]>::new();
         nodes.push(tree_node);
         self.element_to_nodes.insert(id, nodes);
+        // Create a presentation entry for the primary node, sourced
+        // from the element. Behaviors populate primitives later via
+        // `present`; presence in the store is what lets the lowerer
+        // find this node during paint.
+        if let Some(store) = self.presentation.as_mut() {
+            let _ = store.insert(tree_node, id);
+        }
         id
     }
 }
@@ -1463,6 +1537,62 @@ impl<'a> ParentLookup<ElementId> for UiParentLookup<'a> {
 /// packing. A later refinement can distinguish the two and let behaviors
 /// report a tighter min-content (e.g. the longest unbreakable word width
 /// for text).
+/// Lowers a node's resolved presentation primitives into `output`,
+/// positioned at `bounds`. Stand-in for a future `imaging`-side
+/// renderer that consumes `understory_presentation` directly.
+fn lower_presentation(
+    primitives: &[Primitive<u64>],
+    bounds: Rect,
+    output: &mut Scene,
+    text: &RefCell<TextEngine>,
+) {
+    use imaging::Painter;
+    use kurbo::RoundedRect;
+
+    let mut painter = Painter::new(output);
+    for primitive in primitives {
+        match primitive {
+            Primitive::Surface(surface) => {
+                let corner_radius = surface.corner_radii.top_left;
+                for layer in &surface.backgrounds {
+                    if corner_radius > 0.0 {
+                        let rounded = RoundedRect::from_rect(bounds, corner_radius);
+                        painter.fill(rounded, &layer.brush).draw();
+                    } else {
+                        painter.fill(bounds, &layer.brush).draw();
+                    }
+                }
+                // Border / shadow lowering — TODO when controls need
+                // them.
+            }
+            Primitive::Text(boxed) => {
+                if let TextPrimitive::Plain(plain) = boxed.as_ref() {
+                    if plain.content.is_empty() {
+                        continue;
+                    }
+                    let Some(fg) = plain.foreground.as_ref() else {
+                        continue;
+                    };
+                    let layout = text.borrow_mut().shape(
+                        plain.content.as_str(),
+                        plain.style.font_size,
+                        fg.clone(),
+                        None,
+                    );
+                    let origin = bounds.origin();
+                    crate::text::render_text(
+                        &mut painter,
+                        Affine::translate((origin.x, origin.y)),
+                        &layout,
+                    );
+                }
+            }
+            // Image / future primitives land when controls need them.
+            _ => {}
+        }
+    }
+}
+
 fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
         taffy::AvailableSpace::Definite(v) => f64::from(v),
@@ -1610,18 +1740,29 @@ mod tests {
     }
 
     #[test]
-    fn paint_drains_dirty_and_records_into_cache() {
+    fn paint_drains_dirty_and_emits_output() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let bounds = ui.properties().bounds;
+        let layout_prop = ui.properties().layout;
         let background = ui.properties().background;
 
-        ui.set_local(root, bounds, Rect::new(0.0, 0.0, 10.0, 10.0));
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                size: taffy::Size {
+                    width: taffy::Dimension::length(10.0),
+                    height: taffy::Dimension::length(10.0),
+                },
+                ..taffy::Style::default()
+            },
+        );
         ui.set_local(
             root,
             background,
             Some(Brush::Solid(Color::from_rgba8(0xff, 0, 0, 0xff))),
         );
+        ui.compute_layout(Size::new(100.0, 100.0));
 
         let mut output = Scene::new();
         ui.paint(&mut output);
@@ -1653,7 +1794,7 @@ mod tests {
         // background value for elements that don't have a local override.
         let mut ui = Ui::new();
         let root = ui.root();
-        let bounds = ui.properties().bounds;
+        let layout_prop = ui.properties().layout;
         let background = ui.properties().background;
 
         // Build a cascade with one rule.
@@ -1667,7 +1808,18 @@ mod tests {
             .build();
         ui.set_cascade(cascade);
 
-        ui.set_local(root, bounds, Rect::new(0.0, 0.0, 10.0, 10.0));
+        ui.set_local(
+            root,
+            layout_prop,
+            taffy::Style {
+                size: taffy::Size {
+                    width: taffy::Dimension::length(10.0),
+                    height: taffy::Dimension::length(10.0),
+                },
+                ..taffy::Style::default()
+            },
+        );
+        ui.compute_layout(Size::new(100.0, 100.0));
 
         let mut output = Scene::new();
         ui.paint(&mut output);
@@ -2186,7 +2338,6 @@ mod tests {
 
         struct TestBehavior;
         impl ElementBehavior for TestBehavior {
-            fn paint(&self, _: &Element, _: &PaintContext<'_>, _: &mut Scene) {}
             fn default_template(&self) -> Option<&'static dyn Template> {
                 Some(&TEST_TEMPLATE)
             }

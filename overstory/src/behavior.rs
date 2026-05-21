@@ -3,16 +3,25 @@
 
 //! Per-`ElementKind` behavior dispatch.
 //!
-//! Phase 1b only models paint; later phases add measure / arrange / event
-//! handlers / template-apply hooks. The trait stays narrow until the toolkit
-//! actually needs each surface.
+//! A behavior's responsibilities are split across two passes:
+//!
+//! * [`ElementBehavior::measure`] — leaf-like behaviors that compute their
+//!   own desired size from properties (text, images, …) override this so
+//!   the layout engine can ask them.
+//! * [`ElementBehavior::present`] — every paintable behavior resolves its
+//!   styled properties (background, border, text content, foreground, …)
+//!   through the cascade and writes the resolved values into a
+//!   [`understory_presentation::PresentationStore`] node. Paint is then a
+//!   geometry-only walk that lowers presentation primitives + box-tree
+//!   bounds into draws — it reads no properties.
 
 use core::cell::RefCell;
 use core::fmt;
 
 use hashbrown::HashMap;
-use imaging::record::Scene;
 use kurbo::Size;
+use understory_box_tree::NodeId;
+use understory_presentation::PresentationStore;
 use understory_property::PropertyRegistry;
 use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
 
@@ -49,14 +58,17 @@ pub struct MeasureConstraints {
     pub known: KnownDimensions,
 }
 
-/// Read-only context handed to [`ElementBehavior::paint`].
+/// Read-only context handed to [`ElementBehavior::present`].
 ///
-/// Bundles everything a behavior needs to resolve effective values through
-/// the full precedence chain (Animation → Local → Style → Theme →
-/// Inherited → Default). The behavior typically builds a transient
-/// [`ResolveCx`] via [`Self::resolve_cx`].
+/// Bundles everything a behavior needs to resolve effective property
+/// values through the full precedence chain (Animation → Local → Style →
+/// Theme → Inherited → Default). The behavior typically builds a
+/// transient [`ResolveCx`] via [`Self::resolve_cx`] and reads each
+/// property it cares about, then writes the result into the presentation
+/// store. Geometry, transforms, and text shaping aren't visible here —
+/// those happen at lower time against the box tree's world bounds.
 #[derive(Copy, Clone)]
-pub struct PaintContext<'a> {
+pub struct PresentContext<'a> {
     /// The property registry every property write is checked against.
     pub registry: &'a PropertyRegistry,
     /// Type-safe handles for the toolkit's built-in properties.
@@ -65,40 +77,33 @@ pub struct PaintContext<'a> {
     pub theme: &'a Theme,
     /// The compiled style cascade rules apply through.
     pub cascade: &'a StyleCascade,
-    /// The match state for the element currently being painted. Behaviors
-    /// pass this into [`ResolveCx::get_value`] alongside `cascade` to read
-    /// styled values.
+    /// The match state for the element currently being presented.
+    /// Behaviors pass this into [`ResolveCx::get_value`] alongside
+    /// `cascade` to read styled values.
     pub match_state: MatchState,
     /// Parent-walking lookup the [`ResolveCx`] uses for inheritance.
     pub(crate) lookup: UiStoreLookup<'a>,
-    /// Shared text shaping engine (parley). Behaviors that render text
-    /// `borrow_mut()` it for the duration of a shape/paint call.
-    pub text: &'a RefCell<TextEngine>,
 }
 
-impl<'a> PaintContext<'a> {
+impl<'a> PresentContext<'a> {
     /// Builds a [`ResolveCx`] tied to this context.
-    ///
-    /// The returned `ResolveCx` borrows from the context for the lifetime of
-    /// the surrounding `Ui` reference, so it can be used freely within a
-    /// behavior's `paint` call.
     #[must_use]
     pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiStoreLookup<'a>> {
         ResolveCx::new(self.registry, self.theme, self.lookup)
     }
 }
 
-impl fmt::Debug for PaintContext<'_> {
+impl fmt::Debug for PresentContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PaintContext").finish_non_exhaustive()
+        f.debug_struct("PresentContext").finish_non_exhaustive()
     }
 }
 
 /// Read-only context handed to [`ElementBehavior::measure`].
 ///
-/// Mirrors [`PaintContext`] minus the cascade-inheritance lookup —
-/// `measure` is called from inside the layout engine's split-borrow walk so
-/// the toolkit can't hand out a `&Ui`. Behaviors that need inherited
+/// Mirrors [`PresentContext`] minus the cascade-inheritance lookup —
+/// `measure` is called from inside the layout engine's split-borrow walk
+/// so the toolkit can't hand out a `&Ui`. Behaviors that need inherited
 /// cascade values in measure should read them from the cascade and match
 /// state directly; the simple per-property local read covers most cases.
 #[derive(Copy, Clone)]
@@ -126,34 +131,37 @@ impl fmt::Debug for MeasureContext<'_> {
 /// Per-kind behavior contract.
 ///
 /// Behaviors are registered once at startup as `&'static dyn ElementBehavior`
-/// and looked up by [`ElementKind`]; an [`Element`] holds no behavior storage
-/// of its own. Implementations are expected to be stateless — any per-element
-/// state lives in the element's [`understory_property::PropertyStore`].
+/// and looked up by [`ElementKind`]; an [`Element`] holds no behavior
+/// storage of its own. Implementations are expected to be stateless — any
+/// per-element state lives in the element's
+/// [`understory_property::PropertyStore`].
 pub trait ElementBehavior: Sync {
-    /// Records the element's contribution to its own per-element scene cache.
+    /// Resolves the element's styled properties through the cascade and
+    /// writes the result into the presentation store for `node`.
     ///
-    /// `scene` is a fresh, owned [`Scene`] dedicated to this element; the
-    /// caller will compose it into the frame's output scene.
-    fn paint(&self, element: &Element, ctx: &PaintContext<'_>, scene: &mut Scene);
+    /// `node` is the element's primary box-tree node. Most behaviors will
+    /// take `store.surface_mut(node)` / `store.plain_text_mut(node)` and
+    /// populate the corresponding primitive's fields. The default
+    /// implementation is a no-op for behaviors that contribute no draws
+    /// (e.g. layout-only containers — though most still want a surface).
+    fn present(
+        &self,
+        element: &Element,
+        ctx: &PresentContext<'_>,
+        store: &mut PresentationStore<NodeId, ElementId>,
+        node: NodeId,
+    ) {
+        let _ = (element, ctx, store, node);
+    }
 
     /// Returns the default template factory for this kind, if any.
-    ///
-    /// When an element of this kind is inserted, the toolkit invokes the
-    /// returned template's `instantiate` method to build its visual subtree.
-    /// Primitive kinds (e.g. `ELEMENT_KIND_GENERIC`) return `None`.
     fn default_template(&self) -> Option<&'static dyn Template> {
         None
     }
 
-    /// Optional custom measure callback for leaf-like behaviors that compute
-    /// their own desired size (text, images, custom-drawn primitives).
-    ///
-    /// Returns `None` (the default) to let the layout engine size the element
-    /// purely from its `Layout` style. Returns `Some(size)` to override.
-    ///
-    /// Behaviors receive kurbo-based [`MeasureConstraints`]; the toolkit
-    /// translates between these and the underlying layout engine's types
-    /// (currently `taffy`), so behaviors don't depend on a specific engine.
+    /// Optional custom measure callback for leaf-like behaviors that
+    /// compute their own desired size (text, images, custom-drawn
+    /// primitives).
     fn measure(
         &self,
         element: &Element,
@@ -166,9 +174,6 @@ pub trait ElementBehavior: Sync {
 }
 
 /// Maps each [`ElementKind`] to its `'static` behavior implementation.
-///
-/// The toolkit registers built-in kinds during [`crate::Ui::new`]; application
-/// code can extend the registry via [`Self::register`].
 #[derive(Default)]
 pub struct BehaviorRegistry {
     behaviors: HashMap<ElementKind, &'static dyn ElementBehavior>,
