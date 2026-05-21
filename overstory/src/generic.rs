@@ -1,44 +1,29 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Behavior implementation for [`crate::ELEMENT_KIND_GENERIC`].
+//! Shared surface-presentation helper.
 //!
-//! Resolves `Background` and `CornerRadius` through the cascade and writes
-//! the result as a `SurfacePrimitive` on the element's presentation node.
-//! The lowerer in [`crate::Ui::paint`] turns the primitive plus the box
-//! tree's world bounds into an actual fill draw.
+//! Most widgets' visual contribution is a single rounded surface
+//! with optional border, sized by the element's bounds. The
+//! [`present_surface`] helper resolves `Background` /
+//! `BorderBrush` / `BorderWidth` / `CornerRadius` through the
+//! cascade and writes the result as a `SurfacePrimitive` on the
+//! element's presentation node. The default `Widget::present`
+//! implementation delegates here.
 
 use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{BackgroundLayer, Border, PresentationStore, RoundedRectRadii};
 
-use crate::behavior::{ElementBehavior, PresentContext};
+use crate::behavior::PresentContext;
 use crate::element::{Element, ElementId};
 
-/// The generic kind's behavior. Stateless; instantiated as a `'static`.
-#[derive(Debug, Default)]
-pub struct GenericBehavior;
-
-/// `'static` instance registered in [`crate::Ui::new`].
-pub(crate) static GENERIC_BEHAVIOR: GenericBehavior = GenericBehavior;
-
-impl ElementBehavior for GenericBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        present_surface(element, ctx, store, node);
-    }
-}
-
-/// Shared surface-presenter used by the generic kind and any other
-/// behavior whose "surface" intent is the same — fill the box's bounds
-/// with `Background`, rounded by `CornerRadius`. Re-resolves on every
-/// call (no caching beyond what the presentation store already does).
-pub(crate) fn present_surface(
+/// Reads `Background` / `CornerRadius` / `BorderBrush` /
+/// `BorderWidth` through the cascade and writes the result as a
+/// `SurfacePrimitive` on `node`. Widgets whose visual is "a
+/// rounded box that fills my bounds" call this from their
+/// `Widget::present` (or rely on the trait's default impl).
+pub fn present_surface(
     element: &Element,
     ctx: &PresentContext<'_>,
     store: &mut PresentationStore<NodeId, ElementId>,

@@ -1,8 +1,16 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Element identity, kind tags, and the per-element node.
+//! Element identity and the per-element node.
+//!
+//! Each element carries identity, family pointers, a typed
+//! dependency property store, and an optional [`Widget`] — the
+//! per-element behavior + state. Anonymous containers (the root,
+//! layout panels) have `widget = None`; control elements (`Button`,
+//! `ToggleSwitch`, `Spinner`, `Slider`, `Text`, …) have a boxed
+//! widget.
 
+use alloc::boxed::Box;
 use core::fmt;
 
 use invalidation::DenseKey;
@@ -10,46 +18,14 @@ use smallvec::SmallVec;
 use understory_property::{DependencyObject, PropertyStore};
 use understory_style::{ClassId, PseudoClassId};
 
-/// Open-ended type tag identifying an element's behavior in the
-/// [`crate::BehaviorRegistry`].
-///
-/// `ElementKind` is a plain `u32` newtype rather than an enum so applications
-/// can register their own kinds without modifying the toolkit. Reserve low
-/// values (0..256) for Overstory built-ins; apps should pick values above.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ElementKind(u32);
-
-impl ElementKind {
-    /// Constructs a new kind tag.
-    #[must_use]
-    #[inline]
-    pub const fn new(tag: u32) -> Self {
-        Self(tag)
-    }
-
-    /// Returns the raw tag value.
-    #[must_use]
-    #[inline]
-    pub const fn tag(self) -> u32 {
-        self.0
-    }
-}
-
-impl fmt::Debug for ElementKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ElementKind({})", self.0)
-    }
-}
-
-/// Generic element kind: a panel-like leaf that fills its bounds with the
-/// `Background` brush (rounded by `CornerRadius`). The Phase 1b default.
-pub const ELEMENT_KIND_GENERIC: ElementKind = ElementKind::new(0);
+use crate::widget::Widget;
 
 /// Stable, generational handle to an [`Element`].
 ///
-/// `ElementId`s are issued by [`crate::Ui`]. The handle survives the element
-/// being removed and a slot being reused, because the `generation` increments
-/// on slot reuse — a stale handle compares unequal to the new occupant.
+/// `ElementId`s are issued by [`crate::Ui`]. The handle survives the
+/// element being removed and a slot being reused, because the
+/// `generation` increments on slot reuse — a stale handle compares
+/// unequal to the new occupant.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ElementId {
     pub(crate) slot: u32,
@@ -57,17 +33,17 @@ pub struct ElementId {
 }
 
 impl ElementId {
-    /// Constructs an id with explicit slot and generation. Used by [`crate::Ui`]
-    /// when issuing new ids; consumers should not normally build their own.
+    /// Constructs an id with explicit slot and generation. Used by
+    /// [`crate::Ui`] when issuing new ids; consumers should not
+    /// normally build their own.
     #[must_use]
     #[inline]
     pub(crate) const fn new(slot: u32, generation: u32) -> Self {
         Self { slot, generation }
     }
 
-    /// Returns the slot index this id was issued for.
-    ///
-    /// Slot indices are reused after an element is removed; pair with
+    /// Returns the slot index this id was issued for. Slot indices
+    /// are reused after an element is removed; pair with
     /// [`Self::generation`] to detect stale handles.
     #[must_use]
     #[inline]
@@ -75,11 +51,8 @@ impl ElementId {
         self.slot
     }
 
-    /// Returns the generation counter for this id's slot at issuance time.
-    ///
-    /// Each time a slot is recycled the generation increments by one, so a
-    /// stale `ElementId` whose slot has been re-used compares unequal to the
-    /// new occupant's id.
+    /// Returns the generation counter for this id's slot at issuance
+    /// time.
     #[must_use]
     #[inline]
     pub const fn generation(self) -> u32 {
@@ -94,10 +67,6 @@ impl fmt::Debug for ElementId {
 }
 
 impl DenseKey for ElementId {
-    /// Dense storage index in [`invalidation`] sets is the slot index — the
-    /// generation only disambiguates stale handles, it doesn't affect
-    /// dirty-marking storage. Stale ids can't reach the tracker through the
-    /// `Ui` API (every entry point validates the id first).
     #[inline]
     fn index(self) -> usize {
         self.slot as usize
@@ -105,76 +74,76 @@ impl DenseKey for ElementId {
 }
 
 /// Inline capacity for an element's children list.
-///
-/// Most container elements have a handful of children; this keeps the common
-/// case heap-free without inflating leaves too much.
 const CHILDREN_INLINE: usize = 4;
 
-/// One node in Overstory's visual tree.
-///
-/// An [`Element`] carries identity, family pointers, and a typed dependency
-/// property store. Per-element behavior (measure / arrange / paint / event
-/// handlers) is dispatched by `ElementKind` in later phases; the bare struct
-/// here is the substrate.
-#[derive(Debug)]
+/// One node in Overstory's element tree.
 pub struct Element {
     id: ElementId,
-    kind: ElementKind,
     parent: Option<ElementId>,
     /// The control whose template instantiated this element, if any.
-    ///
-    /// `Some` for template parts (e.g. the `Border` + `ContentPresenter` inside
-    /// a templated `Button`), `None` for logical-tree elements (the `Button`
-    /// itself, items in an `ItemsControl`). Tagged automatically by
-    /// [`crate::Ui`] when elements are inserted inside a
-    /// [`crate::Template::instantiate`] call.
     templated_parent: Option<ElementId>,
     children: SmallVec<[ElementId; CHILDREN_INLINE]>,
     store: PropertyStore<ElementId>,
-    /// Class identifiers this element participates in. Kept sorted+deduped so
-    /// `understory_style`'s `SelectorInputs` can borrow the slice directly.
+    /// Class identifiers this element participates in. Kept
+    /// sorted+deduped so `understory_style`'s `SelectorInputs` can
+    /// borrow the slice directly.
     classes: SmallVec<[ClassId; 2]>,
-    /// Pseudoclass identifiers currently active on this element (e.g. `:hover`,
-    /// `:checked`). Kept sorted+deduped for the same reason.
+    /// Pseudoclass identifiers currently active on this element.
     pseudos: SmallVec<[PseudoClassId; 2]>,
+    /// Per-element behavior + state. `None` for anonymous containers.
+    widget: Option<Box<dyn Widget>>,
+}
+
+impl fmt::Debug for Element {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Element")
+            .field("id", &self.id)
+            .field("parent", &self.parent)
+            .field("children_len", &self.children.len())
+            .field("widget", &self.widget)
+            .field("classes", &self.classes.as_slice())
+            .field("pseudos", &self.pseudos.as_slice())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Element {
     pub(crate) fn new(
         id: ElementId,
-        kind: ElementKind,
         parent: Option<ElementId>,
         templated_parent: Option<ElementId>,
+        widget: Option<Box<dyn Widget>>,
     ) -> Self {
         Self {
             id,
-            kind,
             parent,
             templated_parent,
             children: SmallVec::new(),
             store: PropertyStore::new(id),
             classes: SmallVec::new(),
             pseudos: SmallVec::new(),
+            widget,
         }
     }
 
-    /// Returns this element's active class identifiers in ascending order.
+    /// Returns this element's active class identifiers in ascending
+    /// order.
     #[must_use]
     #[inline]
     pub fn classes(&self) -> &[ClassId] {
         &self.classes
     }
 
-    /// Returns this element's active pseudoclass identifiers in ascending
-    /// order.
+    /// Returns this element's active pseudoclass identifiers in
+    /// ascending order.
     #[must_use]
     #[inline]
     pub fn pseudos(&self) -> &[PseudoClassId] {
         &self.pseudos
     }
 
-    /// Adds `class` to this element if not already present. Returns `true` if
-    /// the set changed.
+    /// Adds `class` to this element if not already present. Returns
+    /// `true` if the set changed.
     pub fn add_class(&mut self, class: ClassId) -> bool {
         match self.classes.binary_search(&class) {
             Ok(_) => false,
@@ -185,7 +154,8 @@ impl Element {
         }
     }
 
-    /// Removes `class` from this element. Returns `true` if it was present.
+    /// Removes `class` from this element. Returns `true` if it was
+    /// present.
     pub fn remove_class(&mut self, class: ClassId) -> bool {
         match self.classes.binary_search(&class) {
             Ok(idx) => {
@@ -196,8 +166,8 @@ impl Element {
         }
     }
 
-    /// Adds `pseudo` to this element if not already present. Returns `true` if
-    /// the set changed.
+    /// Adds `pseudo` to this element if not already present.
+    /// Returns `true` if the set changed.
     pub fn add_pseudo(&mut self, pseudo: PseudoClassId) -> bool {
         match self.pseudos.binary_search(&pseudo) {
             Ok(_) => false,
@@ -208,7 +178,8 @@ impl Element {
         }
     }
 
-    /// Removes `pseudo` from this element. Returns `true` if it was present.
+    /// Removes `pseudo` from this element. Returns `true` if it was
+    /// present.
     pub fn remove_pseudo(&mut self, pseudo: PseudoClassId) -> bool {
         match self.pseudos.binary_search(&pseudo) {
             Ok(idx) => {
@@ -226,15 +197,8 @@ impl Element {
         self.id
     }
 
-    /// Returns this element's [`ElementKind`], used by the
-    /// [`crate::BehaviorRegistry`] to dispatch paint/event handlers.
-    #[must_use]
-    #[inline]
-    pub fn kind(&self) -> ElementKind {
-        self.kind
-    }
-
-    /// Returns the parent element's id, or `None` for the tree root.
+    /// Returns the parent element's id, or `None` for the tree
+    /// root.
     #[must_use]
     #[inline]
     pub fn parent(&self) -> Option<ElementId> {
@@ -242,8 +206,7 @@ impl Element {
     }
 
     /// Returns the templated parent — the control whose template
-    /// instantiated this element — if any. Logical-tree children return
-    /// `None`.
+    /// instantiated this element — if any.
     #[must_use]
     #[inline]
     pub fn templated_parent(&self) -> Option<ElementId> {
@@ -255,6 +218,23 @@ impl Element {
     #[inline]
     pub fn children(&self) -> &[ElementId] {
         &self.children
+    }
+
+    /// Returns this element's widget, if any. Anonymous containers
+    /// (the root, plain panels) return `None`.
+    #[must_use]
+    #[inline]
+    pub fn widget(&self) -> Option<&dyn Widget> {
+        self.widget.as_deref()
+    }
+
+    /// Returns mutable access to this element's widget, if any.
+    /// Used by widget-internal state mutation (e.g. animation
+    /// timers updating a phase counter).
+    #[must_use]
+    #[inline]
+    pub fn widget_mut(&mut self) -> Option<&mut dyn Widget> {
+        self.widget.as_deref_mut()
     }
 
     pub(crate) fn children_mut(&mut self) -> &mut SmallVec<[ElementId; CHILDREN_INLINE]> {

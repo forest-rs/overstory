@@ -49,14 +49,13 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB,
-    ELEMENT_KIND_SLIDER_TRACK, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TEXT, ELEMENT_KIND_TOGGLE,
-    ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts, set_slider_value, theme,
+    Button, Navigation, Panel, Slider, Spinner, TYPE_BUTTON, TYPE_GENERIC, TYPE_SLIDER,
+    TYPE_SLIDER_THUMB, TYPE_SLIDER_TRACK, TYPE_TOGGLE, TYPE_TOGGLE_THUMB, Text, ToggleSwitch, Ui,
+    layouts, theme,
 };
-use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
-    SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, TypeTag,
+    SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -421,46 +420,10 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
-/// Inserts a generic flex-column container under `parent` with the
-/// given inter-child gap, returning its id so callers can fill in
-/// children. Cross-axis is center-aligned so children stack on the
-/// same vertical line.
-fn insert_column(ui: &mut Ui, parent: ElementId, gap: f32) -> ElementId {
-    let column = ui.insert_child(parent, ELEMENT_KIND_GENERIC);
-    ui.set_local(
-        column,
-        ui.properties().layout,
-        overstory::taffy::Style {
-            align_items: Some(overstory::taffy::AlignItems::Center),
-            ..layouts::column_with_gap(gap)
-        },
-    );
-    column
-}
-
-/// Inserts a `Text` label under `parent` with caption-sized,
-/// muted foreground. Pulls the caption color from the active
-/// theme so palette swaps recolor every caption together.
-fn insert_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
-    let label = ui.insert_child(parent, ELEMENT_KIND_TEXT);
-    ui.set_local(label, ui.properties().content, text.to_owned());
-    ui.set_local(label, ui.properties().font_size, 13.0_f64);
-    let muted = ui
-        .theme()
-        .get::<Brush>(theme::ON_SURFACE_MUTED_FG)
-        .cloned()
-        .unwrap_or_else(|| Brush::Solid(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)));
-    ui.set_local(label, ui.properties().foreground, muted);
-    label
-}
-
-/// Inserts a templated Button under `parent` with the given initial
-/// label, wires both pointer-click and keyboard (Space / Enter)
-/// activation, and gives it its own activation counter so each
-/// button's label evolves independently.
-fn add_button(ui: &mut Ui, parent: ElementId, initial_label: &str) -> ElementId {
-    let layout_prop = ui.properties().layout;
-    let button_layout = overstory::taffy::Style {
+/// Padding shorthand. We apply it via the cascade rule keyed on
+/// `Button` so every demo button shares the same padding shape.
+fn button_layout() -> overstory::taffy::Style {
+    overstory::taffy::Style {
         padding: overstory::taffy::Rect {
             left: overstory::taffy::LengthPercentage::length(32.0),
             right: overstory::taffy::LengthPercentage::length(32.0),
@@ -471,82 +434,55 @@ fn add_button(ui: &mut Ui, parent: ElementId, initial_label: &str) -> ElementId 
         justify_content: Some(overstory::taffy::JustifyContent::Center),
         align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
-    };
-    let button = ui.insert_child(parent, ELEMENT_KIND_BUTTON);
-    ui.set_local(button, layout_prop, button_layout);
-    ui.set_local(button, ui.properties().content, initial_label.to_owned());
-    ui.set_local(
-        button,
-        ui.properties().foreground,
-        Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
-    );
-    ui.set_local(button, ui.properties().font_size, 22.0_f64);
-    ui.set_focusable(button, true);
-
-    let content_prop = ui.properties().content;
-    let activations = std::rc::Rc::new(std::cell::Cell::new(0_u32));
-    let advance = {
-        let activations = activations.clone();
-        move |ui: &mut Ui| {
-            let n = activations.get() + 1;
-            activations.set(n);
-            let label = if n == 1 {
-                "Clicked!".to_owned()
-            } else {
-                format!("Clicked {n}×")
-            };
-            ui.set_local(button, content_prop, label);
-        }
-    };
-
-    {
-        let advance = advance.clone();
-        ui.on_click(button, move |ui, event| {
-            if !matches!(
-                event.phase,
-                overstory::Phase::Target | overstory::Phase::Bubble
-            ) {
-                return;
-            }
-            advance(ui);
-        });
     }
-    ui.on_key(button, move |ui, event| {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
-        if !matches!(event.phase, overstory::Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down {
-            return;
-        }
-        let activate = match &event.key.key {
-            Key::Named(NamedKey::Enter) => true,
-            Key::Character(s) if s == " " => true,
-            _ => false,
-        };
-        if activate {
-            advance(ui);
-        }
-    });
-
-    button
 }
 
-/// Builds the demo tree: dark backdrop, two templated Buttons side by
-/// side. Each cycles its own label through "Clicked!" → "Clicked 2×" → …
-/// on click or Space / Enter while focused. Tab and Shift+Tab walk
-/// focus between them.
+/// Caption-sized, muted `Text` spec used for the labels under the
+/// toggle / spinner / slider.
+fn caption(text: &str) -> Text {
+    Text::new(text)
+        .font_size(13.0)
+        .foreground(peniko::Brush::Solid(peniko::Color::from_rgba8(
+            0xc8, 0xc8, 0xd2, 0xff,
+        )))
+}
+
+/// Builds a click handler that cycles the button's label each time
+/// it fires. `event.current` points at the element the handler is
+/// registered on — i.e. the button — so we don't need the id
+/// captured separately.
+fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent) + 'static {
+    let activations = std::cell::Cell::new(0_u32);
+    move |ui: &mut Ui, event| {
+        if !matches!(
+            event.phase,
+            overstory::Phase::Target | overstory::Phase::Bubble
+        ) {
+            return;
+        }
+        let n = activations.get() + 1;
+        activations.set(n);
+        let label = if n == 1 {
+            "Clicked!".to_owned()
+        } else {
+            format!("Clicked {n}×")
+        };
+        let content_prop = ui.properties().content;
+        ui.set_local(event.current, content_prop, label);
+    }
+}
+
+/// Builds the demo tree. Two `Button`s, a `ToggleSwitch`, a
+/// `Spinner`, and a `Slider` in a row, each interactive control
+/// labeled with a `Text` caption (where it isn't already labeled).
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
-    // Install the palette early so `insert_label` / other inserts
-    // that read from the theme see real values rather than
-    // fallbacks.
+    // Install the palette early so any spec that reads from the
+    // theme sees real values rather than fallbacks.
     ui.set_theme(theme::default_theme());
     let root = ui.root();
 
-    // Root: full-viewport row-flex container with 24px gap so the
-    // controls sit side by side with breathing room.
-    let layout_prop = ui.properties().layout;
+    // Root layout: full-viewport row-flex with padding + gap.
     let root_layout = overstory::taffy::Style {
         justify_content: Some(overstory::taffy::JustifyContent::Center),
         align_items: Some(overstory::taffy::AlignItems::Center),
@@ -557,38 +493,38 @@ fn build_ui() -> Ui {
         padding: layouts::uniform_padding(50.0),
         ..layouts::row_with_gap(32.0)
     };
+    let layout_prop = ui.properties().layout;
     ui.set_local(root, layout_prop, root_layout);
 
-    // Two buttons. Each gets its own per-button activation counter so
-    // their labels evolve independently. The helper bundles the
-    // boilerplate (layout, properties, focusable, click/key handlers).
-    add_button(&mut ui, root, "Click me");
-    add_button(&mut ui, root, "Or me");
+    // Two buttons. Each owns its own activation counter via the
+    // closure returned by `cycling_click_handler`. `event.current`
+    // gives the handler the button id at fire time, so the
+    // closure stays self-contained.
+    ui.append(
+        root,
+        Button::new("Click me").on_click(cycling_click_handler()),
+    );
+    ui.append(root, Button::new("Or me").on_click(cycling_click_handler()));
 
-    // A labeled ToggleSwitch — toggle on top, "Notifications" label
-    // below, wrapped in a column.
-    let toggle_col = insert_column(&mut ui, root, 6.0);
-    let toggle = ui.insert_child(toggle_col, ELEMENT_KIND_TOGGLE);
-    ui.set_focusable(toggle, true);
-    insert_label(&mut ui, toggle_col, "Notifications");
+    // A labeled `ToggleSwitch` — toggle on top, "Notifications"
+    // caption beneath, wrapped in a column.
+    let toggle_col = ui.append(root, Panel::column(6.0).align_center());
+    ui.append(toggle_col, ToggleSwitch::new());
+    ui.append(toggle_col, caption("Notifications"));
 
-    // A labeled Spinner — same column shape as the toggle.
-    let spinner_col = insert_column(&mut ui, root, 6.0);
-    let _spinner = ui.insert_child(spinner_col, ELEMENT_KIND_SPINNER);
-    insert_label(&mut ui, spinner_col, "Loading…");
+    // A labeled `Spinner`.
+    let spinner_col = ui.append(root, Panel::column(6.0).align_center());
+    ui.append(spinner_col, Spinner::new());
+    ui.append(spinner_col, caption("Loading…"));
 
-    // A labeled Slider — column with the slider on top and a
-    // caption below. Initial value of 0.4 just to land the thumb
-    // somewhere other than `Minimum`.
-    let slider_col = insert_column(&mut ui, root, 6.0);
-    let slider = ui.insert_child(slider_col, ELEMENT_KIND_SLIDER);
-    ui.set_focusable(slider, true);
-    set_slider_value(&mut ui, slider, 0.4);
-    insert_label(&mut ui, slider_col, "Volume");
+    // A labeled `Slider`.
+    let slider_col = ui.append(root, Panel::column(6.0).align_center());
+    ui.append(slider_col, Slider::new().value(0.4));
+    ui.append(slider_col, caption("Volume"));
 
     // Stylesheet: dark backdrop for the root, button states for the button.
-    let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
-    let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
+    let generic_kind = TYPE_GENERIC;
+    let button_kind = TYPE_BUTTON;
 
     let backdrop = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::SURFACE_BG)
@@ -600,6 +536,7 @@ fn build_ui() -> Ui {
     let button_idle = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::ACCENT_BG)
         .set(ui.properties().corner_radius, 10.0_f64)
+        .set(ui.properties().layout, button_layout())
         .build();
     let button_selector = SelectorBuilder::new(SelectorStep::type_tag(button_kind)).build();
 
@@ -631,8 +568,8 @@ fn build_ui() -> Ui {
     // `justify-content` — `start` when unchecked, `end` when checked.
     // The Layout property is a single `taffy::Style`, so each rule
     // has to carry the full layout (we can't partially override).
-    let toggle_kind = TypeTag(ELEMENT_KIND_TOGGLE.tag());
-    let toggle_thumb_kind = TypeTag(ELEMENT_KIND_TOGGLE_THUMB.tag());
+    let toggle_kind = TYPE_TOGGLE;
+    let toggle_thumb_kind = TYPE_TOGGLE_THUMB;
 
     let toggle_layout = |justify: overstory::taffy::JustifyContent| overstory::taffy::Style {
         display: overstory::taffy::Display::Flex,
@@ -702,9 +639,9 @@ fn build_ui() -> Ui {
     // Slider styling. Layout is set imperatively by the Slider's
     // template (fixed dimensions, absolute thumb positioning), so
     // the cascade only contributes color + corner radius.
-    let slider_kind = TypeTag(ELEMENT_KIND_SLIDER.tag());
-    let slider_track_kind = TypeTag(ELEMENT_KIND_SLIDER_TRACK.tag());
-    let slider_thumb_kind = TypeTag(ELEMENT_KIND_SLIDER_THUMB.tag());
+    let slider_kind = TYPE_SLIDER;
+    let slider_track_kind = TYPE_SLIDER_TRACK;
+    let slider_thumb_kind = TYPE_SLIDER_THUMB;
 
     let slider_track_style = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::TRACK_BG)

@@ -2,87 +2,107 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Slider`: continuous value control with a draggable thumb.
-//!
-//! Structure:
-//!
-//! ```text
-//! Slider (focusable, holds `Value` / `Minimum` / `Maximum`)
-//!   ├─ SliderTrack (full-width pill, vertically centered)
-//!   └─ SliderThumb (circle, absolutely positioned by Value)
-//! ```
-//!
-//! Interaction:
-//!
-//! * Click anywhere on the slider — `Value` snaps to the
-//!   click-position-on-track ratio.
-//! * Drag — `Value` follows the pointer continuously.
-//! * Left / Down arrow — `Value -= step`.
-//! * Right / Up arrow — `Value += step`.
-//! * Home — `Value = Minimum`. End — `Value = Maximum`.
-//!
-//! The thumb's horizontal position is recomputed by writing its
-//! `Layout` (absolute `inset.left`) whenever `Value` changes. The
-//! cascade carries no per-value state; the slider's behavior owns
-//! the value→position mapping imperatively.
 
-use understory_box_tree::NodeId;
-use understory_presentation::PresentationStore;
+use alloc::boxed::Box;
+
 use understory_property::DependencyObjectExt;
+use understory_style::TypeTag;
 
 use crate::Phase;
-use crate::behavior::{ElementBehavior, PresentContext};
-use crate::element::{Element, ElementId, ElementKind};
-use crate::generic::present_surface;
+use crate::element::ElementId;
 use crate::template::Template;
 use crate::ui::Ui;
+use crate::widget::{AppendSpec, Widget};
 
-/// Element kind for the slider container.
-pub const ELEMENT_KIND_SLIDER: ElementKind = ElementKind::new(6);
+/// Selector identity for `Slider`.
+pub const TYPE_SLIDER: TypeTag = TypeTag(6);
+/// Selector identity for the track part.
+pub const TYPE_SLIDER_TRACK: TypeTag = TypeTag(7);
+/// Selector identity for the thumb part.
+pub const TYPE_SLIDER_THUMB: TypeTag = TypeTag(8);
 
-/// Element kind for the slider's track (the colored bar behind the
-/// thumb).
-pub const ELEMENT_KIND_SLIDER_TRACK: ElementKind = ElementKind::new(7);
-
-/// Element kind for the slider's thumb (the round handle).
-pub const ELEMENT_KIND_SLIDER_THUMB: ElementKind = ElementKind::new(8);
-
-/// Slider dimensions. Chosen to match the `ToggleSwitch`'s overall
-/// height so a row of controls reads as a cohesive group.
 const SLIDER_WIDTH: f32 = 220.0;
 const SLIDER_HEIGHT: f32 = 32.0;
 const TRACK_HEIGHT: f32 = 6.0;
 const THUMB_DIAMETER: f32 = 22.0;
-/// Per-arrow-key step as a fraction of the full range.
 const KEY_STEP_FRACTION: f64 = 0.05;
 
-/// Stateless behavior for [`ELEMENT_KIND_SLIDER`].
-#[derive(Debug, Default)]
-pub struct SliderBehavior;
+/// Builder + spec for a `Slider`.
+pub struct Slider {
+    initial_value: f64,
+    min: f64,
+    max: f64,
+    focusable: bool,
+}
 
-/// Stateless behavior for the slider's track child.
-#[derive(Debug, Default)]
-pub struct SliderTrackBehavior;
+impl core::fmt::Debug for Slider {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Slider")
+            .field("initial_value", &self.initial_value)
+            .field("min", &self.min)
+            .field("max", &self.max)
+            .finish_non_exhaustive()
+    }
+}
 
-/// Stateless behavior for the slider's thumb child.
-#[derive(Debug, Default)]
-pub struct SliderThumbBehavior;
+impl Slider {
+    /// Starts a new `Slider` builder.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            initial_value: 0.0,
+            min: 0.0,
+            max: 1.0,
+            focusable: true,
+        }
+    }
 
-pub(crate) static SLIDER_BEHAVIOR: SliderBehavior = SliderBehavior;
-pub(crate) static SLIDER_TRACK_BEHAVIOR: SliderTrackBehavior = SliderTrackBehavior;
-pub(crate) static SLIDER_THUMB_BEHAVIOR: SliderThumbBehavior = SliderThumbBehavior;
+    /// Sets the initial value.
+    #[must_use]
+    pub fn value(mut self, value: f64) -> Self {
+        self.initial_value = value;
+        self
+    }
 
-static SLIDER_TEMPLATE: SliderTemplate = SliderTemplate;
+    /// Sets the lower bound. Default `0.0`.
+    #[must_use]
+    pub fn min(mut self, min: f64) -> Self {
+        self.min = min;
+        self
+    }
 
-#[derive(Debug, Default)]
-struct SliderTemplate;
+    /// Sets the upper bound. Default `1.0`.
+    #[must_use]
+    pub fn max(mut self, max: f64) -> Self {
+        self.max = max;
+        self
+    }
 
-impl Template for SliderTemplate {
-    fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
+    /// Sets whether the slider participates in focus traversal.
+    #[must_use]
+    pub fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
+        self
+    }
+}
+
+impl Default for Slider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppendSpec for Slider {
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let id = ui.append_widget(parent, Box::new(SliderWidget));
         let layout_prop = ui.properties().layout;
-
-        // Slider: fixed-size relative container.
+        let value_prop = ui.properties().value;
+        let min_prop = ui.properties().minimum;
+        let max_prop = ui.properties().maximum;
+        ui.set_local(id, min_prop, self.min);
+        ui.set_local(id, max_prop, self.max);
         ui.set_local(
-            owner,
+            id,
             layout_prop,
             taffy::Style {
                 position: taffy::Position::Relative,
@@ -93,10 +113,65 @@ impl Template for SliderTemplate {
                 ..taffy::Style::default()
             },
         );
+        if self.focusable {
+            ui.set_focusable(id, true);
+        }
+        // Initial value: drive through the same setter the runtime
+        // path uses so the thumb's Layout matches.
+        let clamped = self.initial_value.clamp(self.min, self.max);
+        ui.set_local(id, value_prop, clamped);
+        id
+    }
+}
 
-        // Track: spans the full width, vertically centered, with
-        // padding so the rounded ends stay clear of the thumb edges.
-        let track = ui.insert_child(owner, ELEMENT_KIND_SLIDER_TRACK);
+/// Per-element widget for `Slider`. Drives the default template
+/// (track + thumb) and selector identity. Value / Min / Max live
+/// on the property store; the thumb's position is recomputed
+/// imperatively by the template's event handlers.
+#[derive(Debug, Default)]
+pub struct SliderWidget;
+
+impl Widget for SliderWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_SLIDER
+    }
+
+    fn default_template(&self) -> Option<&'static dyn Template> {
+        Some(&SLIDER_TEMPLATE)
+    }
+}
+
+/// Per-element widget for the slider's track.
+#[derive(Debug, Default)]
+pub struct SliderTrackWidget;
+
+impl Widget for SliderTrackWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_SLIDER_TRACK
+    }
+}
+
+/// Per-element widget for the slider's thumb.
+#[derive(Debug, Default)]
+pub struct SliderThumbWidget;
+
+impl Widget for SliderThumbWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_SLIDER_THUMB
+    }
+}
+
+static SLIDER_TEMPLATE: SliderTemplate = SliderTemplate;
+
+#[derive(Debug, Default)]
+struct SliderTemplate;
+
+impl Template for SliderTemplate {
+    fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
+        let layout_prop = ui.properties().layout;
+
+        // Track: full width, vertically centered.
+        let track = ui.append_widget(owner, Box::new(SliderTrackWidget));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
         ui.set_local(
             track,
@@ -117,28 +192,28 @@ impl Template for SliderTemplate {
             },
         );
 
-        // Thumb: absolutely positioned. Initial left is computed
-        // from the slider's initial Value (default = `Minimum`).
-        let thumb = ui.insert_child(owner, ELEMENT_KIND_SLIDER_THUMB);
+        // Thumb: absolute, recomputed left whenever Value changes.
+        let thumb = ui.append_widget(owner, Box::new(SliderThumbWidget));
         let thumb_top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-        let initial_left = thumb_left_for_value(0.0, 0.0, 1.0);
+        let initial_left = thumb_left_for_value(
+            read_or(ui, owner, ui.properties().value, 0.0),
+            read_or(ui, owner, ui.properties().minimum, 0.0),
+            read_or(ui, owner, ui.properties().maximum, 1.0),
+        );
         ui.set_local(thumb, layout_prop, thumb_layout(initial_left, thumb_top));
 
-        // Click anywhere on the slider snaps the value.
         ui.on_click(owner, move |ui, event| {
             if !matches!(event.phase, Phase::Target | Phase::Bubble) {
                 return;
             }
             set_value_from_position(ui, owner, thumb, event.position);
         });
-        // Drag updates value continuously.
         ui.on_drag(owner, move |ui, event| {
             if !matches!(event.phase, Phase::Target | Phase::Bubble) {
                 return;
             }
             set_value_from_position(ui, owner, thumb, event.position);
         });
-        // Arrow keys + Home/End nudge the value.
         ui.on_key(owner, move |ui, event| {
             use ui_events::keyboard::{Key, KeyState, NamedKey};
             if !matches!(event.phase, Phase::Target) {
@@ -163,50 +238,6 @@ impl Template for SliderTemplate {
     }
 }
 
-impl ElementBehavior for SliderBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        // Slider's own surface (focus ring lives here, body usually
-        // transparent).
-        present_surface(element, ctx, store, node);
-    }
-
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&SLIDER_TEMPLATE)
-    }
-}
-
-impl ElementBehavior for SliderTrackBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        present_surface(element, ctx, store, node);
-    }
-}
-
-impl ElementBehavior for SliderThumbBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        present_surface(element, ctx, store, node);
-    }
-}
-
-/// Reads `prop`'s local value on `id`, falling back to `default` if
-/// the element is gone or has no local value.
 fn read_or<T: Clone + 'static>(
     ui: &Ui,
     id: ElementId,
@@ -218,8 +249,6 @@ fn read_or<T: Clone + 'static>(
         .unwrap_or(default)
 }
 
-/// Computes the thumb's `inset.left` for a given value, taking the
-/// slider's `min`/`max` range into account.
 fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
     let span = (max - min).max(f64::EPSILON);
     #[expect(
@@ -231,8 +260,6 @@ fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
     t * travel
 }
 
-/// Builds the thumb's `Layout` style for a given `inset.left` and
-/// vertical inset.
 fn thumb_layout(left: f32, top: f32) -> taffy::Style {
     taffy::Style {
         position: taffy::Position::Absolute,
@@ -250,9 +277,6 @@ fn thumb_layout(left: f32, top: f32) -> taffy::Style {
     }
 }
 
-/// Updates `slider`'s `Value` and repositions its `thumb` to match.
-/// Single source of truth for value writes — every interaction path
-/// funnels through here.
 fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64) {
     let min = read_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_or(ui, slider, ui.properties().maximum, 1.0);
@@ -265,10 +289,6 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64) {
     ui.set_local(thumb, layout_prop, thumb_layout(left, top));
 }
 
-/// Maps a pointer position (in physical pixels, in viewport space)
-/// to a slider value, then writes it. The mapping reads the
-/// slider's world bounds so click + drag work regardless of where
-/// the slider is on the screen.
 fn set_value_from_position(
     ui: &mut Ui,
     slider: ElementId,
@@ -288,16 +308,12 @@ fn set_value_from_position(
     set_value(ui, slider, thumb, value);
 }
 
-/// Public helper: programmatically set a slider's value (and move
-/// its thumb). Useful for tests, undo/redo, or external control.
+/// Programmatically set a slider's value (and move its thumb).
 ///
 /// # Panics
 ///
 /// Panics if `slider` is stale or doesn't have a thumb child.
 pub fn set_slider_value(ui: &mut Ui, slider: ElementId, value: f64) {
-    // The slider's template always inserts a Track then a Thumb,
-    // so the thumb is the second child. We re-derive it instead of
-    // requiring callers to thread a Thumb id through.
     let thumb = ui
         .get(slider)
         .and_then(|el| el.children().get(1).copied())

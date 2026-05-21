@@ -1,62 +1,114 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! `ToggleSwitch`: the second templated control.
+//! `ToggleSwitch`: two-state control with a sliding thumb.
 //!
-//! Structure:
-//!
-//! ```text
-//! Toggle (focusable, clickable, holds `IsChecked`)
-//!   └─ ToggleThumb (template-created)
+//! ```ignore
+//! ui.append(parent, ToggleSwitch::new().checked(true));
 //! ```
-//!
-//! The slide-the-thumb visual comes from Toggle's flex layout: the
-//! cascade carries `justify-content: start` for the unchecked state
-//! and `justify-content: end` for `Toggle:checked`, so when
-//! [`PSEUDO_CHECKED`] flips the next layout pass moves the thumb. No
-//! descendant selectors or manual thumb-positioning required.
-//!
-//! Click / Space / Enter activate the toggle. The default template
-//! attaches click and key handlers that flip `IsChecked` *and* the
-//! `:checked` pseudoclass together, keeping the cascade in sync with
-//! the property. Both phases on the click handler fire
-//! (Target when the Toggle itself is the hit, Bubble when the thumb
-//! is the hit) for the same WPF-style routed-event semantics as
-//! Button.
 
-use understory_box_tree::NodeId;
-use understory_presentation::PresentationStore;
+use alloc::boxed::Box;
+
 use understory_property::DependencyObjectExt;
+use understory_style::TypeTag;
 
 use crate::Phase;
-use crate::behavior::{ElementBehavior, PresentContext};
-use crate::element::{Element, ElementId, ElementKind};
-use crate::generic::present_surface;
+use crate::element::ElementId;
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::Template;
 use crate::ui::Ui;
+use crate::widget::{AppendSpec, Widget};
 
-/// Element kind for a toggle switch — the focusable, clickable
-/// container that holds `IsChecked`.
-pub const ELEMENT_KIND_TOGGLE: ElementKind = ElementKind::new(3);
+/// Selector identity for `ToggleSwitch`.
+pub const TYPE_TOGGLE: TypeTag = TypeTag(3);
+/// Selector identity for the thumb part of a `ToggleSwitch`.
+pub const TYPE_TOGGLE_THUMB: TypeTag = TypeTag(4);
 
-/// Element kind for a toggle switch's thumb — the inner circle
-/// positioned by the parent's flex layout.
-pub const ELEMENT_KIND_TOGGLE_THUMB: ElementKind = ElementKind::new(4);
+/// Builder + spec for a `ToggleSwitch`.
+pub struct ToggleSwitch {
+    initial_checked: bool,
+    focusable: bool,
+}
 
-/// Stateless behavior for [`ELEMENT_KIND_TOGGLE`].
+impl core::fmt::Debug for ToggleSwitch {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ToggleSwitch")
+            .field("initial_checked", &self.initial_checked)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ToggleSwitch {
+    /// Starts a new `ToggleSwitch` builder, off by default.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            initial_checked: false,
+            focusable: true,
+        }
+    }
+
+    /// Sets the initial checked state.
+    #[must_use]
+    pub fn checked(mut self, checked: bool) -> Self {
+        self.initial_checked = checked;
+        self
+    }
+
+    /// Sets whether the toggle participates in focus traversal.
+    /// Default `true`.
+    #[must_use]
+    pub fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
+        self
+    }
+}
+
+impl Default for ToggleSwitch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppendSpec for ToggleSwitch {
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let id = ui.append_widget(parent, Box::new(ToggleWidget));
+        if self.focusable {
+            ui.set_focusable(id, true);
+        }
+        if self.initial_checked {
+            let is_checked_prop = ui.properties().is_checked;
+            ui.set_local(id, is_checked_prop, true);
+            ui.add_pseudo(id, PSEUDO_CHECKED);
+        }
+        id
+    }
+}
+
+/// Per-element widget for `ToggleSwitch`.
 #[derive(Debug, Default)]
-pub struct ToggleBehavior;
+pub struct ToggleWidget;
 
-/// Stateless behavior for [`ELEMENT_KIND_TOGGLE_THUMB`].
+impl Widget for ToggleWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_TOGGLE
+    }
+
+    fn default_template(&self) -> Option<&'static dyn Template> {
+        Some(&TOGGLE_TEMPLATE)
+    }
+}
+
+/// Per-element widget for the thumb part of a `ToggleSwitch`.
 #[derive(Debug, Default)]
-pub struct ToggleThumbBehavior;
+pub struct ToggleThumbWidget;
 
-/// `'static` instances registered in [`crate::Ui::new`].
-pub(crate) static TOGGLE_BEHAVIOR: ToggleBehavior = ToggleBehavior;
-pub(crate) static TOGGLE_THUMB_BEHAVIOR: ToggleThumbBehavior = ToggleThumbBehavior;
+impl Widget for ToggleThumbWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_TOGGLE_THUMB
+    }
+}
 
-/// `'static` template dispatched by [`ToggleBehavior::default_template`].
 static TOGGLE_TEMPLATE: ToggleTemplate = ToggleTemplate;
 
 #[derive(Debug, Default)]
@@ -65,11 +117,9 @@ struct ToggleTemplate;
 impl Template for ToggleTemplate {
     fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
         // Thumb part. Sized + styled by the cascade.
-        let _thumb = ui.insert_child(owner, ELEMENT_KIND_TOGGLE_THUMB);
+        let _thumb = ui.append_widget(owner, Box::new(ToggleThumbWidget));
 
-        // Click handler: flip checked on Target or Bubble (the thumb
-        // child becomes the hit target for clicks inside the toggle,
-        // so we need both phases — same as Button).
+        // Click handler: flip checked on Target or Bubble.
         ui.on_click(owner, move |ui, event| {
             if !matches!(event.phase, Phase::Target | Phase::Bubble) {
                 return;
@@ -95,34 +145,6 @@ impl Template for ToggleTemplate {
                 toggle_checked(ui, owner);
             }
         });
-    }
-}
-
-impl ElementBehavior for ToggleBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        present_surface(element, ctx, store, node);
-    }
-
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&TOGGLE_TEMPLATE)
-    }
-}
-
-impl ElementBehavior for ToggleThumbBehavior {
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        present_surface(element, ctx, store, node);
     }
 }
 

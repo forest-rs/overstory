@@ -1,27 +1,26 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Overstory: a WPF / `WinUI` 3-inspired UI toolkit built on `understory` and
-//! `imaging`.
+//! Overstory: a WPF / `WinUI` 3-inspired UI toolkit built on
+//! `understory` and `imaging`.
 //!
-//! # Status
+//! Each control is a struct that implements [`AppendSpec`] (the
+//! builder + entry point) and produces a [`Widget`] instance that
+//! lives on the element. Application code uses
+//! [`Ui::append`](crate::Ui::append) to insert controls into the
+//! tree:
 //!
-//! Phase 1a — bare element tree only. Subsequent phases add layout, paint,
-//! input, templates, and visual states.
+//! ```ignore
+//! ui.append(parent, Button::new("Click me").on_click(|ui, _| { … }));
+//! ui.append(parent, ToggleSwitch::new().checked(true));
+//! ui.append(parent, Slider::new().value(0.4));
+//! ```
 //!
-//! # Scope of this crate
-//!
-//! `overstory` owns:
-//!
-//! - The visual tree ([`Element`]) and its identity ([`ElementId`]).
-//! - The frame loop and invalidation cascade (later phases).
-//! - Templates, content presenters, visual states (later phases).
-//! - Layout (driven by `taffy`), paint (driven by `imaging`), input (via
-//!   `ui-events`), accessibility (via `accesskit`) — all later phases.
-//!
-//! `overstory` does **not** own dependency property storage, style resolution,
-//! property bindings, focus, event routing, hit testing, timing, or
-//! virtualization. Those live in the corresponding `understory_*` crates.
+//! `Ui::append` is the only public path for adding controls;
+//! `insert_child` lives on the toolkit-internal side for templates
+//! building their own parts. `set_local` remains public for power
+//! users (bindings, dynamic theming, custom controls), but isn't
+//! the typical app-level entry point.
 
 extern crate alloc;
 
@@ -32,6 +31,7 @@ mod element;
 mod generic;
 pub mod layouts;
 mod lookup;
+mod panel;
 mod properties;
 pub mod pseudos;
 mod slider;
@@ -42,39 +42,37 @@ mod text_behavior;
 pub mod theme;
 mod toggle;
 mod ui;
+mod widget;
 
-pub use behavior::{
-    BehaviorRegistry, ElementBehavior, KnownDimensions, MeasureConstraints, MeasureContext,
-    PresentContext,
-};
-pub use button::{ButtonBehavior, ELEMENT_KIND_BUTTON};
-pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
-pub use generic::GenericBehavior;
+pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentContext};
+pub use button::{Button, ButtonWidget, TYPE_BUTTON};
+pub use element::{Element, ElementId};
+pub use generic::present_surface;
 pub use lookup::UiStoreLookup;
+pub use panel::{Panel, PanelWidget};
 pub use properties::BuiltInProperties;
 pub use slider::{
-    ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB, ELEMENT_KIND_SLIDER_TRACK, SliderBehavior,
-    SliderThumbBehavior, SliderTrackBehavior, set_slider_value,
+    Slider, SliderThumbWidget, SliderTrackWidget, SliderWidget, TYPE_SLIDER, TYPE_SLIDER_THUMB,
+    TYPE_SLIDER_TRACK, set_slider_value,
 };
-pub use spinner::{ELEMENT_KIND_SPINNER, SpinnerBehavior};
+pub use spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
 pub use template::Template;
 pub use text::TextEngine;
-pub use text_behavior::{ELEMENT_KIND_TEXT, TextBehavior};
+pub use text_behavior::{TYPE_TEXT, Text, TextWidget};
 pub use toggle::{
-    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ToggleBehavior, ToggleThumbBehavior,
-    toggle_checked,
+    TYPE_TOGGLE, TYPE_TOGGLE_THUMB, ToggleSwitch, ToggleThumbWidget, ToggleWidget, toggle_checked,
 };
 pub use ui::TimerEvent;
 pub use ui::{ClickEvent, DragEvent, KeyEvent, Ui};
+pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
+
+// Re-export the responder's `Phase` so callers can read
+// `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
+// on `understory_responder` directly.
+pub use understory_focus::Navigation;
+pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
-// Re-export the responder's `Phase` so callers can read `ClickEvent::phase`
-// / `KeyEvent::phase` without depending on `understory_responder` directly.
-pub use understory_responder::types::Phase;
-
-// Re-export the navigation intent enum for callers driving focus.
-pub use understory_focus::Navigation;
-
-// Re-export `taffy` so consumers don't have to add a direct dependency for
-// the `Layout` property's style type.
+// Re-export `taffy` so consumers don't have to add a direct
+// dependency for the `Layout` property's style type.
 pub use taffy;

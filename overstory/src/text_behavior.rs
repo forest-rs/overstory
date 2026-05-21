@@ -1,14 +1,13 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Behavior for the [`ELEMENT_KIND_TEXT`] kind.
+//! `Text`: leaf widget that displays a shaped string.
 //!
-//! `present` resolves `Content` / `Foreground` / `FontSize` through the
-//! cascade and writes them into a `PlainTextPrimitive` on the element's
-//! presentation node. Text shaping (parley) happens later, at lower
-//! time, using the box tree's world bounds for sizing — keeping the
-//! presentation tree geometry-free.
+//! ```ignore
+//! ui.append(parent, Text::new("Loading…").font_size(13.0));
+//! ```
 
+use alloc::boxed::Box;
 use alloc::string::String;
 
 use kurbo::Size;
@@ -16,21 +15,84 @@ use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, TextContent};
 use understory_property::DependencyObjectExt;
+use understory_style::TypeTag;
 
-use crate::behavior::{ElementBehavior, MeasureConstraints, MeasureContext, PresentContext};
-use crate::element::{Element, ElementId, ElementKind};
+use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
+use crate::element::{Element, ElementId};
+use crate::ui::Ui;
+use crate::widget::{AppendSpec, Widget};
 
-/// Element kind for a text leaf.
-pub const ELEMENT_KIND_TEXT: ElementKind = ElementKind::new(1);
+/// Selector identity for `Text`.
+pub const TYPE_TEXT: TypeTag = TypeTag(1);
 
-/// Stateless text behavior; instantiated as a `'static`.
+/// Builder + spec for a `Text` label.
+pub struct Text {
+    content: String,
+    font_size: Option<f64>,
+    foreground: Option<Brush>,
+}
+
+impl core::fmt::Debug for Text {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Text")
+            .field("content", &self.content)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Text {
+    /// Starts a new `Text` builder with the given content.
+    #[must_use]
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            font_size: None,
+            foreground: None,
+        }
+    }
+
+    /// Overrides the text font size (logical pixels).
+    #[must_use]
+    pub fn font_size(mut self, font_size: f64) -> Self {
+        self.font_size = Some(font_size);
+        self
+    }
+
+    /// Overrides the text's foreground brush.
+    #[must_use]
+    pub fn foreground(mut self, brush: impl Into<Brush>) -> Self {
+        self.foreground = Some(brush.into());
+        self
+    }
+}
+
+impl AppendSpec for Text {
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let id = ui.append_widget(parent, Box::new(TextWidget));
+        let content_prop = ui.properties().content;
+        let font_size_prop = ui.properties().font_size;
+        let fg_prop = ui.properties().foreground;
+        ui.set_local(id, content_prop, self.content);
+        if let Some(size) = self.font_size {
+            ui.set_local(id, font_size_prop, size);
+        }
+        if let Some(brush) = self.foreground {
+            ui.set_local(id, fg_prop, brush);
+        }
+        id
+    }
+}
+
+/// Per-element widget for `Text`. Stateless — the content / size /
+/// foreground all live in the property store.
 #[derive(Debug, Default)]
-pub struct TextBehavior;
+pub struct TextWidget;
 
-/// `'static` instance registered in [`crate::Ui::new`].
-pub(crate) static TEXT_BEHAVIOR: TextBehavior = TextBehavior;
+impl Widget for TextWidget {
+    fn type_tag(&self) -> TypeTag {
+        TYPE_TEXT
+    }
 
-impl ElementBehavior for TextBehavior {
     fn present(
         &self,
         element: &Element,

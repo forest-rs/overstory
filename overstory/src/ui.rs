@@ -37,28 +37,19 @@ use understory_property_binding::{
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
-    MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
+    MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
 };
 use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
 
-use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PresentContext};
-use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
+use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
-use crate::element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
-use crate::generic::GENERIC_BEHAVIOR;
+use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
+use crate::panel::PanelWidget;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
-use crate::slider::{
-    ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB, ELEMENT_KIND_SLIDER_TRACK, SLIDER_BEHAVIOR,
-    SLIDER_THUMB_BEHAVIOR, SLIDER_TRACK_BEHAVIOR,
-};
-use crate::spinner::{ELEMENT_KIND_SPINNER, SPINNER_BEHAVIOR};
 use crate::text::TextEngine;
-use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
-use crate::toggle::{
-    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, TOGGLE_BEHAVIOR, TOGGLE_THUMB_BEHAVIOR,
-};
+use crate::widget::{TYPE_GENERIC, Widget};
 
 /// Root context for an Overstory UI instance.
 ///
@@ -72,7 +63,6 @@ pub struct Ui {
     root: ElementId,
     registry: PropertyRegistry,
     properties: BuiltInProperties,
-    behaviors: BehaviorRegistry,
     invalidation: InvalidationTracker<ElementId>,
     /// Retained resolved drawing intent. Each element has one entry,
     /// keyed by its primary box-tree node id. Behaviors write
@@ -311,7 +301,7 @@ enum Slot {
 
 impl Ui {
     /// Creates a new [`Ui`] with an empty root element of kind
-    /// [`ELEMENT_KIND_GENERIC`], built-in properties registered, the generic
+    /// `PanelWidget`, built-in properties registered, the generic
     /// behavior installed, and an empty cascade and theme.
     ///
     /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
@@ -320,16 +310,6 @@ impl Ui {
     pub fn new() -> Self {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
-        let mut behaviors = BehaviorRegistry::new();
-        behaviors.register(ELEMENT_KIND_GENERIC, &GENERIC_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_TEXT, &TEXT_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_BUTTON, &BUTTON_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_TOGGLE, &TOGGLE_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_TOGGLE_THUMB, &TOGGLE_THUMB_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_SPINNER, &SPINNER_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_SLIDER, &SLIDER_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_SLIDER_TRACK, &SLIDER_TRACK_BEHAVIOR);
-        behaviors.register(ELEMENT_KIND_SLIDER_THUMB, &SLIDER_THUMB_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
@@ -359,7 +339,6 @@ impl Ui {
             root: ElementId::new(0, 0),
             registry,
             properties,
-            behaviors,
             invalidation,
             presentation: Some(PresentationStore::new()),
             cascade,
@@ -389,7 +368,7 @@ impl Ui {
             timer_handlers: HashMap::new(),
             now: 0,
         };
-        let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
+        let root = me.alloc_element(None, None, Some(Box::new(PanelWidget)));
         me.root = root;
         me.style_one(root);
         me
@@ -421,19 +400,6 @@ impl Ui {
     #[inline]
     pub fn properties(&self) -> &BuiltInProperties {
         &self.properties
-    }
-
-    /// Returns the behavior registry.
-    #[must_use]
-    #[inline]
-    pub fn behaviors(&self) -> &BehaviorRegistry {
-        &self.behaviors
-    }
-
-    /// Mutably borrows the behavior registry.
-    #[inline]
-    pub fn behaviors_mut(&mut self) -> &mut BehaviorRegistry {
-        &mut self.behaviors
     }
 
     /// Returns the active style cascade.
@@ -536,49 +502,53 @@ impl Ui {
     /// any elements created during that expansion are tagged with
     /// `templated_parent = Some(child)`.
     ///
-    /// If this call is happening *inside* another template's expansion,
-    /// `templated_parent` is inherited from the outer template's owner — so
-    /// elements created during a Button's template expansion all share
-    /// `templated_parent = button_id`, even when they're created several
-    /// levels deep.
+    /// Inserts a new control under `parent`. The spec's builder
+    /// methods produce its configuration; `append_to` reads those,
+    /// creates the element + widget, registers handlers, and
+    /// returns the new element id.
     ///
-    /// For controls whose default template reads initial property values
-    /// from the owner (e.g. a Button's template copying its `Content` to
-    /// the label), use [`insert_child_with`](Self::insert_child_with) so
-    /// the configuration closure can write those properties *before* the
-    /// template expands. Until Phase 1f-6's `TemplateBinding` lands, this
-    /// is the only way to make the initial snapshot pick up app values.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is a stale id.
-    pub fn insert_child(&mut self, parent: ElementId, kind: ElementKind) -> ElementId {
-        self.insert_child_with(parent, kind, |_, _| {})
-    }
-
-    /// Like [`insert_child`](Self::insert_child), but runs `configure` on
-    /// the new element *before* its default template expands. Apps use
-    /// this to seed properties whose values the template will snapshot
-    /// (e.g. `Content` for Button).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is a stale id.
-    pub fn insert_child_with<F>(
+    /// This is the primary way for application code to add controls
+    /// to the tree. See [`crate::Button`], [`crate::ToggleSwitch`],
+    /// [`crate::Slider`], [`crate::Spinner`], [`crate::Panel`],
+    /// [`crate::Text`].
+    pub fn append<S: crate::widget::AppendSpec>(
         &mut self,
         parent: ElementId,
-        kind: ElementKind,
-        configure: F,
-    ) -> ElementId
-    where
-        F: FnOnce(&mut Self, ElementId),
-    {
+        spec: S,
+    ) -> ElementId {
+        spec.append_to(self, parent)
+    }
+
+    /// Lower-level entry point used by [`AppendSpec`](crate::widget::AppendSpec)
+    /// implementations and template-part construction.
+    ///
+    /// Allocates a new element under `parent` carrying the supplied
+    /// widget (or `None` for anonymous containers), runs the
+    /// widget's default template if it has one, and returns the new
+    /// id. Most callers should use [`Self::append`] instead.
+    pub fn append_widget(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
+        self.insert_child_inner(parent, Some(widget))
+    }
+
+    /// Inserts an anonymous container child. Used by tests + the
+    /// occasional template that needs a no-widget slot; app code
+    /// should prefer [`append(parent, Panel::new())`](Self::append).
+    #[cfg(test)]
+    pub(crate) fn insert_child(&mut self, parent: ElementId) -> ElementId {
+        self.insert_child_inner(parent, None)
+    }
+
+    fn insert_child_inner(
+        &mut self,
+        parent: ElementId,
+        widget: Option<Box<dyn Widget>>,
+    ) -> ElementId {
         assert!(
             self.get(parent).is_some(),
             "insert_child: parent id is stale"
         );
         let templated_parent = self.currently_expanding;
-        let child = self.alloc_element(kind, Some(parent), templated_parent);
+        let child = self.alloc_element(Some(parent), templated_parent, widget);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
         // LAYOUT cascades to PAINT and COMPOSE via the tracker's
@@ -588,24 +558,19 @@ impl Ui {
         // `Layout` would sit in the cascade but never reach taffy.
         self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
-        configure(self, child);
         self.expand_default_template(child);
         child
     }
 
-    /// Expands `kind`'s default template under `owner`, if any. Sets
-    /// `currently_expanding = Some(owner)` for the duration of the
-    /// expansion so any `insert_child` calls inside `Template::instantiate`
-    /// tag their elements with the right `templated_parent`.
+    /// Expands the widget's default template under `owner`, if any.
+    /// Sets `currently_expanding = Some(owner)` for the duration so
+    /// any `append` calls inside `Template::instantiate` tag their
+    /// elements with the right `templated_parent`.
     fn expand_default_template(&mut self, owner: ElementId) {
         let Some(element) = self.get(owner) else {
             return;
         };
-        let kind = element.kind();
-        let Some(behavior) = self.behaviors.get(kind) else {
-            return;
-        };
-        let Some(template) = behavior.default_template() else {
+        let Some(template) = element.widget().and_then(|w| w.default_template()) else {
             return;
         };
         let outer = self.currently_expanding.replace(owner);
@@ -1109,6 +1074,14 @@ impl Ui {
     /// each element's click handler along it (capture, then target,
     /// then bubble). Called when [`ClickState::on_up`] returns
     /// [`ClickResult::Click`].
+    /// Programmatically synthesize a click on `target` at
+    /// `position`. Used by widgets that translate non-pointer input
+    /// (e.g. Button's Space / Enter key activation) into the same
+    /// click dispatch the pointer pipeline would produce.
+    pub fn synthesize_click(&mut self, target: ElementId, position: Point) {
+        self.dispatch_click(target, position);
+    }
+
     fn dispatch_click(&mut self, target: ElementId, position: Point) {
         // Compute the sequence with `&self` borrows, drop them, then
         // run handlers with `&mut self`.
@@ -1372,11 +1345,10 @@ impl Ui {
         };
 
         // Run taffy with a measure callback that dispatches to the elements'
-        // behaviors. Split-borrow the disjoint Ui fields so the closure can
+        // widgets. Split-borrow the disjoint Ui fields so the closure can
         // read everything it needs while the taffy tree is &mut.
         {
             let taffy = &mut self.taffy;
-            let behaviors = &self.behaviors;
             let registry = &self.registry;
             let properties = &self.properties;
             let theme = &self.theme;
@@ -1401,7 +1373,9 @@ impl Ui {
                         } if *generation == id.generation() => element.as_ref(),
                         _ => return taffy::Size::ZERO,
                     };
-                    let Some(behavior) = behaviors.get(element.kind()) else {
+                    let Some(widget) = element.widget() else {
+                        // Anonymous container: defer to taffy's
+                        // default style-based sizing.
                         return taffy::Size::ZERO;
                     };
                     let match_state = match_states
@@ -1426,7 +1400,7 @@ impl Ui {
                             height: known.height.map(f64::from),
                         },
                     };
-                    match behavior.measure(element, &measure_ctx, constraints) {
+                    match widget.measure(element, &measure_ctx, constraints) {
                         #[expect(
                             clippy::cast_possible_truncation,
                             reason = "measured size fits f32"
@@ -1565,9 +1539,6 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return;
         };
-        let Some(behavior) = self.behaviors.get(element.kind()) else {
-            return;
-        };
         let Some(node) = self.box_for(id) else {
             return;
         };
@@ -1584,7 +1555,13 @@ impl Ui {
             match_state,
             lookup: UiStoreLookup::new(self),
         };
-        behavior.present(element, &ctx, presentation, node);
+        if let Some(widget) = element.widget() {
+            widget.present(element, &ctx, presentation, node);
+        } else {
+            // Anonymous container: still render its surface from the
+            // cascade so panels with `Background` rules paint.
+            crate::generic::present_surface(element, &ctx, presentation, node);
+        }
     }
 
     /// Recursively walks the box tree depth-first, lowering each
@@ -1638,7 +1615,9 @@ impl Ui {
             self.match_states.remove(&id);
             return;
         };
-        let kind = element.kind();
+        // Anonymous containers fall back to `TYPE_GENERIC` for
+        // selector matching; widget elements supply their own tag.
+        let type_tag = element.widget().map_or(TYPE_GENERIC, |w| w.type_tag());
         // Copy out the slices so the `&Element` borrow of `self` can end
         // before we mutate `self.match_states`.
         let classes: SmallVec<[understory_style::ClassId; 4]> =
@@ -1648,7 +1627,7 @@ impl Ui {
 
         let parent_state = self.cascade.root_state();
 
-        let inputs = SelectorInputs::new(Some(TypeTag(kind.tag())), &classes, &pseudos);
+        let inputs = SelectorInputs::new(Some(type_tag), &classes, &pseudos);
         let old_state = self.match_states.get(&id).copied();
         let new_state = self.cascade.enter_subject(parent_state, &inputs);
         self.match_states.insert(id, new_state);
@@ -1710,9 +1689,9 @@ impl Ui {
 
     fn alloc_element(
         &mut self,
-        kind: ElementKind,
         parent: Option<ElementId>,
         templated_parent: Option<ElementId>,
+        widget: Option<Box<dyn Widget>>,
     ) -> ElementId {
         let id = if let Some(slot_index) = self.free.pop() {
             let slot = &mut self.slots[slot_index as usize];
@@ -1725,7 +1704,7 @@ impl Ui {
             let id = ElementId::new(slot_index, generation);
             *slot = Slot::Live {
                 generation,
-                element: Box::new(Element::new(id, kind, parent, templated_parent)),
+                element: Box::new(Element::new(id, parent, templated_parent, widget)),
             };
             id
         } else {
@@ -1733,7 +1712,7 @@ impl Ui {
             let id = ElementId::new(slot_index, 0);
             self.slots.push(Slot::Live {
                 generation: 0,
-                element: Box::new(Element::new(id, kind, parent, templated_parent)),
+                element: Box::new(Element::new(id, parent, templated_parent, widget)),
             });
             id
         };
@@ -2010,8 +1989,8 @@ mod tests {
     fn insert_child_appends_to_parent_and_marks_dirty() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
 
         assert_eq!(ui.len(), 3);
         let root_children = ui.get(root).unwrap().children();
@@ -2028,9 +2007,9 @@ mod tests {
     fn remove_drops_subtree_and_invalidates_handles() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let grandchild = ui.insert_child(a, ELEMENT_KIND_GENERIC);
-        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
+        let grandchild = ui.insert_child(a);
+        let b = ui.insert_child(root);
 
         ui.remove(a);
 
@@ -2045,10 +2024,10 @@ mod tests {
     fn slot_reuse_invalidates_old_handle() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
         ui.remove(a);
 
-        let c = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let c = ui.insert_child(root);
         assert_eq!(c.slot(), a.slot());
         assert_ne!(c.generation(), a.generation());
         assert!(ui.get(a).is_none());
@@ -2068,9 +2047,9 @@ mod tests {
     fn insert_child_with_stale_parent_panics() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
         ui.remove(a);
-        let _ = ui.insert_child(a, ELEMENT_KIND_GENERIC);
+        let _ = ui.insert_child(a);
     }
 
     #[test]
@@ -2161,9 +2140,7 @@ mod tests {
         // Build a cascade with one rule.
         let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
         let style = StyleBuilder::new().set(background, red).build();
-        let selector =
-            SelectorBuilder::new(SelectorStep::type_tag(TypeTag(ELEMENT_KIND_GENERIC.tag())))
-                .build();
+        let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build();
         let cascade = StyleCascadeBuilder::new()
             .push_rule(StyleOrigin::Base, selector, style)
             .build();
@@ -2201,10 +2178,9 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let fg = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let fg = ui.insert_child(root);
         ui.add_class(fg, CLASS_FG);
 
-        let kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
         let dark = Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff)));
         let blue = Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff)));
         let bg_prop = ui.properties().background;
@@ -2215,12 +2191,13 @@ mod tests {
         let cascade = StyleCascadeBuilder::new()
             .push_rule(
                 StyleOrigin::Base,
-                SelectorBuilder::new(SelectorStep::type_tag(kind)).build(),
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build(),
                 generic,
             )
             .push_rule(
                 StyleOrigin::Base,
-                SelectorBuilder::new(SelectorStep::type_tag(kind).with_class(CLASS_FG)).build(),
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(CLASS_FG))
+                    .build(),
                 foreground,
             )
             .build();
@@ -2287,7 +2264,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
         ui.set_local(
             child,
             layout_prop,
@@ -2311,8 +2288,8 @@ mod tests {
     fn set_focus_toggles_pseudoclass() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
 
         assert_eq!(ui.focused(), None);
         assert!(ui.set_focus(Some(a)));
@@ -2349,9 +2326,9 @@ mod tests {
                 ..Default::default()
             },
         );
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let c = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
+        let c = ui.insert_child(root);
         for id in [a, b, c] {
             ui.set_local(
                 id,
@@ -2385,7 +2362,7 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
         ui.set_focusable(child, true);
         ui.set_focus(Some(child));
 
@@ -2431,7 +2408,7 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
 
         let fired_with = Rc::new(Cell::new(None::<(Phase, ElementId, ElementId)>));
         let fired = fired_with.clone();
@@ -2460,8 +2437,8 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let grand = ui.insert_child(child, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
+        let grand = ui.insert_child(child);
 
         let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
         for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
@@ -2498,7 +2475,7 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
 
         let count = Rc::new(Cell::new(0_u32));
         let inc = count.clone();
@@ -2543,7 +2520,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
         ui.set_local(
             child,
             layout_prop,
@@ -2583,8 +2560,8 @@ mod tests {
     fn element_to_tree_node_round_trips() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let a = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let b = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
 
         // Every element has at least one node; `node_to_element`
         // recovers it.
@@ -2617,8 +2594,8 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let source = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let target = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let source = ui.insert_child(root);
+        let target = ui.insert_child(root);
 
         let content_prop = ui.properties().content;
         ui.bind(
@@ -2654,8 +2631,8 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let source = ui.insert_child(root, ELEMENT_KIND_GENERIC);
-        let target = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let source = ui.insert_child(root);
+        let target = ui.insert_child(root);
 
         let content_prop = ui.properties().content;
         // User sets a Local first.
@@ -2682,34 +2659,43 @@ mod tests {
     #[test]
     fn template_expansion_inserts_parts_under_owner() {
         use crate::Template;
-        use crate::behavior::ElementBehavior;
+        use crate::widget::{AppendSpec, Widget};
+        use understory_style::TypeTag;
 
-        // A unit-test kind whose default_template inserts two generic
-        // children. Both should have templated_parent = the owner.
-        const TEST_OWNER_KIND: ElementKind = ElementKind::new(0xFEED_BEEF);
+        // A unit-test widget whose default_template inserts two
+        // child panels. Both should have templated_parent = the
+        // owner.
+        const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_BEEF);
 
         struct TestTemplate;
         impl Template for TestTemplate {
             fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
-                let _a = ui.insert_child(owner, ELEMENT_KIND_GENERIC);
-                let _b = ui.insert_child(owner, ELEMENT_KIND_GENERIC);
+                let _a = ui.append(owner, crate::Panel::new());
+                let _b = ui.append(owner, crate::Panel::new());
             }
         }
         static TEST_TEMPLATE: TestTemplate = TestTemplate;
 
-        struct TestBehavior;
-        impl ElementBehavior for TestBehavior {
+        #[derive(Debug)]
+        struct TestWidget;
+        impl Widget for TestWidget {
+            fn type_tag(&self) -> TypeTag {
+                TEST_OWNER_TAG
+            }
             fn default_template(&self) -> Option<&'static dyn Template> {
                 Some(&TEST_TEMPLATE)
             }
         }
-        static TEST_BEHAVIOR: TestBehavior = TestBehavior;
+        struct TestSpec;
+        impl AppendSpec for TestSpec {
+            fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+                ui.append_widget(parent, Box::new(TestWidget))
+            }
+        }
 
         let mut ui = Ui::new();
-        ui.behaviors_mut().register(TEST_OWNER_KIND, &TEST_BEHAVIOR);
-
         let root = ui.root();
-        let owner = ui.insert_child(root, TEST_OWNER_KIND);
+        let owner = ui.append(root, TestSpec);
 
         // The template should have created two children under owner, each
         // tagged with templated_parent = Some(owner).
@@ -2733,7 +2719,7 @@ mod tests {
     fn compute_layout_writes_taffy_bounds() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root, ELEMENT_KIND_GENERIC);
+        let child = ui.insert_child(root);
 
         let layout_prop = ui.properties().layout;
         // Root fills the viewport with 10px padding.
