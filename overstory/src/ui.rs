@@ -43,9 +43,9 @@ use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerR
 
 use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
-use crate::panel::PanelWidget;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::text::TextEngine;

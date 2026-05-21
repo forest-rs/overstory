@@ -25,43 +25,38 @@
 extern crate alloc;
 
 mod behavior;
-mod button;
 pub mod channels;
+mod controls;
 mod element;
 mod generic;
 pub mod layouts;
 mod lookup;
-mod panel;
 mod properties;
 pub mod pseudos;
-mod slider;
-mod spinner;
 mod template;
 mod text;
-mod text_behavior;
 pub mod theme;
-mod toggle;
 mod ui;
 mod widget;
 
 pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentContext};
-pub use button::{Button, ButtonWidget, TYPE_BUTTON};
-pub use element::{Element, ElementId};
-pub use generic::present_surface;
-pub use lookup::UiStoreLookup;
-pub use panel::{Panel, PanelWidget};
-pub use properties::BuiltInProperties;
-pub use slider::{
+pub use controls::button::{Button, ButtonWidget, TYPE_BUTTON};
+pub use controls::panel::{Panel, PanelWidget};
+pub use controls::slider::{
     Slider, SliderThumbWidget, SliderTrackWidget, SliderWidget, TYPE_SLIDER, TYPE_SLIDER_THUMB,
     TYPE_SLIDER_TRACK, set_slider_value,
 };
-pub use spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
-pub use template::Template;
-pub use text::TextEngine;
-pub use text_behavior::{TYPE_TEXT, Text, TextWidget};
-pub use toggle::{
+pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
+pub use controls::text::{TYPE_TEXT, Text, TextWidget};
+pub use controls::toggle::{
     TYPE_TOGGLE, TYPE_TOGGLE_THUMB, ToggleSwitch, ToggleThumbWidget, ToggleWidget, toggle_checked,
 };
+pub use element::{Element, ElementId};
+pub use generic::present_surface;
+pub use lookup::UiStoreLookup;
+pub use properties::BuiltInProperties;
+pub use template::Template;
+pub use text::TextEngine;
 pub use ui::TimerEvent;
 pub use ui::{ClickEvent, DragEvent, KeyEvent, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
