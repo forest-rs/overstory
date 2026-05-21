@@ -19,10 +19,11 @@
 //! }));
 //! ```
 //!
-//! `AppendSpec::append_to` creates the widget element, then writes the
-//! builder's initial properties and handlers. Default templates expand during
-//! element creation, so controls whose template layout depends on initial
-//! builder state must sync their parts after those property writes.
+//! `AppendSpec::append_to` creates the widget element, writes the builder's
+//! initial properties and handlers, then relies on the widget's default
+//! template for any visual parts. Most controls expand during insertion;
+//! controls whose template structure depends on initial builder state can use
+//! Overstory's crate-internal deferred expansion path.
 
 use core::any::Any;
 
@@ -97,6 +98,56 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// `Slider`'s track + thumb).
     fn default_template(&self) -> Option<&'static dyn Template> {
         None
+    }
+}
+
+/// Widget wrapper that replaces a control's default template without changing
+/// the wrapped widget's selector identity, presentation, or measure behavior.
+pub(crate) struct TemplateOverrideWidget<W> {
+    widget: W,
+    template: &'static dyn Template,
+}
+
+impl<W> TemplateOverrideWidget<W> {
+    pub(crate) const fn new(widget: W, template: &'static dyn Template) -> Self {
+        Self { widget, template }
+    }
+}
+
+impl<W: core::fmt::Debug> core::fmt::Debug for TemplateOverrideWidget<W> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TemplateOverrideWidget")
+            .field("widget", &self.widget)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<W: Widget> Widget for TemplateOverrideWidget<W> {
+    fn type_tag(&self) -> Option<TypeTag> {
+        self.widget.type_tag()
+    }
+
+    fn present(
+        &self,
+        element: &Element,
+        ctx: &PresentContext<'_>,
+        store: &mut PresentationStore<NodeId, ElementId>,
+        node: NodeId,
+    ) {
+        self.widget.present(element, ctx, store, node);
+    }
+
+    fn measure(
+        &self,
+        element: &Element,
+        ctx: &MeasureContext<'_>,
+        constraints: MeasureConstraints,
+    ) -> Option<Size> {
+        self.widget.measure(element, ctx, constraints)
+    }
+
+    fn default_template(&self) -> Option<&'static dyn Template> {
+        Some(self.template)
     }
 }
 

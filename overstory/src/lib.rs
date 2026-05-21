@@ -41,17 +41,20 @@ mod ui;
 mod widget;
 
 pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentContext};
-pub use controls::button::{Button, ButtonWidget, PART_BUTTON_LABEL, TYPE_BUTTON};
+pub use controls::button::{
+    Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
+};
 pub use controls::panel::{Panel, PanelWidget};
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
-    PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, Slider, SliderWidget, TYPE_SLIDER,
-    set_slider_value,
+    PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,
+    SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL, SLOT_SLIDER_TRACK, Slider,
+    SliderWidget, TYPE_SLIDER, set_slider_value,
 };
 pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::toggle::{
-    PART_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
+    PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
 };
 pub use element::{Element, ElementId};
 pub use generic::present_surface;
@@ -59,7 +62,7 @@ pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
 pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,
-    TemplateItemKey, TemplateNode, TemplatePart, TemplateSpec, TemplateWidgetFactory,
+    TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 pub use text::TextEngine;
 pub use ui::TimerEvent;

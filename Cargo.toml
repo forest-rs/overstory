@@ -26,6 +26,7 @@ kurbo = { default-features = true, version = "0.13.1" }
 peniko = { default-features = true, version = "0.6.1" }
 
 # Understory primitives (path deps — closely coupled).
+understory_axis = { default-features = false, path = "../understory/understory_axis" }
 understory_box_tree = { default-features = false, features = ["std"], path = "../understory/understory_box_tree" }
 understory_event_state = { default-features = false, features = ["std", "click", "drag"], path = "../understory/understory_event_state" }
 understory_focus = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_focus" }

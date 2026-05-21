@@ -49,7 +49,7 @@ use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
-use crate::template::{TemplateContext, TemplateInstance};
+use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::text::TextEngine;
 use crate::widget::{TYPE_GENERIC, Widget};
 
@@ -555,12 +555,31 @@ impl Ui {
             .and_then(|instance| instance.part(tag))
     }
 
+    /// Returns the first template part registered for `owner + slot`.
+    #[must_use]
+    pub fn slot(&self, owner: ElementId, slot: TemplateSlot) -> Option<ElementId> {
+        self.template_instance(owner)
+            .and_then(|instance| instance.slot(slot))
+    }
+
     /// Returns all template parts registered for `owner + tag`.
     pub fn parts(&self, owner: ElementId, tag: PartTag) -> impl Iterator<Item = ElementId> + '_ {
         self.template_instances
             .get(&owner)
             .into_iter()
             .flat_map(move |instance| instance.parts(tag))
+    }
+
+    /// Returns all template parts registered for `owner + slot`.
+    pub fn slots(
+        &self,
+        owner: ElementId,
+        slot: TemplateSlot,
+    ) -> impl Iterator<Item = ElementId> + '_ {
+        self.template_instances
+            .get(&owner)
+            .into_iter()
+            .flat_map(move |instance| instance.slots(slot))
     }
 
     /// Returns the match state for `id`, falling back to the cascade root
@@ -598,7 +617,15 @@ impl Ui {
     /// widget's default template if it has one, and returns the new
     /// id. Most callers should use [`Self::append`] instead.
     pub fn append_widget(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
-        self.insert_child_inner(parent, None, None, Some(widget))
+        self.insert_child_inner(parent, None, None, Some(widget), true)
+    }
+
+    pub(crate) fn append_widget_deferred_template(
+        &mut self,
+        parent: ElementId,
+        widget: Box<dyn Widget>,
+    ) -> ElementId {
+        self.insert_child_inner(parent, None, None, Some(widget), false)
     }
 
     /// Inserts an anonymous container child. Used by tests + the
@@ -606,7 +633,7 @@ impl Ui {
     /// should prefer [`append(parent, Panel::new())`](Self::append).
     #[cfg(test)]
     pub(crate) fn insert_child(&mut self, parent: ElementId) -> ElementId {
-        self.insert_child_inner(parent, None, None, None)
+        self.insert_child_inner(parent, None, None, None, true)
     }
 
     pub(crate) fn insert_template_child(
@@ -620,7 +647,7 @@ impl Ui {
             self.get(owner).is_some(),
             "insert_template_child: owner id is stale"
         );
-        self.insert_child_inner(parent, Some(owner), part_tag, widget)
+        self.insert_child_inner(parent, Some(owner), part_tag, widget, true)
     }
 
     fn insert_child_inner(
@@ -629,6 +656,7 @@ impl Ui {
         templated_parent: Option<ElementId>,
         part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
+        expand_template: bool,
     ) -> ElementId {
         assert!(
             self.get(parent).is_some(),
@@ -644,7 +672,9 @@ impl Ui {
         // `Layout` would sit in the cascade but never reach taffy.
         self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
-        self.expand_default_template(child);
+        if expand_template {
+            self.expand_default_template(child);
+        }
         child
     }
 
@@ -653,7 +683,7 @@ impl Ui {
     /// Template-generated elements are inserted through [`TemplateContext`],
     /// which records named parts and applies the owner back-reference
     /// explicitly.
-    fn expand_default_template(&mut self, owner: ElementId) {
+    pub(crate) fn expand_default_template(&mut self, owner: ElementId) {
         let Some(element) = self.get(owner) else {
             return;
         };
@@ -2641,7 +2671,8 @@ mod tests {
     fn default_templates_label_named_parts() {
         use crate::{
             Button, PART_BUTTON_LABEL, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB,
-            Slider, ToggleSwitch,
+            SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK, SLOT_TOGGLE_THUMB, Slider,
+            ToggleSwitch,
         };
 
         let mut ui = Ui::new();
@@ -2659,10 +2690,13 @@ mod tests {
                 .part(PART_BUTTON_LABEL),
             Some(button_label)
         );
+        assert_eq!(ui.slot(button, SLOT_BUTTON_CONTENT), Some(button_label));
 
         let slider = ui.append(root, Slider::new());
         let slider_track = ui.part(slider, PART_SLIDER_TRACK).unwrap();
         let slider_thumb = ui.part(slider, PART_SLIDER_THUMB).unwrap();
+        assert_eq!(ui.slot(slider, SLOT_SLIDER_TRACK), Some(slider_track));
+        assert_eq!(ui.slot(slider, SLOT_SLIDER_THUMB), Some(slider_thumb));
         assert_eq!(
             ui.get(slider_track).unwrap().part_tag(),
             Some(PART_SLIDER_TRACK)
@@ -2674,9 +2708,98 @@ mod tests {
 
         let toggle = ui.append(root, ToggleSwitch::new());
         let toggle_thumb = ui.part(toggle, PART_TOGGLE_THUMB).unwrap();
+        assert_eq!(ui.slot(toggle, SLOT_TOGGLE_THUMB), Some(toggle_thumb));
         assert_eq!(
             ui.get(toggle_thumb).unwrap().part_tag(),
             Some(PART_TOGGLE_THUMB)
+        );
+    }
+
+    #[test]
+    fn template_overrides_replace_visuals_not_control_behavior() {
+        use crate::widget::SurfacePartWidget;
+        use crate::{
+            Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
+            TextWidget, ToggleSwitch, set_slider_value,
+        };
+
+        const OUTER_FRAME: PartTag = PartTag(0x40);
+        const INNER_FRAME: PartTag = PartTag(0x41);
+
+        struct DoubleFrameButtonTemplate;
+        impl Template for DoubleFrameButtonTemplate {
+            fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+                let props = *cx.properties();
+                let outer = cx.part_widget(OUTER_FRAME, Box::new(SurfacePartWidget));
+                let inner = cx.part_widget_under(outer, INNER_FRAME, Box::new(SurfacePartWidget));
+                let content =
+                    cx.slot_widget_under(inner, SLOT_BUTTON_CONTENT, Box::new(TextWidget));
+                cx.bind_owner_to_part(props.content, content, props.content)
+                    .expect("content binding should install");
+                cx.bind_owner_to_part(props.font_size, content, props.font_size)
+                    .expect("font size binding should install");
+            }
+        }
+
+        struct SingleSlotTemplate(TemplateSlot);
+        impl Template for SingleSlotTemplate {
+            fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+                let _part = cx.slot_widget(self.0, Box::new(SurfacePartWidget));
+            }
+        }
+
+        static BUTTON_TEMPLATE: DoubleFrameButtonTemplate = DoubleFrameButtonTemplate;
+        static TOGGLE_TEMPLATE: SingleSlotTemplate = SingleSlotTemplate(SLOT_TOGGLE_THUMB);
+        static SLIDER_TEMPLATE: SingleSlotTemplate = SingleSlotTemplate(SLOT_SLIDER_THUMB);
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+
+        let button = ui.append(root, Button::new("Run").template(&BUTTON_TEMPLATE));
+        let outer = ui.part(button, OUTER_FRAME).unwrap();
+        let inner = ui.part(button, INNER_FRAME).unwrap();
+        let content = ui.slot(button, SLOT_BUTTON_CONTENT).unwrap();
+        assert_eq!(ui.get(outer).unwrap().parent(), Some(button));
+        assert_eq!(ui.get(inner).unwrap().parent(), Some(outer));
+        assert_eq!(ui.get(content).unwrap().parent(), Some(inner));
+        ui.flush_bindings();
+        assert_eq!(
+            ui.get(content)
+                .unwrap()
+                .property_store()
+                .effective_local_erased(ui.properties().content.id())
+                .and_then(|value| value.downcast_ref::<String>())
+                .map(String::as_str),
+            Some("Run")
+        );
+
+        let toggle = ui.append(root, ToggleSwitch::new().template(&TOGGLE_TEMPLATE));
+        ui.synthesize_click(toggle, Point::ZERO);
+        let checked = ui
+            .get(toggle)
+            .and_then(|el| el.get_local_value(ui.properties().is_checked).copied())
+            .unwrap_or(false);
+        assert!(
+            checked,
+            "custom toggle template should keep toggle behavior"
+        );
+
+        let slider = ui.append(root, Slider::new().template(&SLIDER_TEMPLATE).value(0.75));
+        assert!(ui.slot(slider, SLOT_SLIDER_THUMB).is_some());
+        assert_eq!(
+            ui.get(slider)
+                .unwrap()
+                .get_local_value(ui.properties().value)
+                .copied(),
+            Some(0.75)
+        );
+        set_slider_value(&mut ui, slider, 0.25);
+        assert_eq!(
+            ui.get(slider)
+                .unwrap()
+                .get_local_value(ui.properties().value)
+                .copied(),
+            Some(0.25)
         );
     }
 
@@ -2764,7 +2887,8 @@ mod tests {
     fn slider_template_creates_keyed_major_and_minor_tick_parts() {
         use crate::{
             CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_TICK,
-            PART_SLIDER_TICK_LABEL, Slider, TemplateItemKey,
+            PART_SLIDER_TICK_LABEL, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL, Slider,
+            TemplateItemKey,
         };
 
         let mut ui = Ui::new();
@@ -2780,6 +2904,10 @@ mod tests {
         let first_tick = instance
             .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(0))
             .unwrap();
+        assert_eq!(
+            instance.keyed_slot(SLOT_SLIDER_TICK, TemplateItemKey::new(0)),
+            Some(first_tick)
+        );
         let second_tick = instance
             .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(1))
             .unwrap();
@@ -2799,6 +2927,10 @@ mod tests {
         let middle_label = instance
             .keyed_part(PART_SLIDER_TICK_LABEL, TemplateItemKey::new(2))
             .unwrap();
+        assert_eq!(
+            instance.keyed_slot(SLOT_SLIDER_TICK_LABEL, TemplateItemKey::new(2)),
+            Some(middle_label)
+        );
         let content = ui.properties().content;
         let label = ui
             .get(middle_label)
@@ -3429,18 +3561,19 @@ mod tests {
     #[test]
     fn template_spec_builds_nested_parts_classes_and_keys() {
         use crate::widget::{AppendSpec, Widget};
-        use crate::{Template, TemplateItemKey, TemplateNode, TemplateSpec};
+        use crate::{Template, TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
         use understory_style::TypeTag;
 
         const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_CAFE);
         const OUTER_PART: PartTag = PartTag(0x10);
         const INNER_PART: PartTag = PartTag(0x11);
+        const OUTER_SLOT: TemplateSlot = TemplateSlot::new("outer").with_part_tag(OUTER_PART);
         const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
         const OUTER_CLASS: ClassId = ClassId(0x12);
         const OUTER_CLASSES: &[ClassId] = &[OUTER_CLASS];
         const CHILDREN: &[TemplateNode] = &[TemplateNode::surface().with_part(INNER_PART)];
         const NODES: &[TemplateNode] = &[TemplateNode::surface()
-            .with_part(OUTER_PART)
+            .with_slot(OUTER_SLOT)
             .with_key(OUTER_KEY)
             .with_classes(OUTER_CLASSES)
             .with_children(CHILDREN)];
@@ -3469,6 +3602,7 @@ mod tests {
         let outer = instance.keyed_part(OUTER_PART, OUTER_KEY).unwrap();
         let inner = instance.part(INNER_PART).unwrap();
 
+        assert_eq!(instance.keyed_slot(OUTER_SLOT, OUTER_KEY), Some(outer));
         assert_eq!(ui.get(outer).unwrap().parent(), Some(owner));
         assert_eq!(ui.get(inner).unwrap().parent(), Some(outer));
         assert_eq!(ui.get(outer).unwrap().templated_parent(), Some(owner));

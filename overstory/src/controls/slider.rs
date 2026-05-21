@@ -5,15 +5,19 @@
 
 use alloc::{boxed::Box, format, string::String};
 
+use understory_axis::{
+    AxisMapping1D, AxisRuler1D, AxisRulerMark, AxisRulerOptions, AxisScale1D, AxisScaleOptions,
+    AxisSubdivisionPolicy, AxisTickKind,
+};
 use understory_property::DependencyObjectExt;
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
-use crate::template::{Template, TemplateContext, TemplateItemKey};
+use crate::template::{Template, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
+use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `Slider`.
 pub const TYPE_SLIDER: TypeTag = TypeTag(6);
@@ -27,6 +31,21 @@ pub const PART_SLIDER_AXIS: PartTag = PartTag(3);
 pub const PART_SLIDER_TICK: PartTag = PartTag(4);
 /// Owner-local repeated part identity for slider tick labels.
 pub const PART_SLIDER_TICK_LABEL: PartTag = PartTag(5);
+/// Semantic slot for the slider track.
+pub const SLOT_SLIDER_TRACK: TemplateSlot =
+    TemplateSlot::new("slider-track").with_part_tag(PART_SLIDER_TRACK);
+/// Semantic slot for the slider thumb.
+pub const SLOT_SLIDER_THUMB: TemplateSlot =
+    TemplateSlot::new("slider-thumb").with_part_tag(PART_SLIDER_THUMB);
+/// Semantic slot for the slider axis surface.
+pub const SLOT_SLIDER_AXIS: TemplateSlot =
+    TemplateSlot::new("slider-axis").with_part_tag(PART_SLIDER_AXIS);
+/// Semantic repeated slot for slider tick marks.
+pub const SLOT_SLIDER_TICK: TemplateSlot =
+    TemplateSlot::new("slider-tick").with_part_tag(PART_SLIDER_TICK);
+/// Semantic repeated slot for slider tick labels.
+pub const SLOT_SLIDER_TICK_LABEL: TemplateSlot =
+    TemplateSlot::new("slider-tick-label").with_part_tag(PART_SLIDER_TICK_LABEL);
 /// Class applied to major slider tick marks and labels.
 pub const CLASS_SLIDER_MAJOR_TICK: ClassId = ClassId(1);
 /// Class applied to minor slider tick marks and labels.
@@ -43,8 +62,6 @@ const TICK_TOP: f32 = 28.0;
 const LABEL_TOP: f32 = 38.0;
 const LABEL_CHAR_WIDTH: f32 = 6.0;
 const LABEL_MIN_WIDTH: f32 = 6.0;
-const SLIDER_TICK_STEPS: usize = 4;
-const SLIDER_MAJOR_TICK_EVERY: usize = 2;
 const KEY_STEP_FRACTION: f64 = 0.05;
 
 /// Builder + spec for a `Slider`.
@@ -53,6 +70,7 @@ pub struct Slider {
     min: f64,
     max: f64,
     state: ControlState,
+    template: Option<&'static dyn Template>,
 }
 
 impl core::fmt::Debug for Slider {
@@ -74,6 +92,7 @@ impl Slider {
             min: 0.0,
             max: 1.0,
             state: ControlState::interactive(),
+            template: None,
         }
     }
 
@@ -126,6 +145,18 @@ impl Slider {
         self.state = state;
         self
     }
+
+    /// Overrides the visual template used when this slider is inserted.
+    ///
+    /// Custom templates must create [`SLOT_SLIDER_THUMB`] so slider value
+    /// updates have a visual part to move. They can also create keyed
+    /// [`SLOT_SLIDER_TICK`] and [`SLOT_SLIDER_TICK_LABEL`] entries when they
+    /// want the built-in tick styling and label synchronization.
+    #[must_use]
+    pub fn template(mut self, template: &'static dyn Template) -> Self {
+        self.template = Some(template);
+        self
+    }
 }
 
 impl Default for Slider {
@@ -136,7 +167,11 @@ impl Default for Slider {
 
 impl AppendSpec for Slider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget(parent, Box::new(SliderWidget));
+        let widget: Box<dyn Widget> = match self.template {
+            Some(template) => Box::new(TemplateOverrideWidget::new(SliderWidget, template)),
+            None => Box::new(SliderWidget),
+        };
+        let id = ui.append_widget_deferred_template(parent, widget);
         let layout_prop = ui.properties().layout;
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
@@ -155,14 +190,16 @@ impl AppendSpec for Slider {
             },
         );
         ui.set_control_state(id, self.state);
+        ui.expand_default_template(id);
         sync_slider_tick_labels(ui, id);
         // Initial value: drive through the same setter the runtime
         // path uses so the thumb's Layout matches. The template has
         // already expanded by this point, so the thumb child exists.
         let clamped = self.initial_value.clamp(self.min, self.max);
         let thumb = ui
-            .part(id, PART_SLIDER_THUMB)
-            .expect("slider template should create a thumb child");
+            .slot(id, SLOT_SLIDER_THUMB)
+            .expect("slider template should create SLOT_SLIDER_THUMB");
+        install_slider_behavior(ui, id, thumb);
         set_value(ui, id, thumb, clamped);
         id
     }
@@ -200,7 +237,7 @@ impl Template for SliderTemplate {
         let content_prop = cx.properties().content;
 
         // Track: full width, vertically centered.
-        let track = cx.part_widget(PART_SLIDER_TRACK, Box::new(SurfacePartWidget));
+        let track = cx.slot_widget(SLOT_SLIDER_TRACK, Box::new(SurfacePartWidget));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
         cx.set_local(
             track,
@@ -221,27 +258,35 @@ impl Template for SliderTemplate {
             },
         );
 
-        let axis = cx.part_widget(PART_SLIDER_AXIS, Box::new(SurfacePartWidget));
+        let axis = cx.slot_widget(SLOT_SLIDER_AXIS, Box::new(SurfacePartWidget));
         cx.set_local(axis, layout_prop, axis_layout());
         let min = cx.read_local_or(owner, min_prop, 0.0);
         let max = cx.read_local_or(owner, max_prop, 1.0);
-        for index in 0..=SLIDER_TICK_STEPS {
+        let ruler = slider_ruler(min, max);
+        for (index, mark) in ruler
+            .marks()
+            .iter()
+            .copied()
+            .filter(|mark| ruler_mark_in_view(&ruler, *mark))
+            .enumerate()
+        {
             let key = tick_key(index);
-            let major = is_major_tick(index);
-            let class = tick_class(major);
-            let tick = cx.keyed_part_widget(PART_SLIDER_TICK, key, Box::new(SurfacePartWidget));
+            let class = tick_class(mark.kind);
+            let tick = cx.keyed_slot_widget(SLOT_SLIDER_TICK, key, Box::new(SurfacePartWidget));
             cx.add_class(tick, class);
-            cx.set_local(tick, layout_prop, tick_layout(index, major));
+            cx.set_local(tick, layout_prop, tick_layout(mark));
 
-            let label = cx.keyed_part_widget(PART_SLIDER_TICK_LABEL, key, Box::new(TextWidget));
-            cx.add_class(label, class);
-            let content = tick_label_for_index(index, min, max);
-            cx.set_local(label, layout_prop, tick_label_layout(index, &content));
-            cx.set_local(label, content_prop, content);
+            if mark.labeled {
+                let label = cx.keyed_slot_widget(SLOT_SLIDER_TICK_LABEL, key, Box::new(TextWidget));
+                cx.add_class(label, class);
+                let content = tick_label_for_mark(mark);
+                cx.set_local(label, layout_prop, tick_label_layout(mark, &content));
+                cx.set_local(label, content_prop, content);
+            }
         }
 
         // Thumb: absolute, recomputed left whenever Value changes.
-        let thumb = cx.part_widget(PART_SLIDER_THUMB, Box::new(SurfacePartWidget));
+        let thumb = cx.slot_widget(SLOT_SLIDER_THUMB, Box::new(SurfacePartWidget));
         let thumb_top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
         let initial_left = thumb_left_for_value(
             cx.read_local_or(owner, value_prop, 0.0),
@@ -249,50 +294,52 @@ impl Template for SliderTemplate {
             cx.read_local_or(owner, max_prop, 1.0),
         );
         cx.set_local(thumb, layout_prop, thumb_layout(initial_left, thumb_top));
-
-        cx.on_click(owner, move |ui, event| {
-            if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-                return;
-            }
-            if !ui.is_enabled(owner) {
-                return;
-            }
-            set_value_from_position(ui, owner, thumb, event.position);
-        });
-        cx.on_drag(owner, move |ui, event| {
-            if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-                return;
-            }
-            if !ui.is_enabled(owner) {
-                return;
-            }
-            set_value_from_position(ui, owner, thumb, event.position);
-        });
-        cx.on_key(owner, move |ui, event| {
-            use ui_events::keyboard::{Key, KeyState, NamedKey};
-            if !matches!(event.phase, Phase::Target) {
-                return;
-            }
-            if event.key.state != KeyState::Down {
-                return;
-            }
-            if !ui.is_enabled(owner) {
-                return;
-            }
-            let min = read_or(ui, owner, ui.properties().minimum, 0.0);
-            let max = read_or(ui, owner, ui.properties().maximum, 1.0);
-            let step = (max - min) * KEY_STEP_FRACTION;
-            let current = read_or(ui, owner, ui.properties().value, min);
-            let next = match &event.key.key {
-                Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => current - step,
-                Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => current + step,
-                Key::Named(NamedKey::Home) => min,
-                Key::Named(NamedKey::End) => max,
-                _ => return,
-            };
-            set_value(ui, owner, thumb, next.clamp(min, max));
-        });
     }
+}
+
+fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
+    ui.on_click(slider, move |ui, event| {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        set_value_from_position(ui, slider, thumb, event.position);
+    });
+    ui.on_drag(slider, move |ui, event| {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        set_value_from_position(ui, slider, thumb, event.position);
+    });
+    ui.on_key(slider, move |ui, event| {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        let min = read_or(ui, slider, ui.properties().minimum, 0.0);
+        let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+        let step = (max - min) * KEY_STEP_FRACTION;
+        let current = read_or(ui, slider, ui.properties().value, min);
+        let next = match &event.key.key {
+            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => current - step,
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => current + step,
+            Key::Named(NamedKey::Home) => min,
+            Key::Named(NamedKey::End) => max,
+            _ => return,
+        };
+        set_value(ui, slider, thumb, next.clamp(min, max));
+    });
 }
 
 fn read_or<T: Clone + 'static>(
@@ -345,34 +392,58 @@ fn axis_layout() -> taffy::Style {
     }
 }
 
-fn tick_layout(index: usize, major: bool) -> taffy::Style {
-    let height = if major {
-        MAJOR_TICK_HEIGHT
-    } else {
-        MINOR_TICK_HEIGHT
-    };
+fn slider_ruler(min: f64, max: f64) -> AxisRuler1D {
+    let mapping = AxisMapping1D::linear(0.0..f64::from(SLIDER_WIDTH), min..max);
+    let scale = AxisScale1D::from_mapping(&mapping, slider_scale_options());
+    AxisRuler1D::from_mapping(&mapping, &scale, slider_ruler_options())
+}
+
+fn slider_scale_options() -> AxisScaleOptions {
+    AxisScaleOptions {
+        target_major_spacing_px: f64::from(SLIDER_WIDTH) / 2.0,
+        medium_label_min_spacing_px: 0.0,
+        subdivision_policy: AxisSubdivisionPolicy::Fixed(2),
+        ..AxisScaleOptions::default()
+    }
+}
+
+fn slider_ruler_options() -> AxisRulerOptions {
+    AxisRulerOptions {
+        major_mark_extent: f64::from(MAJOR_TICK_HEIGHT),
+        medium_mark_extent: f64::from(MINOR_TICK_HEIGHT),
+        minor_mark_extent: f64::from(MINOR_TICK_HEIGHT),
+    }
+}
+
+fn ruler_mark_in_view(ruler: &AxisRuler1D, mark: AxisRulerMark) -> bool {
+    let span = ruler.view_span();
+    const EPSILON: f64 = 1e-6;
+    mark.view_position >= span.start - EPSILON && mark.view_position <= span.end + EPSILON
+}
+
+fn tick_layout(mark: AxisRulerMark) -> taffy::Style {
     taffy::Style {
         position: taffy::Position::Absolute,
         inset: taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(tick_left(index, TICK_WIDTH)),
+            left: taffy::LengthPercentageAuto::length(tick_left(mark.view_position, TICK_WIDTH)),
             top: taffy::LengthPercentageAuto::length(TICK_TOP),
             right: taffy::LengthPercentageAuto::auto(),
             bottom: taffy::LengthPercentageAuto::auto(),
         },
         size: taffy::Size {
             width: taffy::Dimension::length(TICK_WIDTH),
-            height: taffy::Dimension::length(height),
+            height: taffy::Dimension::length(axis_px(mark.mark_extent)),
         },
         ..taffy::Style::default()
     }
 }
 
-fn tick_label_layout(index: usize, label: &str) -> taffy::Style {
+fn tick_label_layout(mark: AxisRulerMark, label: &str) -> taffy::Style {
     let width = label_width(label);
     taffy::Style {
         position: taffy::Position::Absolute,
         inset: taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(tick_left(index, width)),
+            left: taffy::LengthPercentageAuto::length(tick_left(mark.view_position, width)),
             top: taffy::LengthPercentageAuto::length(LABEL_TOP),
             right: taffy::LengthPercentageAuto::auto(),
             bottom: taffy::LengthPercentageAuto::auto(),
@@ -390,42 +461,19 @@ fn label_width(label: &str) -> f32 {
     (f32::from(chars) * LABEL_CHAR_WIDTH).max(LABEL_MIN_WIDTH)
 }
 
-fn tick_left(index: usize, width: f32) -> f32 {
-    let t = tick_fraction_f32(index);
-    (t * SLIDER_WIDTH - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
+fn tick_left(view_position: f64, width: f32) -> f32 {
+    (axis_px(view_position) - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
 }
 
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "slider tick indices are small constants"
-)]
-fn tick_fraction_f32(index: usize) -> f32 {
-    index as f32 / SLIDER_TICK_STEPS as f32
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "slider tick indices are small constants"
-)]
-fn tick_fraction(index: usize) -> f64 {
-    index as f64 / SLIDER_TICK_STEPS as f64
-}
-
-fn is_major_tick(index: usize) -> bool {
-    index.is_multiple_of(SLIDER_MAJOR_TICK_EVERY)
-}
-
-fn tick_class(major: bool) -> ClassId {
-    if major {
-        CLASS_SLIDER_MAJOR_TICK
-    } else {
-        CLASS_SLIDER_MINOR_TICK
+fn tick_class(kind: AxisTickKind) -> ClassId {
+    match kind {
+        AxisTickKind::Major => CLASS_SLIDER_MAJOR_TICK,
+        AxisTickKind::Medium | AxisTickKind::Minor => CLASS_SLIDER_MINOR_TICK,
     }
 }
 
-fn tick_label_for_index(index: usize, min: f64, max: f64) -> String {
-    let value = min + tick_fraction(index) * (max - min);
-    format_tick_value(value)
+fn tick_label_for_mark(mark: AxisRulerMark) -> String {
+    format_tick_value(mark.value)
 }
 
 fn format_tick_value(value: f64) -> String {
@@ -439,20 +487,47 @@ fn format_tick_value(value: f64) -> String {
     label
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "slider axis values are bounded to small logical-pixel coordinates"
+)]
+fn axis_px(value: f64) -> f32 {
+    value as f32
+}
+
 fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
     let min = read_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_or(ui, slider, ui.properties().maximum, 1.0);
     let content_prop = ui.properties().content;
     let layout_prop = ui.properties().layout;
-    for index in 0..=SLIDER_TICK_STEPS {
+    let ruler = slider_ruler(min, max);
+    for (index, mark) in ruler
+        .marks()
+        .iter()
+        .copied()
+        .filter(|mark| ruler_mark_in_view(&ruler, *mark))
+        .enumerate()
+    {
+        if let Some(tick) = ui
+            .template_instance(slider)
+            .and_then(|instance| instance.keyed_slot(SLOT_SLIDER_TICK, tick_key(index)))
+        {
+            ui.remove_class(tick, CLASS_SLIDER_MAJOR_TICK);
+            ui.remove_class(tick, CLASS_SLIDER_MINOR_TICK);
+            ui.add_class(tick, tick_class(mark.kind));
+            ui.set_local(tick, layout_prop, tick_layout(mark));
+        }
         let Some(label) = ui
             .template_instance(slider)
-            .and_then(|instance| instance.keyed_part(PART_SLIDER_TICK_LABEL, tick_key(index)))
+            .and_then(|instance| instance.keyed_slot(SLOT_SLIDER_TICK_LABEL, tick_key(index)))
         else {
             continue;
         };
-        let content = tick_label_for_index(index, min, max);
-        ui.set_local(label, layout_prop, tick_label_layout(index, &content));
+        ui.remove_class(label, CLASS_SLIDER_MAJOR_TICK);
+        ui.remove_class(label, CLASS_SLIDER_MINOR_TICK);
+        ui.add_class(label, tick_class(mark.kind));
+        let content = tick_label_for_mark(mark);
+        ui.set_local(label, layout_prop, tick_label_layout(mark, &content));
         ui.set_local(label, content_prop, content);
     }
 }
@@ -500,7 +575,7 @@ fn set_value_from_position(
 /// Panics if `slider` is stale or doesn't have a thumb child.
 pub fn set_slider_value(ui: &mut Ui, slider: ElementId, value: f64) {
     let thumb = ui
-        .part(slider, PART_SLIDER_THUMB)
-        .expect("slider must have a thumb child");
+        .slot(slider, SLOT_SLIDER_THUMB)
+        .expect("slider must have SLOT_SLIDER_THUMB");
     set_value(ui, slider, thumb, value);
 }

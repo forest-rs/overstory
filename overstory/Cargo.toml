@@ -17,6 +17,7 @@ peniko.workspace = true
 
 imaging.workspace = true
 
+understory_axis = { workspace = true, default-features = false }
 understory_box_tree = { workspace = true, default-features = false, features = ["std"] }
 understory_event_state = { workspace = true, default-features = false, features = ["std", "click", "drag"] }
 understory_focus = { workspace = true, default-features = false, features = ["std", "box_tree_adapter"] }

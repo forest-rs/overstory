@@ -1549,6 +1549,7 @@ dependencies = [
  "smallvec",
  "taffy",
  "ui-events",
+ "understory_axis",
  "understory_box_tree",
  "understory_event_state",
  "understory_focus",
@@ -2353,6 +2354,13 @@ dependencies = [
  "ui-events",
  "web-time",
  "winit",
+]
+
+[[package]]
+name = "understory_axis"
+version = "0.1.0"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
