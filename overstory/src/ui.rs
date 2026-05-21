@@ -15,7 +15,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
@@ -159,6 +159,13 @@ pub struct Ui {
     /// [`TimerId`] so it can disambiguate when the same element has
     /// multiple timers scheduled.
     timer_handlers: HashMap<ElementId, TimerHandler>,
+    /// Handler ids that called [`Self::remove_timer_handler`] while
+    /// they were temporarily removed for dispatch. Without this, the
+    /// dispatch path cannot distinguish self-removal from a normal
+    /// callback that should keep its handler.
+    timer_handler_removals: HashSet<ElementId>,
+    /// The timer handler target currently being dispatched, if any.
+    dispatching_timer_handler: Option<ElementId>,
     /// Monotonic host-supplied "now" in [`TimerInstant`] units
     /// (typically nanoseconds). The host updates this through
     /// [`Self::set_now`] / on each call to [`Self::pump_timers`] /
@@ -424,6 +431,8 @@ impl Ui {
             focus_buf: Vec::new(),
             timers: TimerQueue::new(),
             timer_handlers: HashMap::new(),
+            timer_handler_removals: HashSet::new(),
+            dispatching_timer_handler: None,
             now: 0,
         };
         let root = me.alloc_element(None, None, None, Some(Box::new(PanelWidget)));
@@ -1156,6 +1165,7 @@ impl Ui {
     where
         F: FnMut(&mut Self, TimerEvent) + 'static,
     {
+        self.timer_handler_removals.remove(&id);
         self.timer_handlers.insert(id, Box::new(handler));
     }
 
@@ -1163,11 +1173,16 @@ impl Ui {
     /// [`Self::on_timer`]. No-op if none is registered.
     pub fn remove_timer_handler(&mut self, id: ElementId) {
         self.timer_handlers.remove(&id);
+        if self.dispatching_timer_handler == Some(id) {
+            self.timer_handler_removals.insert(id);
+        }
     }
 
     /// Drains every timer due at or before `now`, dispatching each
     /// to its target's registered handler. Repeating timers re-arm
-    /// automatically. Updates the cached [`Self::now`] to `now`.
+    /// only when the target is still alive and still has a timer
+    /// handler after dispatch. Updates the cached [`Self::now`] to
+    /// `now`.
     pub fn pump_timers(&mut self, now: TimerInstant) {
         self.now = now;
         let mut rearm = Vec::new();
@@ -1175,6 +1190,7 @@ impl Ui {
             let target = *timer.target();
             let id = timer.id();
             let repeating = timer.repeat().is_repeating();
+            let mut should_rearm = false;
             // Take the handler out so it can borrow `&mut Ui`; put
             // back unless the handler removed itself or the element
             // vanished.
@@ -1184,12 +1200,20 @@ impl Ui {
                     timer: id,
                     now,
                 };
+                let previous_dispatching = self.dispatching_timer_handler.replace(target);
                 handler(self, event);
-                if self.get(target).is_some() && !self.timer_handlers.contains_key(&target) {
-                    self.timer_handlers.insert(target, handler);
+                self.dispatching_timer_handler = previous_dispatching;
+
+                let target_alive = self.get(target).is_some();
+                let handler_removed = self.timer_handler_removals.remove(&target);
+                if target_alive {
+                    if !handler_removed && !self.timer_handlers.contains_key(&target) {
+                        self.timer_handlers.insert(target, handler);
+                    }
+                    should_rearm = repeating && self.timer_handlers.contains_key(&target);
                 }
             }
-            if repeating {
+            if should_rearm {
                 rearm.push(timer);
             }
         }
@@ -1926,6 +1950,7 @@ impl Ui {
         self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
         self.timer_handlers.remove(&id);
+        self.timer_handler_removals.remove(&id);
         self.focusable_preferences.remove(&id);
         // Purge any pending timers targeting this element so they
         // don't fire after removal and reach a dropped handler.
@@ -3229,6 +3254,94 @@ mod tests {
         ui.remove_click_handler(child);
         ui.dispatch_click(child, Point::ZERO);
         assert_eq!(count.get(), 1, "removed handler should not fire");
+    }
+
+    #[test]
+    fn repeating_timer_rearms_while_handler_remains() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let target = ui.root();
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+
+        ui.on_timer(target, move |_ui, _event| {
+            count_for_handler.set(count_for_handler.get() + 1);
+        });
+        ui.schedule_timer_repeating(target, 10);
+
+        ui.pump_timers(10);
+        assert_eq!(count.get(), 1, "first timer deadline should fire");
+        assert_eq!(
+            ui.next_timer_deadline(),
+            Some(20),
+            "live repeating timer should re-arm"
+        );
+
+        ui.pump_timers(20);
+        assert_eq!(count.get(), 2, "re-armed timer should fire again");
+    }
+
+    #[test]
+    fn repeating_timer_stops_when_handler_removes_itself() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let target = ui.root();
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+
+        ui.on_timer(target, move |ui, _event| {
+            count_for_handler.set(count_for_handler.get() + 1);
+            ui.remove_timer_handler(target);
+        });
+        ui.schedule_timer_repeating(target, 10);
+
+        ui.pump_timers(10);
+        assert_eq!(count.get(), 1, "first timer deadline should fire");
+        assert_eq!(
+            ui.next_timer_deadline(),
+            None,
+            "repeating timer should stop after handler self-removal"
+        );
+
+        ui.pump_timers(20);
+        assert_eq!(count.get(), 1, "removed handler should not fire again");
+    }
+
+    #[test]
+    fn repeating_timer_stops_when_target_is_removed() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let target = ui.insert_child(root);
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+
+        ui.on_timer(target, move |ui, _event| {
+            count_for_handler.set(count_for_handler.get() + 1);
+            ui.remove(target);
+        });
+        ui.schedule_timer_repeating(target, 10);
+
+        ui.pump_timers(10);
+        assert_eq!(count.get(), 1, "first timer deadline should fire");
+        assert!(
+            ui.get(target).is_none(),
+            "timer target should have been removed"
+        );
+        assert_eq!(
+            ui.next_timer_deadline(),
+            None,
+            "repeating timer should not re-arm for a removed target"
+        );
+
+        ui.pump_timers(20);
+        assert_eq!(count.get(), 1, "removed target should not receive timers");
     }
 
     #[test]
