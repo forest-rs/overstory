@@ -4,15 +4,16 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The Phase 1f tree is three elements: a full-viewport dark background, a
-//! centered rounded blue panel, and a text label inside the panel that
-//! reads "Click me". The panel cycles through normal → hover → pressed
-//! colors as the user mouses over and clicks it. Layout is driven by taffy
-//! via the `Layout` property; text is shaped by parley and rendered as
-//! glyph runs through imaging. The host translates winit events through
+//! The tree is a dark backdrop with two templated Buttons side by side.
+//! Each cycles its own label on click or Space / Enter while focused.
+//! Tab and Shift+Tab walk focus between the two; the focused button
+//! paints in a brighter sky-blue. Layout is driven by taffy via the
+//! `Layout` property; text is shaped by parley and rendered as glyph
+//! runs through imaging. The host translates winit events through
 //! `ui_events_winit::WindowEventReducer` into normalized `ui-events`
-//! pointers, which `Ui::dispatch_pointer_event` consumes to drive
-//! `:hover` and `:pressed`.
+//! pointers and keys, which `Ui::dispatch_pointer_event` /
+//! `Ui::dispatch_key` consume to drive `:hover`, `:pressed`, and
+//! `:focused` plus the registered click / key handlers.
 //!
 //! ## Render path
 //!
@@ -322,70 +323,39 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
-/// Builds the Phase 1f-5 element tree: a full-viewport dark background with
-/// a templated Button centered inside that reads "Click me" and cycles
-/// through hover/pressed colors as the user interacts with it.
-fn build_ui() -> Ui {
-    let mut ui = Ui::new();
-    let root = ui.root();
-
-    // Root: full-viewport flex container with padding so the button sits
-    // away from the edges.
+/// Inserts a templated Button under `parent` with the given initial
+/// label, wires both pointer-click and keyboard (Space / Enter)
+/// activation, and gives it its own activation counter so each
+/// button's label evolves independently.
+fn add_button(
+    ui: &mut Ui,
+    parent: overstory::ElementId,
+    initial_label: &str,
+) -> overstory::ElementId {
     let layout_prop = ui.properties().layout;
-    let inset = overstory::taffy::LengthPercentage::length(50.0);
-    let root_layout = overstory::taffy::Style {
-        display: overstory::taffy::Display::Flex,
-        justify_content: Some(overstory::taffy::JustifyContent::Center),
-        align_items: Some(overstory::taffy::AlignItems::Center),
-        size: overstory::taffy::Size {
-            width: overstory::taffy::Dimension::percent(1.0),
-            height: overstory::taffy::Dimension::percent(1.0),
-        },
-        padding: overstory::taffy::Rect {
-            left: inset,
-            right: inset,
-            top: inset,
-            bottom: inset,
-        },
-        ..Default::default()
-    };
-    ui.set_local(root, layout_prop, root_layout);
-
-    // The button itself. `Content` / `Foreground` / `FontSize` are bound
-    // by the Button's default template to the label inside, so any later
-    // write to the button propagates to the label on the next
-    // `compute_layout` (which flushes bindings).
     let button_layout = overstory::taffy::Style {
-        // Generous padding so the label has room to breathe.
         padding: overstory::taffy::Rect {
             left: overstory::taffy::LengthPercentage::length(32.0),
             right: overstory::taffy::LengthPercentage::length(32.0),
             top: overstory::taffy::LengthPercentage::length(18.0),
             bottom: overstory::taffy::LengthPercentage::length(18.0),
         },
-        // Center the label.
         display: overstory::taffy::Display::Flex,
         justify_content: Some(overstory::taffy::JustifyContent::Center),
         align_items: Some(overstory::taffy::AlignItems::Center),
         ..Default::default()
     };
-    let button = ui.insert_child(root, ELEMENT_KIND_BUTTON);
+    let button = ui.insert_child(parent, ELEMENT_KIND_BUTTON);
     ui.set_local(button, layout_prop, button_layout);
-    ui.set_local(button, ui.properties().content, "Click me".to_owned());
+    ui.set_local(button, ui.properties().content, initial_label.to_owned());
     ui.set_local(
         button,
         ui.properties().foreground,
         Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff)),
     );
     ui.set_local(button, ui.properties().font_size, 22.0_f64);
-    // Make the button focusable. Tab will land on it; Space/Enter
-    // activate it via the key handler below.
     ui.set_focusable(button, true);
 
-    // Activation: clicked or Space/Enter while focused. Shared
-    // state cycles the button's label "Click me" → "Clicked!" →
-    // "Clicked 2×" → … via the template binding so the change flows
-    // out to the label child.
     let content_prop = ui.properties().content;
     let activations = std::rc::Rc::new(std::cell::Cell::new(0_u32));
     let advance = {
@@ -402,10 +372,6 @@ fn build_ui() -> Ui {
         }
     };
 
-    // Bubble-style routed click: fire on `Target` when the button is
-    // the click target, or on `Bubble` when a template part (the
-    // label) is the actual hit. Skips `Capture` to avoid
-    // double-firing for ancestor handlers.
     {
         let advance = advance.clone();
         ui.on_click(button, move |ui, event| {
@@ -418,28 +384,67 @@ fn build_ui() -> Ui {
             advance(ui);
         });
     }
+    ui.on_key(button, move |ui, event| {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        if !matches!(event.phase, overstory::Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        let activate = match &event.key.key {
+            Key::Named(NamedKey::Enter) => true,
+            Key::Character(s) if s == " " => true,
+            _ => false,
+        };
+        if activate {
+            advance(ui);
+        }
+    });
 
-    // Keyboard activation: Space or Enter on key down while the
-    // button is focused.
-    {
-        ui.on_key(button, move |ui, event| {
-            use ui_events::keyboard::{Key, KeyState, NamedKey};
-            if !matches!(event.phase, overstory::Phase::Target) {
-                return;
-            }
-            if event.key.state != KeyState::Down {
-                return;
-            }
-            let activate = match &event.key.key {
-                Key::Named(NamedKey::Enter) => true,
-                Key::Character(s) if s == " " => true,
-                _ => false,
-            };
-            if activate {
-                advance(ui);
-            }
-        });
-    } // end keyboard scope
+    button
+}
+
+/// Builds the demo tree: dark backdrop, two templated Buttons side by
+/// side. Each cycles its own label through "Clicked!" → "Clicked 2×" → …
+/// on click or Space / Enter while focused. Tab and Shift+Tab walk
+/// focus between them.
+fn build_ui() -> Ui {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    // Root: full-viewport row-flex container with 24px gap so the two
+    // buttons sit side by side with breathing room.
+    let layout_prop = ui.properties().layout;
+    let inset = overstory::taffy::LengthPercentage::length(50.0);
+    let root_layout = overstory::taffy::Style {
+        display: overstory::taffy::Display::Flex,
+        flex_direction: overstory::taffy::FlexDirection::Row,
+        justify_content: Some(overstory::taffy::JustifyContent::Center),
+        align_items: Some(overstory::taffy::AlignItems::Center),
+        size: overstory::taffy::Size {
+            width: overstory::taffy::Dimension::percent(1.0),
+            height: overstory::taffy::Dimension::percent(1.0),
+        },
+        gap: overstory::taffy::Size {
+            width: overstory::taffy::LengthPercentage::length(24.0),
+            height: overstory::taffy::LengthPercentage::length(24.0),
+        },
+        padding: overstory::taffy::Rect {
+            left: inset,
+            right: inset,
+            top: inset,
+            bottom: inset,
+        },
+        ..Default::default()
+    };
+    ui.set_local(root, layout_prop, root_layout);
+
+    // Two buttons. Each gets its own per-button activation counter so
+    // their labels evolve independently. The helper bundles the
+    // boilerplate (layout, properties, focusable, click/key handlers).
+    add_button(&mut ui, root, "Click me");
+    add_button(&mut ui, root, "Or me");
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
