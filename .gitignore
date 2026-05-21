@@ -2,3 +2,9 @@
 Cargo.lock.bak
 *.rs.bk
 .DS_Store
+
+# Vim / Neovim swap + backup files
+*.swp
+*.swo
+*.swn
+*~
