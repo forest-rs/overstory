@@ -33,6 +33,7 @@ mod generic;
 mod lookup;
 mod properties;
 pub mod pseudos;
+mod spinner;
 mod template;
 mod text;
 mod text_behavior;
@@ -48,6 +49,7 @@ pub use element::{ELEMENT_KIND_GENERIC, Element, ElementId, ElementKind};
 pub use generic::GenericBehavior;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
+pub use spinner::{ELEMENT_KIND_SPINNER, SpinnerBehavior};
 pub use template::Template;
 pub use text::TextEngine;
 pub use text_behavior::{ELEMENT_KIND_TEXT, TextBehavior};
@@ -55,7 +57,9 @@ pub use toggle::{
     ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ToggleBehavior, ToggleThumbBehavior,
     toggle_checked,
 };
+pub use ui::TimerEvent;
 pub use ui::{ClickEvent, KeyEvent, Ui};
+pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
 // Re-export the responder's `Phase` so callers can read `ClickEvent::phase`
 // / `KeyEvent::phase` without depending on `understory_responder` directly.

@@ -39,6 +39,7 @@ use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
     MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme, TypeTag,
 };
+use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
 
 use crate::behavior::{BehaviorRegistry, KnownDimensions, MeasureConstraints, PresentContext};
 use crate::button::{BUTTON_BEHAVIOR, ELEMENT_KIND_BUTTON};
@@ -48,6 +49,7 @@ use crate::generic::GENERIC_BEHAVIOR;
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::spinner::{ELEMENT_KIND_SPINNER, SPINNER_BEHAVIOR};
 use crate::text::TextEngine;
 use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
 use crate::toggle::{
@@ -140,10 +142,49 @@ pub struct Ui {
     /// Reusable scratch buffer for building a `FocusSpace`. Kept on
     /// `Ui` so each navigation call doesn't reallocate.
     focus_buf: Vec<FocusEntry<NodeId>>,
+    /// Pending timers, deadline-ordered. Targets are element ids;
+    /// dispatch goes through `timer_handlers` when `pump_timers`
+    /// fires.
+    timers: TimerQueue<ElementId>,
+    /// Per-element timer handler — one per element, mirroring
+    /// `on_click` / `on_key`. The handler receives the expired
+    /// [`TimerId`] so it can disambiguate when the same element has
+    /// multiple timers scheduled.
+    timer_handlers: HashMap<ElementId, TimerHandler>,
+    /// Monotonic host-supplied "now" in [`TimerInstant`] units
+    /// (typically nanoseconds). The host updates this through
+    /// [`Self::set_now`] / on each call to [`Self::pump_timers`] /
+    /// [`Self::dispatch_pointer_event`] / [`Self::dispatch_key`],
+    /// and templates / handlers can call [`Self::now`] to schedule
+    /// follow-on timers relative to the current clock.
+    now: TimerInstant,
 }
 
 type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent)>;
 type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
+type TimerHandler = Box<dyn FnMut(&mut Ui, TimerEvent)>;
+
+/// Payload delivered to a timer handler when a scheduled timer
+/// fires. `target` is the element the timer was scheduled against
+/// (and the element the handler is registered on); `timer` is the
+/// queue's id for disambiguating between multiple timers on the
+/// same element; `now` is the monotonic instant at which the
+/// dispatch is happening.
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug)]
+pub struct TimerEvent {
+    /// The element the timer fired on.
+    pub target: ElementId,
+    /// The id assigned by [`TimerQueue`] when the timer was
+    /// scheduled. Compare against your stored token to recognize
+    /// stale deliveries.
+    pub timer: TimerId,
+    /// Host-supplied monotonic time of dispatch.
+    pub now: TimerInstant,
+}
 
 /// Payload delivered to a key handler. Carries the normalized
 /// `ui_events`/`keyboard-types` event by reference plus the
@@ -233,6 +274,7 @@ impl Ui {
         behaviors.register(ELEMENT_KIND_BUTTON, &BUTTON_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_TOGGLE, &TOGGLE_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_TOGGLE_THUMB, &TOGGLE_THUMB_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_SPINNER, &SPINNER_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
@@ -285,6 +327,9 @@ impl Ui {
                 wrap: WrapMode::Scope,
             },
             focus_buf: Vec::new(),
+            timers: TimerQueue::new(),
+            timer_handlers: HashMap::new(),
+            now: 0,
         };
         let root = me.alloc_element(ELEMENT_KIND_GENERIC, None, None);
         me.root = root;
@@ -819,6 +864,108 @@ impl Ui {
         }
     }
 
+    /// Returns the host-supplied monotonic instant currently cached
+    /// on the `Ui`. Updated whenever an event is dispatched or
+    /// timers are pumped. Templates and handlers can use this to
+    /// schedule follow-on timers without threading `now` through
+    /// every call.
+    #[must_use]
+    #[inline]
+    pub fn now(&self) -> TimerInstant {
+        self.now
+    }
+
+    /// Sets the cached monotonic "now" used by relative timer APIs.
+    /// Hosts can call this explicitly, but it's also updated by
+    /// [`Self::pump_timers`], [`Self::dispatch_pointer_event`] (via
+    /// the pointer state's timestamp), and [`Self::dispatch_key`].
+    pub fn set_now(&mut self, now: TimerInstant) {
+        self.now = now;
+    }
+
+    /// Schedules a one-shot timer targeted at `target`. Returns the
+    /// queue's id so callers can cancel it. The deadline is computed
+    /// relative to [`Self::now`].
+    pub fn schedule_timer_once(&mut self, target: ElementId, delay: TimerDuration) -> TimerId {
+        self.timers.schedule_once(target, self.now, delay)
+    }
+
+    /// Schedules a repeating timer targeted at `target` that
+    /// coalesces missed intervals (the typical UI-animation policy
+    /// from [`TimerRepeat::coalescing`]). The first fire is `delay`
+    /// from now; subsequent fires are `delay` apart relative to the
+    /// previous drain time.
+    pub fn schedule_timer_repeating(&mut self, target: ElementId, delay: TimerDuration) -> TimerId {
+        let interval =
+            core::num::NonZeroU64::new(delay.max(1)).expect("delay clamped to a non-zero value");
+        self.timers
+            .schedule(target, self.now, delay, TimerRepeat::coalescing(interval))
+    }
+
+    /// Cancels a pending timer. Returns `true` if a pending timer
+    /// was removed. Idempotent.
+    pub fn cancel_timer(&mut self, timer: TimerId) -> bool {
+        self.timers.cancel(timer)
+    }
+
+    /// Returns the next pending timer deadline, if any. Hosts use
+    /// this to arm their wakeup mechanism (e.g.
+    /// `winit::ControlFlow::WaitUntil`).
+    #[must_use]
+    pub fn next_timer_deadline(&self) -> Option<TimerInstant> {
+        self.timers.next_deadline()
+    }
+
+    /// Registers a timer handler on `id`. Fires whenever any timer
+    /// scheduled against `id` reaches its deadline and is drained by
+    /// [`Self::pump_timers`]. One handler per element; subsequent
+    /// calls replace.
+    pub fn on_timer<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, TimerEvent) + 'static,
+    {
+        self.timer_handlers.insert(id, Box::new(handler));
+    }
+
+    /// Removes a timer handler previously registered with
+    /// [`Self::on_timer`]. No-op if none is registered.
+    pub fn remove_timer_handler(&mut self, id: ElementId) {
+        self.timer_handlers.remove(&id);
+    }
+
+    /// Drains every timer due at or before `now`, dispatching each
+    /// to its target's registered handler. Repeating timers re-arm
+    /// automatically. Updates the cached [`Self::now`] to `now`.
+    pub fn pump_timers(&mut self, now: TimerInstant) {
+        self.now = now;
+        let mut rearm = Vec::new();
+        while let Some(timer) = self.timers.pop_expired(now) {
+            let target = *timer.target();
+            let id = timer.id();
+            let repeating = timer.repeat().is_repeating();
+            // Take the handler out so it can borrow `&mut Ui`; put
+            // back unless the handler removed itself or the element
+            // vanished.
+            if let Some(mut handler) = self.timer_handlers.remove(&target) {
+                let event = TimerEvent {
+                    target,
+                    timer: id,
+                    now,
+                };
+                handler(self, event);
+                if self.get(target).is_some() && !self.timer_handlers.contains_key(&target) {
+                    self.timer_handlers.insert(target, handler);
+                }
+            }
+            if repeating {
+                rearm.push(timer);
+            }
+        }
+        for timer in rearm {
+            self.timers.rearm(timer);
+        }
+    }
+
     /// Registers a click handler on `id`. The handler runs along the
     /// responder capture → target → bubble sequence when
     /// [`ClickState`] recognizes a primary-button click whose target
@@ -903,6 +1050,13 @@ impl Ui {
     ///
     /// Returns `true` if the dispatch caused a state change.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> bool {
+        // Update the cached `now` from whichever PointerState the
+        // event carries — pointer events all expose a `time` in
+        // nanoseconds. Handlers and templates can use `Ui::now()`
+        // without threading it through every call.
+        if let Some(t) = pointer_event_time(event) {
+            self.now = t;
+        }
         match event {
             PointerEvent::Move(update) => {
                 let pos = Point::new(update.current.position.x, update.current.position.y);
@@ -1386,6 +1540,10 @@ impl Ui {
         self.invalidation.remove_key(id);
         self.click_handlers.remove(&id);
         self.key_handlers.remove(&id);
+        self.timer_handlers.remove(&id);
+        // Purge any pending timers targeting this element so they
+        // don't fire after removal and reach a dropped handler.
+        self.timers.retain_pending(|t| *t.target() != id);
         if self.focused == Some(id) {
             self.focused = None;
         }
@@ -1638,6 +1796,18 @@ fn lower_presentation(
             // Image / future primitives land when controls need them.
             _ => {}
         }
+    }
+}
+
+/// Extracts the host-supplied monotonic time from a pointer event,
+/// if the variant carries one. Pointer events all expose a
+/// nanosecond timestamp on the underlying `PointerState`.
+fn pointer_event_time(event: &PointerEvent) -> Option<TimerInstant> {
+    match event {
+        PointerEvent::Move(update) => Some(update.current.time),
+        PointerEvent::Down(b) | PointerEvent::Up(b) => Some(b.state.time),
+        PointerEvent::Enter(_) | PointerEvent::Leave(_) | PointerEvent::Cancel(_) => None,
+        _ => None,
     }
 }
 

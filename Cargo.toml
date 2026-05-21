@@ -35,6 +35,7 @@ understory_property = { default-features = false, path = "../understory/understo
 understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
 understory_responder = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_responder" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
+understory_timing = { default-features = false, path = "../understory/understory_timing" }
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["std"], version = "0.0.1" }

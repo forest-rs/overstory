@@ -4,18 +4,28 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The tree is a dark backdrop with two templated Buttons and a
-//! `ToggleSwitch` side by side. Each button cycles its own label on
-//! click or Space / Enter while focused; the toggle flips its
-//! `:checked` state. Tab and Shift+Tab walk focus across all three;
-//! the focused element paints a white border ring. Layout is driven
-//! by taffy via the `Layout` property; text is shaped by parley and
-//! rendered as glyph runs through imaging. The host translates winit
-//! events through `ui_events_winit::WindowEventReducer` into
-//! normalized `ui-events` pointers and keys, which
+//! The tree is a dark backdrop with two templated Buttons, a
+//! `ToggleSwitch`, and a `Spinner` side by side. Each button cycles
+//! its own label on click or Space / Enter while focused; the toggle
+//! flips its `:checked` state; the spinner runs an 8-dot animation
+//! driven by a repeating timer from `understory_timing`. Tab and
+//! Shift+Tab walk focus across the interactive controls; the
+//! focused element paints a white border ring. Layout is driven by
+//! taffy via the `Layout` property; text is shaped by parley and
+//! rendered as glyph runs through imaging.
+//!
+//! The host translates winit events through
+//! `ui_events_winit::WindowEventReducer` into normalized
+//! `ui-events` pointers and keys, which
 //! `Ui::dispatch_pointer_event` / `Ui::dispatch_key` consume to drive
 //! `:hover`, `:pressed`, `:focused`, and `:checked` plus the
 //! registered click / key handlers.
+//!
+//! For animated controls, the host arms `ControlFlow::WaitUntil` at
+//! `Ui::next_timer_deadline()` after each event so the runtime sleeps
+//! between ticks instead of polling. `Ui::pump_timers(now)` drains
+//! expired timers each wake-up and dispatches them to registered
+//! handlers.
 //!
 //! ## Render path
 //!
@@ -31,6 +41,7 @@
 //! `overstory_2_clean_rewrite`.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
@@ -38,8 +49,8 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB,
-    Navigation, Ui,
+    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TOGGLE,
+    ELEMENT_KIND_TOGGLE_THUMB, Navigation, Ui,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -112,6 +123,39 @@ struct WindowState {
     ui: Ui,
     scene: Scene,
     event_reducer: WindowEventReducer,
+    /// Anchor for the monotonic clock we feed to `Ui::pump_timers`.
+    /// Subtract from `Instant::now()` to get nanoseconds since
+    /// startup.
+    start_instant: Instant,
+}
+
+impl WindowState {
+    /// Returns the host's current monotonic time as nanoseconds
+    /// since `start_instant`. Matches the `TimerInstant` unit the
+    /// `Ui` timer queue uses.
+    fn now_nanos(&self) -> u64 {
+        u64::try_from(self.start_instant.elapsed().as_nanos()).unwrap_or(u64::MAX)
+    }
+
+    /// Sets winit's control flow to wake at the next pending timer
+    /// deadline, or to Wait indefinitely if no timers are pending.
+    fn arm_next_wakeup(&self, event_loop: &ActiveEventLoop) {
+        if let Some(deadline_nanos) = self.ui.next_timer_deadline() {
+            let elapsed = self.start_instant.elapsed().as_nanos();
+            let target = u128::from(deadline_nanos);
+            let until = target.saturating_sub(elapsed);
+            // Clamp huge u128s down before turning back into a
+            // Duration; anything beyond u64 nanoseconds is "very far
+            // away" and Wait would be fine, but WaitUntil with a far
+            // future instant is identical.
+            let wait = Duration::from_nanos(u64::try_from(until).unwrap_or(u64::MAX));
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
+                Instant::now() + wait,
+            ));
+        } else {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+        }
+    }
 }
 
 #[derive(Default)]
@@ -140,6 +184,12 @@ impl ApplicationHandler for App {
         let Some(state) = self.state.as_mut() else {
             return;
         };
+
+        // Drain any timers that fired between events first, so
+        // handler-driven state changes are visible before any new
+        // event is processed.
+        let now = state.now_nanos();
+        state.ui.pump_timers(now);
 
         // Translate winit events into normalized `ui-events` types. Hover /
         // focus state lives inside `Ui`, so we just forward the translation.
@@ -190,6 +240,23 @@ impl ApplicationHandler for App {
                 }
             }
             _ => {}
+        }
+        // After every event, arm the next wakeup based on the
+        // soonest pending timer. The spinner's repeating timer is
+        // what keeps the event loop ticking ~11 times a second.
+        state.arm_next_wakeup(event_loop);
+    }
+
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+        // ResumeTimeReached fires when our `WaitUntil` hits its
+        // deadline — pump timers and request a redraw so animated
+        // controls update on schedule even without other input.
+        if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. })
+            && let Some(state) = self.state.as_mut()
+        {
+            let now = state.now_nanos();
+            state.ui.pump_timers(now);
+            state.window.request_redraw();
         }
     }
 }
@@ -324,6 +391,7 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         ui,
         scene: Scene::new(),
         event_reducer: WindowEventReducer::default(),
+        start_instant: Instant::now(),
     };
     Ok(state)
 }
@@ -457,6 +525,12 @@ fn build_ui() -> Ui {
     // focusable.
     let toggle = ui.insert_child(root, ELEMENT_KIND_TOGGLE);
     ui.set_focusable(toggle, true);
+
+    // A Spinner. Self-contained: its default template wires the
+    // dots and the repeating timer that animates them. The host's
+    // event loop arms `WaitUntil(next_timer_deadline)` so the
+    // spinner ticks even when no other input is happening.
+    let _spinner = ui.insert_child(root, ELEMENT_KIND_SPINNER);
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());

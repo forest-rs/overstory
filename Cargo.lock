@@ -1557,6 +1557,7 @@ dependencies = [
  "understory_property_binding",
  "understory_responder",
  "understory_style",
+ "understory_timing",
 ]
 
 [[package]]
@@ -2438,6 +2439,10 @@ dependencies = [
  "invalidation",
  "understory_property",
 ]
+
+[[package]]
+name = "understory_timing"
+version = "0.1.2"
 
 [[package]]
 name = "unicode-ident"
