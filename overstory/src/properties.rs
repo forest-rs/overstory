@@ -10,6 +10,7 @@ use peniko::Brush;
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{LAYOUT, PAINT};
+use crate::layouts::Layout;
 
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
@@ -22,22 +23,18 @@ pub struct BuiltInProperties {
     /// Fill brush for the element's body. Default `None` (no fill).
     pub background: Property<Option<Brush>>,
 
-    /// Bounds in viewport coordinates the element paints into. Layout writes this
-    /// after taffy computes the frame. Default [`Rect::ZERO`] — a zero-area
+    /// Bounds in viewport coordinates the element paints into. Layout writes
+    /// this after computing the frame. Default [`Rect::ZERO`] — a zero-area
     /// element paints nothing.
     pub bounds: Property<Rect>,
 
     /// Corner radius for the background fill. Default `0.0` (rectangular).
     pub corner_radius: Property<f64>,
 
-    /// `taffy::Style` driving this element's contribution to layout. Default
-    /// is `taffy::Style::default()` (an empty leaf). Writes mark the
-    /// `LAYOUT` channel so the next `Ui::compute_layout` picks them up.
-    ///
-    /// Phase 1e exposes the whole `taffy::Style` as one property. Later
-    /// phases will likely split into per-attribute properties so selectors
-    /// can target individual layout attributes.
-    pub layout: Property<taffy::Style>,
+    /// Layout contribution for this element. Writes mark the
+    /// `LAYOUT` channel so the next `Ui::compute_layout` picks them
+    /// up.
+    pub layout: Property<Layout>,
 
     /// Textual content for elements that render strings (e.g. [`crate::Text`]).
     /// Default `String::new()`. Writes mark both `LAYOUT` (text size depends on
@@ -109,7 +106,7 @@ impl BuiltInProperties {
             ),
             layout: registry.register(
                 "Layout",
-                PropertyMetadataBuilder::new(taffy::Style::default())
+                PropertyMetadataBuilder::new(Layout::default())
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

@@ -6,7 +6,7 @@
 //! cache.
 //!
 //! Phase 1c added the style cascade integration; Phase 1d added pointer
-//! dispatch + `:hover` lifecycle; Phase 1e added taffy layout; Phase 1f
+//! dispatch + `:hover` lifecycle; Phase 1e added layout; Phase 1f
 //! added template substrate, text rendering, `:pressed`, the Button
 //! control, and property bindings via `understory_property_binding`. Later
 //! phases bring the full responder routing, more controls, and animations.
@@ -46,6 +46,7 @@ use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
+use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
@@ -678,7 +679,7 @@ impl Ui {
         // channel cascade. `style_one`'s diff path only marks
         // channels on state transitions — first-time styling skips
         // the diff, so without this explicit mark a cascade-supplied
-        // `Layout` would sit in the cascade but never reach taffy.
+        // `Layout` would sit in the cascade but never reach the layout engine.
         self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
         if expand_template {
@@ -746,6 +747,17 @@ impl Ui {
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.mark_endpoint_changed(EndpointKey::new(id, property.id()));
         }
+    }
+
+    /// Sets an element's layout contribution.
+    ///
+    /// This is the app-facing shortcut for writing
+    /// [`BuiltInProperties::layout`]; custom controls may still use
+    /// [`Self::set_local`] when they are working generically with
+    /// dependency properties.
+    pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
+        let layout_prop = self.properties.layout;
+        self.set_local(id, layout_prop, layout.into());
     }
 
     /// Registers a one-way binding from `source` to `target`. Both
@@ -1572,12 +1584,11 @@ impl Ui {
         true
     }
 
-    /// Resolves the effective `Layout` (`taffy::Style`) for `id` through the
-    /// cascade.
+    /// Resolves the effective `Layout` for `id` through the cascade.
     #[must_use]
-    pub fn effective_layout(&self, id: ElementId) -> taffy::Style {
+    pub fn effective_layout(&self, id: ElementId) -> Layout {
         let Some(element) = self.get(id) else {
-            return taffy::Style::default();
+            return Layout::default();
         };
         self.effective_value_for(element, self.properties.layout)
     }
@@ -1587,21 +1598,22 @@ impl Ui {
     ///
     /// Drains pending property bindings first so binding-driven writes
     /// participate in this frame's layout. Then flushes the LAYOUT
-    /// channel: any element whose `Layout` style has changed gets its
-    /// taffy style pushed before taffy is asked to recompute. `Bounds`
-    /// writes use the standard `set_local_notifying` path so PAINT
-    /// cascades naturally for elements whose box changed.
+    /// channel: any element whose `Layout` has changed gets its engine style
+    /// pushed before layout is recomputed. `Bounds` writes use the standard
+    /// `set_local_notifying` path so PAINT cascades naturally for elements
+    /// whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
         // Bindings first — they may dirty LAYOUT/PAINT for their targets.
         self.flush_bindings();
-        // Push any pending Layout changes into taffy. We collect first to
-        // separate the immutable cascade walk from the mutable taffy update.
+        // Push any pending Layout changes into the layout engine. We collect
+        // first to separate the immutable cascade walk from the mutable engine
+        // update.
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(LAYOUT).collect();
         let updates: Vec<(taffy::NodeId, taffy::Style)> = dirty
             .into_iter()
             .filter_map(|id| {
                 let taffy_node = *self.element_to_taffy.get(&id)?;
-                let style = self.effective_layout(id);
+                let style = self.effective_layout(id).to_taffy();
                 Some((taffy_node, style))
             })
             .collect();
@@ -2378,17 +2390,7 @@ mod tests {
         let layout_prop = ui.properties().layout;
         let background = ui.properties().background;
 
-        ui.set_local(
-            root,
-            layout_prop,
-            taffy::Style {
-                size: taffy::Size {
-                    width: taffy::Dimension::length(10.0),
-                    height: taffy::Dimension::length(10.0),
-                },
-                ..taffy::Style::default()
-            },
-        );
+        ui.set_local(root, layout_prop, Layout::new().logical_size(10.0, 10.0));
         ui.set_local(
             root,
             background,
@@ -2438,17 +2440,7 @@ mod tests {
             .build();
         ui.set_cascade(cascade);
 
-        ui.set_local(
-            root,
-            layout_prop,
-            taffy::Style {
-                size: taffy::Size {
-                    width: taffy::Dimension::length(10.0),
-                    height: taffy::Dimension::length(10.0),
-                },
-                ..taffy::Style::default()
-            },
-        );
+        ui.set_local(root, layout_prop, Layout::new().logical_size(10.0, 10.0));
         ui.compute_layout(Size::new(100.0, 100.0));
 
         let mut output = Scene::new();
@@ -2587,14 +2579,7 @@ mod tests {
         ui.set_local(
             root,
             ui.properties().layout,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(200.0),
-                    height: taffy::Dimension::length(100.0),
-                },
-                ..Default::default()
-            },
+            Layout::flex().logical_size(200.0, 100.0),
         );
         let text = ui.append(root, Text::new(""));
 
@@ -2629,14 +2614,7 @@ mod tests {
         ui.set_local(
             root,
             ui.properties().layout,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(300.0),
-                    height: taffy::Dimension::length(80.0),
-                },
-                ..Default::default()
-            },
+            Layout::flex().logical_size(300.0, 80.0),
         );
 
         let slider = ui.append(root, Slider::new().value(0.4));
@@ -2827,14 +2805,7 @@ mod tests {
         ui.set_local(
             root,
             ui.properties().layout,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(300.0),
-                    height: taffy::Dimension::length(80.0),
-                },
-                ..Default::default()
-            },
+            Layout::flex().logical_size(300.0, 80.0),
         );
 
         let slider = ui.append(root, Slider::new());
@@ -3010,34 +2981,16 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let layout_prop = ui.properties().layout;
-        let inset = taffy::LengthPercentage::length(50.0);
         ui.set_local(
             root,
             layout_prop,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(200.0),
-                    height: taffy::Dimension::length(200.0),
-                },
-                padding: taffy::Rect {
-                    left: inset,
-                    right: inset,
-                    top: inset,
-                    bottom: inset,
-                },
-                ..Default::default()
-            },
+            Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
         );
         let child = ui.insert_child(root);
         ui.set_local(
             child,
             layout_prop,
-            taffy::Style {
-                flex_grow: 1.0,
-                align_self: Some(taffy::AlignSelf::Stretch),
-                ..Default::default()
-            },
+            Layout::new().flex_grow(1.0).align_self_stretch(),
         );
         ui.compute_layout(Size::new(200.0, 200.0));
 
@@ -3079,18 +3032,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let layout_prop = ui.properties().layout;
-        ui.set_local(
-            root,
-            layout_prop,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(300.0),
-                    height: taffy::Dimension::length(50.0),
-                },
-                ..Default::default()
-            },
-        );
+        ui.set_local(root, layout_prop, Layout::flex().logical_size(300.0, 50.0));
         let a = ui.insert_child(root);
         let b = ui.insert_child(root);
         let c = ui.insert_child(root);
@@ -3098,11 +3040,7 @@ mod tests {
             ui.set_local(
                 id,
                 layout_prop,
-                taffy::Style {
-                    flex_grow: 1.0,
-                    align_self: Some(taffy::AlignSelf::Stretch),
-                    ..Default::default()
-                },
+                Layout::new().flex_grow(1.0).align_self_stretch(),
             );
             ui.set_focusable(id, true);
         }
@@ -3354,34 +3292,16 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let layout_prop = ui.properties().layout;
-        let inset = taffy::LengthPercentage::length(50.0);
         ui.set_local(
             root,
             layout_prop,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(200.0),
-                    height: taffy::Dimension::length(200.0),
-                },
-                padding: taffy::Rect {
-                    left: inset,
-                    right: inset,
-                    top: inset,
-                    bottom: inset,
-                },
-                ..Default::default()
-            },
+            Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
         );
         let child = ui.insert_child(root);
         ui.set_local(
             child,
             layout_prop,
-            taffy::Style {
-                flex_grow: 1.0,
-                align_self: Some(taffy::AlignSelf::Stretch),
-                ..Default::default()
-            },
+            Layout::new().flex_grow(1.0).align_self_stretch(),
         );
         ui.compute_layout(Size::new(200.0, 200.0));
 
@@ -3758,41 +3678,23 @@ mod tests {
     }
 
     #[test]
-    fn compute_layout_writes_taffy_bounds() {
+    fn compute_layout_writes_bounds() {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.insert_child(root);
 
         let layout_prop = ui.properties().layout;
         // Root fills the viewport with 10px padding.
-        let inset = taffy::LengthPercentage::length(10.0);
         ui.set_local(
             root,
             layout_prop,
-            taffy::Style {
-                display: taffy::Display::Flex,
-                size: taffy::Size {
-                    width: taffy::Dimension::percent(1.0),
-                    height: taffy::Dimension::percent(1.0),
-                },
-                padding: taffy::Rect {
-                    left: inset,
-                    right: inset,
-                    top: inset,
-                    bottom: inset,
-                },
-                ..Default::default()
-            },
+            Layout::flex().percent_size(1.0, 1.0).padding_all(10.0),
         );
         // Child fills the padded content.
         ui.set_local(
             child,
             layout_prop,
-            taffy::Style {
-                flex_grow: 1.0,
-                align_self: Some(taffy::AlignSelf::Stretch),
-                ..Default::default()
-            },
+            Layout::new().flex_grow(1.0).align_self_stretch(),
         );
 
         ui.compute_layout(Size::new(200.0, 100.0));

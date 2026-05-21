@@ -80,8 +80,8 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
 
     /// Optional custom measure for leaf-like controls (text, images,
     /// custom-drawn primitives) that compute their own desired size.
-    /// Containers and most controls don't override this — taffy's
-    /// computed layout from the `Layout` style is enough.
+    /// Containers and most controls don't override this — the computed layout
+    /// from the `Layout` style is enough.
     fn measure(
         &self,
         element: &Element,

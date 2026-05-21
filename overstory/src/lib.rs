@@ -58,6 +58,7 @@ pub use controls::toggle::{
 };
 pub use element::{Element, ElementId};
 pub use generic::present_surface;
+pub use layouts::Layout;
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use properties::BuiltInProperties;
 pub use template::{
@@ -75,7 +76,3 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 pub use understory_focus::Navigation;
 pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
-
-// Re-export `taffy` so consumers don't have to add a direct
-// dependency for the `Layout` property's style type.
-pub use taffy;

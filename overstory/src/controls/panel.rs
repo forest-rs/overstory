@@ -17,21 +17,21 @@ use smallvec::SmallVec;
 use understory_style::{ClassId, TypeTag};
 
 use crate::element::ElementId;
-use crate::layouts;
+use crate::layouts::{self, Layout};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, TYPE_GENERIC, Widget};
 
 /// Builder + spec for an anonymous container element.
 #[derive(Debug, Default)]
 pub struct Panel {
-    layout: Option<taffy::Style>,
+    layout: Option<Layout>,
     classes: SmallVec<[ClassId; 1]>,
 }
 
 impl Panel {
     /// Starts a new `Panel` builder with no layout configured.
     /// Width / height / gap / padding default to whatever the
-    /// taffy default style provides (no fixed size, no flex).
+    /// default layout provides (no fixed size, no flex).
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -58,8 +58,8 @@ impl Panel {
     /// Replaces the panel's layout style. Use this when the row /
     /// column shortcuts aren't enough.
     #[must_use]
-    pub fn layout(mut self, layout: taffy::Style) -> Self {
-        self.layout = Some(layout);
+    pub fn layout(mut self, layout: impl Into<Layout>) -> Self {
+        self.layout = Some(layout.into());
         self
     }
 
@@ -68,11 +68,7 @@ impl Panel {
     /// container with the padding applied.
     #[must_use]
     pub fn padding(mut self, value: f32) -> Self {
-        let mut layout = self.layout.unwrap_or_else(|| taffy::Style {
-            display: taffy::Display::Flex,
-            ..taffy::Style::default()
-        });
-        layout.padding = layouts::uniform_padding(value);
+        let layout = self.layout.unwrap_or_else(Layout::flex).padding_all(value);
         self.layout = Some(layout);
         self
     }
@@ -80,8 +76,7 @@ impl Panel {
     /// Sets the cross-axis alignment to centered.
     #[must_use]
     pub fn align_center(mut self) -> Self {
-        let mut layout = self.layout.unwrap_or_default();
-        layout.align_items = Some(taffy::AlignItems::Center);
+        let layout = self.layout.unwrap_or_default().align_center();
         self.layout = Some(layout);
         self
     }
@@ -89,8 +84,7 @@ impl Panel {
     /// Sets the main-axis justification to centered.
     #[must_use]
     pub fn justify_center(mut self) -> Self {
-        let mut layout = self.layout.unwrap_or_default();
-        layout.justify_content = Some(taffy::JustifyContent::Center);
+        let layout = self.layout.unwrap_or_default().justify_center();
         self.layout = Some(layout);
         self
     }

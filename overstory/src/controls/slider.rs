@@ -15,6 +15,7 @@ use understory_style::{ClassId, PartTag, TypeTag};
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
+use crate::layouts::Layout;
 use crate::template::{Template, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -180,14 +181,9 @@ impl AppendSpec for Slider {
         ui.set_local(
             id,
             layout_prop,
-            taffy::Style {
-                position: taffy::Position::Relative,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(SLIDER_WIDTH),
-                    height: taffy::Dimension::length(SLIDER_HEIGHT),
-                },
-                ..taffy::Style::default()
-            },
+            Layout::new()
+                .relative()
+                .logical_size(SLIDER_WIDTH, SLIDER_HEIGHT),
         );
         ui.set_control_state(id, self.state);
         ui.expand_default_template(id);
@@ -242,20 +238,9 @@ impl Template for SliderTemplate {
         cx.set_local(
             track,
             layout_prop,
-            taffy::Style {
-                position: taffy::Position::Absolute,
-                inset: taffy::Rect {
-                    left: taffy::LengthPercentageAuto::length(0.0),
-                    top: taffy::LengthPercentageAuto::length(track_inset_y),
-                    right: taffy::LengthPercentageAuto::auto(),
-                    bottom: taffy::LengthPercentageAuto::auto(),
-                },
-                size: taffy::Size {
-                    width: taffy::Dimension::length(SLIDER_WIDTH),
-                    height: taffy::Dimension::length(TRACK_HEIGHT),
-                },
-                ..taffy::Style::default()
-            },
+            Layout::new()
+                .absolute_at(0.0, track_inset_y)
+                .logical_size(SLIDER_WIDTH, TRACK_HEIGHT),
         );
 
         let axis = cx.slot_widget(SLOT_SLIDER_AXIS, Box::new(SurfacePartWidget));
@@ -364,32 +349,16 @@ fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
     t * travel
 }
 
-fn thumb_layout(left: f32, top: f32) -> taffy::Style {
-    taffy::Style {
-        position: taffy::Position::Absolute,
-        inset: taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(left),
-            top: taffy::LengthPercentageAuto::length(top),
-            right: taffy::LengthPercentageAuto::auto(),
-            bottom: taffy::LengthPercentageAuto::auto(),
-        },
-        size: taffy::Size {
-            width: taffy::Dimension::length(THUMB_DIAMETER),
-            height: taffy::Dimension::length(THUMB_DIAMETER),
-        },
-        ..taffy::Style::default()
-    }
+fn thumb_layout(left: f32, top: f32) -> Layout {
+    Layout::new()
+        .absolute_at(left, top)
+        .logical_size(THUMB_DIAMETER, THUMB_DIAMETER)
 }
 
-fn axis_layout() -> taffy::Style {
-    taffy::Style {
-        position: taffy::Position::Absolute,
-        size: taffy::Size {
-            width: taffy::Dimension::length(SLIDER_WIDTH),
-            height: taffy::Dimension::length(SLIDER_HEIGHT),
-        },
-        ..taffy::Style::default()
-    }
+fn axis_layout() -> Layout {
+    Layout::new()
+        .absolute()
+        .logical_size(SLIDER_WIDTH, SLIDER_HEIGHT)
 }
 
 fn slider_ruler(min: f64, max: f64) -> AxisRuler1D {
@@ -421,39 +390,17 @@ fn ruler_mark_in_view(ruler: &AxisRuler1D, mark: AxisRulerMark) -> bool {
     mark.view_position >= span.start - EPSILON && mark.view_position <= span.end + EPSILON
 }
 
-fn tick_layout(mark: AxisRulerMark) -> taffy::Style {
-    taffy::Style {
-        position: taffy::Position::Absolute,
-        inset: taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(tick_left(mark.view_position, TICK_WIDTH)),
-            top: taffy::LengthPercentageAuto::length(TICK_TOP),
-            right: taffy::LengthPercentageAuto::auto(),
-            bottom: taffy::LengthPercentageAuto::auto(),
-        },
-        size: taffy::Size {
-            width: taffy::Dimension::length(TICK_WIDTH),
-            height: taffy::Dimension::length(axis_px(mark.mark_extent)),
-        },
-        ..taffy::Style::default()
-    }
+fn tick_layout(mark: AxisRulerMark) -> Layout {
+    Layout::new()
+        .absolute_at(tick_left(mark.view_position, TICK_WIDTH), TICK_TOP)
+        .logical_size(TICK_WIDTH, axis_px(mark.mark_extent))
 }
 
-fn tick_label_layout(mark: AxisRulerMark, label: &str) -> taffy::Style {
+fn tick_label_layout(mark: AxisRulerMark, label: &str) -> Layout {
     let width = label_width(label);
-    taffy::Style {
-        position: taffy::Position::Absolute,
-        inset: taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(tick_left(mark.view_position, width)),
-            top: taffy::LengthPercentageAuto::length(LABEL_TOP),
-            right: taffy::LengthPercentageAuto::auto(),
-            bottom: taffy::LengthPercentageAuto::auto(),
-        },
-        size: taffy::Size {
-            width: taffy::Dimension::length(width),
-            height: taffy::Dimension::length(SLIDER_HEIGHT - LABEL_TOP),
-        },
-        ..taffy::Style::default()
-    }
+    Layout::new()
+        .absolute_at(tick_left(mark.view_position, width), LABEL_TOP)
+        .logical_size(width, SLIDER_HEIGHT - LABEL_TOP)
 }
 
 fn label_width(label: &str) -> f32 {

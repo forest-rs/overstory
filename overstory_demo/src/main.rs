@@ -11,7 +11,7 @@
 //! driven by a repeating timer from `understory_timing`. Tab and
 //! Shift+Tab walk focus across the interactive controls; the
 //! focused element paints a white border ring. Layout is driven by
-//! taffy via the `Layout` property; text is shaped by parley and
+//! the layout engine via the `Layout` property; text is shaped by parley and
 //! rendered as glyph runs through imaging.
 //!
 //! The host translates winit events through
@@ -458,18 +458,12 @@ fn build_ui() -> Ui {
     let root = ui.root();
 
     // Root layout: full-viewport row-flex with padding + gap.
-    let root_layout = overstory::taffy::Style {
-        justify_content: Some(overstory::taffy::JustifyContent::Center),
-        align_items: Some(overstory::taffy::AlignItems::Center),
-        size: overstory::taffy::Size {
-            width: overstory::taffy::Dimension::percent(1.0),
-            height: overstory::taffy::Dimension::percent(1.0),
-        },
-        padding: layouts::uniform_padding(50.0),
-        ..layouts::row_with_gap(32.0)
-    };
-    let layout_prop = ui.properties().layout;
-    ui.set_local(root, layout_prop, root_layout);
+    let root_layout = layouts::row_with_gap(32.0)
+        .justify_center()
+        .align_center()
+        .percent_size(1.0, 1.0)
+        .padding_all(50.0);
+    ui.set_layout(root, root_layout);
 
     // Two buttons. Each owns its own activation counter via the
     // closure returned by `cycling_click_handler`. `event.current`

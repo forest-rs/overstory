@@ -47,6 +47,7 @@ use crate::controls::slider::{
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
 };
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
+use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
@@ -127,34 +128,25 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
 
-    let toggle_layout = |justify: taffy::JustifyContent| taffy::Style {
-        display: taffy::Display::Flex,
-        flex_direction: taffy::FlexDirection::Row,
-        justify_content: Some(justify),
-        align_items: Some(taffy::AlignItems::Center),
-        size: taffy::Size {
-            width: taffy::Dimension::length(64.0),
-            height: taffy::Dimension::length(32.0),
-        },
-        padding: taffy::Rect {
-            left: taffy::LengthPercentage::length(4.0),
-            right: taffy::LengthPercentage::length(4.0),
-            top: taffy::LengthPercentage::length(4.0),
-            bottom: taffy::LengthPercentage::length(4.0),
-        },
-        ..Default::default()
+    let toggle_layout = |checked: bool| {
+        let layout = Layout::row(0.0)
+            .align_center()
+            .logical_size(64.0, 32.0)
+            .padding_all(4.0);
+        if checked {
+            layout.justify_end()
+        } else {
+            layout.justify_start()
+        }
     };
     let toggle_idle = StyleBuilder::new()
         .set_resource(properties.background, TRACK_BG)
         .set(properties.corner_radius, 16.0_f64)
-        .set(
-            properties.layout,
-            toggle_layout(taffy::JustifyContent::Start),
-        )
+        .set(properties.layout, toggle_layout(false))
         .build();
     let toggle_checked = StyleBuilder::new()
         .set_resource(properties.background, SUCCESS_BG)
-        .set(properties.layout, toggle_layout(taffy::JustifyContent::End))
+        .set(properties.layout, toggle_layout(true))
         .build();
     let toggle_focused = StyleBuilder::new()
         .set_resource(properties.border_brush, FOCUS_RING_BORDER)
@@ -163,16 +155,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let thumb_style = StyleBuilder::new()
         .set_resource(properties.background, THUMB_BG)
         .set(properties.corner_radius, 12.0_f64)
-        .set(
-            properties.layout,
-            taffy::Style {
-                size: taffy::Size {
-                    width: taffy::Dimension::length(24.0),
-                    height: taffy::Dimension::length(24.0),
-                },
-                ..Default::default()
-            },
-        )
+        .set(properties.layout, Layout::new().logical_size(24.0, 24.0))
         .build();
 
     let slider_track_style = StyleBuilder::new()
@@ -302,19 +285,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build()
 }
 
-fn button_layout() -> taffy::Style {
-    taffy::Style {
-        padding: taffy::Rect {
-            left: taffy::LengthPercentage::length(32.0),
-            right: taffy::LengthPercentage::length(32.0),
-            top: taffy::LengthPercentage::length(18.0),
-            bottom: taffy::LengthPercentage::length(18.0),
-        },
-        display: taffy::Display::Flex,
-        justify_content: Some(taffy::JustifyContent::Center),
-        align_items: Some(taffy::AlignItems::Center),
-        ..Default::default()
-    }
+fn button_layout() -> Layout {
+    Layout::row(0.0)
+        .padding_xy(32.0, 18.0)
+        .justify_center()
+        .align_center()
 }
 
 fn solid(r: u8, g: u8, b: u8, a: u8) -> Brush {

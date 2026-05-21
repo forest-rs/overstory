@@ -12,6 +12,7 @@ use understory_style::TypeTag;
 
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
+use crate::layouts::Layout;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
 
@@ -60,14 +61,9 @@ impl AppendSpec for Spinner {
         ui.set_local(
             id,
             layout_prop,
-            taffy::Style {
-                position: taffy::Position::Relative,
-                size: taffy::Size {
-                    width: taffy::Dimension::length(SPINNER_SIZE),
-                    height: taffy::Dimension::length(SPINNER_SIZE),
-                },
-                ..taffy::Style::default()
-            },
+            Layout::new()
+                .relative()
+                .logical_size(SPINNER_SIZE, SPINNER_SIZE),
         );
 
         // Build dot children.
@@ -77,24 +73,14 @@ impl AppendSpec for Spinner {
         for (i, &(ux, uy)) in DOT_VECTORS.iter().enumerate() {
             let dot = ui.append(
                 id,
-                Panel::new().layout(taffy::Style {
-                    position: taffy::Position::Absolute,
-                    inset: taffy::Rect {
-                        left: taffy::LengthPercentageAuto::length(
+                Panel::new().layout(
+                    Layout::new()
+                        .absolute_at(
                             DOT_INSET_CENTER + RING_RADIUS * ux,
-                        ),
-                        top: taffy::LengthPercentageAuto::length(
                             DOT_INSET_CENTER + RING_RADIUS * uy,
-                        ),
-                        right: taffy::LengthPercentageAuto::auto(),
-                        bottom: taffy::LengthPercentageAuto::auto(),
-                    },
-                    size: taffy::Size {
-                        width: taffy::Dimension::length(DOT_DIAMETER),
-                        height: taffy::Dimension::length(DOT_DIAMETER),
-                    },
-                    ..taffy::Style::default()
-                }),
+                        )
+                        .logical_size(DOT_DIAMETER, DOT_DIAMETER),
+                ),
             );
             ui.set_local(dot, corner_prop, f64::from(DOT_DIAMETER * 0.5));
             ui.set_local(dot, bg_prop, Some(dot_brush(i, 0)));

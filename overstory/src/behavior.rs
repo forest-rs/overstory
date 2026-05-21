@@ -122,10 +122,10 @@ impl<'a> MeasureContext<'a> {
     /// Resolves a measure-time property value using animation/local, then the
     /// element's own styled value, then the registry default.
     ///
-    /// Layout measurement runs inside taffy's split-borrow callback and cannot
-    /// currently walk ancestor elements. This helper is intentionally limited to
-    /// properties whose measurement behavior depends on the measured element's
-    /// own value, such as `Content` and `FontSize`.
+    /// Layout measurement runs inside the layout engine's split-borrow
+    /// callback and cannot currently walk ancestor elements. This helper is
+    /// intentionally limited to properties whose measurement behavior depends
+    /// on the measured element's own value, such as `Content` and `FontSize`.
     #[must_use]
     pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
     where
