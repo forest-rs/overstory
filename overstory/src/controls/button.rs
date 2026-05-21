@@ -22,9 +22,9 @@ use understory_property_binding::PropertyEndpoint;
 use understory_style::TypeTag;
 
 use crate::Phase;
+use crate::controls::text::Text;
 use crate::element::ElementId;
 use crate::template::Template;
-use crate::text_behavior::Text;
 use crate::ui::{ClickEvent, KeyEvent, Ui};
 use crate::widget::{AppendSpec, Widget};
 

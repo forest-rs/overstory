@@ -10,8 +10,8 @@ use core::f32::consts::FRAC_1_SQRT_2 as FRAC_1_SQRT_2_F32;
 use peniko::{Brush, Color};
 use understory_style::TypeTag;
 
+use crate::controls::panel::Panel;
 use crate::element::ElementId;
-use crate::panel::Panel;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
 
