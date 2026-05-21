@@ -50,6 +50,9 @@ use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::text::TextEngine;
 use crate::text_behavior::{ELEMENT_KIND_TEXT, TEXT_BEHAVIOR};
+use crate::toggle::{
+    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, TOGGLE_BEHAVIOR, TOGGLE_THUMB_BEHAVIOR,
+};
 
 /// Root context for an Overstory UI instance.
 ///
@@ -228,6 +231,8 @@ impl Ui {
         behaviors.register(ELEMENT_KIND_GENERIC, &GENERIC_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_TEXT, &TEXT_BEHAVIOR);
         behaviors.register(ELEMENT_KIND_BUTTON, &BUTTON_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_TOGGLE, &TOGGLE_BEHAVIOR);
+        behaviors.register(ELEMENT_KIND_TOGGLE_THUMB, &TOGGLE_THUMB_BEHAVIOR);
         let cascade = StyleCascadeBuilder::new().build();
         let theme = Theme::default();
 
@@ -324,10 +329,16 @@ impl Ui {
 
     /// Swaps in a new style cascade and restyles the entire tree.
     ///
-    /// Every element is marked PAINT-dirty since styled values may now resolve
-    /// differently. Match states from the previous cascade are discarded —
-    /// the [`MatchState`] type is bound to its originating cascade, so they
-    /// can't be reused after a swap.
+    /// Every element is marked PAINT- and LAYOUT-dirty since styled
+    /// values may now resolve differently. (Match states from the
+    /// previous cascade are discarded — the [`MatchState`] type is
+    /// bound to its originating cascade, so they can't be reused
+    /// after a swap.) The conservative LAYOUT mark catches cascades
+    /// that contribute a `Layout` for an element whose previous
+    /// state didn't have one — `style_one`'s diff path only triggers
+    /// on state *transitions*, not first-time styling, so without
+    /// this mark a styled `Layout` would sit in the cascade but
+    /// never reach taffy.
     pub fn set_cascade(&mut self, cascade: StyleCascade) {
         self.cascade = cascade;
         self.match_states.clear();
@@ -335,6 +346,7 @@ impl Ui {
         for id in ids {
             self.style_one(id);
             self.invalidation.mark(id, PAINT);
+            self.invalidation.mark(id, LAYOUT);
         }
     }
 
@@ -448,7 +460,13 @@ impl Ui {
         let child = self.alloc_element(kind, Some(parent), templated_parent);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
+        // PAINT + LAYOUT: the cascade may have styled either kind of
+        // value for this newly-inserted element, and `style_one`'s
+        // diff path only marks channels for state *transitions* —
+        // first-time styling skips the diff, so a cascade-supplied
+        // `Layout` would otherwise never reach taffy on insert.
         self.invalidation.mark(child, PAINT);
+        self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
         configure(self, child);
         self.expand_default_template(child);

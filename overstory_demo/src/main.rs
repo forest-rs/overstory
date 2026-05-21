@@ -4,16 +4,18 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The tree is a dark backdrop with two templated Buttons side by side.
-//! Each cycles its own label on click or Space / Enter while focused.
-//! Tab and Shift+Tab walk focus between the two; the focused button
-//! paints in a brighter sky-blue. Layout is driven by taffy via the
-//! `Layout` property; text is shaped by parley and rendered as glyph
-//! runs through imaging. The host translates winit events through
-//! `ui_events_winit::WindowEventReducer` into normalized `ui-events`
-//! pointers and keys, which `Ui::dispatch_pointer_event` /
-//! `Ui::dispatch_key` consume to drive `:hover`, `:pressed`, and
-//! `:focused` plus the registered click / key handlers.
+//! The tree is a dark backdrop with two templated Buttons and a
+//! ToggleSwitch side by side. Each button cycles its own label on
+//! click or Space / Enter while focused; the toggle flips its
+//! `:checked` state. Tab and Shift+Tab walk focus across all three;
+//! the focused element paints a white border ring. Layout is driven
+//! by taffy via the `Layout` property; text is shaped by parley and
+//! rendered as glyph runs through imaging. The host translates winit
+//! events through `ui_events_winit::WindowEventReducer` into
+//! normalized `ui-events` pointers and keys, which
+//! `Ui::dispatch_pointer_event` / `Ui::dispatch_key` consume to drive
+//! `:hover`, `:pressed`, `:focused`, and `:checked` plus the
+//! registered click / key handlers.
 //!
 //! ## Render path
 //!
@@ -34,8 +36,11 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
-use overstory::pseudos::{PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
-use overstory::{ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, Navigation, Ui};
+use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use overstory::{
+    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB,
+    Navigation, Ui,
+};
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use understory_style::{
@@ -446,6 +451,13 @@ fn build_ui() -> Ui {
     add_button(&mut ui, root, "Click me");
     add_button(&mut ui, root, "Or me");
 
+    // A ToggleSwitch. Click + key handlers, the `:checked` pseudo
+    // sync, and the thumb child are all built into Toggle's default
+    // template — the app just inserts the toggle and marks it
+    // focusable.
+    let toggle = ui.insert_child(root, ELEMENT_KIND_TOGGLE);
+    ui.set_focusable(toggle, true);
+
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
     let button_kind = TypeTag(ELEMENT_KIND_BUTTON.tag());
@@ -502,12 +514,101 @@ fn build_ui() -> Ui {
         SelectorBuilder::new(SelectorStep::type_tag(button_kind).with_pseudo(PSEUDO_FOCUSED))
             .build();
 
+    // ToggleSwitch styling. The thumb slides via Toggle's flex
+    // `justify-content` — `start` when unchecked, `end` when checked.
+    // The Layout property is a single `taffy::Style`, so each rule
+    // has to carry the full layout (we can't partially override).
+    let toggle_kind = TypeTag(ELEMENT_KIND_TOGGLE.tag());
+    let toggle_thumb_kind = TypeTag(ELEMENT_KIND_TOGGLE_THUMB.tag());
+
+    let toggle_layout = |justify: overstory::taffy::JustifyContent| overstory::taffy::Style {
+        display: overstory::taffy::Display::Flex,
+        flex_direction: overstory::taffy::FlexDirection::Row,
+        justify_content: Some(justify),
+        align_items: Some(overstory::taffy::AlignItems::Center),
+        size: overstory::taffy::Size {
+            width: overstory::taffy::Dimension::length(64.0),
+            height: overstory::taffy::Dimension::length(32.0),
+        },
+        padding: overstory::taffy::Rect {
+            left: overstory::taffy::LengthPercentage::length(4.0),
+            right: overstory::taffy::LengthPercentage::length(4.0),
+            top: overstory::taffy::LengthPercentage::length(4.0),
+            bottom: overstory::taffy::LengthPercentage::length(4.0),
+        },
+        ..Default::default()
+    };
+
+    let toggle_idle = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff))),
+        )
+        .set(ui.properties().corner_radius, 16.0_f64)
+        .set(
+            ui.properties().layout,
+            toggle_layout(overstory::taffy::JustifyContent::Start),
+        )
+        .build();
+    let toggle_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_kind)).build();
+
+    let toggle_checked = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0x3a, 0xa3, 0x6d, 0xff))),
+        )
+        .set(
+            ui.properties().layout,
+            toggle_layout(overstory::taffy::JustifyContent::End),
+        )
+        .build();
+    let toggle_checked_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_CHECKED))
+            .build();
+
+    // Toggle:focused — same white 2px border ring as Button:focused.
+    let toggle_focused = StyleBuilder::new()
+        .set(
+            ui.properties().border_brush,
+            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
+        )
+        .set(ui.properties().border_width, 2.0_f64)
+        .build();
+    let toggle_focused_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(toggle_kind).with_pseudo(PSEUDO_FOCUSED))
+            .build();
+
+    // Thumb: a white pill — the thumb's parent (Toggle) provides
+    // `justify-content` which slides it.
+    let thumb_style = StyleBuilder::new()
+        .set(
+            ui.properties().background,
+            Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))),
+        )
+        .set(ui.properties().corner_radius, 12.0_f64)
+        .set(
+            ui.properties().layout,
+            overstory::taffy::Style {
+                size: overstory::taffy::Size {
+                    width: overstory::taffy::Dimension::length(24.0),
+                    height: overstory::taffy::Dimension::length(24.0),
+                },
+                ..Default::default()
+            },
+        )
+        .build();
+    let thumb_selector = SelectorBuilder::new(SelectorStep::type_tag(toggle_thumb_kind)).build();
+
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, backdrop_selector, backdrop)
         .push_rule(StyleOrigin::Base, button_selector, button_idle)
         .push_rule(StyleOrigin::Base, button_focused_selector, button_focused)
         .push_rule(StyleOrigin::Base, button_hover_selector, button_hover)
         .push_rule(StyleOrigin::Base, button_pressed_selector, button_pressed)
+        .push_rule(StyleOrigin::Base, toggle_selector, toggle_idle)
+        .push_rule(StyleOrigin::Base, toggle_checked_selector, toggle_checked)
+        .push_rule(StyleOrigin::Base, toggle_focused_selector, toggle_focused)
+        .push_rule(StyleOrigin::Base, thumb_selector, thumb_style)
         .build();
     ui.set_cascade(cascade);
 

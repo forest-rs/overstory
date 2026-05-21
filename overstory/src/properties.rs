@@ -60,6 +60,12 @@ pub struct BuiltInProperties {
     /// border isn't drawn when either the brush is `None` or the
     /// width is zero.
     pub border_width: Property<f64>,
+
+    /// Boolean toggled state for two-state controls (`ToggleSwitch`,
+    /// `CheckBox`, …). Default `false`. Writers should pair the value
+    /// change with adding / removing the `:checked` pseudoclass so
+    /// the cascade reflects the new state.
+    pub is_checked: Property<bool>,
 }
 
 impl BuiltInProperties {
@@ -121,6 +127,14 @@ impl BuiltInProperties {
                 "BorderWidth",
                 PropertyMetadataBuilder::new(0.0_f64)
                     .affects_channels(PAINT.into_set())
+                    .build(),
+            ),
+            is_checked: registry.register(
+                "IsChecked",
+                PropertyMetadataBuilder::new(false)
+                    // No direct paint impact — state lives in the
+                    // pseudoclass. The control's click handler is
+                    // responsible for keeping `:checked` in sync.
                     .build(),
             ),
         }

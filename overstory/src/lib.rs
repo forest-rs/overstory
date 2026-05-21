@@ -36,6 +36,7 @@ pub mod pseudos;
 mod template;
 mod text;
 mod text_behavior;
+mod toggle;
 mod ui;
 
 pub use behavior::{
@@ -50,6 +51,10 @@ pub use properties::BuiltInProperties;
 pub use template::Template;
 pub use text::TextEngine;
 pub use text_behavior::{ELEMENT_KIND_TEXT, TextBehavior};
+pub use toggle::{
+    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ToggleBehavior, ToggleThumbBehavior,
+    toggle_checked,
+};
 pub use ui::{ClickEvent, KeyEvent, Ui};
 
 // Re-export the responder's `Phase` so callers can read `ClickEvent::phase`
