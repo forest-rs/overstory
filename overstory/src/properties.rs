@@ -100,7 +100,10 @@ impl BuiltInProperties {
             content: registry.register(
                 "Content",
                 PropertyMetadataBuilder::new(String::new())
-                    .affects_channels(LAYOUT.into_set() | PAINT.into_set())
+                    // PAINT cascades from LAYOUT via the tracker's
+                    // channel cascade — no need to declare it
+                    // explicitly here.
+                    .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
             foreground: registry.register(
@@ -114,7 +117,7 @@ impl BuiltInProperties {
             font_size: registry.register(
                 "FontSize",
                 PropertyMetadataBuilder::new(14.0_f64)
-                    .affects_channels(LAYOUT.into_set() | PAINT.into_set())
+                    .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
             border_brush: registry.register(

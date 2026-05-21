@@ -600,7 +600,6 @@ impl Ui {
             .map(|el| el.add_class(class))
             .unwrap_or(false);
         if changed {
-            self.invalidation.mark(id, STYLE);
             self.restyle_subtree(id);
         }
     }
@@ -612,7 +611,6 @@ impl Ui {
             .map(|el| el.remove_class(class))
             .unwrap_or(false);
         if changed {
-            self.invalidation.mark(id, STYLE);
             self.restyle_subtree(id);
         }
     }
@@ -624,7 +622,6 @@ impl Ui {
             .map(|el| el.add_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
-            self.invalidation.mark(id, STYLE);
             self.restyle_subtree(id);
         }
     }
@@ -636,7 +633,6 @@ impl Ui {
             .map(|el| el.remove_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
-            self.invalidation.mark(id, STYLE);
             self.restyle_subtree(id);
         }
     }
@@ -2496,17 +2492,14 @@ mod tests {
     }
 
     #[test]
-    fn add_class_marks_style_and_restyles_subtree() {
+    fn add_class_restyles_subtree() {
         let mut ui = Ui::new();
         let root = ui.root();
-        let _ = ui
-            .invalidation
-            .drain_sorted(STYLE)
-            .collect::<Vec<ElementId>>();
         ui.add_class(root, ClassId(1));
-        // STYLE dirty was marked by add_class; restyle drained it via
-        // restyle_subtree (called inline). With an empty cascade nothing
-        // changes channel-wise.
+        // `add_class` restyles synchronously — the class is on the
+        // element afterward and any cascade-driven channel changes
+        // are already marked via `restyle_subtree`. With an empty
+        // cascade (this test's case) no channels move.
         assert!(ui.get(root).unwrap().classes().contains(&ClassId(1)));
     }
 }
