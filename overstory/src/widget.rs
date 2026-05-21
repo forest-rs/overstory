@@ -19,10 +19,10 @@
 //! }));
 //! ```
 //!
-//! The toolkit applies the builder's config (properties, focusable
-//! flag, registered handlers) inside `AppendSpec::append_to`, then
-//! attaches the produced widget to the element. From that point on,
-//! the widget is the source of selector identity / dispatch.
+//! `AppendSpec::append_to` creates the widget element, then writes the
+//! builder's initial properties and handlers. Default templates expand during
+//! element creation, so controls whose template layout depends on initial
+//! builder state must sync their parts after those property writes.
 
 use core::any::Any;
 

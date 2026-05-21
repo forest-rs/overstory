@@ -32,12 +32,13 @@ use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
 use understory_property_binding::{
-    BindingError, BindingHost, BindingId, BindingSet, BindingWrite, EndpointKey, PropertyEndpoint,
+    BindingDrainError, BindingError, BindingHost, BindingId, BindingReport, BindingSet,
+    BindingWrite, EndpointKey, PropertyEndpoint,
 };
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
-    MatchState, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
+    MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, StyleValueRef, Theme,
 };
 use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
 
@@ -300,9 +301,9 @@ enum Slot {
 }
 
 impl Ui {
-    /// Creates a new [`Ui`] with an empty root element of kind
-    /// `PanelWidget`, built-in properties registered, the generic
-    /// behavior installed, and an empty cascade and theme.
+    /// Creates a new [`Ui`] with an empty root `PanelWidget`, built-in
+    /// properties registered, the generic behavior installed, and an empty
+    /// cascade and theme.
     ///
     /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
     /// application-supplied styling.
@@ -437,13 +438,13 @@ impl Ui {
         }
     }
 
-    /// Swaps in a new theme. All elements are marked PAINT-dirty since theme
-    /// resource lookups are read-time and may now resolve differently.
+    /// Swaps in a new theme. All elements are marked LAYOUT-dirty since theme
+    /// resources can feed layout, text measurement, and paint values.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
-        let ids: Vec<ElementId> = self.match_states.keys().copied().collect();
+        let ids = collect_preorder(self, self.root);
         for id in ids {
-            self.invalidation.mark(id, PAINT);
+            self.invalidation.mark(id, LAYOUT);
         }
     }
 
@@ -494,14 +495,6 @@ impl Ui {
             .unwrap_or_else(|| self.cascade.root_state())
     }
 
-    /// Inserts a new child of the given `kind` under `parent` and returns its id.
-    ///
-    /// The new element is styled against the current cascade, marked
-    /// PAINT-dirty, and the parent is marked COMPOSE-dirty. If `kind`'s
-    /// behavior provides a `default_template`, it is invoked immediately;
-    /// any elements created during that expansion are tagged with
-    /// `templated_parent = Some(child)`.
-    ///
     /// Inserts a new control under `parent`. The spec's builder
     /// methods produce its configuration; `append_to` reads those,
     /// creates the element + widget, registers handlers, and
@@ -654,12 +647,25 @@ impl Ui {
     /// Drains the binding set, propagating dirty bindings through the host.
     /// Channels affected by binding writes are unioned into the invalidation
     /// tracker as a side effect of the host's `set_erased` impl.
-    pub fn flush_bindings(&mut self) {
+    pub fn try_flush_bindings(&mut self) -> Result<BindingReport, BindingDrainError<ElementId>> {
         let Some(mut bindings) = self.bindings.take() else {
-            return;
+            return Ok(BindingReport::default());
         };
-        let _ = bindings.drain(self);
+        let result = bindings.drain(self);
         self.bindings = Some(bindings);
+        result
+    }
+
+    /// Drains dirty bindings and panics if a real binding evaluation error is
+    /// found.
+    ///
+    /// Migration note: callers that need to recover from binding graph or host
+    /// type errors should use [`Self::try_flush_bindings`]. This method preserves
+    /// the original infallible call shape for existing code, but it no longer
+    /// silently discards non-missing-source errors.
+    pub fn flush_bindings(&mut self) -> BindingReport {
+        self.try_flush_bindings()
+            .expect("binding drain failed; use try_flush_bindings to inspect the error")
     }
 
     /// Adds `class` to `id` and re-styles the affected subtree.
@@ -1122,14 +1128,57 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return Rect::ZERO;
         };
-        let lookup = UiStoreLookup::new(self);
-        let cx = ResolveCx::new(&self.registry, &self.theme, lookup);
-        let match_state = self.match_state(id);
-        cx.get_value(
-            element,
-            self.properties.bounds,
-            Some((&self.cascade, match_state)),
-        )
+        self.effective_value_for(element, self.properties.bounds)
+    }
+
+    pub(crate) fn effective_value_for<T: Clone + 'static>(
+        &self,
+        element: &Element,
+        property: Property<T>,
+    ) -> T {
+        if let Some(value) = self.own_effective_value(element, property) {
+            return value;
+        }
+
+        let metadata = self
+            .registry
+            .get_metadata(property)
+            .expect("property should be registered");
+        if metadata.inherits() {
+            let mut parent = element.parent();
+            while let Some(parent_id) = parent {
+                let Some(parent_element) = self.get(parent_id) else {
+                    break;
+                };
+                if let Some(value) = self.own_effective_value(parent_element, property) {
+                    return value;
+                }
+                parent = parent_element.parent();
+            }
+        }
+
+        metadata.default_value().clone()
+    }
+
+    fn own_effective_value<T: Clone + 'static>(
+        &self,
+        element: &Element,
+        property: Property<T>,
+    ) -> Option<T> {
+        if let Some(value) = element.property_store().get_animation(property) {
+            return Some(value.clone());
+        }
+        if let Some(value) = element.property_store().get_local(property) {
+            return Some(value.clone());
+        }
+
+        let match_state = self.match_state(element.id());
+        self.cascade
+            .get_entry_ref(match_state, property)
+            .and_then(|entry| match entry {
+                StyleValueRef::Value(value) => Some(value.clone()),
+                StyleValueRef::Resource(key) => self.theme.get::<T>(key).cloned(),
+            })
     }
 
     /// Dispatches a normalized pointer event.
@@ -1331,14 +1380,7 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return taffy::Style::default();
         };
-        let lookup = UiStoreLookup::new(self);
-        let cx = ResolveCx::new(&self.registry, &self.theme, lookup);
-        let match_state = self.match_state(id);
-        cx.get_value(
-            element,
-            self.properties.layout,
-            Some((&self.cascade, match_state)),
-        )
+        self.effective_value_for(element, self.properties.layout)
     }
 
     /// Computes layout for the tree against the given viewport size and
@@ -1520,6 +1562,7 @@ impl Ui {
     ///    shape and paint text — using the box tree's world bounds.
     /// 5. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
+        self.flush_bindings();
         self.flush_style();
         // Make sure the box tree's world-space data and spatial index
         // reflect any structural / bounds changes since the last
@@ -1588,6 +1631,7 @@ impl Ui {
             cascade: &self.cascade,
             match_state,
             lookup: UiStoreLookup::new(self),
+            ui: self,
         };
         if let Some(widget) = element.widget() {
             widget.present(element, &ctx, presentation, node);
@@ -1638,12 +1682,10 @@ impl Ui {
     /// for `id`, the cascade's `restyle_subject` is used to surface changed
     /// channels into the tracker; otherwise the new state is just stored.
     ///
-    /// Each Element is an *independent* style subject — selectors match it as
-    /// a root-level subject anchored at `cascade.root_state()`, not from its
-    /// parent's `MatchState`. The cascade's parent-state argument is for
-    /// template parts (a Toggle's track entered from its Toggle owner's
-    /// state), not logical-tree children. Phase 1f will revisit this when
-    /// templates land.
+    /// Elements are entered from their parent match state. The style matcher
+    /// starts selectors at every subject, so single-step rules still apply to
+    /// nested controls while child/descendant selectors can carry owner state
+    /// into template parts.
     fn style_one(&mut self, id: ElementId) {
         let Some(element) = self.get(id) else {
             self.match_states.remove(&id);
@@ -1659,7 +1701,10 @@ impl Ui {
         let pseudos: SmallVec<[understory_style::PseudoClassId; 4]> =
             SmallVec::from_slice(element.pseudos());
 
-        let parent_state = self.cascade.root_state();
+        let parent_state = element
+            .parent()
+            .and_then(|parent| self.match_states.get(&parent).copied())
+            .unwrap_or_else(|| self.cascade.root_state());
 
         let inputs = SelectorInputs::new(Some(type_tag), &classes, &pseudos);
         let old_state = self.match_states.get(&id).copied();
@@ -1693,6 +1738,9 @@ impl Ui {
         }
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
+        if let Some(bindings) = self.bindings.as_mut() {
+            bindings.clear_owner(id);
+        }
         self.click_handlers.remove(&id);
         self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
@@ -2007,7 +2055,9 @@ mod tests {
     use super::*;
     use kurbo::Rect;
     use peniko::{Brush, Color};
-    use understory_style::{ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleOrigin};
+    use understory_style::{
+        ClassId, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleOrigin,
+    };
 
     #[test]
     fn new_ui_has_root() {
@@ -2164,7 +2214,7 @@ mod tests {
 
     #[test]
     fn styled_background_resolves_through_cascade() {
-        // A style for `Type(ELEMENT_KIND_GENERIC)` should supply the
+        // A style for `Type(TYPE_GENERIC)` should supply the
         // background value for elements that don't have a local override.
         let mut ui = Ui::new();
         let root = ui.root();
@@ -2205,7 +2255,7 @@ mod tests {
 
     #[test]
     fn three_rule_cascade_picks_class_over_type() {
-        // Mirror the demo: rules at Base origin keyed on ELEMENT_KIND_GENERIC.
+        // Mirror the demo: rules at Base origin keyed on TYPE_GENERIC.
         use understory_style::{ClassId, SelectorBuilder, SelectorStep};
 
         const CLASS_FG: ClassId = ClassId(1);
@@ -2266,6 +2316,226 @@ mod tests {
             &[CLASS_FG],
             "class should survive set_cascade"
         );
+    }
+
+    #[test]
+    fn styled_button_foreground_reaches_template_label() {
+        use crate::{Button, TYPE_BUTTON, theme};
+
+        let mut ui = Ui::new();
+        ui.set_theme(theme::default_theme());
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Run"));
+        let label = ui.get(button).unwrap().children()[0];
+
+        let white = Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff));
+        let style = StyleBuilder::new()
+            .set_resource(ui.properties().foreground, theme::ON_ACCENT_FG)
+            .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON)).build(),
+                style,
+            )
+            .build();
+        ui.set_cascade(cascade);
+
+        let button_fg = ui.effective_value_for(ui.get(button).unwrap(), ui.properties().foreground);
+        assert_eq!(
+            button_fg, white,
+            "button itself should resolve styled foreground"
+        );
+        let label_fg = ui.effective_value_for(ui.get(label).unwrap(), ui.properties().foreground);
+        assert_eq!(
+            label_fg, white,
+            "label should inherit the button's styled foreground"
+        );
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let label_node = ui.box_for(label).expect("label should have a box node");
+        let foreground = ui
+            .presentation
+            .as_ref()
+            .expect("presentation store should exist")
+            .node(label_node)
+            .expect("label should have presentation")
+            .plain_text()
+            .expect("label should present text")
+            .foreground
+            .clone();
+        assert_eq!(foreground, Some(white));
+    }
+
+    #[test]
+    fn text_measure_uses_styled_content_and_font_size() {
+        use crate::{TYPE_TEXT, Text};
+        use alloc::string::String;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(200.0),
+                    height: taffy::Dimension::length(100.0),
+                },
+                ..Default::default()
+            },
+        );
+        let text = ui.append(root, Text::new(""));
+
+        let style = StyleBuilder::new()
+            .set(ui.properties().content, String::from("Styled text"))
+            .set(ui.properties().font_size, 40.0_f64)
+            .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_TEXT)).build(),
+                style,
+            )
+            .build();
+        ui.set_cascade(cascade);
+
+        ui.compute_layout(Size::new(200.0, 100.0));
+
+        let bounds = ui.effective_bounds(text);
+        assert!(
+            bounds.width() > 0.0 && bounds.height() > 30.0,
+            "styled text content and font size should participate in measure; got {bounds:?}"
+        );
+    }
+
+    #[test]
+    fn slider_initial_value_positions_thumb() {
+        use crate::Slider;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(300.0),
+                    height: taffy::Dimension::length(80.0),
+                },
+                ..Default::default()
+            },
+        );
+
+        let slider = ui.append(root, Slider::new().value(0.4));
+        let thumb = ui.get(slider).unwrap().children()[1];
+
+        ui.compute_layout(Size::new(300.0, 80.0));
+
+        let slider_bounds = ui.effective_bounds(slider);
+        let thumb_bounds = ui.effective_bounds(thumb);
+        let thumb_offset = thumb_bounds.x0 - slider_bounds.x0;
+        assert!(
+            thumb_offset > 70.0,
+            "initial value should move thumb along the track; got x offset {thumb_offset}"
+        );
+    }
+
+    #[test]
+    fn slider_template_parts_match_single_step_type_selectors() {
+        use crate::{Slider, TYPE_SLIDER_TRACK};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            taffy::Style {
+                display: taffy::Display::Flex,
+                size: taffy::Size {
+                    width: taffy::Dimension::length(300.0),
+                    height: taffy::Dimension::length(80.0),
+                },
+                ..Default::default()
+            },
+        );
+
+        let slider = ui.append(root, Slider::new());
+        let track = ui.get(slider).unwrap().children()[0];
+        let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
+        let style = StyleBuilder::new()
+            .set(ui.properties().background, red.clone())
+            .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_SLIDER_TRACK)).build(),
+                style,
+            )
+            .build();
+        ui.set_cascade(cascade);
+
+        let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+        assert_eq!(
+            background, red,
+            "single-step type rule should match the nested slider track"
+        );
+
+        ui.compute_layout(Size::new(300.0, 80.0));
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+        assert!(
+            !output.is_empty(),
+            "styled slider track should contribute painted output"
+        );
+    }
+
+    #[test]
+    fn owner_pseudo_selector_can_style_template_descendant() {
+        use crate::{Button, TYPE_BUTTON, TYPE_TEXT};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Run"));
+        let label = ui.get(button).unwrap().children()[0];
+
+        let red = Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff));
+        let style = StyleBuilder::new()
+            .set(ui.properties().foreground, red.clone())
+            .build();
+        let cascade = StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(
+                    SelectorStep::type_tag(TYPE_BUTTON).with_pseudo(PSEUDO_PRESSED),
+                )
+                .child(SelectorStep::type_tag(TYPE_TEXT))
+                .build(),
+                style,
+            )
+            .build();
+        ui.set_cascade(cascade);
+        ui.add_pseudo(button, PSEUDO_PRESSED);
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let label_node = ui.box_for(label).expect("label should have a box node");
+        let foreground = ui
+            .presentation
+            .as_ref()
+            .expect("presentation store should exist")
+            .node(label_node)
+            .expect("label should have presentation")
+            .plain_text()
+            .expect("label should present text")
+            .foreground
+            .clone();
+        assert_eq!(foreground, Some(red));
     }
 
     #[test]
@@ -2688,6 +2958,62 @@ mod tests {
             .effective_local_erased(content_prop.id())
             .and_then(|v| v.downcast_ref::<String>().cloned());
         assert_eq!(stored.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn try_flush_bindings_reports_type_mismatch() {
+        use alloc::string::String;
+        use understory_property::Property;
+        use understory_property_binding::{BindingError, PropertyEndpoint};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let source = ui.insert_child(root);
+        let target = ui.insert_child(root);
+
+        let content_prop = ui.properties().content;
+        let content_as_u32: Property<u32> = Property::from_id(content_prop.id());
+        ui.bind(
+            PropertyEndpoint::new(source, content_as_u32),
+            PropertyEndpoint::new(target, content_as_u32),
+        )
+        .expect("binding registers because typed handles carry the same property id");
+
+        ui.set_local(source, content_prop, String::from("not a u32"));
+
+        let error = ui
+            .try_flush_bindings()
+            .expect_err("wrong erased source type should be reported");
+        assert!(matches!(
+            error.error(),
+            BindingError::SourceTypeMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn remove_clears_bindings_for_subtree() {
+        use alloc::string::String;
+        use understory_property_binding::PropertyEndpoint;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let source = ui.insert_child(root);
+        let target = ui.insert_child(root);
+
+        let content_prop = ui.properties().content;
+        ui.bind(
+            PropertyEndpoint::new(source, content_prop),
+            PropertyEndpoint::new(target, content_prop),
+        )
+        .expect("binding registers");
+
+        ui.remove(target);
+        ui.set_local(source, content_prop, String::from("after-remove"));
+
+        let report = ui
+            .try_flush_bindings()
+            .expect("removed target binding should have been cleared");
+        assert_eq!(report.evaluated_bindings(), 0);
     }
 
     #[test]

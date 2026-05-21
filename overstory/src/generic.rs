@@ -29,12 +29,10 @@ pub fn present_surface(
     store: &mut PresentationStore<NodeId, ElementId>,
     node: NodeId,
 ) {
-    let cx = ctx.resolve_cx();
-    let style = Some((ctx.cascade, ctx.match_state));
-    let background: Option<Brush> = cx.get_value(element, ctx.properties.background, style);
-    let corner_radius: f64 = cx.get_value(element, ctx.properties.corner_radius, style);
-    let border_brush: Option<Brush> = cx.get_value(element, ctx.properties.border_brush, style);
-    let border_width: f64 = cx.get_value(element, ctx.properties.border_width, style);
+    let background: Option<Brush> = ctx.get_value(element, ctx.properties.background);
+    let corner_radius: f64 = ctx.get_value(element, ctx.properties.corner_radius);
+    let border_brush: Option<Brush> = ctx.get_value(element, ctx.properties.border_brush);
+    let border_width: f64 = ctx.get_value(element, ctx.properties.border_width);
 
     let Some(surface) = store.surface_mut(node) else {
         return;

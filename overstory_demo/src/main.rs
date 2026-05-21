@@ -535,6 +535,7 @@ fn build_ui() -> Ui {
     // press deepens.
     let button_idle = StyleBuilder::new()
         .set_resource(ui.properties().background, theme::ACCENT_BG)
+        .set_resource(ui.properties().foreground, theme::ON_ACCENT_FG)
         .set(ui.properties().corner_radius, 10.0_f64)
         .set(ui.properties().layout, button_layout())
         .build();

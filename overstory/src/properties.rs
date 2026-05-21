@@ -22,10 +22,9 @@ pub struct BuiltInProperties {
     /// Fill brush for the element's body. Default `None` (no fill).
     pub background: Property<Option<Brush>>,
 
-    /// Bounds in viewport coordinates the element paints into. Default
-    /// [`Rect::ZERO`] — a zero-area element paints nothing.
-    ///
-    /// Will become parent-relative + layout-driven once Phase 1e wires taffy.
+    /// Bounds in viewport coordinates the element paints into. Layout writes this
+    /// after taffy computes the frame. Default [`Rect::ZERO`] — a zero-area
+    /// element paints nothing.
     pub bounds: Property<Rect>,
 
     /// Corner radius for the background fill. Default `0.0` (rectangular).
@@ -40,9 +39,9 @@ pub struct BuiltInProperties {
     /// can target individual layout attributes.
     pub layout: Property<taffy::Style>,
 
-    /// Textual content for elements that render strings (e.g.
-    /// `ELEMENT_KIND_TEXT`). Default `String::new()`. Writes mark both
-    /// `LAYOUT` (text size depends on content) and `PAINT`.
+    /// Textual content for elements that render strings (e.g. [`crate::Text`]).
+    /// Default `String::new()`. Writes mark both `LAYOUT` (text size depends on
+    /// content) and `PAINT`.
     pub content: Property<String>,
 
     /// Foreground brush used to paint text. Default solid black.
@@ -124,6 +123,12 @@ impl BuiltInProperties {
                     0, 0, 0, 0xff,
                 )))
                 .affects_channels(PAINT.into_set())
+                // Inherits so a foreground resolved on an ancestor
+                // control reaches text descendants. Overstory's
+                // presentation path performs style-aware inheritance
+                // for this; the raw property-store inheritance helper
+                // only sees animation/local ancestor values.
+                .inherits(true)
                 .build(),
             ),
             font_size: registry.register(

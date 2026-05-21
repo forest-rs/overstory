@@ -12,13 +12,14 @@ use core::cell::RefCell;
 use core::fmt;
 
 use kurbo::Size;
-use understory_property::PropertyRegistry;
-use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
+use understory_property::{DependencyObject, Property, PropertyRegistry};
+use understory_style::{MatchState, ResolveCx, StyleCascade, StyleValueRef, Theme};
 
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::text::TextEngine;
+use crate::ui::Ui;
 
 /// Per-axis known dimensions handed to a behavior's `measure`
 /// callback.
@@ -46,14 +47,12 @@ pub struct MeasureConstraints {
 
 /// Read-only context handed to a widget's `present` callback.
 ///
-/// Bundles everything needed to resolve effective property values
-/// through the full precedence chain (Animation → Local → Style →
-/// Theme → Inherited → Default). The behavior typically builds a
-/// transient [`ResolveCx`] via [`Self::resolve_cx`] and reads each
-/// property it cares about, then writes the result into the
-/// presentation store. Geometry, transforms, and text shaping
-/// aren't visible here — those happen at lower time against the
-/// box tree's world bounds.
+/// Bundles everything needed to resolve effective property values through the
+/// full precedence chain (Animation → Local → Style → Theme → Inherited →
+/// Default). Widgets should usually read properties with [`Self::get_value`],
+/// then write resolved intent into the presentation store. Geometry, transforms,
+/// and text shaping aren't visible here — those happen at lower time against
+/// the box tree's world bounds.
 #[derive(Copy, Clone)]
 pub struct PresentContext<'a> {
     /// The property registry every property write is checked
@@ -70,13 +69,30 @@ pub struct PresentContext<'a> {
     pub match_state: MatchState,
     /// Parent-walking lookup the [`ResolveCx`] uses for inheritance.
     pub(crate) lookup: UiStoreLookup<'a>,
+    /// Owning UI used for Overstory's style-aware inherited value helper.
+    pub(crate) ui: &'a Ui,
 }
 
 impl<'a> PresentContext<'a> {
-    /// Builds a [`ResolveCx`] tied to this context.
+    /// Builds a raw [`ResolveCx`] tied to this context.
+    ///
+    /// Prefer [`Self::get_value`] for widget presentation. The raw Understory
+    /// resolver walks ancestor property stores for inherited values, but it does
+    /// not know each ancestor's Overstory match state and therefore cannot inherit
+    /// styled ancestor values.
     #[must_use]
     pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiStoreLookup<'a>> {
         ResolveCx::new(self.registry, self.theme, self.lookup)
+    }
+
+    /// Resolves `property` for `element` through Overstory's effective-value
+    /// path, including inherited styled values from ancestors.
+    #[must_use]
+    pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.ui.effective_value_for(element, property)
     }
 }
 
@@ -107,6 +123,43 @@ pub struct MeasureContext<'a> {
     pub match_state: MatchState,
     /// Shared text shaping engine.
     pub text: &'a RefCell<TextEngine>,
+}
+
+impl<'a> MeasureContext<'a> {
+    /// Resolves a measure-time property value using animation/local, then the
+    /// element's own styled value, then the registry default.
+    ///
+    /// Layout measurement runs inside taffy's split-borrow callback and cannot
+    /// currently walk ancestor elements. This helper is intentionally limited to
+    /// properties whose measurement behavior depends on the measured element's
+    /// own value, such as `Content` and `FontSize`.
+    #[must_use]
+    pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        if let Some(value) = element.property_store().get_animation(property) {
+            return value.clone();
+        }
+        if let Some(value) = element.property_store().get_local(property) {
+            return value.clone();
+        }
+        if let Some(entry) = self.cascade.get_entry_ref(self.match_state, property) {
+            match entry {
+                StyleValueRef::Value(value) => return value.clone(),
+                StyleValueRef::Resource(key) => {
+                    if let Some(value) = self.theme.get::<T>(key) {
+                        return value.clone();
+                    }
+                }
+            }
+        }
+        self.registry
+            .get_metadata(property)
+            .expect("property should be registered")
+            .default_value()
+            .clone()
+    }
 }
 
 impl fmt::Debug for MeasureContext<'_> {

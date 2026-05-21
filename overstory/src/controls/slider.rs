@@ -96,7 +96,6 @@ impl AppendSpec for Slider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(SliderWidget));
         let layout_prop = ui.properties().layout;
-        let value_prop = ui.properties().value;
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
         ui.set_local(id, min_prop, self.min);
@@ -117,9 +116,14 @@ impl AppendSpec for Slider {
             ui.set_focusable(id, true);
         }
         // Initial value: drive through the same setter the runtime
-        // path uses so the thumb's Layout matches.
+        // path uses so the thumb's Layout matches. The template has
+        // already expanded by this point, so the thumb child exists.
         let clamped = self.initial_value.clamp(self.min, self.max);
-        ui.set_local(id, value_prop, clamped);
+        let thumb = ui
+            .get(id)
+            .and_then(|el| el.children().get(1).copied())
+            .expect("slider template should create a thumb child");
+        set_value(ui, id, thumb, clamped);
         id
     }
 }

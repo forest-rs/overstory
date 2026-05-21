@@ -14,7 +14,6 @@ use kurbo::Size;
 use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, TextContent};
-use understory_property::DependencyObjectExt;
 use understory_style::TypeTag;
 
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
@@ -106,13 +105,10 @@ impl Widget for TextWidget {
         store: &mut PresentationStore<NodeId, ElementId>,
         node: NodeId,
     ) {
-        let cx = ctx.resolve_cx();
-        let style = Some((ctx.cascade, ctx.match_state));
-
-        let content: String = cx.get_value(element, ctx.properties.content, style);
-        let foreground: Brush = cx.get_value(element, ctx.properties.foreground, style);
+        let content: String = ctx.get_value(element, ctx.properties.content);
+        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = cx.get_value(element, ctx.properties.font_size, style) as f32;
+        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
 
         let Some(text) = store.plain_text_mut(node) else {
             return;
@@ -128,15 +124,12 @@ impl Widget for TextWidget {
         ctx: &MeasureContext<'_>,
         constraints: MeasureConstraints,
     ) -> Option<Size> {
-        let content: String = element.get_local_value(ctx.properties.content).cloned()?;
+        let content: String = ctx.get_value(element, ctx.properties.content);
         if content.is_empty() {
             return Some(Size::ZERO);
         }
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = element
-            .get_local_value(ctx.properties.font_size)
-            .copied()
-            .unwrap_or(14.0_f64) as f32;
+        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
         #[expect(clippy::cast_possible_truncation, reason = "width fits f32")]
         let max_advance = if constraints.available.width.is_finite() {
             Some(constraints.available.width as f32)

@@ -107,9 +107,9 @@ impl Button {
         self
     }
 
-    /// Registers a custom key handler. The button already handles
-    /// Space / Enter to synthesize a click; use this for richer
-    /// keyboard interactions.
+    /// Registers a custom key handler. This replaces the default Space /
+    /// Enter-to-click bridge, so custom handlers that still want activation
+    /// should call [`Ui::synthesize_click`] themselves.
     #[must_use]
     pub fn on_key<F>(mut self, handler: F) -> Self
     where
@@ -179,20 +179,17 @@ struct ButtonTemplate;
 impl Template for ButtonTemplate {
     fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
         let content_prop = ui.properties().content;
-        let foreground_prop = ui.properties().foreground;
         let font_size_prop = ui.properties().font_size;
 
         // The button's label is a `Text` widget bound to the button's
-        // Content / Foreground / FontSize.
+        // Content / FontSize. Foreground inherits through the tree so styled
+        // owner foreground remains theme-live instead of being copied into a
+        // local template-binding value.
         let label = ui.append(owner, Text::new(""));
 
         let _ = ui.bind(
             PropertyEndpoint::new(owner, content_prop),
             PropertyEndpoint::new(label, content_prop),
-        );
-        let _ = ui.bind(
-            PropertyEndpoint::new(owner, foreground_prop),
-            PropertyEndpoint::new(label, foreground_prop),
         );
         let _ = ui.bind(
             PropertyEndpoint::new(owner, font_size_prop),
