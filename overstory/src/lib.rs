@@ -30,6 +30,7 @@ mod button;
 pub mod channels;
 mod element;
 mod generic;
+pub mod layouts;
 mod lookup;
 mod properties;
 pub mod pseudos;

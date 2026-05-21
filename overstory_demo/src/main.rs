@@ -49,8 +49,8 @@ use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::Size;
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TOGGLE,
-    ELEMENT_KIND_TOGGLE_THUMB, Navigation, Ui,
+    ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SPINNER, ELEMENT_KIND_TEXT,
+    ELEMENT_KIND_TOGGLE, ELEMENT_KIND_TOGGLE_THUMB, ElementId, Navigation, Ui, layouts,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -396,15 +396,43 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
     Ok(state)
 }
 
+/// Inserts a generic flex-column container under `parent` with the
+/// given inter-child gap, returning its id so callers can fill in
+/// children. Cross-axis is center-aligned so children stack on the
+/// same vertical line.
+fn insert_column(ui: &mut Ui, parent: ElementId, gap: f32) -> ElementId {
+    let column = ui.insert_child(parent, ELEMENT_KIND_GENERIC);
+    ui.set_local(
+        column,
+        ui.properties().layout,
+        overstory::taffy::Style {
+            align_items: Some(overstory::taffy::AlignItems::Center),
+            ..layouts::column_with_gap(gap)
+        },
+    );
+    column
+}
+
+/// Inserts a `Text` label under `parent` with caption-sized, muted
+/// foreground. Useful for "Notifications" / "Loading…" style
+/// captions sitting beneath a control.
+fn insert_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
+    let label = ui.insert_child(parent, ELEMENT_KIND_TEXT);
+    ui.set_local(label, ui.properties().content, text.to_owned());
+    ui.set_local(label, ui.properties().font_size, 13.0_f64);
+    ui.set_local(
+        label,
+        ui.properties().foreground,
+        Brush::Solid(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)),
+    );
+    label
+}
+
 /// Inserts a templated Button under `parent` with the given initial
 /// label, wires both pointer-click and keyboard (Space / Enter)
 /// activation, and gives it its own activation counter so each
 /// button's label evolves independently.
-fn add_button(
-    ui: &mut Ui,
-    parent: overstory::ElementId,
-    initial_label: &str,
-) -> overstory::ElementId {
+fn add_button(ui: &mut Ui, parent: ElementId, initial_label: &str) -> ElementId {
     let layout_prop = ui.properties().layout;
     let button_layout = overstory::taffy::Style {
         padding: overstory::taffy::Rect {
@@ -486,30 +514,18 @@ fn build_ui() -> Ui {
     let mut ui = Ui::new();
     let root = ui.root();
 
-    // Root: full-viewport row-flex container with 24px gap so the two
-    // buttons sit side by side with breathing room.
+    // Root: full-viewport row-flex container with 24px gap so the
+    // controls sit side by side with breathing room.
     let layout_prop = ui.properties().layout;
-    let inset = overstory::taffy::LengthPercentage::length(50.0);
     let root_layout = overstory::taffy::Style {
-        display: overstory::taffy::Display::Flex,
-        flex_direction: overstory::taffy::FlexDirection::Row,
         justify_content: Some(overstory::taffy::JustifyContent::Center),
         align_items: Some(overstory::taffy::AlignItems::Center),
         size: overstory::taffy::Size {
             width: overstory::taffy::Dimension::percent(1.0),
             height: overstory::taffy::Dimension::percent(1.0),
         },
-        gap: overstory::taffy::Size {
-            width: overstory::taffy::LengthPercentage::length(24.0),
-            height: overstory::taffy::LengthPercentage::length(24.0),
-        },
-        padding: overstory::taffy::Rect {
-            left: inset,
-            right: inset,
-            top: inset,
-            bottom: inset,
-        },
-        ..Default::default()
+        padding: layouts::uniform_padding(50.0),
+        ..layouts::row_with_gap(32.0)
     };
     ui.set_local(root, layout_prop, root_layout);
 
@@ -519,18 +535,17 @@ fn build_ui() -> Ui {
     add_button(&mut ui, root, "Click me");
     add_button(&mut ui, root, "Or me");
 
-    // A ToggleSwitch. Click + key handlers, the `:checked` pseudo
-    // sync, and the thumb child are all built into Toggle's default
-    // template — the app just inserts the toggle and marks it
-    // focusable.
-    let toggle = ui.insert_child(root, ELEMENT_KIND_TOGGLE);
+    // A labeled ToggleSwitch — toggle on top, "Notifications" label
+    // below, wrapped in a column.
+    let toggle_col = insert_column(&mut ui, root, 6.0);
+    let toggle = ui.insert_child(toggle_col, ELEMENT_KIND_TOGGLE);
     ui.set_focusable(toggle, true);
+    insert_label(&mut ui, toggle_col, "Notifications");
 
-    // A Spinner. Self-contained: its default template wires the
-    // dots and the repeating timer that animates them. The host's
-    // event loop arms `WaitUntil(next_timer_deadline)` so the
-    // spinner ticks even when no other input is happening.
-    let _spinner = ui.insert_child(root, ELEMENT_KIND_SPINNER);
+    // A labeled Spinner — same column shape as the toggle.
+    let spinner_col = insert_column(&mut ui, root, 6.0);
+    let _spinner = ui.insert_child(spinner_col, ELEMENT_KIND_SPINNER);
+    insert_label(&mut ui, spinner_col, "Loading…");
 
     // Stylesheet: dark backdrop for the root, button states for the button.
     let generic_kind = TypeTag(ELEMENT_KIND_GENERIC.tag());
