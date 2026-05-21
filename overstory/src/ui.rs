@@ -1181,7 +1181,7 @@ impl Ui {
         }
         match event {
             PointerEvent::Move(update) => {
-                let pos = Point::new(update.current.position.x, update.current.position.y);
+                let pos = update.current.logical_point();
                 let mut changed = self.update_hover_at(pos);
                 // If a primary press is active, fan the move out to
                 // drag handlers along the press target's responder
@@ -1200,7 +1200,7 @@ impl Ui {
                 if button_event.button != Some(PointerButton::Primary) {
                     return false;
                 }
-                let pos = Point::new(button_event.state.position.x, button_event.state.position.y);
+                let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 // A Down without a preceding Move can arrive on some
                 // platforms; refresh hover first so any newly-entered
@@ -1222,7 +1222,7 @@ impl Ui {
                 if button_event.button != Some(PointerButton::Primary) {
                     return false;
                 }
-                let pos = Point::new(button_event.state.position.x, button_event.state.position.y);
+                let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 let hit = self.hit_test(pos);
                 // Hand the up to ClickState — produces a

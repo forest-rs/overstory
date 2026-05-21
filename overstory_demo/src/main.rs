@@ -46,7 +46,7 @@ use std::time::{Duration, Instant};
 use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
-use kurbo::Size;
+use kurbo::{self, Size};
 use overstory::pseudos::{PSEUDO_CHECKED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
     ELEMENT_KIND_BUTTON, ELEMENT_KIND_GENERIC, ELEMENT_KIND_SLIDER, ELEMENT_KIND_SLIDER_THUMB,
@@ -122,7 +122,14 @@ struct WindowState {
     renderer: VelloRenderer,
     blit: BlitState,
     ui: Ui,
+    /// Logical-coordinate scene produced by `Ui::paint`. Built each
+    /// frame; the `scaled_scene` below wraps it with the high-DPI
+    /// scale before going to vello.
     scene: Scene,
+    /// Per-frame scaled view of `scene` for the renderer. Kept on
+    /// the state so the inner `Vec`s amortize across frames
+    /// instead of allocating fresh each render.
+    scaled_scene: Scene,
     event_reducer: WindowEventReducer,
     /// Anchor for the monotonic clock we feed to `Ui::pump_timers`.
     /// Subtract from `Instant::now()` to get nanoseconds since
@@ -275,9 +282,14 @@ impl WindowState {
         (self.surface_config.width, self.surface_config.height)
     }
 
-    fn viewport(&self) -> Size {
+    /// Logical-pixel viewport that `Ui` should lay out into.
+    /// `Ui::compute_layout` works in logical units; the render pass
+    /// scales the painted scene by `scale_factor` so the
+    /// logical-coordinate draws fill the physical offscreen target.
+    fn logical_viewport(&self) -> Size {
         let (w, h) = self.size();
-        Size::new(f64::from(w), f64::from(h))
+        let scale = self.window.scale_factor();
+        Size::new(f64::from(w) / scale, f64::from(h) / scale)
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -288,9 +300,20 @@ impl WindowState {
         // Ensure the offscreen target matches the current surface size.
         self.blit.ensure_offscreen(&self.device, width, height);
 
-        // Compute layout against the current viewport, then paint.
-        self.ui.compute_layout(self.viewport());
+        // Compute layout against the logical viewport, then paint.
+        // All draws end up at logical world coordinates.
+        self.ui.compute_layout(self.logical_viewport());
         self.ui.paint(&mut self.scene);
+
+        // Build a scaled view of the scene that the renderer sends
+        // to vello. Multiplying every draw by `scale` maps the
+        // logical-coord scene onto the physical-sized offscreen
+        // target, so a 200-logical button looks 200×scale physical
+        // pixels — properly sized on HiDPI.
+        let scale = self.window.scale_factor();
+        self.scaled_scene.clear();
+        self.scaled_scene
+            .append_transformed(&self.scene, kurbo::Affine::scale(scale));
 
         let offscreen_view = self
             .blit
@@ -298,7 +321,7 @@ impl WindowState {
             .expect("offscreen target should exist after ensure_offscreen");
         let target = TextureViewTarget::new(offscreen_view, width, height);
         self.renderer
-            .render_source_into_texture(&mut &self.scene, target)?;
+            .render_source_into_texture(&mut &self.scaled_scene, target)?;
 
         // Acquire the swapchain image and blit the offscreen into it.
         let output = match self.surface.get_current_texture() {
@@ -391,6 +414,7 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         blit,
         ui,
         scene: Scene::new(),
+        scaled_scene: Scene::new(),
         event_reducer: WindowEventReducer::default(),
         start_instant: Instant::now(),
     };
