@@ -3,7 +3,7 @@
 
 //! Small selector helpers for Overstory's control and part style contract.
 
-use understory_style::{PartTag, PseudoClassId, Selector, SelectorStep, TypeTag};
+use understory_style::{ClassId, PartTag, PseudoClassId, Selector, SelectorStep, TypeTag};
 
 /// Matches any subject with `type_tag`.
 #[must_use]
@@ -21,6 +21,15 @@ pub fn state(type_tag: TypeTag, pseudo: PseudoClassId) -> Selector {
 #[must_use]
 pub fn part(owner: TypeTag, part: PartTag) -> Selector {
     Selector::child(SelectorStep::type_tag(owner), SelectorStep::part_tag(part))
+}
+
+/// Matches `owner > part.class`.
+#[must_use]
+pub fn part_with_class(owner: TypeTag, part: PartTag, class: ClassId) -> Selector {
+    Selector::child(
+        SelectorStep::type_tag(owner),
+        SelectorStep::part_tag(part).with_class(class),
+    )
 }
 
 /// Matches `owner_step > part`.

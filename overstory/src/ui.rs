@@ -49,6 +49,7 @@ use crate::element::{Element, ElementId};
 use crate::lookup::UiStoreLookup;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::template::{TemplateContext, TemplateInstance};
 use crate::text::TextEngine;
 use crate::widget::{TYPE_GENERIC, Widget};
 
@@ -96,12 +97,8 @@ pub struct Ui {
     press_target: Option<ElementId>,
     taffy: taffy::TaffyTree<ElementId>,
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
-    /// While a `Template::instantiate` call is on the stack, every element
-    /// created via `insert_child` is tagged with this id as
-    /// `templated_parent`. Saved/restored around nested template expansions.
-    currently_expanding: Option<ElementId>,
-    /// One-shot part tag applied to the next element appended by `append_part`.
-    pending_part_tag: Option<PartTag>,
+    /// Retained default-template expansion data for each templated owner.
+    template_instances: HashMap<ElementId, TemplateInstance>,
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
@@ -144,6 +141,8 @@ pub struct Ui {
     /// Currently focused element (the keyboard target). `:focused`
     /// is applied to this element's pseudoclass set.
     focused: Option<ElementId>,
+    /// Desired focusability independent of temporary disabled state.
+    focusable_preferences: HashMap<ElementId, bool>,
     /// Focus navigation policy. Pluggable in future; for now
     /// `DefaultPolicy` with scope-wrap so Tab cycles within the
     /// element tree.
@@ -276,6 +275,61 @@ pub struct ClickEvent {
     pub position: Point,
 }
 
+/// Shared construction-time state for interactive controls.
+///
+/// `enabled` controls pointer/key activation and `:disabled` styling.
+/// `focusable` is the control's desired participation in focus traversal;
+/// disabled controls are temporarily removed from traversal but regain this
+/// preference when re-enabled.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ControlState {
+    /// Whether the control can be activated by user input.
+    pub enabled: bool,
+    /// Whether the control should participate in focus traversal while enabled.
+    pub focusable: bool,
+}
+
+impl ControlState {
+    /// Returns the default interactive state: enabled and focusable.
+    #[must_use]
+    #[inline]
+    pub const fn interactive() -> Self {
+        Self {
+            enabled: true,
+            focusable: true,
+        }
+    }
+
+    /// Sets whether the control is enabled.
+    #[must_use]
+    #[inline]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// Returns this state with `enabled = false`.
+    #[must_use]
+    #[inline]
+    pub const fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Sets whether the control should participate in focus traversal.
+    #[must_use]
+    #[inline]
+    pub const fn focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
+        self
+    }
+}
+
+impl Default for ControlState {
+    fn default() -> Self {
+        Self::interactive()
+    }
+}
+
 impl core::fmt::Debug for Ui {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ui")
@@ -352,8 +406,7 @@ impl Ui {
             press_target: None,
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
-            currently_expanding: None,
-            pending_part_tag: None,
+            template_instances: HashMap::new(),
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
             tree: Tree::new(),
@@ -364,6 +417,7 @@ impl Ui {
             last_drag_position: None,
             key_handlers: HashMap::new(),
             focused: None,
+            focusable_preferences: HashMap::new(),
             focus_policy: DefaultPolicy {
                 wrap: WrapMode::Scope,
             },
@@ -488,6 +542,27 @@ impl Ui {
         }
     }
 
+    /// Returns the retained template expansion for `owner`, if it has one.
+    #[must_use]
+    pub fn template_instance(&self, owner: ElementId) -> Option<&TemplateInstance> {
+        self.template_instances.get(&owner)
+    }
+
+    /// Returns the first template part registered for `owner + tag`.
+    #[must_use]
+    pub fn part(&self, owner: ElementId, tag: PartTag) -> Option<ElementId> {
+        self.template_instance(owner)
+            .and_then(|instance| instance.part(tag))
+    }
+
+    /// Returns all template parts registered for `owner + tag`.
+    pub fn parts(&self, owner: ElementId, tag: PartTag) -> impl Iterator<Item = ElementId> + '_ {
+        self.template_instances
+            .get(&owner)
+            .into_iter()
+            .flat_map(move |instance| instance.parts(tag))
+    }
+
     /// Returns the match state for `id`, falling back to the cascade root
     /// state if the element has not yet been styled.
     #[must_use]
@@ -516,38 +591,14 @@ impl Ui {
     }
 
     /// Lower-level entry point used by [`AppendSpec`](crate::widget::AppendSpec)
-    /// implementations and template-part construction.
+    /// implementations.
     ///
     /// Allocates a new element under `parent` carrying the supplied
     /// widget (or `None` for anonymous containers), runs the
     /// widget's default template if it has one, and returns the new
     /// id. Most callers should use [`Self::append`] instead.
     pub fn append_widget(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
-        self.insert_child_inner(parent, None, Some(widget))
-    }
-
-    /// Inserts a control under `parent` and labels the inserted element as a
-    /// template part for selector matching.
-    pub(crate) fn append_part<S: crate::widget::AppendSpec>(
-        &mut self,
-        parent: ElementId,
-        part_tag: PartTag,
-        spec: S,
-    ) -> ElementId {
-        let outer = self.pending_part_tag.replace(part_tag);
-        let id = spec.append_to(self, parent);
-        self.pending_part_tag = outer;
-        id
-    }
-
-    /// Lower-level widget insertion for template parts.
-    pub(crate) fn append_part_widget(
-        &mut self,
-        parent: ElementId,
-        part_tag: PartTag,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.insert_child_inner(parent, Some(part_tag), Some(widget))
+        self.insert_child_inner(parent, None, None, Some(widget))
     }
 
     /// Inserts an anonymous container child. Used by tests + the
@@ -555,12 +606,27 @@ impl Ui {
     /// should prefer [`append(parent, Panel::new())`](Self::append).
     #[cfg(test)]
     pub(crate) fn insert_child(&mut self, parent: ElementId) -> ElementId {
-        self.insert_child_inner(parent, None, None)
+        self.insert_child_inner(parent, None, None, None)
+    }
+
+    pub(crate) fn insert_template_child(
+        &mut self,
+        owner: ElementId,
+        parent: ElementId,
+        part_tag: Option<PartTag>,
+        widget: Option<Box<dyn Widget>>,
+    ) -> ElementId {
+        assert!(
+            self.get(owner).is_some(),
+            "insert_template_child: owner id is stale"
+        );
+        self.insert_child_inner(parent, Some(owner), part_tag, widget)
     }
 
     fn insert_child_inner(
         &mut self,
         parent: ElementId,
+        templated_parent: Option<ElementId>,
         part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
     ) -> ElementId {
@@ -568,8 +634,6 @@ impl Ui {
             self.get(parent).is_some(),
             "insert_child: parent id is stale"
         );
-        let templated_parent = self.currently_expanding;
-        let part_tag = part_tag.or_else(|| self.pending_part_tag.take());
         let child = self.alloc_element(Some(parent), templated_parent, part_tag, widget);
         self.get_mut(parent).unwrap().children_mut().push(child);
         self.style_one(child);
@@ -585,9 +649,10 @@ impl Ui {
     }
 
     /// Expands the widget's default template under `owner`, if any.
-    /// Sets `currently_expanding = Some(owner)` for the duration so
-    /// any `append` calls inside `Template::instantiate` tag their
-    /// elements with the right `templated_parent`.
+    ///
+    /// Template-generated elements are inserted through [`TemplateContext`],
+    /// which records named parts and applies the owner back-reference
+    /// explicitly.
     fn expand_default_template(&mut self, owner: ElementId) {
         let Some(element) = self.get(owner) else {
             return;
@@ -595,9 +660,10 @@ impl Ui {
         let Some(template) = element.widget().and_then(|w| w.default_template()) else {
             return;
         };
-        let outer = self.currently_expanding.replace(owner);
-        template.instantiate(self, owner);
-        self.currently_expanding = outer;
+        let mut cx = TemplateContext::new(self, owner);
+        template.instantiate(&mut cx);
+        let instance = cx.finish();
+        self.template_instances.insert(owner, instance);
     }
 
     /// Removes `id` and all of its descendants from the tree.
@@ -802,11 +868,56 @@ impl Ui {
             .and_then(|nodes| nodes.first().copied())
     }
 
-    /// Toggles the `Focusable` flag on `id`'s primary box-tree node.
-    /// Focusable elements participate in [`Self::focus_navigate`]
-    /// and can receive keyboard events via [`Self::on_key`]. No-op
-    /// for stale ids.
+    /// Applies shared interactive control state to `id`.
+    ///
+    /// This is the canonical setup path for built-in controls. It stores the
+    /// desired focusability, writes `IsEnabled`, updates `:disabled`, and keeps
+    /// disabled controls out of focus traversal.
+    pub fn set_control_state(&mut self, id: ElementId, state: ControlState) {
+        self.set_focusable(id, state.focusable);
+        self.set_enabled(id, state.enabled);
+    }
+
+    /// Toggles the desired `Focusable` flag for `id`.
+    ///
+    /// Focusable, enabled elements participate in [`Self::focus_navigate`] and
+    /// can receive keyboard events via [`Self::on_key`]. If an element is
+    /// disabled, the preference is retained but its box-tree focus flag stays
+    /// cleared until it is re-enabled. No-op for stale ids.
     pub fn set_focusable(&mut self, id: ElementId, focusable: bool) {
+        if self.get(id).is_none() {
+            return;
+        }
+        self.focusable_preferences.insert(id, focusable);
+        self.apply_focusable_preference(id);
+        if !focusable && self.focused == Some(id) {
+            self.set_focus(None);
+        }
+    }
+
+    /// Returns whether `id` is currently eligible for focus traversal.
+    #[must_use]
+    pub fn is_focusable(&self, id: ElementId) -> bool {
+        let Some(primary) = self.box_for(id) else {
+            return false;
+        };
+        self.tree
+            .flags(primary)
+            .map(|flags| flags.contains(NodeFlags::FOCUSABLE))
+            .unwrap_or(false)
+    }
+
+    fn apply_focusable_preference(&mut self, id: ElementId) {
+        let focusable = self
+            .focusable_preferences
+            .get(&id)
+            .copied()
+            .unwrap_or(false)
+            && self.is_enabled(id);
+        self.set_focusable_flag(id, focusable);
+    }
+
+    fn set_focusable_flag(&mut self, id: ElementId, focusable: bool) {
         let Some(primary) = self.box_for(id) else {
             return;
         };
@@ -838,9 +949,10 @@ impl Ui {
         self.set_local(id, self.properties.is_enabled, enabled);
         if enabled {
             self.remove_pseudo(id, PSEUDO_DISABLED);
+            self.apply_focusable_preference(id);
         } else {
             self.add_pseudo(id, PSEUDO_DISABLED);
-            self.set_focusable(id, false);
+            self.set_focusable_flag(id, false);
             if self.focused == Some(id) {
                 self.set_focus(None);
             }
@@ -1150,6 +1262,10 @@ impl Ui {
     }
 
     fn dispatch_click(&mut self, target: ElementId, position: Point) {
+        if !self.is_enabled(self.press_visual_target(target)) {
+            return;
+        }
+
         // Compute the sequence with `&self` borrows, drop them, then
         // run handlers with `&mut self`.
         let seq: Vec<(Phase, ElementId)> = {
@@ -1290,8 +1406,15 @@ impl Ui {
                 // path is set up before we press.
                 let mut changed = self.update_hover_at(pos);
                 if let Some(target) = self.hit_test(pos) {
-                    self.clicks.on_down(None, None, target, pos, time_ms);
                     let visual = self.press_visual_target(target);
+                    if !self.is_enabled(visual) {
+                        let _ = self.clicks.cancel(None);
+                        changed |= self.set_press_target(None);
+                        self.press_position = None;
+                        self.last_drag_position = None;
+                        return changed;
+                    }
+                    self.clicks.on_down(None, None, target, pos, time_ms);
                     changed |= self.set_press_target(Some(visual));
                     self.press_position = Some(pos);
                     self.last_drag_position = Some(pos);
@@ -1804,10 +1927,15 @@ impl Ui {
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.clear_owner(id);
         }
+        self.template_instances.remove(&id);
+        for instance in self.template_instances.values_mut() {
+            instance.remove_element(id);
+        }
         self.click_handlers.remove(&id);
         self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
         self.timer_handlers.remove(&id);
+        self.focusable_preferences.remove(&id);
         // Purge any pending timers targeting this element so they
         // don't fire after removal and reach a dropped handler.
         self.timers.retain_pending(|t| *t.target() != id);
@@ -2384,13 +2512,13 @@ mod tests {
 
     #[test]
     fn styled_button_foreground_reaches_template_label() {
-        use crate::{Button, TYPE_BUTTON, theme};
+        use crate::{Button, PART_BUTTON_LABEL, TYPE_BUTTON, theme};
 
         let mut ui = Ui::new();
         ui.set_theme(theme::default_theme());
         let root = ui.root();
         let button = ui.append(root, Button::new("Run"));
-        let label = ui.get(button).unwrap().children()[0];
+        let label = ui.part(button, PART_BUTTON_LABEL).unwrap();
 
         let white = Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, 0xff));
         let style = StyleBuilder::new()
@@ -2496,7 +2624,7 @@ mod tests {
         );
 
         let slider = ui.append(root, Slider::new().value(0.4));
-        let thumb = ui.get(slider).unwrap().children()[1];
+        let thumb = ui.part(slider, crate::PART_SLIDER_THUMB).unwrap();
 
         ui.compute_layout(Size::new(300.0, 80.0));
 
@@ -2520,25 +2648,32 @@ mod tests {
         let root = ui.root();
 
         let button = ui.append(root, Button::new("Run"));
-        let button_label = ui.get(button).unwrap().children()[0];
+        let button_label = ui.part(button, PART_BUTTON_LABEL).unwrap();
         assert_eq!(
             ui.get(button_label).unwrap().part_tag(),
             Some(PART_BUTTON_LABEL)
         );
+        assert_eq!(
+            ui.template_instance(button)
+                .unwrap()
+                .part(PART_BUTTON_LABEL),
+            Some(button_label)
+        );
 
         let slider = ui.append(root, Slider::new());
-        let slider_children = ui.get(slider).unwrap().children();
+        let slider_track = ui.part(slider, PART_SLIDER_TRACK).unwrap();
+        let slider_thumb = ui.part(slider, PART_SLIDER_THUMB).unwrap();
         assert_eq!(
-            ui.get(slider_children[0]).unwrap().part_tag(),
+            ui.get(slider_track).unwrap().part_tag(),
             Some(PART_SLIDER_TRACK)
         );
         assert_eq!(
-            ui.get(slider_children[1]).unwrap().part_tag(),
+            ui.get(slider_thumb).unwrap().part_tag(),
             Some(PART_SLIDER_THUMB)
         );
 
         let toggle = ui.append(root, ToggleSwitch::new());
-        let toggle_thumb = ui.get(toggle).unwrap().children()[0];
+        let toggle_thumb = ui.part(toggle, PART_TOGGLE_THUMB).unwrap();
         assert_eq!(
             ui.get(toggle_thumb).unwrap().part_tag(),
             Some(PART_TOGGLE_THUMB)
@@ -2552,7 +2687,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let slider = ui.append(root, Slider::new());
-        let track = ui.get(slider).unwrap().children()[0];
+        let track = ui.part(slider, crate::PART_SLIDER_TRACK).unwrap();
 
         let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
         let style = StyleBuilder::new()
@@ -2594,7 +2729,7 @@ mod tests {
         );
 
         let slider = ui.append(root, Slider::new());
-        let track = ui.get(slider).unwrap().children()[0];
+        let track = ui.part(slider, PART_SLIDER_TRACK).unwrap();
         let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
         let style = StyleBuilder::new()
             .set(ui.properties().background, red.clone())
@@ -2626,8 +2761,56 @@ mod tests {
     }
 
     #[test]
+    fn slider_template_creates_keyed_major_and_minor_tick_parts() {
+        use crate::{
+            CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_TICK,
+            PART_SLIDER_TICK_LABEL, Slider, TemplateItemKey,
+        };
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(root, Slider::new().min(10.0).max(20.0));
+        let ticks: Vec<_> = ui.parts(slider, PART_SLIDER_TICK).collect();
+        let labels: Vec<_> = ui.parts(slider, PART_SLIDER_TICK_LABEL).collect();
+
+        assert_eq!(ticks.len(), 5);
+        assert_eq!(labels.len(), 5);
+
+        let instance = ui.template_instance(slider).unwrap();
+        let first_tick = instance
+            .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(0))
+            .unwrap();
+        let second_tick = instance
+            .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(1))
+            .unwrap();
+        assert!(
+            ui.get(first_tick)
+                .unwrap()
+                .classes()
+                .contains(&CLASS_SLIDER_MAJOR_TICK)
+        );
+        assert!(
+            ui.get(second_tick)
+                .unwrap()
+                .classes()
+                .contains(&CLASS_SLIDER_MINOR_TICK)
+        );
+
+        let middle_label = instance
+            .keyed_part(PART_SLIDER_TICK_LABEL, TemplateItemKey::new(2))
+            .unwrap();
+        let content = ui.properties().content;
+        let label = ui
+            .get(middle_label)
+            .unwrap()
+            .get_local_value(content)
+            .cloned();
+        assert_eq!(label.as_deref(), Some("15"));
+    }
+
+    #[test]
     fn default_cascade_styles_template_parts_by_owner_part() {
-        use crate::{Slider, theme};
+        use crate::{PART_SLIDER_TICK, Slider, TemplateItemKey, theme};
 
         let mut ui = Ui::new();
         ui.set_theme(theme::default_theme());
@@ -2636,11 +2819,22 @@ mod tests {
 
         let root = ui.root();
         let slider = ui.append(root, Slider::new());
-        let track = ui.get(slider).unwrap().children()[0];
+        let track = ui.part(slider, crate::PART_SLIDER_TRACK).unwrap();
+        let major_tick = ui
+            .template_instance(slider)
+            .unwrap()
+            .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(0))
+            .unwrap();
         let expected = Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff)));
         let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+        let tick_background =
+            ui.effective_value_for(ui.get(major_tick).unwrap(), ui.properties().background);
 
         assert_eq!(background, expected);
+        assert_eq!(
+            tick_background,
+            Some(Brush::Solid(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)))
+        );
     }
 
     #[test]
@@ -2650,7 +2844,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let button = ui.append(root, Button::new("Run"));
-        let label = ui.get(button).unwrap().children()[0];
+        let label = ui.part(button, PART_BUTTON_LABEL).unwrap();
 
         let red = Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff));
         let style = StyleBuilder::new()
@@ -3167,20 +3361,22 @@ mod tests {
 
     #[test]
     fn template_expansion_inserts_parts_under_owner() {
-        use crate::Template;
-        use crate::widget::{AppendSpec, Widget};
+        use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
+        use crate::{Template, TemplateContext};
         use understory_style::TypeTag;
 
         // A unit-test widget whose default_template inserts two
         // child panels. Both should have templated_parent = the
         // owner.
         const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_BEEF);
+        const TEST_PART_A: PartTag = PartTag(0xA);
+        const TEST_PART_B: PartTag = PartTag(0xB);
 
         struct TestTemplate;
         impl Template for TestTemplate {
-            fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
-                let _a = ui.append(owner, crate::Panel::new());
-                let _b = ui.append(owner, crate::Panel::new());
+            fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+                let _a = cx.part_widget(TEST_PART_A, Box::new(SurfacePartWidget));
+                let _b = cx.part_widget(TEST_PART_B, Box::new(SurfacePartWidget));
             }
         }
         static TEST_TEMPLATE: TestTemplate = TestTemplate;
@@ -3210,6 +3406,12 @@ mod tests {
         // tagged with templated_parent = Some(owner).
         let owner_children = ui.get(owner).unwrap().children().to_vec();
         assert_eq!(owner_children.len(), 2, "template should insert 2 parts");
+        let instance = ui
+            .template_instance(owner)
+            .expect("template instance should be retained");
+        assert_eq!(instance.owner(), owner);
+        assert_eq!(instance.part(TEST_PART_A), Some(owner_children[0]));
+        assert_eq!(instance.part(TEST_PART_B), Some(owner_children[1]));
         for part_id in owner_children {
             let part = ui.get(part_id).unwrap();
             assert_eq!(
@@ -3222,6 +3424,56 @@ mod tests {
 
         // The owner itself has no templated parent (it's a logical child of root).
         assert_eq!(ui.get(owner).unwrap().templated_parent(), None);
+    }
+
+    #[test]
+    fn template_spec_builds_nested_parts_classes_and_keys() {
+        use crate::widget::{AppendSpec, Widget};
+        use crate::{Template, TemplateItemKey, TemplateNode, TemplateSpec};
+        use understory_style::TypeTag;
+
+        const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_CAFE);
+        const OUTER_PART: PartTag = PartTag(0x10);
+        const INNER_PART: PartTag = PartTag(0x11);
+        const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
+        const OUTER_CLASS: ClassId = ClassId(0x12);
+        const OUTER_CLASSES: &[ClassId] = &[OUTER_CLASS];
+        const CHILDREN: &[TemplateNode] = &[TemplateNode::surface().with_part(INNER_PART)];
+        const NODES: &[TemplateNode] = &[TemplateNode::surface()
+            .with_part(OUTER_PART)
+            .with_key(OUTER_KEY)
+            .with_classes(OUTER_CLASSES)
+            .with_children(CHILDREN)];
+        static SPEC: TemplateSpec = TemplateSpec::new(NODES);
+
+        #[derive(Debug)]
+        struct TestWidget;
+        impl Widget for TestWidget {
+            fn type_tag(&self) -> Option<TypeTag> {
+                Some(TEST_OWNER_TAG)
+            }
+            fn default_template(&self) -> Option<&'static dyn Template> {
+                Some(&SPEC)
+            }
+        }
+        struct TestSpec;
+        impl AppendSpec for TestSpec {
+            fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+                ui.append_widget(parent, Box::new(TestWidget))
+            }
+        }
+
+        let mut ui = Ui::new();
+        let owner = ui.append(ui.root(), TestSpec);
+        let instance = ui.template_instance(owner).unwrap();
+        let outer = instance.keyed_part(OUTER_PART, OUTER_KEY).unwrap();
+        let inner = instance.part(INNER_PART).unwrap();
+
+        assert_eq!(ui.get(outer).unwrap().parent(), Some(owner));
+        assert_eq!(ui.get(inner).unwrap().parent(), Some(outer));
+        assert_eq!(ui.get(outer).unwrap().templated_parent(), Some(owner));
+        assert_eq!(ui.get(inner).unwrap().templated_parent(), Some(owner));
+        assert!(ui.get(outer).unwrap().classes().contains(&OUTER_CLASS));
     }
 
     #[test]
@@ -3286,7 +3538,7 @@ mod tests {
 
         let content_prop = ui.properties().content;
         let read_label = |ui: &Ui, button: ElementId| -> Option<String> {
-            let label = ui.get(button).unwrap().children()[0];
+            let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
             ui.get(label)
                 .unwrap()
                 .property_store()
@@ -3358,7 +3610,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let button = ui.append(root, Button::new("Click me"));
-        let label = ui.get(button).unwrap().children()[0];
+        let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
 
         assert_eq!(ui.press_visual_target(label), button);
         assert_eq!(ui.press_visual_target(button), button);
@@ -3415,6 +3667,49 @@ mod tests {
         assert!(pseudos.contains(&PSEUDO_DISABLED));
         assert!(!pseudos.contains(&PSEUDO_FOCUSED));
         assert!(!pseudos.contains(&PSEUDO_PRESSED));
+
+        ui.set_enabled(button, true);
+        assert!(ui.is_enabled(button));
+        assert!(
+            ui.is_focusable(button),
+            "re-enabling should restore the stored focusable preference"
+        );
+        assert!(ui.set_focus(Some(button)));
+    }
+
+    #[test]
+    fn disabled_toggle_and_slider_share_control_state_policy() {
+        use alloc::rc::Rc;
+        use core::cell::Cell;
+
+        use crate::{Slider, ToggleSwitch};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+
+        let toggle = ui.append(root, ToggleSwitch::new().disabled());
+        assert!(!ui.is_enabled(toggle));
+        assert!(!ui.is_focusable(toggle));
+        assert!(ui.get(toggle).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+        ui.synthesize_click(toggle, Point::ZERO);
+        let checked = ui
+            .get(toggle)
+            .and_then(|el| el.get_local_value(ui.properties().is_checked).copied())
+            .unwrap_or(false);
+        assert!(!checked, "disabled toggle should ignore user activation");
+
+        let fired = Rc::new(Cell::new(false));
+        let fired_for_handler = Rc::clone(&fired);
+        let slider = ui.append(root, Slider::new().disabled());
+        ui.on_click(slider, move |_ui, _event| fired_for_handler.set(true));
+        assert!(!ui.is_enabled(slider));
+        assert!(!ui.is_focusable(slider));
+        assert!(ui.get(slider).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+        ui.synthesize_click(slider, Point::ZERO);
+        assert!(
+            !fired.get(),
+            "disabled slider should suppress click dispatch"
+        );
     }
 
     #[test]

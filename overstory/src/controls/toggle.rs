@@ -15,8 +15,8 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::element::ElementId;
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::Template;
-use crate::ui::Ui;
+use crate::template::{Template, TemplateContext};
+use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `ToggleSwitch`.
@@ -27,7 +27,7 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
     initial_checked: bool,
-    focusable: bool,
+    state: ControlState,
 }
 
 impl core::fmt::Debug for ToggleSwitch {
@@ -44,7 +44,7 @@ impl ToggleSwitch {
     pub fn new() -> Self {
         Self {
             initial_checked: false,
-            focusable: true,
+            state: ControlState::interactive(),
         }
     }
 
@@ -59,7 +59,29 @@ impl ToggleSwitch {
     /// Default `true`.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.focusable = focusable;
+        self.state = self.state.focusable(focusable);
+        self
+    }
+
+    /// Sets whether the toggle starts enabled. Disabled toggles are removed
+    /// from focus traversal, ignore user activation, and carry `:disabled` for
+    /// styling.
+    #[must_use]
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.state = self.state.enabled(enabled);
+        self
+    }
+
+    /// Convenience for [`Self::enabled(false)`].
+    #[must_use]
+    pub fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Sets the shared construction-time control state.
+    #[must_use]
+    pub fn control_state(mut self, state: ControlState) -> Self {
+        self.state = state;
         self
     }
 }
@@ -73,9 +95,7 @@ impl Default for ToggleSwitch {
 impl AppendSpec for ToggleSwitch {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(ToggleWidget));
-        if self.focusable {
-            ui.set_focusable(id, true);
-        }
+        ui.set_control_state(id, self.state);
         if self.initial_checked {
             let is_checked_prop = ui.properties().is_checked;
             ui.set_local(id, is_checked_prop, true);
@@ -105,25 +125,33 @@ static TOGGLE_TEMPLATE: ToggleTemplate = ToggleTemplate;
 struct ToggleTemplate;
 
 impl Template for ToggleTemplate {
-    fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let owner = cx.owner();
+
         // Thumb part. Sized + styled by the cascade.
-        let _thumb = ui.append_part_widget(owner, PART_TOGGLE_THUMB, Box::new(SurfacePartWidget));
+        let _thumb = cx.part_widget(PART_TOGGLE_THUMB, Box::new(SurfacePartWidget));
 
         // Click handler: flip checked on Target or Bubble.
-        ui.on_click(owner, move |ui, event| {
+        cx.on_click(owner, move |ui, event| {
             if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+                return;
+            }
+            if !ui.is_enabled(owner) {
                 return;
             }
             toggle_checked(ui, owner);
         });
 
         // Key handler: Space or Enter on Down while focused.
-        ui.on_key(owner, move |ui, event| {
+        cx.on_key(owner, move |ui, event| {
             use ui_events::keyboard::{Key, KeyState, NamedKey};
             if !matches!(event.phase, Phase::Target) {
                 return;
             }
             if event.key.state != KeyState::Down {
+                return;
+            }
+            if !ui.is_enabled(owner) {
                 return;
             }
             let activate = match &event.key.key {

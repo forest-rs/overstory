@@ -18,14 +18,16 @@ use alloc::boxed::Box;
 use alloc::string::String;
 
 use peniko::Brush;
-use understory_property_binding::PropertyEndpoint;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::controls::text::Text;
+use crate::controls::text::TextWidget;
 use crate::element::ElementId;
-use crate::template::Template;
-use crate::ui::{ClickEvent, KeyEvent, Ui};
+use crate::template::{
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSpec,
+    TemplateWidgetFactory,
+};
+use crate::ui::{ClickEvent, ControlState, KeyEvent, Ui};
 use crate::widget::{AppendSpec, Widget};
 
 /// Selector identity for `Button`.
@@ -40,8 +42,7 @@ pub struct Button {
     content: String,
     font_size: f64,
     foreground: Option<Brush>,
-    focusable: bool,
-    enabled: bool,
+    state: ControlState,
     on_click: Option<BoxedClickHandler>,
     on_key: Option<BoxedKeyHandler>,
 }
@@ -66,8 +67,7 @@ impl Button {
             content: content.into(),
             font_size: 22.0,
             foreground: None,
-            focusable: true,
-            enabled: true,
+            state: ControlState::interactive(),
             on_click: None,
             on_key: None,
         }
@@ -93,7 +93,7 @@ impl Button {
     /// Default `true`.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.focusable = focusable;
+        self.state = self.state.focusable(focusable);
         self
     }
 
@@ -102,7 +102,7 @@ impl Button {
     /// activation handlers, and carry `:disabled` for styling.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
+        self.state = self.state.enabled(enabled);
         self
     }
 
@@ -110,6 +110,13 @@ impl Button {
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
+    }
+
+    /// Sets the shared construction-time control state.
+    #[must_use]
+    pub fn control_state(mut self, state: ControlState) -> Self {
+        self.state = state;
+        self
     }
 
     /// Registers a click handler. Fires on pointer click and on
@@ -150,12 +157,7 @@ impl AppendSpec for Button {
         if let Some(brush) = self.foreground {
             ui.set_local(id, fg_prop, brush);
         }
-        if self.focusable && self.enabled {
-            ui.set_focusable(id, true);
-        }
-        if !self.enabled {
-            ui.set_enabled(id, false);
-        }
+        ui.set_control_state(id, self.state);
         if let Some(handler) = self.on_click {
             let mut handler = handler;
             ui.on_click(id, move |ui, event| {
@@ -198,31 +200,31 @@ impl Widget for ButtonWidget {
     }
 }
 
-static BUTTON_TEMPLATE: ButtonTemplate = ButtonTemplate;
+type ButtonTemplate = TemplateSpec;
 
-#[derive(Debug, Default)]
-struct ButtonTemplate;
+static BUTTON_TEMPLATE: ButtonTemplate = TemplateSpec::new(BUTTON_TEMPLATE_NODES);
 
-impl Template for ButtonTemplate {
-    fn instantiate(&self, ui: &mut Ui, owner: ElementId) {
-        let content_prop = ui.properties().content;
-        let font_size_prop = ui.properties().font_size;
+const BUTTON_LABEL_BINDINGS: &[TemplateBinding] = &[
+    TemplateBinding::owner_to_part(
+        TemplateBuiltInProperty::Content,
+        TemplateBuiltInProperty::Content,
+    ),
+    TemplateBinding::owner_to_part(
+        TemplateBuiltInProperty::FontSize,
+        TemplateBuiltInProperty::FontSize,
+    ),
+];
 
-        // The button's label is a `Text` widget bound to the button's
-        // Content / FontSize. Foreground inherits through the tree so styled
-        // owner foreground remains theme-live instead of being copied into a
-        // local template-binding value.
-        let label = ui.append_part(owner, PART_BUTTON_LABEL, Text::new(""));
+const BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
+    // Foreground inherits through the tree, so styled owner foreground remains
+    // theme-live instead of being copied into a local template-binding value.
+    TemplateNode::widget(TemplateWidgetFactory::new(button_label_widget))
+        .with_part(PART_BUTTON_LABEL)
+        .with_bindings(BUTTON_LABEL_BINDINGS),
+];
 
-        let _ = ui.bind(
-            PropertyEndpoint::new(owner, content_prop),
-            PropertyEndpoint::new(label, content_prop),
-        );
-        let _ = ui.bind(
-            PropertyEndpoint::new(owner, font_size_prop),
-            PropertyEndpoint::new(label, font_size_prop),
-        );
-    }
+fn button_label_widget() -> Box<dyn Widget> {
+    Box::new(TextWidget)
 }
 
 /// Default Space / Enter → click bridge for `Button`. Installed by

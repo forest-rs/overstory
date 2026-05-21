@@ -44,7 +44,9 @@ pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentC
 pub use controls::button::{Button, ButtonWidget, PART_BUTTON_LABEL, TYPE_BUTTON};
 pub use controls::panel::{Panel, PanelWidget};
 pub use controls::slider::{
-    PART_SLIDER_THUMB, PART_SLIDER_TRACK, Slider, SliderWidget, TYPE_SLIDER, set_slider_value,
+    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
+    PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, Slider, SliderWidget, TYPE_SLIDER,
+    set_slider_value,
 };
 pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
@@ -55,10 +57,13 @@ pub use element::{Element, ElementId};
 pub use generic::present_surface;
 pub use lookup::UiStoreLookup;
 pub use properties::BuiltInProperties;
-pub use template::Template;
+pub use template::{
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,
+    TemplateItemKey, TemplateNode, TemplatePart, TemplateSpec, TemplateWidgetFactory,
+};
 pub use text::TextEngine;
 pub use ui::TimerEvent;
-pub use ui::{ClickEvent, DragEvent, KeyEvent, Ui};
+pub use ui::{ClickEvent, ControlState, DragEvent, KeyEvent, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 
 // Re-export the responder's `Phase` so callers can read

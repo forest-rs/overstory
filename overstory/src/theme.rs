@@ -42,7 +42,10 @@ use understory_style::{ResourceKey, StyleBuilder, StyleCascade, StyleCascadeBuil
 use understory_style::{Theme, ThemeBuilder};
 
 use crate::controls::button::TYPE_BUTTON;
-use crate::controls::slider::{PART_SLIDER_THUMB, PART_SLIDER_TRACK, TYPE_SLIDER};
+use crate::controls::slider::{
+    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
+    PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
+};
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -180,6 +183,22 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, THUMB_BG)
         .set(properties.corner_radius, 11.0_f64)
         .build();
+    let slider_major_tick_style = StyleBuilder::new()
+        .set(properties.background, opt_solid(0xc8, 0xc8, 0xd2, 0xff))
+        .set(properties.corner_radius, 1.0_f64)
+        .build();
+    let slider_minor_tick_style = StyleBuilder::new()
+        .set(properties.background, opt_solid(0x78, 0x78, 0x84, 0xff))
+        .set(properties.corner_radius, 1.0_f64)
+        .build();
+    let slider_major_tick_label_style = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 10.0_f64)
+        .build();
+    let slider_minor_tick_label_style = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 8.0_f64)
+        .build();
     let slider_focused_style = StyleBuilder::new()
         .set_resource(properties.border_brush, FOCUS_RING_BORDER)
         .set(properties.border_width, 2.0_f64)
@@ -241,6 +260,34 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::part(TYPE_SLIDER, PART_SLIDER_TRACK),
             slider_track_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_with_class(TYPE_SLIDER, PART_SLIDER_TICK, CLASS_SLIDER_MAJOR_TICK),
+            slider_major_tick_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_with_class(TYPE_SLIDER, PART_SLIDER_TICK, CLASS_SLIDER_MINOR_TICK),
+            slider_minor_tick_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_with_class(
+                TYPE_SLIDER,
+                PART_SLIDER_TICK_LABEL,
+                CLASS_SLIDER_MAJOR_TICK,
+            ),
+            slider_major_tick_label_style,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_with_class(
+                TYPE_SLIDER,
+                PART_SLIDER_TICK_LABEL,
+                CLASS_SLIDER_MINOR_TICK,
+            ),
+            slider_minor_tick_label_style,
         )
         .push_rule(
             StyleOrigin::Base,
