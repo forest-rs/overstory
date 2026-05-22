@@ -1,9 +1,8 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The root [`Ui`] context: owns the visual tree, property registry, behavior
-//! registry, style cascade, invalidation tracker, and per-element scene
-//! cache.
+//! The root [`Ui`] context: public facade and coordinator for one retained
+//! Overstory tree.
 //!
 //! Phase 1c added the style cascade integration; Phase 1d added pointer
 //! dispatch + `:hover` lifecycle; Phase 1e added layout; Phase 1f
@@ -48,6 +47,7 @@ use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
+use crate::element_store::ElementStore;
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
@@ -55,19 +55,17 @@ use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
+use crate::template_runtime::TemplateRuntime;
 use crate::text::TextEngine;
 use crate::widget::{TYPE_GENERIC, Widget};
 
-/// Root context for an Overstory UI instance.
+/// Public facade for an Overstory UI instance.
 ///
-/// Owns the visual tree, the slot allocator, the property and behavior
-/// registries, the style cascade and theme, the invalidation tracker, and a
-/// per-element [`Scene`] cache plus a per-element [`MatchState`] cache.
+/// `Ui` keeps the app-facing API concentrated in one object while delegating
+/// narrow responsibilities to internal runtimes such as [`ElementStore`] and
+/// [`TemplateRuntime`].
 pub struct Ui {
-    slots: Vec<Slot>,
-    /// Free list of slot indices available for reuse. LIFO for locality.
-    free: Vec<u32>,
-    root: ElementId,
+    elements: ElementStore,
     registry: PropertyRegistry,
     properties: BuiltInProperties,
     invalidation: InvalidationTracker<ElementId>,
@@ -103,7 +101,7 @@ pub struct Ui {
     taffy: taffy::TaffyTree<ElementId>,
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
     /// Retained default-template expansion data for each templated owner.
-    template_instances: HashMap<ElementId, TemplateInstance>,
+    templates: TemplateRuntime,
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
@@ -630,27 +628,12 @@ impl Default for ControlState {
 impl core::fmt::Debug for Ui {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ui")
-            .field("elements", &(self.slots.len() - self.free.len()))
-            .field("free_slots", &self.free.len())
+            .field("elements", &self.elements.len())
+            .field("free_slots", &self.elements.free_len())
             .field("paint_dirty", &self.invalidation.has_invalidated(PAINT))
             .field("style_dirty", &self.invalidation.has_invalidated(STYLE))
             .finish_non_exhaustive()
     }
-}
-
-enum Slot {
-    /// `Element` is heap-allocated so that `Vacant` slots stay tiny in the
-    /// presence of element churn — important since the tree's slot vec is
-    /// the toolkit's central hot data structure.
-    Live {
-        generation: u32,
-        element: Box<Element>,
-    },
-    /// A previously-live slot that has been removed. `generation` is the
-    /// generation of the *next* element to occupy this slot — already
-    /// incremented past the removed element's generation so stale handles
-    /// compare unequal.
-    Vacant { generation: u32 },
 }
 
 impl Ui {
@@ -687,10 +670,11 @@ impl Ui {
             .add_cascade(PAINT, COMPOSE)
             .expect("PAINT → COMPOSE cascade should be acyclic");
 
+        let elements = ElementStore::new(Box::new(PanelWidget));
+        let root = elements.root();
+
         let mut me = Self {
-            slots: Vec::new(),
-            free: Vec::new(),
-            root: ElementId::new(0, 0),
+            elements,
             registry,
             properties,
             invalidation,
@@ -703,7 +687,7 @@ impl Ui {
             press_target: None,
             taffy: taffy::TaffyTree::new(),
             element_to_taffy: HashMap::new(),
-            template_instances: HashMap::new(),
+            templates: TemplateRuntime::new(),
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
             tree: Tree::new(),
@@ -730,8 +714,7 @@ impl Ui {
             dispatching_timer_handler: None,
             now: 0,
         };
-        let root = me.alloc_element(None, None, None, Some(Box::new(PanelWidget)));
-        me.root = root;
+        me.mirror_allocated_element(root, None);
         me.style_one(root);
         me
     }
@@ -740,7 +723,7 @@ impl Ui {
     #[must_use]
     #[inline]
     pub fn root(&self) -> ElementId {
-        self.root
+        self.elements.root()
     }
 
     /// Returns the property registry. Application code can register its own
@@ -792,7 +775,7 @@ impl Ui {
     pub fn set_cascade(&mut self, cascade: StyleCascade) {
         self.cascade = cascade;
         self.match_states.clear();
-        let ids = collect_preorder(self, self.root);
+        let ids = collect_preorder(self, self.root());
         for id in ids {
             self.style_one(id);
             self.invalidation.mark(id, LAYOUT);
@@ -803,7 +786,7 @@ impl Ui {
     /// resources can feed layout, text measurement, and paint values.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
-        let ids = collect_preorder(self, self.root);
+        let ids = collect_preorder(self, self.root());
         for id in ids {
             self.invalidation.mark(id, LAYOUT);
         }
@@ -812,66 +795,49 @@ impl Ui {
     /// Returns the total number of live elements (including the root).
     #[must_use]
     pub fn len(&self) -> usize {
-        self.slots.len() - self.free.len()
+        self.elements.len()
     }
 
     /// Returns `true` if no elements are live.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.elements.is_empty()
     }
 
     /// Returns a reference to the element with the given id, or `None` if the
     /// id is stale.
     #[must_use]
     pub fn get(&self, id: ElementId) -> Option<&Element> {
-        match self.slots.get(id.slot() as usize)? {
-            Slot::Live {
-                generation,
-                element,
-            } if *generation == id.generation() => Some(element.as_ref()),
-            _ => None,
-        }
+        self.elements.get(id)
     }
 
     /// Returns a mutable reference to the element with the given id.
     #[must_use]
     pub fn get_mut(&mut self, id: ElementId) -> Option<&mut Element> {
-        match self.slots.get_mut(id.slot() as usize)? {
-            Slot::Live {
-                generation,
-                element,
-            } if *generation == id.generation() => Some(element.as_mut()),
-            _ => None,
-        }
+        self.elements.get_mut(id)
     }
 
     /// Returns the retained template expansion for `owner`, if it has one.
     #[must_use]
     pub fn template_instance(&self, owner: ElementId) -> Option<&TemplateInstance> {
-        self.template_instances.get(&owner)
+        self.templates.get(owner)
     }
 
     /// Returns the first template part registered for `owner + tag`.
     #[must_use]
     pub fn part(&self, owner: ElementId, tag: PartTag) -> Option<ElementId> {
-        self.template_instance(owner)
-            .and_then(|instance| instance.part(tag))
+        self.templates.part(owner, tag)
     }
 
     /// Returns the first template part registered for `owner + slot`.
     #[must_use]
     pub fn slot(&self, owner: ElementId, slot: TemplateSlot) -> Option<ElementId> {
-        self.template_instance(owner)
-            .and_then(|instance| instance.slot(slot))
+        self.templates.slot(owner, slot)
     }
 
     /// Returns all template parts registered for `owner + tag`.
     pub fn parts(&self, owner: ElementId, tag: PartTag) -> impl Iterator<Item = ElementId> + '_ {
-        self.template_instances
-            .get(&owner)
-            .into_iter()
-            .flat_map(move |instance| instance.parts(tag))
+        self.templates.parts(owner, tag)
     }
 
     /// Returns all template parts registered for `owner + slot`.
@@ -880,10 +846,7 @@ impl Ui {
         owner: ElementId,
         slot: TemplateSlot,
     ) -> impl Iterator<Item = ElementId> + '_ {
-        self.template_instances
-            .get(&owner)
-            .into_iter()
-            .flat_map(move |instance| instance.slots(slot))
+        self.templates.slots(owner, slot)
     }
 
     /// Returns the match state for `id`, falling back to the cascade root
@@ -966,8 +929,10 @@ impl Ui {
             self.get(parent).is_some(),
             "insert_child: parent id is stale"
         );
-        let child = self.alloc_element(Some(parent), templated_parent, part_tag, widget);
-        self.get_mut(parent).unwrap().children_mut().push(child);
+        let child = self
+            .elements
+            .insert_child(parent, templated_parent, part_tag, widget);
+        self.mirror_allocated_element(child, Some(parent));
         self.style_one(child);
         // LAYOUT cascades to PAINT and COMPOSE via the tracker's
         // channel cascade. `style_one`'s diff path only marks
@@ -997,7 +962,7 @@ impl Ui {
         let mut cx = TemplateContext::new(self, owner);
         template.instantiate(&mut cx);
         let instance = cx.finish();
-        self.template_instances.insert(owner, instance);
+        self.templates.insert(owner, instance);
     }
 
     /// Removes `id` and all of its descendants from the tree.
@@ -1006,14 +971,10 @@ impl Ui {
     ///
     /// Panics if `id` is the root or stale.
     pub fn remove(&mut self, id: ElementId) {
-        assert!(id != self.root, "remove: cannot remove the tree root");
+        assert!(id != self.root(), "remove: cannot remove the tree root");
         assert!(self.get(id).is_some(), "remove: id is stale");
 
-        let parent = self.get(id).and_then(Element::parent);
-        if let Some(parent) = parent {
-            if let Some(parent_node) = self.get_mut(parent) {
-                parent_node.children_mut().retain(|c| *c != id);
-            }
+        if let Some(parent) = self.elements.detach_from_parent(id) {
             self.invalidation.mark(parent, COMPOSE);
         }
         self.remove_subtree(id);
@@ -1032,7 +993,7 @@ impl Ui {
     ) {
         let channels = {
             let registry = &self.registry;
-            let Some(element) = element_mut(&mut self.slots, id) else {
+            let Some(element) = self.elements.get_mut(id) else {
                 return;
             };
             element.set_local_notifying(property, value, registry)
@@ -1387,7 +1348,7 @@ impl Ui {
     /// focus cycles within the tree. Returns the new focused element.
     pub fn focus_navigate(&mut self, direction: Navigation) -> Option<ElementId> {
         self.tree.commit();
-        let root_node = self.box_for(self.root)?;
+        let root_node = self.box_for(self.root())?;
         // Resolve the current focus's node before we borrow `tree`
         // and `focus_buf` to build the FocusSpace.
         let current_node = self.focused.and_then(|id| self.box_for(id));
@@ -2117,7 +2078,7 @@ impl Ui {
             let _ = self.taffy.set_style(node, style);
         }
 
-        let Some(root_taffy) = self.element_to_taffy.get(&self.root).copied() else {
+        let Some(root_taffy) = self.element_to_taffy.get(&self.root()).copied() else {
             return;
         };
         let available = taffy::Size {
@@ -2137,7 +2098,7 @@ impl Ui {
             let theme = &self.theme;
             let cascade = &self.cascade;
             let match_states = &self.match_states;
-            let slots = &self.slots;
+            let elements = &self.elements;
             let text = &self.text;
             let _ = taffy.compute_layout_with_measure(
                 root_taffy,
@@ -2146,15 +2107,8 @@ impl Ui {
                     let Some(&id) = ctx_id.map(|v| &*v) else {
                         return taffy::Size::ZERO;
                     };
-                    let Some(slot) = slots.get(id.slot() as usize) else {
+                    let Some(element) = elements.get(id) else {
                         return taffy::Size::ZERO;
-                    };
-                    let element = match slot {
-                        Slot::Live {
-                            element,
-                            generation,
-                        } if *generation == id.generation() => element.as_ref(),
-                        _ => return taffy::Size::ZERO,
                     };
                     let Some(widget) = element.widget() else {
                         // Anonymous container: defer to taffy's
@@ -2199,7 +2153,7 @@ impl Ui {
         }
 
         // Walk the tree and write absolute bounds for every element.
-        self.write_bounds_recursive(self.root, Point::ZERO);
+        self.write_bounds_recursive(self.root(), Point::ZERO);
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
         // query) reflects this frame's geometry.
@@ -2314,7 +2268,7 @@ impl Ui {
             .collect();
 
         output.clear();
-        if let Some(root_box) = self.box_for(self.root) {
+        if let Some(root_box) = self.box_for(self.root()) {
             self.lower_subtree(root_box, output);
         }
         self.invalidation.clear(COMPOSE);
@@ -2472,22 +2426,13 @@ impl Ui {
         for child in children {
             self.remove_subtree(child);
         }
-        if let Some(Slot::Live { generation, .. }) = self.slots.get(id.slot() as usize) {
-            let next_generation = generation.wrapping_add(1);
-            self.slots[id.slot() as usize] = Slot::Vacant {
-                generation: next_generation,
-            };
-            self.free.push(id.slot());
-        }
+        let _ = self.elements.remove_slot(id);
         self.match_states.remove(&id);
         self.invalidation.remove_key(id);
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.clear_owner(id);
         }
-        self.template_instances.remove(&id);
-        for instance in self.template_instances.values_mut() {
-            instance.remove_element(id);
-        }
+        self.templates.remove_element(id);
         self.click_handlers.remove(&id);
         self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
@@ -2518,37 +2463,7 @@ impl Ui {
         }
     }
 
-    fn alloc_element(
-        &mut self,
-        parent: Option<ElementId>,
-        templated_parent: Option<ElementId>,
-        part_tag: Option<PartTag>,
-        widget: Option<Box<dyn Widget>>,
-    ) -> ElementId {
-        let id = if let Some(slot_index) = self.free.pop() {
-            let slot = &mut self.slots[slot_index as usize];
-            let generation = match slot {
-                Slot::Vacant { generation } => *generation,
-                Slot::Live { .. } => {
-                    unreachable!("free list invariant: free slots are Vacant")
-                }
-            };
-            let id = ElementId::new(slot_index, generation);
-            *slot = Slot::Live {
-                generation,
-                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
-            };
-            id
-        } else {
-            let slot_index = u32::try_from(self.slots.len()).expect("Ui slot index overflowed u32");
-            let id = ElementId::new(slot_index, 0);
-            self.slots.push(Slot::Live {
-                generation: 0,
-                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
-            });
-            id
-        };
-
+    fn mirror_allocated_element(&mut self, id: ElementId, parent: Option<ElementId>) {
         // Mirror into taffy. The element id is stored as the node context so
         // taffy's measure callback can identify which element it's measuring.
         let taffy_node = self
@@ -2591,7 +2506,6 @@ impl Ui {
         if let Some(store) = self.presentation.as_mut() {
             let _ = store.insert(tree_node, id);
         }
-        id
     }
 }
 
@@ -2619,11 +2533,10 @@ impl BindingHost<ElementId> for Ui {
         let id = endpoint.owner();
         let prop_id = endpoint.property();
         let channels = {
-            // Disjoint-field split-borrow: registry is read-only, slots is
-            // mutated through `element_mut`. Both are direct field borrows of
-            // `self`, so the borrow checker accepts the pair.
+            // Disjoint-field split-borrow: registry is read-only while the
+            // element store mutates only the target element.
             let registry = &self.registry;
-            let Some(element) = element_mut(&mut self.slots, id) else {
+            let Some(element) = self.elements.get_mut(id) else {
                 return BindingWrite::unchanged();
             };
             match element
@@ -2795,18 +2708,6 @@ fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
         taffy::AvailableSpace::Definite(v) => f64::from(v),
         taffy::AvailableSpace::MinContent | taffy::AvailableSpace::MaxContent => f64::INFINITY,
-    }
-}
-
-/// Direct slot accessor used by `set_local` so we can re-borrow the registry
-/// for the notifying call without conflicting with the slot vec borrow.
-fn element_mut(slots: &mut [Slot], id: ElementId) -> Option<&mut Element> {
-    match slots.get_mut(id.slot() as usize)? {
-        Slot::Live {
-            generation,
-            element,
-        } if *generation == id.generation() => Some(element.as_mut()),
-        _ => None,
     }
 }
 
