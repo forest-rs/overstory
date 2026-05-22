@@ -22,8 +22,8 @@ use ui_events::ScrollDelta;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
 use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_box_tree::{NodeFlags, NodeId};
-use understory_event_state::click::{ClickResult, ClickState};
-use understory_event_state::hover::{HoverEvent, HoverState};
+use understory_event_state::click::ClickResult;
+use understory_event_state::hover::HoverEvent;
 use understory_focus::Navigation;
 use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
 use understory_property::{
@@ -73,23 +73,6 @@ pub struct Ui {
     /// Box-tree geometry, hit testing, and retained presentation data.
     presentation: PresentationRuntime,
     style: StyleRuntime,
-    /// Path-based hover state machine from `understory_event_state`.
-    /// Tracks the current root→target hover path; `update_path` returns
-    /// the minimal Enter/Leave sequence to move from the old path to a
-    /// new one. We apply the events to `:hover` pseudoclass state.
-    hover: HoverState<ElementId>,
-    /// Transform-aware click recognizer from `understory_event_state`.
-    /// Records primary-button presses + matches them against later ups
-    /// to produce [`ClickResult::Click`]s. We use it to drive the
-    /// `:pressed` lifecycle on `press_target` and (in a future phase)
-    /// to dispatch `Click` events to elements.
-    clicks: ClickState<ElementId>,
-    /// The element currently in the `:pressed` visual state — the one
-    /// that received the most recent primary-button `Down` and has not
-    /// yet been cleared by an `Up` or `Cancel`. Cached alongside
-    /// `clicks` so we can flip pseudos without re-querying its
-    /// per-pointer press map.
-    press_target: Option<ElementId>,
     layout: LayoutRuntime,
     /// Retained default-template expansion data for each templated owner.
     templates: TemplateRuntime,
@@ -102,14 +85,6 @@ pub struct Ui {
     /// otherwise overlap. The set is always `Some` outside `flush_bindings`.
     bindings: Option<BindingSet<ElementId>>,
     events: EventRuntime,
-    /// Pointer position captured at the most recent primary-button
-    /// `Down`. Used by the drag dispatch to compute total offset
-    /// from the press anchor. Cleared on `Up` / `Cancel`.
-    press_position: Option<Point>,
-    /// Pointer position at the previous drag dispatch. Used to
-    /// compute per-dispatch deltas. Cleared together with
-    /// `press_position`.
-    last_drag_position: Option<Point>,
     focus: FocusRuntime,
     timers: TimerRuntime,
 }
@@ -542,16 +517,11 @@ impl Ui {
             invalidation,
             presentation: PresentationRuntime::new(),
             style: StyleRuntime::new(),
-            hover: HoverState::new(),
-            clicks: ClickState::new(),
-            press_target: None,
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
             events: EventRuntime::new(),
-            press_position: None,
-            last_drag_position: None,
             focus: FocusRuntime::new(),
             timers: TimerRuntime::new(),
         };
@@ -970,12 +940,12 @@ impl Ui {
 
     /// Returns the deepest element currently in the `:hover` state, if
     /// any. Higher-up ancestors along the hover path are also
-    /// `:hover` (see [`HoverState`]) — this is just the leaf for
+    /// `:hover`; this is just the leaf for
     /// convenience.
     #[must_use]
     #[inline]
     pub fn hovered(&self) -> Option<ElementId> {
-        self.hover.current_path().last().copied()
+        self.events.hovered()
     }
 
     /// Returns the cursor icon preferred by the active press target
@@ -986,7 +956,8 @@ impl Ui {
     /// use its platform default.
     #[must_use]
     pub fn cursor_icon(&self) -> Option<CursorIcon> {
-        self.press_target
+        self.events
+            .press_target()
             .or_else(|| self.hovered())
             .and_then(|target| self.cursor_icon_for(target))
     }
@@ -1103,7 +1074,7 @@ impl Ui {
             if self.focus.focused() == Some(id) {
                 self.set_focus(None);
             }
-            if self.press_target == Some(id) {
+            if self.events.press_target() == Some(id) {
                 self.set_press_target(None);
             }
         }
@@ -1400,7 +1371,7 @@ impl Ui {
 
     /// Registers a click handler on `id`. The handler runs along the
     /// responder capture → target → bubble sequence when
-    /// [`ClickState`] recognizes a primary-button click whose target
+    /// the click recognizer reports a primary-button click whose target
     /// path includes this element. One handler per element for now;
     /// subsequent calls replace the previous handler.
     pub fn on_click<F>(&mut self, id: ElementId, handler: F)
@@ -1455,15 +1426,15 @@ impl Ui {
     /// from `dispatch_pointer_event` on every `Move` while a press
     /// is active.
     fn dispatch_drag(&mut self, position: Point) -> RoutedDispatchResult {
-        let Some(source) = self.press_target else {
+        let Some(source) = self.events.press_target() else {
             return RoutedDispatchResult::default();
         };
-        let Some(press_position) = self.press_position else {
+        let Some(press_position) = self.events.press_position() else {
             return RoutedDispatchResult::default();
         };
-        let last = self.last_drag_position.unwrap_or(press_position);
+        let last = self.events.last_drag_position().unwrap_or(press_position);
         let delta = position - last;
-        self.last_drag_position = Some(position);
+        self.events.set_last_drag_position(position);
 
         self.dispatch_routed(source, |ui, phase, node, state| {
             let Some(mut handler) = ui.events.take_drag(node) else {
@@ -1509,7 +1480,7 @@ impl Ui {
 
     /// Builds the responder dispatch sequence for `target` and runs
     /// each element's click handler along it (capture, then target,
-    /// then bubble). Called when [`ClickState::on_up`] returns
+    /// then bubble). Called when the click recognizer returns
     /// [`ClickResult::Click`] or by [`Self::synthesize_click`].
     fn dispatch_click(&mut self, target: ElementId, position: Point) -> RoutedDispatchResult {
         self.dispatch_click_with_modifiers(target, position, Modifiers::default())
@@ -1651,7 +1622,7 @@ impl Ui {
                 // hover change is sufficient for drag-induced
                 // updates because the drag handler typically writes
                 // properties that mark COMPOSE.
-                if self.press_target.is_some() {
+                if self.events.press_target().is_some() {
                     self.dispatch_drag(pos);
                     changed = true;
                 }
@@ -1670,23 +1641,20 @@ impl Ui {
                 if let Some(target) = self.hit_test(pos) {
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
-                        let _ = self.clicks.cancel(None);
+                        self.events.cancel_click();
                         changed |= self.set_press_target(None);
-                        self.press_position = None;
-                        self.last_drag_position = None;
+                        self.events.clear_press();
                         return changed;
                     }
                     if self.is_focusable(visual) {
                         changed |= self.set_pointer_focus(Some(visual));
                     }
-                    self.clicks.on_down(None, None, target, pos, time_ms);
+                    self.events.click_down(target, pos, time_ms);
                     changed |= self.set_press_target(Some(visual));
-                    self.press_position = Some(pos);
-                    self.last_drag_position = Some(pos);
+                    self.events.start_press(pos);
                 } else {
                     changed |= self.set_press_target(None);
-                    self.press_position = None;
-                    self.last_drag_position = None;
+                    self.events.clear_press();
                 }
                 changed
             }
@@ -1697,23 +1665,22 @@ impl Ui {
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 let hit = self.hit_test(pos);
-                // Hand the up to ClickState — produces a
+                // Hand the up to the click recognizer — produces a
                 // `ClickResult::Click(target)` when the press is
                 // recognized; dispatch handlers along the responder
                 // path for that target.
                 let result = match hit {
-                    Some(target) => self.clicks.on_up(None, None, &target, pos, time_ms),
+                    Some(target) => self.events.click_up(&target, pos, time_ms),
                     None => {
                         // Up off any element — cancel any open press
                         // so it doesn't dangle and pretend to click
                         // later.
-                        let _ = self.clicks.cancel(None);
+                        self.events.cancel_click();
                         ClickResult::Suppressed(None)
                     }
                 };
                 let press_changed = self.set_press_target(None);
-                self.press_position = None;
-                self.last_drag_position = None;
+                self.events.clear_press();
                 if let ClickResult::Click(target) = result {
                     self.dispatch_click_with_modifiers(target, pos, button_event.state.modifiers);
                 }
@@ -1737,11 +1704,10 @@ impl Ui {
             }
             PointerEvent::Leave(_) => self.clear_hover(),
             PointerEvent::Cancel(_) => {
-                let _ = self.clicks.cancel(None);
+                self.events.cancel_click();
                 let h = self.clear_hover();
                 let p = self.set_press_target(None);
-                self.press_position = None;
-                self.last_drag_position = None;
+                self.events.clear_press();
                 h || p
             }
             _ => false,
@@ -1750,7 +1716,7 @@ impl Ui {
 
     /// Updates the hover state to reflect a pointer at `pos`. Computes
     /// the element path from the box tree's hit-test result and feeds
-    /// it to [`HoverState`], applying its `Enter`/`Leave` events to
+    /// it to the event runtime, applying its `Enter`/`Leave` events to
     /// pseudoclass state.
     fn update_hover_at(&mut self, pos: Point) -> bool {
         let path: Vec<ElementId> = self
@@ -1763,14 +1729,14 @@ impl Ui {
                     .collect()
             })
             .unwrap_or_default();
-        let events = self.hover.update_path(&path);
+        let events = self.events.update_hover_path(&path);
         self.apply_hover_events(events)
     }
 
     /// Clears the hover state (e.g. on pointer Leave). Returns `true`
     /// if anything changed.
     fn clear_hover(&mut self) -> bool {
-        let events = self.hover.clear();
+        let events = self.events.clear_hover();
         self.apply_hover_events(events)
     }
 
@@ -1839,16 +1805,16 @@ impl Ui {
     }
 
     fn set_press_target(&mut self, new: Option<ElementId>) -> bool {
-        if self.press_target == new {
+        if self.events.press_target() == new {
             return false;
         }
-        if let Some(old_id) = self.press_target.take() {
+        if let Some(old_id) = self.events.take_press_target() {
             self.remove_pseudo(old_id, PSEUDO_PRESSED);
         }
         if let Some(new_id) = new {
             self.add_pseudo(new_id, PSEUDO_PRESSED);
         }
-        self.press_target = new;
+        self.events.set_press_target(new);
         true
     }
 
@@ -3935,9 +3901,8 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.insert_child(root);
-        ui.press_target = Some(child);
-        ui.press_position = Some(Point::ZERO);
-        ui.last_drag_position = Some(Point::ZERO);
+        ui.events.set_press_target(Some(child));
+        ui.events.start_press(Point::ZERO);
 
         let child_fired = Rc::new(Cell::new(false));
         let child_fired_for_handler = Rc::clone(&child_fired);
@@ -4043,9 +4008,8 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.insert_child(root);
-        ui.press_target = Some(child);
-        ui.press_position = Some(Point::ZERO);
-        ui.last_drag_position = Some(Point::ZERO);
+        ui.events.set_press_target(Some(child));
+        ui.events.start_press(Point::ZERO);
 
         let count = Rc::new(Cell::new(0_u32));
         let count_for_handler = Rc::clone(&count);
@@ -4154,7 +4118,7 @@ mod tests {
     fn hover_path_marks_ancestor_pseudoclasses() {
         // A child hover should mark every element along the
         // root→target path as `:hover` — the more correct CSS/WPF
-        // behavior we get from `HoverState::update_path`. Sanity-check
+        // behavior we get from hover path tracking. Sanity-check
         // by laying out a parent with a smaller padded child, hovering
         // over the child, and verifying both elements have :hover.
         let mut ui = Ui::new();
@@ -4643,7 +4607,7 @@ mod tests {
 
         assert!(!ui.is_enabled(button));
         assert_eq!(ui.focused(), None);
-        assert_eq!(ui.press_target, None);
+        assert_eq!(ui.events.press_target(), None);
         let pseudos = ui.get(button).unwrap().pseudos();
         assert!(pseudos.contains(&PSEUDO_DISABLED));
         assert!(!pseudos.contains(&PSEUDO_FOCUSED));

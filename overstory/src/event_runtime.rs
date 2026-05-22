@@ -5,6 +5,9 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use hashbrown::{HashMap, HashSet};
+use kurbo::Point;
+use understory_event_state::click::{ClickResult, ClickState};
+use understory_event_state::hover::{HoverEvent, HoverState};
 
 use crate::element::ElementId;
 use crate::ui::{ClickEvent, DragEvent, KeyEvent, ScrollEvent, Ui};
@@ -24,6 +27,11 @@ pub(crate) struct EventRuntime {
     scroll_dispatch: HandlerDispatchTracker,
     key_handlers: HashMap<ElementId, KeyHandler>,
     key_dispatch: HandlerDispatchTracker,
+    hover: HoverState<ElementId>,
+    clicks: ClickState<ElementId>,
+    press_target: Option<ElementId>,
+    press_position: Option<Point>,
+    last_drag_position: Option<Point>,
 }
 
 impl EventRuntime {
@@ -37,6 +45,11 @@ impl EventRuntime {
             scroll_dispatch: HandlerDispatchTracker::default(),
             key_handlers: HashMap::new(),
             key_dispatch: HandlerDispatchTracker::default(),
+            hover: HoverState::new(),
+            clicks: ClickState::new(),
+            press_target: None,
+            press_position: None,
+            last_drag_position: None,
         }
     }
 
@@ -181,6 +194,69 @@ impl EventRuntime {
 
     pub(crate) fn has_key(&self, id: ElementId) -> bool {
         self.key_handlers.contains_key(&id)
+    }
+
+    pub(crate) fn hovered(&self) -> Option<ElementId> {
+        self.hover.current_path().last().copied()
+    }
+
+    pub(crate) fn update_hover_path(&mut self, path: &[ElementId]) -> Vec<HoverEvent<ElementId>> {
+        self.hover.update_path(path)
+    }
+
+    pub(crate) fn clear_hover(&mut self) -> Vec<HoverEvent<ElementId>> {
+        self.hover.clear()
+    }
+
+    pub(crate) fn click_down(&mut self, target: ElementId, position: Point, time_ms: u64) {
+        self.clicks.on_down(None, None, target, position, time_ms);
+    }
+
+    pub(crate) fn click_up(
+        &mut self,
+        target: &ElementId,
+        position: Point,
+        time_ms: u64,
+    ) -> ClickResult<ElementId> {
+        self.clicks.on_up(None, None, target, position, time_ms)
+    }
+
+    pub(crate) fn cancel_click(&mut self) {
+        let _ = self.clicks.cancel(None);
+    }
+
+    pub(crate) fn press_target(&self) -> Option<ElementId> {
+        self.press_target
+    }
+
+    pub(crate) fn take_press_target(&mut self) -> Option<ElementId> {
+        self.press_target.take()
+    }
+
+    pub(crate) fn set_press_target(&mut self, target: Option<ElementId>) {
+        self.press_target = target;
+    }
+
+    pub(crate) fn start_press(&mut self, position: Point) {
+        self.press_position = Some(position);
+        self.last_drag_position = Some(position);
+    }
+
+    pub(crate) fn clear_press(&mut self) {
+        self.press_position = None;
+        self.last_drag_position = None;
+    }
+
+    pub(crate) fn press_position(&self) -> Option<Point> {
+        self.press_position
+    }
+
+    pub(crate) fn last_drag_position(&self) -> Option<Point> {
+        self.last_drag_position
+    }
+
+    pub(crate) fn set_last_drag_position(&mut self, position: Point) {
+        self.last_drag_position = Some(position);
     }
 }
 
