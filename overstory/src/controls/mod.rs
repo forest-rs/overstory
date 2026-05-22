@@ -21,6 +21,7 @@ pub(crate) mod panel;
 pub(crate) mod progress;
 pub(crate) mod slider;
 pub(crate) mod spinner;
+pub(crate) mod splitter;
 pub(crate) mod text;
 pub(crate) mod text_input;
 pub(crate) mod toggle;

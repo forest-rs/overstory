@@ -26,3 +26,6 @@ pub const PSEUDO_DISABLED: PseudoClassId = PseudoClassId(4);
 
 /// `:checked` — this element is in a "checked" toggle state.
 pub const PSEUDO_CHECKED: PseudoClassId = PseudoClassId(5);
+
+/// `:read-only` — this element can be focused/selected but not edited.
+pub const PSEUDO_READ_ONLY: PseudoClassId = PseudoClassId(6);

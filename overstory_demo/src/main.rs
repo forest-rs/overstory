@@ -39,6 +39,8 @@
 //! This mirrors the pattern used by the prior overstory prototype host on
 //! `overstory_2_clean_rewrite`.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,8 +49,8 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::{
-    Button, CheckBox, Divider, Panel, ProgressBar, Slider, Spinner, Text, TextInput, ToggleSwitch,
-    Ui, layouts, set_progress_value, theme,
+    Button, CheckBox, Divider, Panel, ProgressBar, Slider, Spinner, Splitter, Text, TextInput,
+    ToggleSwitch, Ui, layouts, set_progress_value, theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -58,7 +60,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
-const INITIAL_SIZE: (u32, u32) = (800, 600);
+const INITIAL_SIZE: (u32, u32) = (1120, 660);
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// WGSL for the surface blit: one oversized triangle in clip space that the
@@ -458,7 +460,7 @@ fn opt_solid(r: u8, g: u8, b: u8, a: u8) -> Option<Brush> {
 /// registered on — i.e. the button — so we don't need the id
 /// captured separately.
 fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
-    let activations = std::cell::Cell::new(0_u32);
+    let activations = Cell::new(0_u32);
     move |ui: &mut Ui, event| {
         if !matches!(
             event.phase,
@@ -509,6 +511,13 @@ fn build_ui() -> Ui {
         input_card,
         TextInput::new()
             .placeholder("Search command palette")
+            .width(280.0),
+    );
+    ui.append(
+        input_card,
+        TextInput::new()
+            .text("Read-only selection")
+            .read_only(true)
             .width(280.0),
     );
 
@@ -563,9 +572,75 @@ fn build_ui() -> Ui {
     ui.append(spinner_row, Spinner::new());
     ui.append(spinner_row, caption("Streaming updates"));
 
+    let layout_card = card(&mut ui, gallery, "LAYOUT");
+    ui.append(layout_card, caption("Resizable panes"));
+    let split_row = ui.append(layout_card, Panel::row(8.0).align_center());
+    let left_pane = ui.append(
+        split_row,
+        Panel::column(8.0).layout(
+            overstory::Layout::column(8.0)
+                .logical_size(128.0, 118.0)
+                .padding_all(12.0),
+        ),
+    );
+    style_split_pane(&mut ui, left_pane, 0x31, 0x35, 0x43);
+    ui.append(left_pane, Text::new("Scene").font_size(15.0));
+    ui.append(left_pane, caption("Drag the grip"));
+
+    let right_pane_slot = Rc::new(Cell::new(None));
+    let right_pane_for_splitter = Rc::clone(&right_pane_slot);
+    ui.append(
+        split_row,
+        Splitter::vertical()
+            .length(118.0)
+            .on_resize(move |ui, event| {
+                if let Some(right_pane) = right_pane_for_splitter.get() {
+                    event.resize_pair(ui, left_pane, right_pane, 72.0, 72.0);
+                }
+            }),
+    );
+    let right_pane = ui.append(
+        split_row,
+        Panel::column(8.0).layout(
+            overstory::Layout::column(8.0)
+                .logical_size(128.0, 118.0)
+                .padding_all(12.0),
+        ),
+    );
+    right_pane_slot.set(Some(right_pane));
+    style_split_pane(&mut ui, right_pane, 0x2e, 0x3a, 0x35);
+    ui.append(right_pane, Text::new("Inspector").font_size(15.0));
+    ui.append(right_pane, caption("Arrow keys work"));
+
+    ui.append(layout_card, Divider::horizontal().length(280.0));
+    ui.append(
+        layout_card,
+        caption("Slider ticks come from understory_axis"),
+    );
+    ui.append(
+        layout_card,
+        Slider::new()
+            .min(-24.0)
+            .max(24.0)
+            .value(6.0)
+            .small_change(1.0)
+            .large_change(8.0),
+    );
+
     ui.set_cascade(theme::default_cascade(ui.properties()));
 
     ui
+}
+
+fn style_split_pane(ui: &mut Ui, pane: overstory::ElementId, r: u8, g: u8, b: u8) {
+    ui.set_local(pane, ui.properties().background, opt_solid(r, g, b, 0xff));
+    ui.set_local(
+        pane,
+        ui.properties().border_brush,
+        opt_solid(0x48, 0x4c, 0x58, 0xff),
+    );
+    ui.set_local(pane, ui.properties().border_width, 1.0_f64);
+    ui.set_local(pane, ui.properties().corner_radius, 8.0_f64);
 }
 
 /// Owns the WGSL blit pipeline and the cached offscreen target it samples.

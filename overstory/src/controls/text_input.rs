@@ -16,6 +16,7 @@ use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::layouts::Layout;
+use crate::pseudos::PSEUDO_READ_ONLY;
 use crate::template::{Template, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -51,6 +52,7 @@ pub struct TextInput {
     placeholder: Option<String>,
     width: f32,
     font_size: f64,
+    read_only: bool,
     state: ControlState,
     template: Option<&'static dyn Template>,
 }
@@ -73,6 +75,7 @@ impl TextInput {
             placeholder: None,
             width: TEXT_INPUT_WIDTH,
             font_size: DEFAULT_FONT_SIZE,
+            read_only: false,
             state: ControlState::interactive(),
             template: None,
         }
@@ -103,6 +106,16 @@ impl TextInput {
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
         self.font_size = font_size.max(1.0);
+        self
+    }
+
+    /// Sets whether the input allows text mutation.
+    ///
+    /// Read-only inputs stay focusable and selectable, but keyboard text
+    /// insertion and deletion leave their content unchanged.
+    #[must_use]
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
         self
     }
 
@@ -165,6 +178,7 @@ impl AppendSpec for TextInput {
                 .logical_size(self.width, TEXT_INPUT_HEIGHT),
         );
         ui.set_control_state(id, self.state);
+        set_text_input_read_only(ui, id, self.read_only);
         ui.expand_default_template(id);
 
         let text_part = ui
@@ -254,8 +268,10 @@ fn install_text_input_behavior(
     state: TextInputEditState,
 ) {
     let state = Rc::new(RefCell::new(state));
+    let pointer = Rc::new(RefCell::new(TextInputPointerState::default()));
     let click_placeholder = placeholder.clone();
     let click_state = Rc::clone(&state);
+    let click_pointer = Rc::clone(&pointer);
     ui.on_click(input, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
@@ -264,6 +280,10 @@ fn install_text_input_behavior(
             return;
         }
         ui.set_focus(Some(input));
+        if click_pointer.borrow_mut().take_dragged() {
+            event.mark_handled();
+            return;
+        }
         let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
         let mut state = click_state.borrow_mut();
         state.sync_style(font_size);
@@ -276,6 +296,47 @@ fn install_text_input_behavior(
             caret_part,
             &mut state,
             click_placeholder.as_deref(),
+        );
+        event.mark_handled();
+    });
+
+    let drag_placeholder = placeholder.clone();
+    let drag_state = Rc::clone(&state);
+    let drag_pointer = Rc::clone(&pointer);
+    ui.on_drag(input, move |ui, event| {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(input) {
+            return;
+        }
+        ui.set_focus(Some(input));
+        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let mut state = drag_state.borrow_mut();
+        state.sync_style(font_size);
+        {
+            let mut pointer = drag_pointer.borrow_mut();
+            if !pointer.dragging {
+                let (x, y) = editor_local_point(ui, input, event.press_position, font_size);
+                ui.with_plain_editor(&mut state.editor, |driver| {
+                    driver.move_to_point(x, y);
+                });
+                pointer.dragging = true;
+            }
+            pointer.dragged = true;
+        }
+        let (x, y) = editor_local_point(ui, input, event.position, font_size);
+        ui.with_plain_editor(&mut state.editor, |driver| {
+            driver.extend_selection_to_point(x, y);
+        });
+        refresh_text_input_parts(
+            ui,
+            input,
+            text_part,
+            selection_part,
+            caret_part,
+            &mut state,
+            drag_placeholder.as_deref(),
         );
         event.mark_handled();
     });
@@ -294,9 +355,13 @@ fn install_text_input_behavior(
         }
         let mut state = key_state.borrow_mut();
         let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let read_only = read_or(ui, input, ui.properties().is_read_only, false);
         state.sync_style(font_size);
-        if state.edit_from_key(ui, event.key) {
-            ui.set_local(input, ui.properties().content, String::from(state.text()));
+        let edit = state.edit_from_key(ui, event.key, read_only);
+        if edit.handled {
+            if edit.changed {
+                ui.set_local(input, ui.properties().content, String::from(state.text()));
+            }
             refresh_text_input_parts(
                 ui,
                 input,
@@ -309,6 +374,21 @@ fn install_text_input_behavior(
             event.mark_handled();
         }
     });
+}
+
+#[derive(Debug, Default)]
+struct TextInputPointerState {
+    dragging: bool,
+    dragged: bool,
+}
+
+impl TextInputPointerState {
+    fn take_dragged(&mut self) -> bool {
+        let dragged = self.dragged;
+        self.dragging = false;
+        self.dragged = false;
+        dragged
+    }
 }
 
 struct TextInputEditState {
@@ -335,7 +415,12 @@ impl TextInputEditState {
         }
     }
 
-    fn edit_from_key(&mut self, ui: &Ui, event: &ui_events::keyboard::KeyboardEvent) -> bool {
+    fn edit_from_key(
+        &mut self,
+        ui: &Ui,
+        event: &ui_events::keyboard::KeyboardEvent,
+        read_only: bool,
+    ) -> TextInputEditOutcome {
         use ui_events::keyboard::{Key, NamedKey};
 
         let action_mod = event.modifiers.ctrl() || event.modifiers.meta();
@@ -343,96 +428,145 @@ impl TextInputEditState {
         ui.with_plain_editor(&mut self.editor, |driver| match &event.key {
             Key::Character(s) if action_mod && s.eq_ignore_ascii_case("a") => {
                 driver.select_all();
-                true
+                TextInputEditOutcome::handled()
             }
-            Key::Character(_) if action_mod => false,
+            Key::Character(_) if action_mod => TextInputEditOutcome::ignored(),
             Key::Character(s) if !event.is_composing && editable_character(s) => {
-                driver.insert_or_replace_selection(s);
-                true
+                if read_only {
+                    TextInputEditOutcome::handled()
+                } else {
+                    driver.insert_or_replace_selection(s);
+                    TextInputEditOutcome::changed()
+                }
             }
             Key::Named(NamedKey::Backspace) if action_mod => {
-                driver.backdelete_word();
-                true
+                if read_only {
+                    TextInputEditOutcome::handled()
+                } else {
+                    driver.backdelete_word();
+                    TextInputEditOutcome::changed()
+                }
             }
             Key::Named(NamedKey::Backspace) => {
-                driver.backdelete();
-                true
+                if read_only {
+                    TextInputEditOutcome::handled()
+                } else {
+                    driver.backdelete();
+                    TextInputEditOutcome::changed()
+                }
             }
             Key::Named(NamedKey::Delete) if action_mod => {
-                driver.delete_word();
-                true
+                if read_only {
+                    TextInputEditOutcome::handled()
+                } else {
+                    driver.delete_word();
+                    TextInputEditOutcome::changed()
+                }
             }
             Key::Named(NamedKey::Delete) => {
-                driver.delete();
-                true
+                if read_only {
+                    TextInputEditOutcome::handled()
+                } else {
+                    driver.delete();
+                    TextInputEditOutcome::changed()
+                }
             }
             Key::Named(NamedKey::ArrowLeft) if action_mod && shift => {
                 driver.select_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowLeft) if action_mod => {
                 driver.move_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowLeft) if shift => {
                 driver.select_left();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 driver.move_left();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowRight) if action_mod && shift => {
                 driver.select_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowRight) if action_mod => {
                 driver.move_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowRight) if shift => {
                 driver.select_right();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowRight) => {
                 driver.move_right();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowUp) if shift => {
                 driver.select_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowUp) => {
                 driver.move_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowDown) if shift => {
                 driver.select_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::ArrowDown) => {
                 driver.move_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::Home) if shift => {
                 driver.select_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::Home) => {
                 driver.move_to_text_start();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::End) if shift => {
                 driver.select_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
             Key::Named(NamedKey::End) => {
                 driver.move_to_text_end();
-                true
+                TextInputEditOutcome::handled()
             }
-            Key::Named(NamedKey::Enter) => true,
-            _ => false,
+            Key::Named(NamedKey::Enter) => TextInputEditOutcome::handled(),
+            _ => TextInputEditOutcome::ignored(),
         })
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+struct TextInputEditOutcome {
+    handled: bool,
+    changed: bool,
+}
+
+impl TextInputEditOutcome {
+    const fn ignored() -> Self {
+        Self {
+            handled: false,
+            changed: false,
+        }
+    }
+
+    const fn handled() -> Self {
+        Self {
+            handled: true,
+            changed: false,
+        }
+    }
+
+    const fn changed() -> Self {
+        Self {
+            handled: true,
+            changed: true,
+        }
     }
 }
 
@@ -488,13 +622,23 @@ fn move_editor_to_point(
     font_size: f64,
     editor: &mut PlainEditor<Brush>,
 ) -> usize {
+    let (local_x, local_y) = editor_local_point(ui, input, position, font_size);
+    ui.with_plain_editor(editor, |driver| {
+        driver.move_to_point(local_x, local_y);
+    });
+    editor.raw_selection().focus().index()
+}
+
+fn editor_local_point(
+    ui: &Ui,
+    input: ElementId,
+    position: kurbo::Point,
+    font_size: f64,
+) -> (f32, f32) {
     let bounds = ui.effective_bounds(input);
     let local_x = (position.x - bounds.x0 - f64::from(TEXT_INPUT_PADDING_X)).max(0.0);
     let local_y = (position.y - bounds.y0 - f64::from(text_top(font_size))).max(0.0);
-    ui.with_plain_editor(editor, |driver| {
-        driver.move_to_point(f32_from_f64(local_x), f32_from_f64(local_y));
-    });
-    editor.raw_selection().focus().index()
+    (f32_from_f64(local_x), f32_from_f64(local_y))
 }
 
 fn caret_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, font_size: f64) -> Layout {
@@ -577,9 +721,21 @@ fn read_or<T: Clone + 'static>(
         .unwrap_or(default)
 }
 
+/// Sets `IsReadOnly` on `input` and keeps the `:read-only` pseudoclass in sync.
+pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) {
+    ui.set_local(input, ui.properties().is_read_only, read_only);
+    if read_only {
+        ui.add_pseudo(input, PSEUDO_READ_ONLY);
+    } else {
+        ui.remove_pseudo(input, PSEUDO_READ_ONLY);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
+    use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     #[test]
@@ -668,7 +824,7 @@ mod tests {
         let text = ui.slot(input, SLOT_TEXT_INPUT_TEXT).unwrap();
         let caret = ui.slot(input, SLOT_TEXT_INPUT_CARET).unwrap();
 
-        ui.compute_layout(kurbo::Size::new(360.0, 80.0));
+        ui.compute_layout(Size::new(360.0, 80.0));
 
         let text_bounds = ui.effective_bounds(text);
         let caret_bounds = ui.effective_bounds(caret);
@@ -690,12 +846,119 @@ mod tests {
         let mut left = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowLeft), Code::ArrowLeft);
         left.modifiers = ui_events::keyboard::Modifiers::SHIFT;
         assert!(ui.dispatch_key(&left).handled);
-        ui.compute_layout(kurbo::Size::new(360.0, 80.0));
+        ui.compute_layout(Size::new(360.0, 80.0));
         assert!(ui.effective_bounds(selection).width() > 0.0);
 
         let replacement = KeyboardEvent::key_down(Key::Character(String::from("y")), Code::KeyY);
         assert!(ui.dispatch_key(&replacement).handled);
-        ui.compute_layout(kurbo::Size::new(360.0, 80.0));
+        ui.compute_layout(Size::new(360.0, 80.0));
         assert_eq!(ui.effective_bounds(selection).width(), 0.0);
+    }
+
+    #[test]
+    fn read_only_text_input_allows_selection_without_mutating_content() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("locked").read_only(true));
+        ui.set_focus(Some(input));
+
+        let key = KeyboardEvent::key_down(Key::Character(String::from("x")), Code::KeyX);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("locked")
+        );
+        assert!(
+            ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_READ_ONLY))
+                .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn text_input_drag_extends_selection_and_ignores_trailing_click() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(360.0, 80.0));
+        let input = ui.append(root, TextInput::new().text("drag selection"));
+        let selection = ui.slot(input, SLOT_TEXT_INPUT_SELECTION).unwrap();
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let bounds = ui.effective_bounds(input);
+        let press = Point::new(bounds.x0 + 16.0, bounds.center().y);
+        let drag = Point::new(bounds.x0 + 96.0, bounds.center().y);
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)));
+        assert!(ui.dispatch_pointer_event(&pointer_move(drag, 2, true)));
+        assert!(ui.dispatch_pointer_event(&pointer_up(drag, 3)));
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        assert!(ui.effective_bounds(selection).width() > 0.0);
+    }
+
+    fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+        PointerEvent::Down(PointerButtonEvent {
+            pointer: pointer_info(),
+            button: Some(PointerButton::Primary),
+            state: pointer_state(point, time, true),
+        })
+    }
+
+    fn pointer_up(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+        PointerEvent::Up(PointerButtonEvent {
+            pointer: pointer_info(),
+            button: Some(PointerButton::Primary),
+            state: pointer_state(point, time, false),
+        })
+    }
+
+    fn pointer_move(
+        point: Point,
+        time: u64,
+        primary_down: bool,
+    ) -> ui_events::pointer::PointerEvent {
+        use ui_events::pointer::{PointerEvent, PointerUpdate};
+        PointerEvent::Move(PointerUpdate {
+            pointer: pointer_info(),
+            current: pointer_state(point, time, primary_down),
+            coalesced: Vec::new(),
+            predicted: Vec::new(),
+        })
+    }
+
+    fn pointer_info() -> ui_events::pointer::PointerInfo {
+        use ui_events::pointer::{PointerId, PointerInfo, PointerType};
+        PointerInfo {
+            pointer_id: Some(PointerId::PRIMARY),
+            persistent_device_id: None,
+            pointer_type: PointerType::Mouse,
+        }
+    }
+
+    fn pointer_state(
+        point: Point,
+        time: u64,
+        primary_down: bool,
+    ) -> ui_events::pointer::PointerState {
+        use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
+        let mut buttons = PointerButtons::new();
+        if primary_down {
+            buttons.insert(PointerButton::Primary);
+        }
+        let mut state = PointerState {
+            time,
+            buttons,
+            count: 1,
+            pressure: if primary_down { 0.5 } else { 0.0 },
+            ..PointerState::default()
+        };
+        state.position.x = point.x;
+        state.position.y = point.y;
+        state
     }
 }

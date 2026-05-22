@@ -68,6 +68,11 @@ pub struct BuiltInProperties {
     /// pseudoclass through [`crate::Ui::set_enabled`].
     pub is_enabled: Property<bool>,
 
+    /// Whether a text-editing control allows content mutation. Default
+    /// `false`. Read-only controls remain focusable and selectable but should
+    /// reject text insertion and deletion.
+    pub is_read_only: Property<bool>,
+
     /// Numeric value for value-bearing controls (`Slider`,
     /// `ProgressBar`, …). Default `0.0`. The semantic range is
     /// `[Self::minimum, Self::maximum]`; consumers should clamp
@@ -177,6 +182,8 @@ impl BuiltInProperties {
                     // drives style invalidation.
                     .build(),
             ),
+            is_read_only: registry
+                .register("IsReadOnly", PropertyMetadataBuilder::new(false).build()),
             value: registry.register(
                 "Value",
                 PropertyMetadataBuilder::new(0.0_f64)

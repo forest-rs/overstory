@@ -56,6 +56,7 @@ use crate::controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
 };
+use crate::controls::splitter::TYPE_SPLITTER;
 use crate::controls::text_input::{
     CLASS_TEXT_INPUT_PLACEHOLDER, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
     PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
@@ -64,7 +65,7 @@ use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
-    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED, PSEUDO_READ_ONLY,
 };
 use crate::selectors;
 use crate::widget::TYPE_GENERIC;
@@ -217,6 +218,21 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.corner_radius, 4.0_f64)
         .build();
 
+    let splitter_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BORDER)
+        .set(properties.corner_radius, 4.0_f64)
+        .build();
+    let splitter_hover = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_HOVER_BORDER)
+        .build();
+    let splitter_pressed = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_BG)
+        .build();
+    let splitter_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+
     let divider_style = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BORDER)
         .set(properties.corner_radius, 1.0_f64)
@@ -295,6 +311,9 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let text_input_disabled = StyleBuilder::new()
         .set_resource(properties.background, TRACK_BG)
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
+    let text_input_read_only = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let text_input_placeholder = StyleBuilder::new()
@@ -405,6 +424,26 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
+            selectors::type_tag(TYPE_SPLITTER),
+            splitter_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SPLITTER, PSEUDO_HOVER),
+            splitter_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SPLITTER, PSEUDO_PRESSED),
+            splitter_pressed,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SPLITTER, PSEUDO_FOCUSED),
+            splitter_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
             selectors::type_tag(TYPE_DIVIDER),
             divider_style,
         )
@@ -496,6 +535,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::state(TYPE_TEXT_INPUT, PSEUDO_DISABLED),
             text_input_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TEXT_INPUT, PSEUDO_READ_ONLY),
+            text_input_read_only,
         )
         .push_rule(
             StyleOrigin::Base,

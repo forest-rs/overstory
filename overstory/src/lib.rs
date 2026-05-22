@@ -62,11 +62,14 @@ pub use controls::slider::{
     SliderWidget, TYPE_SLIDER, set_slider_value,
 };
 pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
+pub use controls::splitter::{
+    Splitter, SplitterAxis, SplitterResizeEvent, SplitterWidget, TYPE_SPLITTER, resize_split_pair,
+};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     CLASS_TEXT_INPUT_PLACEHOLDER, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
     PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET, SLOT_TEXT_INPUT_SELECTION, SLOT_TEXT_INPUT_TEXT,
-    TYPE_TEXT_INPUT, TextInput, TextInputWidget,
+    TYPE_TEXT_INPUT, TextInput, TextInputWidget, set_text_input_read_only,
 };
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
