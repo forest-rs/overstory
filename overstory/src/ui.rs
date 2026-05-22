@@ -15,7 +15,7 @@ use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 
 use cursor_icon::CursorIcon;
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use imaging::record::{Clip, Geometry, Scene};
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
@@ -48,6 +48,7 @@ use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
+use crate::event_runtime::EventRuntime;
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
@@ -121,26 +122,7 @@ pub struct Ui {
     /// Element → its node(s) in `tree`, primary first. `SmallVec`
     /// inline capacity of 1 keeps the common no-auxiliary case heap-free.
     element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
-    /// Per-element click handlers. Invoked along the responder
-    /// capture → target → bubble sequence when a primary-button
-    /// click is recognized by [`ClickState`]. One handler per
-    /// element for now; subsequent `on_click` calls replace.
-    click_handlers: HashMap<ElementId, ClickHandler>,
-    /// Tracks click handlers that remove themselves or another
-    /// currently-dispatching click handler while that handler is
-    /// temporarily out of the map.
-    click_handler_dispatch: HandlerDispatchTracker,
-    /// Per-element drag handlers. Fire on every primary-button
-    /// `Move` while a press is active, along the responder path
-    /// rooted at the press target.
-    drag_handlers: HashMap<ElementId, DragHandler>,
-    /// Tracks drag handler removals during dispatch.
-    drag_handler_dispatch: HandlerDispatchTracker,
-    /// Per-element scroll handlers. Fire along the responder path
-    /// rooted at the element under the pointer when a scroll event arrives.
-    scroll_handlers: HashMap<ElementId, ScrollHandler>,
-    /// Tracks scroll handler removals during dispatch.
-    scroll_handler_dispatch: HandlerDispatchTracker,
+    events: EventRuntime,
     /// Pointer position captured at the most recent primary-button
     /// `Down`. Used by the drag dispatch to compute total offset
     /// from the press anchor. Cleared on `Up` / `Cancel`.
@@ -149,12 +131,6 @@ pub struct Ui {
     /// compute per-dispatch deltas. Cleared together with
     /// `press_position`.
     last_drag_position: Option<Point>,
-    /// Per-element key handlers. Invoked along the responder
-    /// sequence rooted at the currently focused element. Same
-    /// one-handler-per-element model as `click_handlers`.
-    key_handlers: HashMap<ElementId, KeyHandler>,
-    /// Tracks key handler removals during dispatch.
-    key_handler_dispatch: HandlerDispatchTracker,
     /// Currently focused element (the keyboard target). `:focused`
     /// is applied to this element's pseudoclass set.
     focused: Option<ElementId>,
@@ -168,41 +144,6 @@ pub struct Ui {
     /// `Ui` so each navigation call doesn't reallocate.
     focus_buf: Vec<FocusEntry<NodeId>>,
     timers: TimerRuntime,
-}
-
-type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>)>;
-type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
-type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
-type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
-
-#[derive(Default)]
-struct HandlerDispatchTracker {
-    active: Vec<ElementId>,
-    removals: HashSet<ElementId>,
-}
-
-impl HandlerDispatchTracker {
-    fn begin(&mut self, id: ElementId) {
-        self.active.push(id);
-    }
-
-    fn end(&mut self, id: ElementId) {
-        let popped = self.active.pop();
-        debug_assert!(
-            popped == Some(id),
-            "handler dispatch tracker should end the current handler"
-        );
-    }
-
-    fn note_removal(&mut self, id: ElementId) {
-        if self.active.contains(&id) {
-            self.removals.insert(id);
-        }
-    }
-
-    fn take_removed(&mut self, id: ElementId) -> bool {
-        self.removals.remove(&id)
-    }
 }
 
 /// Shared state carried by one routed event dispatch.
@@ -648,16 +589,9 @@ impl Ui {
             bindings: Some(BindingSet::new(BINDING)),
             tree: Tree::new(),
             element_to_nodes: HashMap::new(),
-            click_handlers: HashMap::new(),
-            click_handler_dispatch: HandlerDispatchTracker::default(),
-            drag_handlers: HashMap::new(),
-            drag_handler_dispatch: HandlerDispatchTracker::default(),
-            scroll_handlers: HashMap::new(),
-            scroll_handler_dispatch: HandlerDispatchTracker::default(),
+            events: EventRuntime::new(),
             press_position: None,
             last_drag_position: None,
-            key_handlers: HashMap::new(),
-            key_handler_dispatch: HandlerDispatchTracker::default(),
             focused: None,
             focusable_preferences: HashMap::new(),
             focus_policy: DefaultPolicy {
@@ -1326,14 +1260,13 @@ impl Ui {
     where
         F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
     {
-        self.key_handlers.insert(id, Box::new(handler));
+        self.events.on_key(id, Box::new(handler));
     }
 
     /// Removes a key handler previously registered with
     /// [`Self::on_key`]. No-op if none is registered.
     pub fn remove_key_handler(&mut self, id: ElementId) {
-        self.key_handlers.remove(&id);
-        self.key_handler_dispatch.note_removal(id);
+        self.events.remove_key(id);
     }
 
     /// Runs `dispatch_current` across the responder route for `source`.
@@ -1395,7 +1328,7 @@ impl Ui {
             return KeyDispatchResult::default();
         };
         let routed = self.dispatch_routed(focused, |ui, phase, node, state| {
-            let Some(mut handler) = ui.key_handlers.remove(&node) else {
+            let Some(mut handler) = ui.events.take_key(node) else {
                 return;
             };
             let ev = KeyEvent {
@@ -1405,12 +1338,12 @@ impl Ui {
                 key: event,
                 state,
             };
-            ui.key_handler_dispatch.begin(node);
+            ui.events.begin_key(node);
             handler(ui, ev);
-            ui.key_handler_dispatch.end(node);
-            let handler_removed = ui.key_handler_dispatch.take_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.key_handlers.contains_key(&node) {
-                ui.key_handlers.insert(node, handler);
+            ui.events.end_key(node);
+            let handler_removed = ui.events.key_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.events.has_key(node) {
+                ui.events.insert_key_if_absent(node, handler);
             }
         });
 
@@ -1541,14 +1474,13 @@ impl Ui {
     where
         F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
     {
-        self.click_handlers.insert(id, Box::new(handler));
+        self.events.on_click(id, Box::new(handler));
     }
 
     /// Removes a click handler previously registered with
     /// [`Self::on_click`]. No-op if no handler is registered.
     pub fn remove_click_handler(&mut self, id: ElementId) {
-        self.click_handlers.remove(&id);
-        self.click_handler_dispatch.note_removal(id);
+        self.events.remove_click(id);
     }
 
     /// Registers a drag handler on `id`. Fires on every
@@ -1560,14 +1492,13 @@ impl Ui {
     where
         F: FnMut(&mut Self, DragEvent<'_>) + 'static,
     {
-        self.drag_handlers.insert(id, Box::new(handler));
+        self.events.on_drag(id, Box::new(handler));
     }
 
     /// Removes a drag handler previously registered with
     /// [`Self::on_drag`]. No-op if no handler is registered.
     pub fn remove_drag_handler(&mut self, id: ElementId) {
-        self.drag_handlers.remove(&id);
-        self.drag_handler_dispatch.note_removal(id);
+        self.events.remove_drag(id);
     }
 
     /// Registers a scroll handler on `id`. The handler runs along the
@@ -1577,14 +1508,13 @@ impl Ui {
     where
         F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
     {
-        self.scroll_handlers.insert(id, Box::new(handler));
+        self.events.on_scroll(id, Box::new(handler));
     }
 
     /// Removes a scroll handler previously registered with [`Self::on_scroll`].
     /// No-op if no handler is registered.
     pub fn remove_scroll_handler(&mut self, id: ElementId) {
-        self.scroll_handlers.remove(&id);
-        self.scroll_handler_dispatch.note_removal(id);
+        self.events.remove_scroll(id);
     }
 
     /// Builds the responder dispatch sequence for the current
@@ -1603,7 +1533,7 @@ impl Ui {
         self.last_drag_position = Some(position);
 
         self.dispatch_routed(source, |ui, phase, node, state| {
-            let Some(mut handler) = ui.drag_handlers.remove(&node) else {
+            let Some(mut handler) = ui.events.take_drag(node) else {
                 return;
             };
             let event = DragEvent {
@@ -1615,12 +1545,12 @@ impl Ui {
                 delta,
                 state,
             };
-            ui.drag_handler_dispatch.begin(node);
+            ui.events.begin_drag(node);
             handler(ui, event);
-            ui.drag_handler_dispatch.end(node);
-            let handler_removed = ui.drag_handler_dispatch.take_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.drag_handlers.contains_key(&node) {
-                ui.drag_handlers.insert(node, handler);
+            ui.events.end_drag(node);
+            let handler_removed = ui.events.drag_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.events.has_drag(node) {
+                ui.events.insert_drag_if_absent(node, handler);
             }
         })
     }
@@ -1665,7 +1595,7 @@ impl Ui {
         self.dispatch_routed(target, |ui, phase, node, state| {
             // Take the handler out so it can call `&mut self`, then
             // put it back unless the handler removed itself.
-            let Some(mut handler) = ui.click_handlers.remove(&node) else {
+            let Some(mut handler) = ui.events.take_click(node) else {
                 return;
             };
             let event = ClickEvent {
@@ -1676,15 +1606,14 @@ impl Ui {
                 modifiers,
                 state,
             };
-            ui.click_handler_dispatch.begin(node);
+            ui.events.begin_click(node);
             handler(ui, event);
-            ui.click_handler_dispatch.end(node);
-            let handler_removed = ui.click_handler_dispatch.take_removed(node);
+            ui.events.end_click(node);
+            let handler_removed = ui.events.click_removed(node);
             // Reinstate iff the element is still alive AND the
             // handler didn't remove or replace itself during the call.
-            if ui.get(node).is_some() && !handler_removed && !ui.click_handlers.contains_key(&node)
-            {
-                ui.click_handlers.insert(node, handler);
+            if ui.get(node).is_some() && !handler_removed && !ui.events.has_click(node) {
+                ui.events.insert_click_if_absent(node, handler);
             }
         })
     }
@@ -1711,7 +1640,7 @@ impl Ui {
         }
 
         self.dispatch_routed(target, |ui, phase, node, state| {
-            let Some(mut handler) = ui.scroll_handlers.remove(&node) else {
+            let Some(mut handler) = ui.events.take_scroll(node) else {
                 return;
             };
             let event = ScrollEvent {
@@ -1723,13 +1652,12 @@ impl Ui {
                 modifiers,
                 state,
             };
-            ui.scroll_handler_dispatch.begin(node);
+            ui.events.begin_scroll(node);
             handler(ui, event);
-            ui.scroll_handler_dispatch.end(node);
-            let handler_removed = ui.scroll_handler_dispatch.take_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.scroll_handlers.contains_key(&node)
-            {
-                ui.scroll_handlers.insert(node, handler);
+            ui.events.end_scroll(node);
+            let handler_removed = ui.events.scroll_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.events.has_scroll(node) {
+                ui.events.insert_scroll_if_absent(node, handler);
             }
         })
     }
@@ -2378,9 +2306,7 @@ impl Ui {
             bindings.clear_owner(id);
         }
         self.templates.remove_element(id);
-        self.click_handlers.remove(&id);
-        self.drag_handlers.remove(&id);
-        self.key_handlers.remove(&id);
+        self.events.remove_target(id);
         self.timers.remove_target(id);
         self.focusable_preferences.remove(&id);
         if self.focused == Some(id) {
