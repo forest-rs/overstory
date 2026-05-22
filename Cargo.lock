@@ -1558,6 +1558,7 @@ dependencies = [
  "understory_property",
  "understory_property_binding",
  "understory_responder",
+ "understory_selection",
  "understory_style",
  "understory_timing",
 ]
@@ -2440,6 +2441,10 @@ dependencies = [
  "understory_box_tree",
  "understory_precise_hit",
 ]
+
+[[package]]
+name = "understory_selection"
+version = "0.1.0"
 
 [[package]]
 name = "understory_style"

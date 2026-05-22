@@ -1267,7 +1267,7 @@ impl Ui {
         self.set_focus_with_visibility(new, true)
     }
 
-    fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
+    pub(crate) fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
         self.set_focus_with_visibility(new, false)
     }
 

@@ -112,6 +112,12 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     }
 }
 
+impl dyn Widget {
+    pub(crate) fn downcast_ref<T: Widget>(&self) -> Option<&T> {
+        (self as &dyn Any).downcast_ref::<T>()
+    }
+}
+
 /// Widget wrapper that replaces a control's default template without changing
 /// the wrapped widget's selector identity, presentation, or measure behavior.
 pub(crate) struct TemplateOverrideWidget<W> {

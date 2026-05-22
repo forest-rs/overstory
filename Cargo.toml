@@ -34,6 +34,7 @@ understory_presentation = { default-features = false, features = ["std"], path =
 understory_property = { default-features = false, path = "../understory/understory_property" }
 understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
 understory_responder = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_responder" }
+understory_selection = { default-features = false, path = "../understory/understory_selection" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
 understory_timing = { default-features = false, path = "../understory/understory_timing" }
 

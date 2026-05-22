@@ -33,3 +33,6 @@ pub const PSEUDO_READ_ONLY: PseudoClassId = PseudoClassId(6);
 /// `:focus-visible` — this element has keyboard focus from a keyboard-like
 /// interaction and should show an explicit focus indicator.
 pub const PSEUDO_FOCUS_VISIBLE: PseudoClassId = PseudoClassId(7);
+
+/// `:selected` — this item is selected by its owning selection control.
+pub const PSEUDO_SELECTED: PseudoClassId = PseudoClassId(8);

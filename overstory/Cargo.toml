@@ -26,6 +26,7 @@ understory_presentation = { workspace = true, default-features = false, features
 understory_property = { workspace = true, default-features = false }
 understory_property_binding = { workspace = true, default-features = false }
 understory_responder = { workspace = true, default-features = false, features = ["std", "box_tree_adapter"] }
+understory_selection = { workspace = true, default-features = false }
 understory_style = { workspace = true, default-features = false }
 understory_timing = { workspace = true, default-features = false }
 

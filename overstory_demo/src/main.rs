@@ -49,8 +49,9 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::{
-    Button, CheckBox, CursorIcon, Divider, Panel, ProgressBar, Slider, Spinner, Splitter, Text,
-    TextInput, ToggleSwitch, Ui, layouts, set_progress_value, theme,
+    Button, CheckBox, CursorIcon, Divider, ListBox, ListItem, Panel, ProgressBar, Slider, Spinner,
+    Splitter, Text, TextInput, ToggleSwitch, Ui, layouts, select_list_item, set_progress_value,
+    theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -60,7 +61,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
-const INITIAL_SIZE: (u32, u32) = (1120, 660);
+const INITIAL_SIZE: (u32, u32) = (1480, 660);
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// WGSL for the surface blit: one oversized triangle in clip space that the
@@ -583,6 +584,18 @@ fn build_ui() -> Ui {
     let spinner_row = ui.append(systems_card, Panel::row(12.0).align_center());
     ui.append(spinner_row, Spinner::new());
     ui.append(spinner_row, caption("Streaming updates"));
+
+    let selection_card = card(&mut ui, gallery, "SELECTION");
+    ui.append(selection_card, caption("Active renderer"));
+    let renderer_list = ui.append(selection_card, ListBox::new().size(280.0, 174.0));
+    let selected_renderer = ui.append(renderer_list, ListItem::new("Vello scene graph"));
+    ui.append(renderer_list, ListItem::new("CPU fallback raster"));
+    ui.append(renderer_list, ListItem::new("Text shaping pass"));
+    ui.append(renderer_list, ListItem::new("Accessibility tree"));
+    let _ = select_list_item(&mut ui, renderer_list, selected_renderer);
+
+    ui.append(selection_card, Divider::horizontal().length(280.0));
+    ui.append(selection_card, caption("Backed by understory_selection"));
 
     let layout_card = card(&mut ui, gallery, "LAYOUT");
     ui.append(layout_card, caption("Resizable panes"));

@@ -17,6 +17,7 @@
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod divider;
+pub(crate) mod list;
 pub(crate) mod panel;
 pub(crate) mod progress;
 pub(crate) mod slider;

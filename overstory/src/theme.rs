@@ -49,6 +49,7 @@ use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
 };
 use crate::controls::divider::TYPE_DIVIDER;
+use crate::controls::list::{TYPE_LIST_BOX, TYPE_LIST_ITEM};
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
 };
@@ -66,7 +67,7 @@ use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
-    PSEUDO_PRESSED, PSEUDO_READ_ONLY,
+    PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
 use crate::selectors;
 use crate::widget::TYPE_GENERIC;
@@ -329,6 +330,34 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.corner_radius, 3.0_f64)
         .build();
 
+    let list_box_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .build();
+    let list_box_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let list_item_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.layout,
+            Layout::row(0.0)
+                .align_center()
+                .align_self_stretch()
+                .padding_xy(10.0, 7.0),
+        )
+        .set(properties.corner_radius, 6.0_f64)
+        .build();
+    let list_item_hover = StyleBuilder::new()
+        .set(properties.background, opt_solid(0x36, 0x36, 0x42, 0xff))
+        .build();
+    let list_item_selected = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .build();
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
@@ -566,6 +595,31 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
                 PART_TEXT_INPUT_CARET,
             ),
             text_input_caret,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_LIST_BOX),
+            list_box_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_LIST_BOX, PSEUDO_FOCUS_VISIBLE),
+            list_box_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_LIST_ITEM),
+            list_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_LIST_ITEM, PSEUDO_HOVER),
+            list_item_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_LIST_ITEM, PSEUDO_SELECTED),
+            list_item_selected,
         )
         .build()
 }
