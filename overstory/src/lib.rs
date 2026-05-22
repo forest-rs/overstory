@@ -67,7 +67,7 @@ pub use template::{
 };
 pub use text::TextEngine;
 pub use ui::TimerEvent;
-pub use ui::{ClickEvent, ControlState, DragEvent, KeyEvent, Ui};
+pub use ui::{ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 
 // Re-export the responder's `Phase` so callers can read

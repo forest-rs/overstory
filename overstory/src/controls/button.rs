@@ -273,6 +273,7 @@ fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
             // get a sensible value.
             let pos = ui.effective_bounds(button).origin();
             ui.synthesize_click(button, pos);
+            event.mark_handled();
         }
     });
 }

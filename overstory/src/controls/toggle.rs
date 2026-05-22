@@ -180,6 +180,7 @@ fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
         };
         if activate {
             toggle_checked(ui, toggle);
+            event.mark_handled();
         }
     });
 }

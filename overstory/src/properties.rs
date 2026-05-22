@@ -74,6 +74,16 @@ pub struct BuiltInProperties {
     /// writes that go outside it.
     pub value: Property<f64>,
 
+    /// Small keyboard increment for value-bearing controls. `Slider` uses this
+    /// for unmodified arrow keys. Default `0.0`, which lets the control derive
+    /// a range-relative increment.
+    pub small_change: Property<f64>,
+
+    /// Large keyboard increment for value-bearing controls. `Slider` uses this
+    /// for `PageUp` / `PageDown` and Shift-modified arrow keys. Default `0.0`,
+    /// which lets the control derive a range-relative increment.
+    pub large_change: Property<f64>,
+
     /// Lower bound for [`Self::value`]. Default `0.0`.
     pub minimum: Property<f64>,
 
@@ -176,6 +186,10 @@ impl BuiltInProperties {
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
+            small_change: registry
+                .register("SmallChange", PropertyMetadataBuilder::new(0.0_f64).build()),
+            large_change: registry
+                .register("LargeChange", PropertyMetadataBuilder::new(0.0_f64).build()),
             minimum: registry.register(
                 "Minimum",
                 PropertyMetadataBuilder::new(0.0_f64)

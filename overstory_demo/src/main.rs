@@ -47,9 +47,7 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
-use overstory::{
-    Button, Navigation, Panel, Slider, Spinner, Text, ToggleSwitch, Ui, layouts, theme,
-};
+use overstory::{Button, Panel, Slider, Spinner, Text, ToggleSwitch, Ui, layouts, theme};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -205,23 +203,10 @@ impl ApplicationHandler for App {
                     }
                 }
                 WindowEventTranslation::Keyboard(key) => {
-                    // Built-in Tab / Shift+Tab → focus navigation.
-                    // App-defined keys (Space/Enter on a button etc.)
-                    // are handled by element key handlers below.
-                    use ui_events::keyboard::{Key, KeyState, NamedKey};
-                    if key.state == KeyState::Down && matches!(key.key, Key::Named(NamedKey::Tab)) {
-                        let dir = if key.modifiers.shift() {
-                            Navigation::Prev
-                        } else {
-                            Navigation::Next
-                        };
-                        state.ui.focus_navigate(dir);
+                    let result = state.ui.dispatch_key(&key);
+                    if result.handled || result.focus_changed {
+                        state.window.request_redraw();
                     }
-                    state.ui.dispatch_key(&key);
-                    // Keyboard input is rare enough that a redraw on
-                    // every key is fine; paint/style/binding flushes
-                    // make it a no-op when nothing changed.
-                    state.window.request_redraw();
                 }
             }
         }

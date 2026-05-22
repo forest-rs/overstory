@@ -63,13 +63,16 @@ const TICK_TOP: f32 = 28.0;
 const LABEL_TOP: f32 = 38.0;
 const LABEL_CHAR_WIDTH: f32 = 6.0;
 const LABEL_MIN_WIDTH: f32 = 6.0;
-const KEY_STEP_FRACTION: f64 = 0.05;
+const DEFAULT_SMALL_CHANGE_FRACTION: f64 = 0.05;
+const DEFAULT_LARGE_CHANGE_FRACTION: f64 = 0.20;
 
 /// Builder + spec for a `Slider`.
 pub struct Slider {
     initial_value: f64,
     min: f64,
     max: f64,
+    small_change: Option<f64>,
+    large_change: Option<f64>,
     state: ControlState,
     template: Option<&'static dyn Template>,
 }
@@ -80,6 +83,8 @@ impl core::fmt::Debug for Slider {
             .field("initial_value", &self.initial_value)
             .field("min", &self.min)
             .field("max", &self.max)
+            .field("small_change", &self.small_change)
+            .field("large_change", &self.large_change)
             .finish_non_exhaustive()
     }
 }
@@ -92,6 +97,8 @@ impl Slider {
             initial_value: 0.0,
             min: 0.0,
             max: 1.0,
+            small_change: None,
+            large_change: None,
             state: ControlState::interactive(),
             template: None,
         }
@@ -115,6 +122,23 @@ impl Slider {
     #[must_use]
     pub fn max(mut self, max: f64) -> Self {
         self.max = max;
+        self
+    }
+
+    /// Sets the arrow-key increment. Non-positive or non-finite values are
+    /// ignored and the control derives a range-relative default instead.
+    #[must_use]
+    pub fn small_change(mut self, value: f64) -> Self {
+        self.small_change = Some(value);
+        self
+    }
+
+    /// Sets the `PageUp` / `PageDown` and Shift+arrow increment. Non-positive or
+    /// non-finite values are ignored and the control derives a range-relative
+    /// default instead.
+    #[must_use]
+    pub fn large_change(mut self, value: f64) -> Self {
+        self.large_change = Some(value);
         self
     }
 
@@ -176,8 +200,16 @@ impl AppendSpec for Slider {
         let layout_prop = ui.properties().layout;
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
+        let small_change_prop = ui.properties().small_change;
+        let large_change_prop = ui.properties().large_change;
         ui.set_local(id, min_prop, self.min);
         ui.set_local(id, max_prop, self.max);
+        if let Some(small_change) = self.small_change {
+            ui.set_local(id, small_change_prop, small_change);
+        }
+        if let Some(large_change) = self.large_change {
+            ui.set_local(id, large_change_prop, large_change);
+        }
         ui.set_local(
             id,
             layout_prop,
@@ -290,8 +322,12 @@ fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
         if !ui.is_enabled(slider) {
             return;
         }
+        if event.source == thumb {
+            return;
+        }
         set_value_from_position(ui, slider, thumb, event.position);
     });
+    let mut drag = SliderDragState::default();
     ui.on_drag(slider, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
@@ -299,7 +335,14 @@ fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
         if !ui.is_enabled(slider) {
             return;
         }
-        set_value_from_position(ui, slider, thumb, event.position);
+        drag.update(
+            ui,
+            slider,
+            thumb,
+            event.press_position,
+            event.position,
+            event.delta,
+        );
     });
     ui.on_key(slider, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
@@ -314,16 +357,38 @@ fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
         }
         let min = read_or(ui, slider, ui.properties().minimum, 0.0);
         let max = read_or(ui, slider, ui.properties().maximum, 1.0);
-        let step = (max - min) * KEY_STEP_FRACTION;
+        let small = read_change_or(
+            ui,
+            slider,
+            ui.properties().small_change,
+            min,
+            max,
+            DEFAULT_SMALL_CHANGE_FRACTION,
+        );
+        let large = read_change_or(
+            ui,
+            slider,
+            ui.properties().large_change,
+            min,
+            max,
+            DEFAULT_LARGE_CHANGE_FRACTION,
+        );
         let current = read_or(ui, slider, ui.properties().value, min);
         let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => current - step,
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => current + step,
+            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
+                current - keyboard_step(event.key.modifiers.shift(), small, large)
+            }
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => {
+                current + keyboard_step(event.key.modifiers.shift(), small, large)
+            }
+            Key::Named(NamedKey::PageDown) => current - large,
+            Key::Named(NamedKey::PageUp) => current + large,
             Key::Named(NamedKey::Home) => min,
             Key::Named(NamedKey::End) => max,
             _ => return,
         };
         set_value(ui, slider, thumb, next.clamp(min, max));
+        event.mark_handled();
     });
 }
 
@@ -336,6 +401,66 @@ fn read_or<T: Clone + 'static>(
     ui.get(id)
         .and_then(|el| el.get_local_value(prop).cloned())
         .unwrap_or(default)
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct SliderDragState {
+    offset_from_thumb_center: f64,
+}
+
+impl SliderDragState {
+    fn update(
+        &mut self,
+        ui: &mut Ui,
+        slider: ElementId,
+        thumb: ElementId,
+        press_position: kurbo::Point,
+        position: kurbo::Point,
+        delta: kurbo::Vec2,
+    ) {
+        if is_first_drag_move(press_position, position, delta) {
+            let thumb_bounds = ui.effective_bounds(thumb);
+            self.offset_from_thumb_center = if thumb_bounds.contains(press_position) {
+                press_position.x - thumb_bounds.center().x
+            } else {
+                0.0
+            };
+        }
+        set_value_from_center_position(
+            ui,
+            slider,
+            thumb,
+            position.x - self.offset_from_thumb_center,
+        );
+    }
+}
+
+fn is_first_drag_move(
+    press_position: kurbo::Point,
+    position: kurbo::Point,
+    delta: kurbo::Vec2,
+) -> bool {
+    delta == position - press_position
+}
+
+fn keyboard_step(large_requested: bool, small: f64, large: f64) -> f64 {
+    if large_requested { large } else { small }
+}
+
+fn read_change_or(
+    ui: &Ui,
+    slider: ElementId,
+    prop: understory_property::Property<f64>,
+    min: f64,
+    max: f64,
+    default_fraction: f64,
+) -> f64 {
+    let configured = read_or(ui, slider, prop, 0.0);
+    if configured.is_finite() && configured > 0.0 {
+        configured
+    } else {
+        (max - min).abs() * default_fraction
+    }
 }
 
 fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
@@ -502,13 +627,17 @@ fn set_value_from_position(
     thumb: ElementId,
     pointer: kurbo::Point,
 ) {
+    set_value_from_center_position(ui, slider, thumb, pointer.x);
+}
+
+fn set_value_from_center_position(ui: &mut Ui, slider: ElementId, thumb: ElementId, center_x: f64) {
     let bounds = ui.effective_bounds(slider);
     if bounds.width() <= 0.0 {
         return;
     }
     let track_width = SLIDER_WIDTH - THUMB_DIAMETER;
     let usable_origin = bounds.origin().x + f64::from(THUMB_DIAMETER) / 2.0;
-    let t = ((pointer.x - usable_origin) / f64::from(track_width)).clamp(0.0, 1.0);
+    let t = ((center_x - usable_origin) / f64::from(track_width)).clamp(0.0, 1.0);
     let min = read_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_or(ui, slider, ui.properties().maximum, 1.0);
     let value = min + t * (max - min);

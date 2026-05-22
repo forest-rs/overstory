@@ -13,7 +13,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
@@ -207,7 +207,11 @@ pub struct TimerEvent {
 /// `ui_events`/`keyboard-types` event by reference plus the
 /// responder dispatch context. Handlers filter `key.state`,
 /// `key.key`, `key.modifiers`, etc. themselves — `Ui::on_key`
-/// does no internal filtering.
+/// does no internal filtering except for framework-owned navigation keys.
+///
+/// `KeyEvent` values are constructed by [`Ui::dispatch_key`]. Callers should
+/// install handlers with [`Ui::on_key`] rather than constructing this payload
+/// directly.
 #[allow(
     unnameable_types,
     reason = "re-exported from the crate root via lib.rs"
@@ -227,6 +231,39 @@ pub struct KeyEvent<'a> {
     pub phase: Phase,
     /// The full normalized keyboard event.
     pub key: &'a KeyboardEvent,
+    handled: &'a Cell<bool>,
+}
+
+impl KeyEvent<'_> {
+    /// Marks this key event handled.
+    ///
+    /// Handled events stop the remaining key route for ordinary handlers.
+    /// Future routed-event APIs may add an explicit "handled events too"
+    /// subscription mode.
+    pub fn mark_handled(&self) {
+        self.handled.set(true);
+    }
+
+    /// Returns whether this key event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.handled.get()
+    }
+}
+
+/// Result returned by [`Ui::dispatch_key`].
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeyDispatchResult {
+    /// Whether the key was consumed by framework policy or a key handler.
+    pub handled: bool,
+    /// Whether dispatch changed the focused element.
+    pub focus_changed: bool,
+    /// Focused element after dispatch, if any.
+    pub focused: Option<ElementId>,
 }
 
 /// Payload delivered to a drag handler as the primary pointer
@@ -1082,13 +1119,35 @@ impl Ui {
         self.key_handlers.remove(&id);
     }
 
-    /// Routes `event` to the currently focused element and runs
-    /// every key handler along the responder capture → target →
-    /// bubble path. No-op when nothing is focused.
-    pub fn dispatch_key(&mut self, event: &KeyboardEvent) {
+    /// Routes `event` through the framework keyboard policy and,
+    /// when appropriate, to the currently focused element.
+    ///
+    /// Tab / Shift+Tab focus navigation is handled by `Ui` before
+    /// ordinary key handlers run. Other keys route along the
+    /// responder capture → target → bubble path rooted at the
+    /// focused element. A handler can call [`KeyEvent::mark_handled`]
+    /// to stop the remaining route.
+    ///
+    /// Migration note: callers should inspect the returned
+    /// [`KeyDispatchResult`] instead of assuming every keyboard event requests a
+    /// redraw. Demo or host bridges should leave framework-owned focus keys to
+    /// this method.
+    #[must_use]
+    pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> KeyDispatchResult {
+        let previous_focus = self.focused;
+        if let Some(direction) = focus_navigation_for_key(event) {
+            let focused = self.focus_navigate(direction);
+            return KeyDispatchResult {
+                handled: focused.is_some(),
+                focus_changed: previous_focus != self.focused,
+                focused: self.focused,
+            };
+        }
+
         let Some(focused) = self.focused else {
-            return;
+            return KeyDispatchResult::default();
         };
+        let handled = Cell::new(false);
         let seq: Vec<(Phase, ElementId)> = {
             let lookup = UiWidgetLookup;
             let parent = UiParentLookup { ui: self };
@@ -1109,11 +1168,21 @@ impl Ui {
                 current: node,
                 phase,
                 key: event,
+                handled: &handled,
             };
             handler(self, ev);
             if self.get(node).is_some() && !self.key_handlers.contains_key(&node) {
                 self.key_handlers.insert(node, handler);
             }
+            if handled.get() {
+                break;
+            }
+        }
+
+        KeyDispatchResult {
+            handled: handled.get(),
+            focus_changed: previous_focus != self.focused,
+            focused: self.focused,
         }
     }
 
@@ -2235,6 +2304,19 @@ fn pointer_event_time(event: &PointerEvent) -> Option<TimerInstant> {
     }
 }
 
+fn focus_navigation_for_key(event: &KeyboardEvent) -> Option<Navigation> {
+    use ui_events::keyboard::{Key, KeyState, NamedKey};
+
+    if event.state != KeyState::Down || !matches!(&event.key, Key::Named(NamedKey::Tab)) {
+        return None;
+    }
+    Some(if event.modifiers.shift() {
+        Navigation::Prev
+    } else {
+        Navigation::Next
+    })
+}
+
 fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
         taffy::AvailableSpace::Definite(v) => f64::from(v),
@@ -2273,7 +2355,7 @@ fn walk_preorder(ui: &Ui, id: ElementId, out: &mut Vec<ElementId>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kurbo::Rect;
+    use kurbo::{Point, Rect};
     use peniko::{Brush, Color};
     use understory_style::{
         ClassId, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleOrigin,
@@ -2898,6 +2980,86 @@ mod tests {
     }
 
     #[test]
+    fn slider_keyboard_uses_small_and_large_changes() {
+        use crate::Slider;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(
+            root,
+            Slider::new()
+                .value(0.5)
+                .small_change(0.1)
+                .large_change(0.25),
+        );
+        assert!(ui.set_focus(Some(slider)));
+
+        let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+        assert!(ui.dispatch_key(&right).handled);
+        assert_eq!(slider_value(&ui, slider), Some(0.6));
+
+        let mut shift_right =
+            KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+        shift_right.modifiers = Modifiers::SHIFT;
+        assert!(ui.dispatch_key(&shift_right).handled);
+        assert_eq!(slider_value(&ui, slider), Some(0.85));
+
+        let page_down = KeyboardEvent::key_down(Key::Named(NamedKey::PageDown), Code::PageDown);
+        assert!(ui.dispatch_key(&page_down).handled);
+        assert_eq!(slider_value(&ui, slider), Some(0.6));
+
+        let home = KeyboardEvent::key_down(Key::Named(NamedKey::Home), Code::Home);
+        assert!(ui.dispatch_key(&home).handled);
+        assert_eq!(slider_value(&ui, slider), Some(0.0));
+
+        let end = KeyboardEvent::key_down(Key::Named(NamedKey::End), Code::End);
+        assert!(ui.dispatch_key(&end).handled);
+        assert_eq!(slider_value(&ui, slider), Some(1.0));
+    }
+
+    #[test]
+    fn slider_thumb_click_and_drag_preserve_thumb_grab_offset() {
+        use crate::{SLOT_SLIDER_THUMB, Slider};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            Layout::flex().logical_size(300.0, 80.0),
+        );
+        let slider = ui.append(root, Slider::new().value(0.5));
+        ui.compute_layout(Size::new(300.0, 80.0));
+
+        let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+        let before = ui.effective_bounds(thumb);
+        let press = Point::new(before.x0 + 3.0, before.center().y);
+
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)));
+        assert!(ui.dispatch_pointer_event(&pointer_up(press, 2)));
+        assert_eq!(
+            slider_value(&ui, slider),
+            Some(0.5),
+            "clicking the thumb itself should not recenter it under the pointer"
+        );
+
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 3)));
+        assert!(ui.dispatch_pointer_event(&pointer_move(
+            Point::new(press.x + 20.0, press.y),
+            4,
+            true,
+        )));
+        ui.compute_layout(Size::new(300.0, 80.0));
+
+        let after = ui.effective_bounds(thumb);
+        assert!(
+            ((after.center().x - before.center().x) - 20.0).abs() < 0.001,
+            "thumb should move by the drag delta instead of snapping its center to the pointer"
+        );
+    }
+
+    #[test]
     fn default_cascade_styles_template_parts_by_owner_part() {
         use crate::{PART_SLIDER_TICK, Slider, TemplateItemKey, theme};
 
@@ -3078,8 +3240,9 @@ mod tests {
         });
 
         let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
-        ui.dispatch_key(&key);
+        let result = ui.dispatch_key(&key);
         assert!(fired.get(), "target-phase key handler should fire");
+        assert!(!result.handled, "handler did not mark the key handled");
     }
 
     #[test]
@@ -3097,8 +3260,133 @@ mod tests {
         // No focus set → dispatch should be a no-op even though root
         // has a handler.
         let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
-        ui.dispatch_key(&key);
+        let result = ui.dispatch_key(&key);
         assert!(!fired.get(), "key handler should not fire without focus");
+        assert_eq!(result, KeyDispatchResult::default());
+    }
+
+    #[test]
+    fn dispatch_key_stops_route_when_handler_marks_handled() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        ui.set_focusable(child, true);
+        ui.set_focus(Some(child));
+
+        let child_fired = Rc::new(Cell::new(false));
+        let child_fired_for_handler = Rc::clone(&child_fired);
+        ui.on_key(root, move |_ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                event.mark_handled();
+            }
+        });
+        ui.on_key(child, move |_ui, _event| {
+            child_fired_for_handler.set(true);
+        });
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert!(
+            !child_fired.get(),
+            "handled capture-phase key should stop before target"
+        );
+    }
+
+    #[test]
+    fn dispatch_key_handles_tab_focus_navigation() {
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let layout_prop = ui.properties().layout;
+        ui.set_local(root, layout_prop, Layout::flex().logical_size(300.0, 50.0));
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
+        for id in [a, b] {
+            ui.set_local(
+                id,
+                layout_prop,
+                Layout::new().flex_grow(1.0).align_self_stretch(),
+            );
+            ui.set_focusable(id, true);
+        }
+        ui.compute_layout(Size::new(300.0, 50.0));
+
+        let tab = KeyboardEvent::key_down(Key::Named(NamedKey::Tab), Code::Tab);
+        let result = ui.dispatch_key(&tab);
+        assert!(result.handled);
+        assert!(result.focus_changed);
+        assert_eq!(result.focused, Some(a));
+        assert_eq!(ui.focused(), Some(a));
+
+        let result = ui.dispatch_key(&tab);
+        assert!(result.handled);
+        assert!(result.focus_changed);
+        assert_eq!(result.focused, Some(b));
+        assert_eq!(ui.focused(), Some(b));
+
+        let mut shift_tab = KeyboardEvent::key_down(Key::Named(NamedKey::Tab), Code::Tab);
+        shift_tab.modifiers = Modifiers::SHIFT;
+        let result = ui.dispatch_key(&shift_tab);
+        assert!(result.handled);
+        assert!(result.focus_changed);
+        assert_eq!(result.focused, Some(a));
+        assert_eq!(ui.focused(), Some(a));
+    }
+
+    #[test]
+    fn built_in_controls_mark_consumed_keys_handled() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        use crate::{Button, Slider, ToggleSwitch};
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let clicked = Rc::new(Cell::new(false));
+        let clicked_for_handler = Rc::clone(&clicked);
+        let button = ui.append(
+            root,
+            Button::new("Run").on_click(move |_ui, _event| clicked_for_handler.set(true)),
+        );
+
+        assert!(ui.set_focus(Some(button)));
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&enter);
+        assert!(result.handled);
+        assert!(
+            clicked.get(),
+            "button Enter activation should synthesize a click"
+        );
+
+        let toggle = ui.append(root, ToggleSwitch::new());
+        assert!(ui.set_focus(Some(toggle)));
+        let result = ui.dispatch_key(&enter);
+        assert!(result.handled);
+        assert_eq!(
+            ui.get(toggle)
+                .and_then(|el| el.get_local_value(ui.properties().is_checked).copied()),
+            Some(true)
+        );
+
+        let slider = ui.append(root, Slider::new().value(0.4));
+        assert!(ui.set_focus(Some(slider)));
+        let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+        let result = ui.dispatch_key(&right);
+        assert!(result.handled);
+        assert!(
+            ui.get(slider)
+                .and_then(|el| el.get_local_value(ui.properties().value).copied())
+                .is_some_and(|value| value > 0.4),
+            "slider ArrowRight should increase Value"
+        );
     }
 
     #[test]
@@ -3859,5 +4147,74 @@ mod tests {
         // are already marked via `restyle_subtree`. With an empty
         // cascade (this test's case) no channels move.
         assert!(ui.get(root).unwrap().classes().contains(&ClassId(1)));
+    }
+
+    fn slider_value(ui: &Ui, slider: ElementId) -> Option<f64> {
+        ui.get(slider)
+            .and_then(|el| el.get_local_value(ui.properties().value).copied())
+    }
+
+    fn pointer_down(point: Point, time: u64) -> PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+
+        PointerEvent::Down(PointerButtonEvent {
+            button: Some(PointerButton::Primary),
+            pointer: pointer_info(),
+            state: pointer_state(point, time, true),
+        })
+    }
+
+    fn pointer_up(point: Point, time: u64) -> PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+
+        PointerEvent::Up(PointerButtonEvent {
+            button: Some(PointerButton::Primary),
+            pointer: pointer_info(),
+            state: pointer_state(point, time, false),
+        })
+    }
+
+    fn pointer_move(point: Point, time: u64, primary_down: bool) -> PointerEvent {
+        use ui_events::pointer::{PointerEvent, PointerUpdate};
+
+        PointerEvent::Move(PointerUpdate {
+            pointer: pointer_info(),
+            current: pointer_state(point, time, primary_down),
+            coalesced: Vec::new(),
+            predicted: Vec::new(),
+        })
+    }
+
+    fn pointer_info() -> ui_events::pointer::PointerInfo {
+        use ui_events::pointer::{PointerId, PointerInfo, PointerType};
+
+        PointerInfo {
+            pointer_id: Some(PointerId::PRIMARY),
+            persistent_device_id: None,
+            pointer_type: PointerType::Mouse,
+        }
+    }
+
+    fn pointer_state(
+        point: Point,
+        time: u64,
+        primary_down: bool,
+    ) -> ui_events::pointer::PointerState {
+        use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
+
+        let mut buttons = PointerButtons::new();
+        if primary_down {
+            buttons.insert(PointerButton::Primary);
+        }
+        let mut state = PointerState {
+            time,
+            buttons,
+            count: 1,
+            pressure: if primary_down { 0.5 } else { 0.0 },
+            ..PointerState::default()
+        };
+        state.position.x = point.x;
+        state.position.y = point.y;
+        state
     }
 }
