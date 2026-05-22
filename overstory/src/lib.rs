@@ -25,6 +25,7 @@
 extern crate alloc;
 
 mod behavior;
+mod binding_runtime;
 pub mod channels;
 mod controls;
 mod element;

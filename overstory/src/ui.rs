@@ -30,8 +30,8 @@ use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
 };
 use understory_property_binding::{
-    BindingDrainError, BindingError, BindingHost, BindingId, BindingReport, BindingSet,
-    BindingWrite, EndpointKey, PropertyEndpoint,
+    BindingDrainError, BindingError, BindingHost, BindingId, BindingReport, BindingWrite,
+    EndpointKey, PropertyEndpoint,
 };
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
@@ -39,7 +39,8 @@ use understory_style::{MatchState, PartTag, ResolveCx, StyleCascade, Theme};
 use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
 use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
-use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::binding_runtime::BindingRuntime;
+use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
@@ -79,11 +80,7 @@ pub struct Ui {
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
-    /// One-way property bindings. Held as `Option` because `flush_bindings`
-    /// temporarily takes ownership: `BindingSet::drain` mutates the set
-    /// while also taking `&mut Self` (Ui) as the `BindingHost`, and we'd
-    /// otherwise overlap. The set is always `Some` outside `flush_bindings`.
-    bindings: Option<BindingSet<ElementId>>,
+    bindings: BindingRuntime,
     events: EventRuntime,
     focus: FocusRuntime,
     timers: TimerRuntime,
@@ -520,7 +517,7 @@ impl Ui {
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
             text: RefCell::new(TextEngine::new()),
-            bindings: Some(BindingSet::new(BINDING)),
+            bindings: BindingRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timers: TimerRuntime::new(),
@@ -806,9 +803,8 @@ impl Ui {
             element.set_local_notifying(property, value, registry)
         };
         self.mark_channels(id, channels);
-        if let Some(bindings) = self.bindings.as_mut() {
-            bindings.mark_endpoint_changed(EndpointKey::new(id, property.id()));
-        }
+        self.bindings
+            .mark_endpoint_changed(EndpointKey::new(id, property.id()));
     }
 
     /// Sets an element's layout contribution.
@@ -847,28 +843,16 @@ impl Ui {
     where
         T: Clone + 'static,
     {
-        let bindings = self
-            .bindings
-            .as_mut()
-            .expect("bindings always Some outside flush_bindings");
-        let id = bindings.bind(source, target)?;
-        // Schedule the binding so its initial value propagates on the
-        // next drain. If the source is unset, `drain` treats it as a
-        // skip — the binding stays clean until `set_local` writes the
-        // source and re-marks it via the source-index path.
-        bindings.mark_binding_dirty(id);
-        Ok(id)
+        self.bindings.bind(source, target)
     }
 
     /// Drains the binding set, propagating dirty bindings through the host.
     /// Channels affected by binding writes are unioned into the invalidation
     /// tracker as a side effect of the host's `set_erased` impl.
     pub fn try_flush_bindings(&mut self) -> Result<BindingReport, BindingDrainError<ElementId>> {
-        let Some(mut bindings) = self.bindings.take() else {
-            return Ok(BindingReport::default());
-        };
+        let mut bindings = self.bindings.take();
         let result = bindings.drain(self);
-        self.bindings = Some(bindings);
+        self.bindings.restore(bindings);
         result
     }
 
@@ -2162,9 +2146,7 @@ impl Ui {
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);
-        if let Some(bindings) = self.bindings.as_mut() {
-            bindings.clear_owner(id);
-        }
+        self.bindings.clear_owner(id);
         self.templates.remove_element(id);
         self.events.remove_target(id);
         self.timers.remove_target(id);
