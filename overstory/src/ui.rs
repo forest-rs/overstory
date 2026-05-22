@@ -21,6 +21,7 @@ use imaging::record::{Clip, Geometry, Scene};
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
 use smallvec::SmallVec;
+use ui_events::ScrollDelta;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
 use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_box_tree::{LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
@@ -136,6 +137,11 @@ pub struct Ui {
     drag_handlers: HashMap<ElementId, DragHandler>,
     /// Tracks drag handler removals during dispatch.
     drag_handler_dispatch: HandlerDispatchTracker,
+    /// Per-element scroll handlers. Fire along the responder path
+    /// rooted at the element under the pointer when a scroll event arrives.
+    scroll_handlers: HashMap<ElementId, ScrollHandler>,
+    /// Tracks scroll handler removals during dispatch.
+    scroll_handler_dispatch: HandlerDispatchTracker,
     /// Pointer position captured at the most recent primary-button
     /// `Down`. Used by the drag dispatch to compute total offset
     /// from the press anchor. Cleared on `Up` / `Cancel`.
@@ -189,6 +195,7 @@ pub struct Ui {
 
 type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>)>;
 type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
+type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 type TimerHandler = Box<dyn FnMut(&mut Ui, TimerEvent)>;
 
@@ -504,6 +511,67 @@ impl ClickEvent<'_> {
     }
 }
 
+/// Payload delivered to a scroll handler.
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug)]
+pub struct ScrollEvent<'a> {
+    /// The element under the pointer when the scroll was requested.
+    pub source: ElementId,
+    /// The element this handler is registered on.
+    pub current: ElementId,
+    /// The propagation phase for this invocation.
+    pub phase: Phase,
+    /// Pointer position at scroll-recognition time, in logical pixels.
+    pub position: Point,
+    /// Raw scroll delta reported by `ui_events`.
+    pub delta: ScrollDelta,
+    /// Keyboard modifiers active when this scroll was requested.
+    pub modifiers: Modifiers,
+    state: &'a RoutedEventState,
+}
+
+impl ScrollEvent<'_> {
+    /// Converts this event's raw delta into logical pixels with caller-owned
+    /// line and page policies.
+    #[must_use]
+    pub fn logical_delta(&self, line_px: Vec2, page_px: Vec2) -> Vec2 {
+        match self.delta {
+            ScrollDelta::PixelDelta(delta) => Vec2::new(delta.x, delta.y),
+            ScrollDelta::LineDelta(x, y) => {
+                Vec2::new(f64::from(x) * line_px.x, f64::from(y) * line_px.y)
+            }
+            ScrollDelta::PageDelta(x, y) => {
+                Vec2::new(f64::from(x) * page_px.x, f64::from(y) * page_px.y)
+            }
+        }
+    }
+
+    /// Marks this scroll event handled and stops the remaining ordinary route.
+    pub fn mark_handled(&self) {
+        self.state.mark_handled();
+    }
+
+    /// Returns whether this scroll event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.state.is_handled()
+    }
+
+    /// Stops this scroll event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.state.stop_propagation();
+    }
+
+    /// Returns whether this scroll event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.state.is_propagation_stopped()
+    }
+}
+
 /// Shared construction-time state for interactive controls.
 ///
 /// `enabled` controls pointer/key activation and `:disabled` styling.
@@ -644,6 +712,8 @@ impl Ui {
             click_handler_dispatch: HandlerDispatchTracker::default(),
             drag_handlers: HashMap::new(),
             drag_handler_dispatch: HandlerDispatchTracker::default(),
+            scroll_handlers: HashMap::new(),
+            scroll_handler_dispatch: HandlerDispatchTracker::default(),
             press_position: None,
             last_drag_position: None,
             key_handlers: HashMap::new(),
@@ -1594,6 +1664,23 @@ impl Ui {
         self.drag_handler_dispatch.note_removal(id);
     }
 
+    /// Registers a scroll handler on `id`. The handler runs along the
+    /// responder capture → target → bubble sequence rooted at the element
+    /// under the pointer when a scroll event arrives.
+    pub fn on_scroll<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
+    {
+        self.scroll_handlers.insert(id, Box::new(handler));
+    }
+
+    /// Removes a scroll handler previously registered with [`Self::on_scroll`].
+    /// No-op if no handler is registered.
+    pub fn remove_scroll_handler(&mut self, id: ElementId) {
+        self.scroll_handlers.remove(&id);
+        self.scroll_handler_dispatch.note_removal(id);
+    }
+
     /// Builds the responder dispatch sequence for the current
     /// press target and runs each drag handler along it. Called
     /// from `dispatch_pointer_event` on every `Move` while a press
@@ -1696,6 +1783,51 @@ impl Ui {
         })
     }
 
+    /// Programmatically synthesize a scroll routed at `target`.
+    pub fn synthesize_scroll(
+        &mut self,
+        target: ElementId,
+        position: Point,
+        delta: ScrollDelta,
+    ) -> RoutedDispatchResult {
+        self.dispatch_scroll_with_modifiers(target, position, delta, Modifiers::default())
+    }
+
+    fn dispatch_scroll_with_modifiers(
+        &mut self,
+        target: ElementId,
+        position: Point,
+        delta: ScrollDelta,
+        modifiers: Modifiers,
+    ) -> RoutedDispatchResult {
+        if !self.is_enabled(self.press_visual_target(target)) {
+            return RoutedDispatchResult::default();
+        }
+
+        self.dispatch_routed(target, |ui, phase, node, state| {
+            let Some(mut handler) = ui.scroll_handlers.remove(&node) else {
+                return;
+            };
+            let event = ScrollEvent {
+                source: target,
+                current: node,
+                phase,
+                position,
+                delta,
+                modifiers,
+                state,
+            };
+            ui.scroll_handler_dispatch.begin(node);
+            handler(ui, event);
+            ui.scroll_handler_dispatch.end(node);
+            let handler_removed = ui.scroll_handler_dispatch.take_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.scroll_handlers.contains_key(&node)
+            {
+                ui.scroll_handlers.insert(node, handler);
+            }
+        })
+    }
+
     /// Resolves the effective `Bounds` for `id` through the cascade.
     #[must_use]
     pub fn effective_bounds(&self, id: ElementId) -> Rect {
@@ -1719,10 +1851,8 @@ impl Ui {
 
     /// Dispatches a normalized pointer event.
     ///
-    /// Handles the hover lifecycle (Move/Leave/Cancel) and the `:pressed`
-    /// lifecycle (Down/Up/Cancel for the primary button). Scroll/Gesture and
-    /// non-primary button presses are ignored for now — they'll land
-    /// alongside the responder integration in a later phase.
+    /// Handles hover, primary-button press/click/drag, and routed scroll.
+    /// Gesture and non-primary button presses are ignored for now.
     ///
     /// `:pressed` follows WPF semantics: a primary-button press marks the
     /// hit element pressed and that element stays pressed even if the cursor
@@ -1816,6 +1946,22 @@ impl Ui {
                     self.dispatch_click_with_modifiers(target, pos, button_event.state.modifiers);
                 }
                 press_changed
+            }
+            PointerEvent::Scroll(scroll_event) => {
+                let pos = scroll_event.state.logical_point();
+                let changed = self.update_hover_at(pos);
+                let result = self
+                    .hit_test(pos)
+                    .map(|target| {
+                        self.dispatch_scroll_with_modifiers(
+                            target,
+                            pos,
+                            scroll_event.delta,
+                            scroll_event.state.modifiers,
+                        )
+                    })
+                    .unwrap_or_default();
+                changed || result.handled || result.propagation_stopped
             }
             PointerEvent::Leave(_) => self.clear_hover(),
             PointerEvent::Cancel(_) => {
@@ -2619,6 +2765,7 @@ fn pointer_event_time(event: &PointerEvent) -> Option<TimerInstant> {
     match event {
         PointerEvent::Move(update) => Some(update.current.time),
         PointerEvent::Down(b) | PointerEvent::Up(b) => Some(b.state.time),
+        PointerEvent::Scroll(s) => Some(s.state.time),
         PointerEvent::Enter(_) | PointerEvent::Leave(_) | PointerEvent::Cancel(_) => None,
         _ => None,
     }
@@ -4090,6 +4237,86 @@ mod tests {
     }
 
     #[test]
+    fn dispatch_scroll_walks_capture_target_bubble() {
+        use alloc::string::String;
+        use core::cell::RefCell;
+        use std::rc::Rc;
+        use ui_events::ScrollDelta;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        let grand = ui.insert_child(child);
+
+        let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        let target_delta = Rc::new(RefCell::new(Vec2::ZERO));
+        for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
+            let log = Rc::clone(&log);
+            let target_delta = Rc::clone(&target_delta);
+            ui.on_scroll(id, move |_ui, event| {
+                let phase = match event.phase {
+                    Phase::Capture => "capture",
+                    Phase::Target => "target",
+                    Phase::Bubble => "bubble",
+                };
+                if matches!(event.phase, Phase::Target) {
+                    *target_delta.borrow_mut() =
+                        event.logical_delta(Vec2::new(16.0, 20.0), Vec2::new(160.0, 200.0));
+                    event.mark_handled();
+                }
+                log.borrow_mut().push(alloc::format!("{name}:{phase}"));
+            });
+        }
+
+        let result = ui.synthesize_scroll(grand, Point::ZERO, ScrollDelta::LineDelta(0.0, 2.0));
+
+        assert!(result.handled);
+        assert_eq!(*target_delta.borrow(), Vec2::new(0.0, 40.0));
+        assert_eq!(
+            log.borrow().as_slice(),
+            &[
+                "root:capture".to_owned(),
+                "child:capture".to_owned(),
+                "grand:target".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn pointer_scroll_hit_tests_and_routes_to_target() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::ScrollDelta;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(200.0, 200.0));
+        let child = ui.insert_child(root);
+        ui.set_layout(child, Layout::new().logical_size(80.0, 80.0));
+        ui.compute_layout(Size::new(200.0, 200.0));
+
+        let fired = Rc::new(Cell::new(false));
+        let fired_for_handler = Rc::clone(&fired);
+        ui.on_scroll(child, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                assert_eq!(event.source, child);
+                assert_eq!(event.position, Point::new(20.0, 20.0));
+                fired_for_handler.set(true);
+                event.mark_handled();
+            }
+        });
+
+        let event = pointer_scroll(
+            Point::new(20.0, 20.0),
+            123,
+            ScrollDelta::LineDelta(0.0, 1.0),
+        );
+        assert!(ui.dispatch_pointer_event(&event));
+        assert!(fired.get());
+        assert_eq!(ui.now(), 123);
+    }
+
+    #[test]
     fn dispatch_drag_stops_route_when_handler_marks_handled() {
         use core::cell::Cell;
         use std::rc::Rc;
@@ -4925,6 +5152,16 @@ mod tests {
             current: pointer_state(point, time, primary_down),
             coalesced: Vec::new(),
             predicted: Vec::new(),
+        })
+    }
+
+    fn pointer_scroll(point: Point, time: u64, delta: ScrollDelta) -> PointerEvent {
+        use ui_events::pointer::{PointerEvent, PointerScrollEvent};
+
+        PointerEvent::Scroll(PointerScrollEvent {
+            pointer: pointer_info(),
+            delta,
+            state: pointer_state(point, time, false),
         })
     }
 

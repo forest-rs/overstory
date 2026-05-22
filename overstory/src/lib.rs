@@ -93,7 +93,8 @@ pub use template::{
 pub use text::{TextEngine, TextWrapping};
 pub use ui::TimerEvent;
 pub use ui::{
-    ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult, Ui,
+    ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult,
+    ScrollEvent, Ui,
 };
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 
