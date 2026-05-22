@@ -53,6 +53,7 @@ use crate::controls::list::{TYPE_LIST_BOX, TYPE_LIST_ITEM};
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
 };
+use crate::controls::scroll::{PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR};
 use crate::controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
@@ -233,6 +234,21 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let splitter_focused = StyleBuilder::new()
         .set_resource(properties.border_brush, FOCUS_RING_BORDER)
         .set(properties.border_width, 2.0_f64)
+        .build();
+
+    let scroll_bar_idle = StyleBuilder::new()
+        .set_resource(properties.background, TRACK_BG)
+        .set(properties.corner_radius, 5.0_f64)
+        .build();
+    let scroll_bar_thumb_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_HOVER_BORDER)
+        .set(properties.corner_radius, 5.0_f64)
+        .build();
+    let scroll_bar_thumb_hover = StyleBuilder::new()
+        .set_resource(properties.background, THUMB_BG)
+        .build();
+    let scroll_bar_pressed = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BORDER)
         .build();
 
     let divider_style = StyleBuilder::new()
@@ -471,6 +487,29 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::state(TYPE_SPLITTER, PSEUDO_FOCUS_VISIBLE),
             splitter_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_SCROLL_BAR),
+            scroll_bar_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_SCROLL_BAR, PART_SCROLL_BAR_THUMB),
+            scroll_bar_thumb_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_SCROLL_BAR).with_pseudo(PSEUDO_HOVER),
+                PART_SCROLL_BAR_THUMB,
+            ),
+            scroll_bar_thumb_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SCROLL_BAR, PSEUDO_PRESSED),
+            scroll_bar_pressed,
         )
         .push_rule(
             StyleOrigin::Base,

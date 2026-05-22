@@ -14,6 +14,7 @@ use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::LayoutContext;
 use crate::controls::scroll::{
     ScrollState, install_wheel_scroll_behavior, normalize_scroll_offset_y, scroll_child_into_view,
     scroll_offset_y, set_scroll_offset_y,
@@ -71,6 +72,7 @@ pub struct ListBox {
     state: ControlState,
     selection_mode: ListSelectionMode,
     scroll_offset_y: f64,
+    scroll_state: Option<ScrollState>,
     on_selection_changed: Option<ListSelectionChangedHandler>,
 }
 
@@ -93,6 +95,7 @@ impl ListBox {
             state: ControlState::interactive(),
             selection_mode: ListSelectionMode::Single,
             scroll_offset_y: 0.0,
+            scroll_state: None,
             on_selection_changed: None,
         }
     }
@@ -141,6 +144,17 @@ impl ListBox {
     #[must_use]
     pub fn scroll_offset_y(mut self, offset: f64) -> Self {
         self.scroll_offset_y = normalize_scroll_offset_y(offset);
+        if let Some(state) = &self.scroll_state {
+            state.set_offset_y_raw(self.scroll_offset_y);
+        }
+        self
+    }
+
+    /// Uses caller-provided shared scroll state.
+    #[must_use]
+    pub fn scroll_state(mut self, state: ScrollState) -> Self {
+        state.set_offset_y_raw(self.scroll_offset_y);
+        self.scroll_state = Some(state);
         self
     }
 
@@ -164,7 +178,9 @@ impl Default for ListBox {
 impl AppendSpec for ListBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let selection = Rc::new(RefCell::new(Selection::new()));
-        let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
+        let scroll_state = self
+            .scroll_state
+            .unwrap_or_else(|| ScrollState::with_offset_y(self.scroll_offset_y));
         let selection_changed = Rc::new(RefCell::new(self.on_selection_changed));
         let id = ui.append_widget(
             parent,
@@ -205,6 +221,14 @@ impl core::fmt::Debug for ListBoxWidget {
 impl Widget for ListBoxWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_LIST_BOX)
+    }
+
+    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
+        crate::controls::scroll::update_viewport_metrics_from_layout(
+            element,
+            ctx,
+            &self.scroll_state,
+        );
     }
 
     fn clips_subtree(&self, element: &Element) -> bool {

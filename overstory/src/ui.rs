@@ -2256,6 +2256,13 @@ impl Ui {
         for child in children {
             self.write_bounds_recursive(child, child_origin);
         }
+
+        if let Some(element) = self.get(id)
+            && let Some(widget) = element.widget()
+        {
+            let ctx = crate::behavior::LayoutContext { ui: self };
+            widget.layout_updated(element, &ctx);
+        }
     }
 
     /// Drains the STYLE channel, recomputing the match state of any dirty

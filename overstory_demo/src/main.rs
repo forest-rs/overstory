@@ -49,9 +49,9 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::{
-    Button, CheckBox, CursorIcon, Divider, ListBox, ListItem, Panel, ProgressBar, Slider, Spinner,
-    Splitter, Text, TextInput, ToggleSwitch, Ui, layouts, select_list_item, set_progress_value,
-    theme,
+    Button, CheckBox, CursorIcon, Divider, ListBox, ListItem, Panel, ProgressBar, ScrollBar,
+    ScrollState, Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Ui, layouts,
+    select_list_item, set_progress_value, theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -587,12 +587,21 @@ fn build_ui() -> Ui {
 
     let selection_card = card(&mut ui, gallery, "SELECTION");
     ui.append(selection_card, caption("Renderer queue"));
+    let renderer_scroll = ScrollState::with_offset_y(34.0);
+    let renderer_row = ui.append(selection_card, Panel::row(8.0).align_center());
     let renderer_list = ui.append(
-        selection_card,
+        renderer_row,
         ListBox::new()
-            .size(280.0, 146.0)
+            .size(260.0, 146.0)
             .multiple_selection()
-            .scroll_offset_y(34.0),
+            .scroll_state(renderer_scroll.clone()),
+    );
+    ui.append(
+        renderer_row,
+        ScrollBar::vertical(renderer_list, renderer_scroll)
+            .length(146.0)
+            .thickness(10.0)
+            .thumb_extent(34.0),
     );
     ui.append(renderer_list, ListItem::new("Vello scene graph"));
     ui.append(renderer_list, ListItem::new("CPU fallback raster"));

@@ -33,7 +33,7 @@ use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
 use understory_style::TypeTag;
 
-use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
+use crate::behavior::{LayoutContext, MeasureConstraints, MeasureContext, PresentContext};
 use crate::element::{Element, ElementId};
 use crate::generic::present_surface;
 use crate::template::Template;
@@ -91,6 +91,15 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ) -> Option<Size> {
         let _ = (element, ctx, constraints);
         None
+    }
+
+    /// Called after layout has written this element's bounds and recursively
+    /// written all descendant bounds.
+    ///
+    /// The default does nothing. Viewport-like controls use this to derive
+    /// geometry state, such as scroll extents, from their arranged children.
+    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
+        let _ = (element, ctx);
     }
 
     /// Returns the default template this widget's element should
@@ -180,6 +189,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         constraints: MeasureConstraints,
     ) -> Option<Size> {
         self.widget.measure(element, ctx, constraints)
+    }
+
+    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
+        self.widget.layout_updated(element, ctx);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

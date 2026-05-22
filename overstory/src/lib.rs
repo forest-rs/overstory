@@ -40,7 +40,9 @@ pub mod theme;
 mod ui;
 mod widget;
 
-pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentContext};
+pub use behavior::{
+    KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
+};
 pub use controls::button::{
     Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };
@@ -62,8 +64,9 @@ pub use controls::progress::{
     SLOT_PROGRESS_BAR_FILL, SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
 pub use controls::scroll::{
-    ScrollState, ScrollView, ScrollViewWidget, TYPE_SCROLL_VIEW, scroll_view_offset_y,
-    set_scroll_view_offset_y,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollAxis, ScrollBar, ScrollBarWidget,
+    ScrollState, ScrollView, ScrollViewWidget, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
+    scroll_view_offset_y, scroll_view_state, set_scroll_view_offset_y,
 };
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,

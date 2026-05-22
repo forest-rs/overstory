@@ -11,7 +11,7 @@
 use core::cell::RefCell;
 use core::fmt;
 
-use kurbo::Size;
+use kurbo::{Rect, Size};
 use understory_property::{DependencyObject, Property, PropertyRegistry};
 use understory_style::{MatchState, ResolveCx, StyleCascade, StyleValueRef, Theme};
 
@@ -19,6 +19,7 @@ use crate::element::{Element, ElementId};
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
 use crate::text::TextEngine;
+use crate::ui::Ui;
 
 /// Per-axis known dimensions handed to a behavior's `measure`
 /// callback.
@@ -32,6 +33,33 @@ pub struct KnownDimensions {
     pub width: Option<f64>,
     /// Pre-chosen height, in logical pixels.
     pub height: Option<f64>,
+}
+
+/// Read-only context handed to a widget after layout has written element bounds.
+///
+/// Widgets use this for derived geometry state that depends on both their own
+/// bounds and their children's final arranged bounds, such as scroll range
+/// metrics. It is intentionally read-only: layout hooks can update interior
+/// widget state, but they do not mutate the tree or the layout engine.
+#[derive(Copy, Clone)]
+pub struct LayoutContext<'a> {
+    pub(crate) ui: &'a Ui,
+}
+
+impl LayoutContext<'_> {
+    /// Returns the latest computed bounds for `element`, if it is still live.
+    #[must_use]
+    pub fn effective_bounds(&self, element: ElementId) -> Option<Rect> {
+        self.ui
+            .get(element)
+            .map(|_| self.ui.effective_bounds(element))
+    }
+}
+
+impl fmt::Debug for LayoutContext<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LayoutContext").finish_non_exhaustive()
+    }
 }
 
 /// Constraints passed to a widget's `measure` callback.
