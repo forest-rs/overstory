@@ -2414,6 +2414,23 @@ impl<'a> ParentLookup<ElementId> for UiParentLookup<'a> {
 /// packing. A later refinement can distinguish the two and let behaviors
 /// report a tighter min-content (e.g. the longest unbreakable word width
 /// for text).
+fn text_max_advance_for_bounds(bounds: Rect) -> Option<f32> {
+    let width = bounds.width();
+    if width.is_finite() && width > 0.0 {
+        Some(f32_from_text_width(width))
+    } else {
+        None
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "UI logical bounds fit parley's f32 text layout coordinates"
+)]
+fn f32_from_text_width(width: f64) -> f32 {
+    width as f32
+}
+
 /// Lowers a node's resolved presentation primitives into `output`,
 /// positioned at `bounds`. Stand-in for a future `imaging`-side
 /// renderer that consumes `understory_presentation` directly.
@@ -2471,7 +2488,7 @@ fn lower_presentation(
                         plain.content.as_str(),
                         plain.style.font_size,
                         fg.clone(),
-                        None,
+                        text_max_advance_for_bounds(bounds),
                     );
                     let origin = bounds.origin();
                     crate::text::render_text(
@@ -2879,6 +2896,57 @@ mod tests {
         assert!(
             bounds.width() > 0.0 && bounds.height() > 30.0,
             "styled text content and font size should participate in measure; got {bounds:?}"
+        );
+    }
+
+    #[test]
+    fn paint_wraps_text_to_element_bounds() {
+        use crate::Text;
+        use imaging::record::{Command, Draw};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            Layout::flex().logical_size(80.0, 200.0),
+        );
+        let text = ui.append(
+            root,
+            Text::new("alpha beta gamma delta epsilon").font_size(20.0),
+        );
+        ui.set_layout(text, Layout::new().logical_size(80.0, 200.0));
+
+        ui.compute_layout(Size::new(80.0, 200.0));
+
+        let bounds = ui.effective_bounds(text);
+        assert!(
+            bounds.width() <= 80.0,
+            "text should be laid out within the constrained width; got {bounds:?}"
+        );
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for command in output.commands() {
+            let Command::Draw(id) = command else {
+                continue;
+            };
+            let Draw::GlyphRun(run) = output.draw_op(*id) else {
+                continue;
+            };
+            for glyph in &run.glyphs {
+                min_y = min_y.min(glyph.y);
+                max_y = max_y.max(glyph.y);
+            }
+        }
+
+        assert!(
+            max_y - min_y > 20.0,
+            "paint should render wrapped text lines; glyph y span was {}",
+            max_y - min_y
         );
     }
 
