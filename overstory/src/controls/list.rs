@@ -7,13 +7,17 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 
 use kurbo::Vec2;
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::controls::scroll::{
+    ScrollState, install_wheel_scroll_behavior, normalize_scroll_offset_y, scroll_child_into_view,
+    scroll_offset_y, set_scroll_offset_y,
+};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
@@ -36,7 +40,6 @@ pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
 
 type SharedSelection = Rc<RefCell<Selection<ElementId>>>;
-type SharedScrollOffset = Rc<Cell<f64>>;
 type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
 type SharedListSelectionChangedHandler = Rc<RefCell<Option<ListSelectionChangedHandler>>>;
 
@@ -137,7 +140,7 @@ impl ListBox {
     /// Sets the initial vertical scroll offset in logical pixels.
     #[must_use]
     pub fn scroll_offset_y(mut self, offset: f64) -> Self {
-        self.scroll_offset_y = normalize_scroll_offset(offset);
+        self.scroll_offset_y = normalize_scroll_offset_y(offset);
         self
     }
 
@@ -161,13 +164,13 @@ impl Default for ListBox {
 impl AppendSpec for ListBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let selection = Rc::new(RefCell::new(Selection::new()));
-        let scroll_offset_y = Rc::new(Cell::new(self.scroll_offset_y));
+        let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
         let selection_changed = Rc::new(RefCell::new(self.on_selection_changed));
         let id = ui.append_widget(
             parent,
             Box::new(ListBoxWidget {
                 selection,
-                scroll_offset_y,
+                scroll_state: scroll_state.clone(),
                 selection_mode: self.selection_mode,
                 selection_changed,
             }),
@@ -179,6 +182,7 @@ impl AppendSpec for ListBox {
         }
         ui.set_layout(id, layout);
         ui.set_control_state(id, self.state);
+        install_wheel_scroll_behavior(ui, id, scroll_state);
         install_list_box_key_behavior(ui, id);
         id
     }
@@ -187,7 +191,7 @@ impl AppendSpec for ListBox {
 /// Per-element widget for `ListBox`.
 pub struct ListBoxWidget {
     selection: SharedSelection,
-    scroll_offset_y: SharedScrollOffset,
+    scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
     selection_changed: SharedListSelectionChangedHandler,
 }
@@ -210,7 +214,7 @@ impl Widget for ListBoxWidget {
 
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         let _ = element;
-        Vec2::new(0.0, -self.scroll_offset_y.get())
+        -self.scroll_state.offset()
     }
 }
 
@@ -353,23 +357,17 @@ pub fn selected_list_items(ui: &Ui, listbox: ElementId) -> Vec<ElementId> {
 /// Returns the list's current vertical scroll offset in logical pixels.
 #[must_use]
 pub fn list_scroll_offset_y(ui: &Ui, listbox: ElementId) -> Option<f64> {
-    list_box_scroll_offset(ui, listbox).map(|scroll| scroll.get())
+    list_box_scroll_state(ui, listbox).map(|state| scroll_offset_y(&state))
 }
 
 /// Sets the list's vertical scroll offset in logical pixels.
 ///
 /// Returns `false` if `listbox` is stale or does not own list state.
 pub fn set_list_scroll_offset_y(ui: &mut Ui, listbox: ElementId, offset: f64) -> bool {
-    let Some(scroll) = list_box_scroll_offset(ui, listbox) else {
+    let Some(state) = list_box_scroll_state(ui, listbox) else {
         return false;
     };
-    let offset = normalize_scroll_offset(offset);
-    if (scroll.get() - offset).abs() <= f64::EPSILON {
-        return true;
-    }
-    scroll.set(offset);
-    ui.mark_channels(listbox, crate::channels::LAYOUT.into());
-    true
+    set_scroll_offset_y(ui, listbox, &state, offset)
 }
 
 /// Scrolls `listbox` just enough to bring `item` into its current viewport.
@@ -380,23 +378,10 @@ pub fn scroll_list_item_into_view(ui: &mut Ui, listbox: ElementId, item: Element
     if !is_direct_list_item(ui, listbox, item) {
         return false;
     }
-    let Some(current) = list_scroll_offset_y(ui, listbox) else {
+    let Some(state) = list_box_scroll_state(ui, listbox) else {
         return false;
     };
-    let list_bounds = ui.effective_bounds(listbox);
-    let item_bounds = ui.effective_bounds(item);
-    if list_bounds.width() <= 0.0 || list_bounds.height() <= 0.0 || item_bounds.height() <= 0.0 {
-        return false;
-    }
-
-    let next = if item_bounds.y0 < list_bounds.y0 {
-        current - (list_bounds.y0 - item_bounds.y0)
-    } else if item_bounds.y1 > list_bounds.y1 {
-        current + (item_bounds.y1 - list_bounds.y1)
-    } else {
-        current
-    };
-    set_list_scroll_offset_y(ui, listbox, next)
+    scroll_child_into_view(ui, listbox, &state, item)
 }
 
 fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
@@ -688,14 +673,6 @@ fn action_modifier(modifiers: ui_events::keyboard::Modifiers) -> bool {
     modifiers.ctrl() || modifiers.meta()
 }
 
-fn normalize_scroll_offset(offset: f64) -> f64 {
-    if offset.is_finite() {
-        offset.max(0.0)
-    } else {
-        0.0
-    }
-}
-
 fn is_activation_key(key: &ui_events::keyboard::Key) -> bool {
     use ui_events::keyboard::{Key, NamedKey};
 
@@ -758,11 +735,11 @@ fn list_box_selection(ui: &Ui, listbox: ElementId) -> Option<SharedSelection> {
         .map(|widget| Rc::clone(&widget.selection))
 }
 
-fn list_box_scroll_offset(ui: &Ui, listbox: ElementId) -> Option<SharedScrollOffset> {
+fn list_box_scroll_state(ui: &Ui, listbox: ElementId) -> Option<ScrollState> {
     ui.get(listbox)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
-        .map(|widget| Rc::clone(&widget.scroll_offset_y))
+        .map(|widget| widget.scroll_state.clone())
 }
 
 fn list_box_selection_mode(ui: &Ui, listbox: ElementId) -> Option<ListSelectionMode> {

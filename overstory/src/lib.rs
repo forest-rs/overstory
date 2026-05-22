@@ -61,6 +61,10 @@ pub use controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, ProgressBarWidget,
     SLOT_PROGRESS_BAR_FILL, SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
+pub use controls::scroll::{
+    ScrollState, ScrollView, ScrollViewWidget, TYPE_SCROLL_VIEW, scroll_view_offset_y,
+    set_scroll_view_offset_y,
+};
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
     PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,

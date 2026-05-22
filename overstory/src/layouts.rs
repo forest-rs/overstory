@@ -166,6 +166,16 @@ impl Layout {
         self
     }
 
+    /// Sets the flex shrink factor.
+    ///
+    /// Use `0.0` for fixed-size content that should overflow a smaller
+    /// viewport instead of being compressed by flex layout.
+    #[must_use]
+    pub fn flex_shrink(mut self, shrink: f32) -> Self {
+        self.style.flex_shrink = shrink;
+        self
+    }
+
     pub(crate) fn to_taffy(&self) -> taffy::Style {
         self.style.clone()
     }
