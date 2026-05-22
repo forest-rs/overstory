@@ -26,8 +26,7 @@ use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_box_tree::{LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
 use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
-use understory_focus::adapters::box_tree::build_focus_space_for_scope;
-use understory_focus::{DefaultPolicy, FocusEntry, FocusPolicy, Navigation, WrapMode};
+use understory_focus::Navigation;
 use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, Property, PropertyRegistry,
@@ -49,6 +48,7 @@ use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
+use crate::focus_runtime::FocusRuntime;
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
@@ -131,18 +131,7 @@ pub struct Ui {
     /// compute per-dispatch deltas. Cleared together with
     /// `press_position`.
     last_drag_position: Option<Point>,
-    /// Currently focused element (the keyboard target). `:focused`
-    /// is applied to this element's pseudoclass set.
-    focused: Option<ElementId>,
-    /// Desired focusability independent of temporary disabled state.
-    focusable_preferences: HashMap<ElementId, bool>,
-    /// Focus navigation policy. Pluggable in future; for now
-    /// `DefaultPolicy` with scope-wrap so Tab cycles within the
-    /// element tree.
-    focus_policy: DefaultPolicy,
-    /// Reusable scratch buffer for building a `FocusSpace`. Kept on
-    /// `Ui` so each navigation call doesn't reallocate.
-    focus_buf: Vec<FocusEntry<NodeId>>,
+    focus: FocusRuntime,
     timers: TimerRuntime,
 }
 
@@ -592,12 +581,7 @@ impl Ui {
             events: EventRuntime::new(),
             press_position: None,
             last_drag_position: None,
-            focused: None,
-            focusable_preferences: HashMap::new(),
-            focus_policy: DefaultPolicy {
-                wrap: WrapMode::Scope,
-            },
-            focus_buf: Vec::new(),
+            focus: FocusRuntime::new(),
             timers: TimerRuntime::new(),
         };
         me.mirror_allocated_element(root, None);
@@ -1097,9 +1081,9 @@ impl Ui {
         if self.get(id).is_none() {
             return;
         }
-        self.focusable_preferences.insert(id, focusable);
+        self.focus.set_focusable_preference(id, focusable);
         self.apply_focusable_preference(id);
-        if !focusable && self.focused == Some(id) {
+        if !focusable && self.focus.focused() == Some(id) {
             self.set_focus(None);
         }
     }
@@ -1117,12 +1101,7 @@ impl Ui {
     }
 
     fn apply_focusable_preference(&mut self, id: ElementId) {
-        let focusable = self
-            .focusable_preferences
-            .get(&id)
-            .copied()
-            .unwrap_or(false)
-            && self.is_enabled(id);
+        let focusable = self.focus.focusable_preference(id) && self.is_enabled(id);
         self.set_focusable_flag(id, focusable);
     }
 
@@ -1162,7 +1141,7 @@ impl Ui {
         } else {
             self.add_pseudo(id, PSEUDO_DISABLED);
             self.set_focusable_flag(id, false);
-            if self.focused == Some(id) {
+            if self.focus.focused() == Some(id) {
                 self.set_focus(None);
             }
             if self.press_target == Some(id) {
@@ -1175,7 +1154,7 @@ impl Ui {
     #[must_use]
     #[inline]
     pub fn focused(&self) -> Option<ElementId> {
-        self.focused
+        self.focus.focused()
     }
 
     /// Sets keyboard-visible focus. Passes `None` to clear focus. Disabled or
@@ -1193,23 +1172,23 @@ impl Ui {
     fn set_focus_with_visibility(&mut self, new: Option<ElementId>, focus_visible: bool) -> bool {
         let accepted = new.filter(|id| self.is_enabled(*id));
         let mut changed = false;
-        if self.focused == accepted {
+        if self.focus.focused() == accepted {
             if let Some(id) = accepted {
                 changed |= self.set_focus_visible_pseudo(id, focus_visible);
             }
             return changed;
         }
-        if let Some(old_id) = self.focused.take() {
+        if let Some(old_id) = self.focus.take_focused() {
             self.remove_pseudo(old_id, PSEUDO_FOCUSED);
             self.remove_pseudo(old_id, PSEUDO_FOCUS_VISIBLE);
         }
         if let Some(new_id) = accepted {
             self.add_pseudo(new_id, PSEUDO_FOCUSED);
             self.set_focus_visible_pseudo(new_id, focus_visible);
-            self.focused = Some(new_id);
+            self.focus.set_focused(Some(new_id));
             changed = true;
         } else {
-            self.focused = None;
+            self.focus.set_focused(None);
             changed = true;
         }
         changed
@@ -1237,15 +1216,10 @@ impl Ui {
         let root_node = self.box_for(self.root())?;
         // Resolve the current focus's node before we borrow `tree`
         // and `focus_buf` to build the FocusSpace.
-        let current_node = self.focused.and_then(|id| self.box_for(id));
-        let new_node = {
-            let space =
-                build_focus_space_for_scope(&self.tree, root_node, &(), &mut self.focus_buf);
-            match current_node {
-                Some(current) => self.focus_policy.next(current, direction, &space),
-                None => self.focus_policy.initial::<NodeId>(direction, &space),
-            }
-        };
+        let current_node = self.focus.focused().and_then(|id| self.box_for(id));
+        let new_node = self
+            .focus
+            .navigate(&self.tree, root_node, current_node, direction);
         let new_element = new_node.and_then(|n| self.node_to_element(n));
         self.set_focus(new_element);
         new_element
@@ -1313,18 +1287,18 @@ impl Ui {
     /// to stop the remaining route.
     #[must_use]
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> KeyDispatchResult {
-        let previous_focus = self.focused;
+        let previous_focus = self.focus.focused();
         if let Some(direction) = focus_navigation_for_key(event) {
             let focused = self.focus_navigate(direction);
             return KeyDispatchResult {
                 handled: focused.is_some(),
                 propagation_stopped: false,
-                focus_changed: previous_focus != self.focused,
-                focused: self.focused,
+                focus_changed: previous_focus != self.focus.focused(),
+                focused: self.focus.focused(),
             };
         }
 
-        let Some(focused) = self.focused else {
+        let Some(focused) = self.focus.focused() else {
             return KeyDispatchResult::default();
         };
         let routed = self.dispatch_routed(focused, |ui, phase, node, state| {
@@ -1350,8 +1324,8 @@ impl Ui {
         KeyDispatchResult {
             handled: routed.handled,
             propagation_stopped: routed.propagation_stopped,
-            focus_changed: previous_focus != self.focused,
-            focused: self.focused,
+            focus_changed: previous_focus != self.focus.focused(),
+            focused: self.focus.focused(),
         }
     }
 
@@ -2308,10 +2282,7 @@ impl Ui {
         self.templates.remove_element(id);
         self.events.remove_target(id);
         self.timers.remove_target(id);
-        self.focusable_preferences.remove(&id);
-        if self.focused == Some(id) {
-            self.focused = None;
-        }
+        self.focus.remove_target(id);
         if let Some(taffy_node) = self.element_to_taffy.remove(&id) {
             // `taffy.remove` also detaches from its parent and frees children
             // recursively — but we've already walked our subtree top-down and
