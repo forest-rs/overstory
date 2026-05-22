@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "overstory",
     "overstory_demo",
+    "overstory_host",
+    "overstory_host_winit",
 ]
 
 [workspace.package]
@@ -15,6 +17,11 @@ license = "Apache-2.0 OR MIT"
 repository = "https://github.com/forest-rs/layerstack"
 
 [workspace.dependencies]
+# Overstory workspace crates.
+overstory = { path = "overstory" }
+overstory_host = { path = "overstory_host" }
+overstory_host_winit = { path = "overstory_host_winit" }
+
 # Core data deps
 hashbrown = { default-features = false, features = [
     "alloc",

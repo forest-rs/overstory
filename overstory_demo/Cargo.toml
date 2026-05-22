@@ -9,18 +9,9 @@ description = "Demo binary for Overstory — winit + imaging_vello host."
 publish = false
 
 [dependencies]
-overstory = { path = "../overstory" }
-understory_style.workspace = true
-ui-events.workspace = true
-ui-events-winit.workspace = true
-imaging.workspace = true
-imaging_vello.workspace = true
-imaging_wgpu.workspace = true
-kurbo.workspace = true
+overstory.workspace = true
+overstory_host_winit.workspace = true
 peniko.workspace = true
-winit.workspace = true
-wgpu = { workspace = true, features = ["wgsl"] }
-pollster.workspace = true
 
 [lints]
 workspace = true

@@ -1,0 +1,22 @@
+[package]
+name = "overstory_host_winit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Winit, wgpu, and vello native host for Overstory applications."
+publish = false
+
+[dependencies]
+overstory.workspace = true
+overstory_host.workspace = true
+imaging_vello.workspace = true
+imaging_wgpu.workspace = true
+pollster.workspace = true
+ui-events-winit.workspace = true
+wgpu = { workspace = true, features = ["wgsl"] }
+winit.workspace = true
+
+[lints]
+workspace = true
