@@ -4,15 +4,14 @@
 //! Minimal Overstory host: open a winit window, drive a `wgpu` surface, and
 //! paint a small Overstory element tree through `imaging_vello` each frame.
 //!
-//! The tree is a dark backdrop with two templated Buttons, a
-//! `ToggleSwitch`, and a `Spinner` side by side. Each button cycles
-//! its own label on click or Space / Enter while focused; the toggle
-//! flips its `:checked` state; the spinner runs an 8-dot animation
-//! driven by a repeating timer from `understory_timing`. Tab and
-//! Shift+Tab walk focus across the interactive controls; the
-//! focused element paints a white border ring. Layout is driven by
-//! the layout engine via the `Layout` property; text is shaped by parley and
-//! rendered as glyph runs through imaging.
+//! The tree is a dark control gallery with templated buttons, checkboxes,
+//! text input, divider rules, a toggle, slider, progress bar, and spinner.
+//! Buttons cycle their own labels, checkboxes and toggles keep `:checked`
+//! state in sync, text input edits through routed keyboard events, and the
+//! progress bar animates from a repeating timer. Tab and Shift+Tab walk focus
+//! across interactive controls; the focused element paints a ring. Layout is
+//! driven by the `Layout` property; text is shaped by parley and rendered as
+//! glyph runs through imaging.
 //!
 //! The host translates winit events through
 //! `ui_events_winit::WindowEventReducer` into normalized
@@ -47,7 +46,11 @@ use imaging::record::Scene;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
-use overstory::{Button, Panel, Slider, Spinner, Text, ToggleSwitch, Ui, layouts, theme};
+use overstory::{
+    Button, CheckBox, Divider, Panel, ProgressBar, Slider, Spinner, Text, TextInput, ToggleSwitch,
+    Ui, layouts, set_progress_value, theme,
+};
+use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -404,7 +407,50 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
 fn caption(text: &str) -> Text {
     Text::new(text)
         .font_size(13.0)
-        .foreground(peniko::Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff))
+        .foreground(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff))
+}
+
+fn heading(text: &str) -> Text {
+    Text::new(text)
+        .font_size(26.0)
+        .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
+}
+
+fn section_label(text: &str) -> Text {
+    Text::new(text)
+        .font_size(12.0)
+        .foreground(Color::from_rgba8(0x96, 0x9a, 0xa8, 0xff))
+}
+
+fn card(ui: &mut Ui, parent: overstory::ElementId, title: &str) -> overstory::ElementId {
+    let card = ui.append(
+        parent,
+        Panel::column(14.0).layout(
+            overstory::Layout::column(14.0)
+                .logical_size(320.0, 350.0)
+                .padding_all(18.0),
+        ),
+    );
+    let background_prop = ui.properties().background;
+    let foreground_prop = ui.properties().foreground;
+    let border_brush_prop = ui.properties().border_brush;
+    let border_width_prop = ui.properties().border_width;
+    let corner_radius_prop = ui.properties().corner_radius;
+    ui.set_local(card, background_prop, opt_solid(0x28, 0x28, 0x31, 0xff));
+    ui.set_local(
+        card,
+        foreground_prop,
+        Brush::Solid(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff)),
+    );
+    ui.set_local(card, border_brush_prop, opt_solid(0x3b, 0x3b, 0x46, 0xff));
+    ui.set_local(card, border_width_prop, 1.0_f64);
+    ui.set_local(card, corner_radius_prop, 12.0_f64);
+    ui.append(card, section_label(title));
+    card
+}
+
+fn opt_solid(r: u8, g: u8, b: u8, a: u8) -> Option<Brush> {
+    Some(Color::from_rgba8(r, g, b, a).into())
 }
 
 /// Builds a click handler that cycles the button's label each time
@@ -432,9 +478,9 @@ fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + '
     }
 }
 
-/// Builds the demo tree. Two `Button`s, a `ToggleSwitch`, a
-/// `Spinner`, and a `Slider` in a row, each interactive control
-/// labeled with a `Text` caption (where it isn't already labeled).
+/// Builds the demo tree as a small control gallery. The point is to exercise
+/// normal app code: every visible piece is a built-in control, styled by the
+/// default cascade, and animated through `Ui` timers.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
     // Install the palette early so any spec that reads from the
@@ -442,39 +488,80 @@ fn build_ui() -> Ui {
     ui.set_theme(theme::default_theme());
     let root = ui.root();
 
-    // Root layout: full-viewport row-flex with padding + gap.
-    let root_layout = layouts::row_with_gap(32.0)
+    // Root layout: full-viewport column with centered gallery content.
+    let root_layout = layouts::column_with_gap(22.0)
         .justify_center()
         .align_center()
         .percent_size(1.0, 1.0)
-        .padding_all(50.0);
+        .padding_all(36.0);
     ui.set_layout(root, root_layout);
 
-    // Two buttons. Each owns its own activation counter via the
-    // closure returned by `cycling_click_handler`. `event.current`
-    // gives the handler the button id at fire time, so the
-    // closure stays self-contained.
+    ui.append(root, heading("Overstory Control Gallery"));
     ui.append(
         root,
-        Button::new("Click me").on_click(cycling_click_handler()),
+        caption("Templated controls, routed input, timers, focus, and styled parts"),
     );
-    ui.append(root, Button::new("Or me").on_click(cycling_click_handler()));
 
-    // A labeled `ToggleSwitch` — toggle on top, "Notifications"
-    // caption beneath, wrapped in a column.
-    let toggle_col = ui.append(root, Panel::column(6.0).align_center());
-    ui.append(toggle_col, ToggleSwitch::new());
-    ui.append(toggle_col, caption("Notifications"));
+    let gallery = ui.append(root, Panel::row(24.0).align_center().justify_center());
 
-    // A labeled `Spinner`.
-    let spinner_col = ui.append(root, Panel::column(6.0).align_center());
-    ui.append(spinner_col, Spinner::new());
-    ui.append(spinner_col, caption("Loading…"));
+    let input_card = card(&mut ui, gallery, "INPUTS");
+    ui.append(
+        input_card,
+        TextInput::new()
+            .placeholder("Search command palette")
+            .width(280.0),
+    );
 
-    // A labeled `Slider`.
-    let slider_col = ui.append(root, Panel::column(6.0).align_center());
-    ui.append(slider_col, Slider::new().value(0.4));
-    ui.append(slider_col, caption("Volume"));
+    let button_row = ui.append(input_card, Panel::row(10.0).align_center());
+    ui.append(
+        button_row,
+        Button::new("Deploy")
+            .font_size(15.0)
+            .on_click(cycling_click_handler()),
+    );
+    ui.append(
+        button_row,
+        Button::new("Review")
+            .font_size(15.0)
+            .on_click(cycling_click_handler()),
+    );
+
+    ui.append(input_card, Divider::horizontal().length(280.0));
+    ui.append(
+        input_card,
+        CheckBox::new("Enable staged rollout").checked(true),
+    );
+    ui.append(input_card, CheckBox::new("Collect timing traces"));
+    ui.append(input_card, CheckBox::new("Send diagnostics").disabled());
+
+    let systems_card = card(&mut ui, gallery, "SYSTEMS");
+    let toggle_row = ui.append(systems_card, Panel::row(12.0).align_center());
+    ui.append(toggle_row, ToggleSwitch::new().checked(true));
+    ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
+
+    ui.append(systems_card, Divider::horizontal().length(280.0));
+
+    ui.append(systems_card, caption("GPU Budget"));
+    let progress = ui.append(
+        systems_card,
+        ProgressBar::new().value(0.62).size(280.0, 18.0),
+    );
+    let _ = ui.schedule_timer_repeating(progress, 120_000_000);
+    let mut progress_value = 0.62_f64;
+    ui.on_timer(progress, move |ui, _event| {
+        progress_value += 0.015;
+        if progress_value > 1.0 {
+            progress_value = 0.08;
+        }
+        set_progress_value(ui, progress, progress_value);
+    });
+
+    ui.append(systems_card, caption("Volume"));
+    ui.append(systems_card, Slider::new().value(0.42));
+
+    let spinner_row = ui.append(systems_card, Panel::row(12.0).align_center());
+    ui.append(spinner_row, Spinner::new());
+    ui.append(spinner_row, caption("Streaming updates"));
 
     ui.set_cascade(theme::default_cascade(ui.properties()));
 

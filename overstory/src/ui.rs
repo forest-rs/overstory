@@ -979,6 +979,14 @@ impl Ui {
         self.set_local(id, layout_prop, layout.into());
     }
 
+    pub(crate) fn with_plain_editor<R>(
+        &self,
+        editor: &mut parley::PlainEditor<peniko::Brush>,
+        f: impl FnOnce(&mut parley::PlainEditorDriver<'_, peniko::Brush>) -> R,
+    ) -> R {
+        self.text.borrow_mut().with_plain_editor(editor, f)
+    }
+
     /// Registers a one-way binding from `source` to `target`. Both
     /// endpoints' value types must match. Returns the new [`BindingId`]
     /// or a [`BindingError`] if the registration would self-loop or

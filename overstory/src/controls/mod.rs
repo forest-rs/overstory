@@ -15,8 +15,12 @@
 //! at the crate root via `lib.rs`.
 
 pub(crate) mod button;
+pub(crate) mod checkbox;
+pub(crate) mod divider;
 pub(crate) mod panel;
+pub(crate) mod progress;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod text;
+pub(crate) mod text_input;
 pub(crate) mod toggle;

@@ -9,7 +9,9 @@
 
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
-use parley::{FontContext, Layout, LayoutContext, PositionedLayoutItem};
+use parley::{
+    FontContext, Layout, LayoutContext, PlainEditor, PlainEditorDriver, PositionedLayoutItem,
+};
 use peniko::{Brush, Fill};
 use smallvec::SmallVec;
 
@@ -80,6 +82,15 @@ impl TextEngine {
             parley::AlignmentOptions::default(),
         );
         layout
+    }
+
+    pub(crate) fn with_plain_editor<R>(
+        &mut self,
+        editor: &mut PlainEditor<Brush>,
+        f: impl FnOnce(&mut PlainEditorDriver<'_, Brush>) -> R,
+    ) -> R {
+        let mut driver = editor.driver(&mut self.font_context, &mut self.layout_context);
+        f(&mut driver)
     }
 }
 

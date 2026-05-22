@@ -44,7 +44,17 @@ pub use behavior::{KnownDimensions, MeasureConstraints, MeasureContext, PresentC
 pub use controls::button::{
     Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };
+pub use controls::checkbox::{
+    CheckBox, CheckBoxWidget, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK,
+    SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX,
+    set_check_box_checked,
+};
+pub use controls::divider::{Divider, DividerAxis, DividerWidget, TYPE_DIVIDER};
 pub use controls::panel::{Panel, PanelWidget};
+pub use controls::progress::{
+    PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, ProgressBarWidget,
+    SLOT_PROGRESS_BAR_FILL, SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
+};
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
     PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,
@@ -53,6 +63,11 @@ pub use controls::slider::{
 };
 pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
+pub use controls::text_input::{
+    CLASS_TEXT_INPUT_PLACEHOLDER, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
+    PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET, SLOT_TEXT_INPUT_SELECTION, SLOT_TEXT_INPUT_TEXT,
+    TYPE_TEXT_INPUT, TextInput, TextInputWidget,
+};
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
 };
