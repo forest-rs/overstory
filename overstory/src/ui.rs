@@ -15,15 +15,13 @@ use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 
 use cursor_icon::CursorIcon;
-use hashbrown::HashMap;
 use imaging::record::{Clip, Geometry, Scene};
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
-use smallvec::SmallVec;
 use ui_events::ScrollDelta;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
 use ui_events::pointer::{PointerButton, PointerEvent};
-use understory_box_tree::{LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
+use understory_box_tree::{NodeFlags, NodeId};
 use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
 use understory_focus::Navigation;
@@ -50,6 +48,7 @@ use crate::focus_runtime::FocusRuntime;
 use crate::layout_runtime::LayoutRuntime;
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
+use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
@@ -71,15 +70,8 @@ pub struct Ui {
     registry: PropertyRegistry,
     properties: BuiltInProperties,
     invalidation: InvalidationTracker<ElementId>,
-    /// Retained resolved drawing intent. Each element has one entry,
-    /// keyed by its primary box-tree node id. Behaviors write
-    /// primitives here during the present pass; paint walks the box
-    /// tree and lowers primitives + world bounds into draw commands.
-    ///
-    /// Held as `Option` so `present_element` can `take` it briefly
-    /// while it holds a `&Ui` borrow (for `UiResolveLookup`); always
-    /// `Some` outside that window.
-    presentation: Option<PresentationStore<NodeId, ElementId>>,
+    /// Box-tree geometry, hit testing, and retained presentation data.
+    presentation: PresentationRuntime,
     style: StyleRuntime,
     /// Path-based hover state machine from `understory_event_state`.
     /// Tracks the current root→target hover path; `update_path` returns
@@ -109,16 +101,6 @@ pub struct Ui {
     /// while also taking `&mut Self` (Ui) as the `BindingHost`, and we'd
     /// otherwise overlap. The set is always `Some` outside `flush_bindings`.
     bindings: Option<BindingSet<ElementId>>,
-    /// Spatially-indexed render tree from `understory_box_tree`. Each
-    /// element maps to one or more `NodeId`s (primary plus optional
-    /// auxiliary nodes for decorations). The tree owns local geometry
-    /// (bounds, transform, clip, z-order, flags) and produces a damage
-    /// summary on [`Tree::commit`]; paint walks it and hit-testing
-    /// uses [`Tree::hit_test_point`].
-    tree: Tree,
-    /// Element → its node(s) in `tree`, primary first. `SmallVec`
-    /// inline capacity of 1 keeps the common no-auxiliary case heap-free.
-    element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
     events: EventRuntime,
     /// Pointer position captured at the most recent primary-button
     /// `Down`. Used by the drag dispatch to compute total offset
@@ -558,7 +540,7 @@ impl Ui {
             registry,
             properties,
             invalidation,
-            presentation: Some(PresentationStore::new()),
+            presentation: PresentationRuntime::new(),
             style: StyleRuntime::new(),
             hover: HoverState::new(),
             clicks: ClickState::new(),
@@ -567,8 +549,6 @@ impl Ui {
             templates: TemplateRuntime::new(),
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
-            tree: Tree::new(),
-            element_to_nodes: HashMap::new(),
             events: EventRuntime::new(),
             press_position: None,
             last_drag_position: None,
@@ -1014,15 +994,14 @@ impl Ui {
     /// Hit-tests `point` against the box tree and returns the topmost,
     /// deepest element whose node covers it.
     ///
-    /// Internally delegates to [`Tree::hit_test_point`], which uses
-    /// `understory_box_tree`'s spatial index. Returns `None` if no
-    /// node is hit. Requires that the most recent geometry mutation
-    /// has been followed by a [`Tree::commit`] — `compute_layout`
-    /// commits as its last step, and read-only consumers in tests
-    /// either go through layout or write nothing first.
+    /// Internally delegates to `understory_box_tree`'s spatial index.
+    /// Returns `None` if no node is hit. Requires that the most recent
+    /// geometry mutation has been committed; `compute_layout` commits as its
+    /// last step, and read-only consumers in tests either go through layout or
+    /// write nothing first.
     #[must_use]
     pub fn hit_test(&self, point: Point) -> Option<ElementId> {
-        let hit = self.tree.hit_test_point(point, QueryFilter::new())?;
+        let hit = self.presentation.hit_test(point)?;
         self.node_to_element(hit.node)
     }
 
@@ -1031,21 +1010,14 @@ impl Ui {
     /// the element id-space (e.g. responder integration).
     #[must_use]
     pub fn node_to_element(&self, node: NodeId) -> Option<ElementId> {
-        for (element_id, nodes) in &self.element_to_nodes {
-            if nodes.contains(&node) {
-                return Some(*element_id);
-            }
-        }
-        None
+        self.presentation.node_to_element(node)
     }
 
     /// Returns the primary box-tree node for `id`, or `None` for
     /// stale ids.
     #[must_use]
     pub fn box_for(&self, id: ElementId) -> Option<NodeId> {
-        self.element_to_nodes
-            .get(&id)
-            .and_then(|nodes| nodes.first().copied())
+        self.presentation.box_for(id)
     }
 
     /// Applies shared interactive control state to `id`.
@@ -1081,7 +1053,7 @@ impl Ui {
         let Some(primary) = self.box_for(id) else {
             return false;
         };
-        self.tree
+        self.presentation
             .flags(primary)
             .map(|flags| flags.contains(NodeFlags::FOCUSABLE))
             .unwrap_or(false)
@@ -1096,13 +1068,13 @@ impl Ui {
         let Some(primary) = self.box_for(id) else {
             return;
         };
-        let mut flags = self.tree.flags(primary).unwrap_or_default();
+        let mut flags = self.presentation.flags(primary).unwrap_or_default();
         if focusable {
             flags.insert(NodeFlags::FOCUSABLE);
         } else {
             flags.remove(NodeFlags::FOCUSABLE);
         }
-        self.tree.set_flags(primary, flags);
+        self.presentation.set_flags(primary, flags);
     }
 
     /// Returns whether `id` is currently enabled.
@@ -1199,14 +1171,14 @@ impl Ui {
     /// [`understory_focus::DefaultPolicy`] with `WrapMode::Scope` so
     /// focus cycles within the tree. Returns the new focused element.
     pub fn focus_navigate(&mut self, direction: Navigation) -> Option<ElementId> {
-        self.tree.commit();
+        self.presentation.commit();
         let root_node = self.box_for(self.root())?;
         // Resolve the current focus's node before we borrow `tree`
         // and `focus_buf` to build the FocusSpace.
         let current_node = self.focus.focused().and_then(|id| self.box_for(id));
-        let new_node = self
-            .focus
-            .navigate(&self.tree, root_node, current_node, direction);
+        let new_node =
+            self.focus
+                .navigate(self.presentation.tree(), root_node, current_node, direction);
         let new_element = new_node.and_then(|n| self.node_to_element(n));
         self.set_focus(new_element);
         new_element
@@ -1782,8 +1754,8 @@ impl Ui {
     /// pseudoclass state.
     fn update_hover_at(&mut self, pos: Point) -> bool {
         let path: Vec<ElementId> = self
-            .tree
-            .hit_test_point(pos, QueryFilter::new())
+            .presentation
+            .hit_test(pos)
             .map(|hit| {
                 hit.path
                     .into_iter()
@@ -1991,7 +1963,7 @@ impl Ui {
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
         // query) reflects this frame's geometry.
-        self.tree.commit();
+        self.presentation.commit();
     }
 
     fn write_bounds_recursive(&mut self, id: ElementId, parent_origin: Point) {
@@ -2029,11 +2001,11 @@ impl Ui {
         // Mirror the world-space bounds into the box tree's primary
         // node for this element. Since every node is currently a
         // tree root with IDENTITY transform, `local_bounds == world_bounds`
-        // and `Tree::hit_test_point` matches the old element-bounds walk.
-        if let Some(&primary) = self.element_to_nodes.get(&id).and_then(|v| v.first()) {
-            self.tree.set_local_bounds(primary, rect);
+        // and hit testing matches the old element-bounds walk.
+        if let Some(primary) = self.box_for(id) {
+            self.presentation.set_local_bounds(primary, rect);
             let clip = clips_subtree.then(|| RoundedRect::from_rect(rect, 0.0));
-            self.tree.set_local_clip(primary, clip);
+            self.presentation.set_local_clip(primary, clip);
         }
 
         let children: Vec<ElementId> = self
@@ -2087,19 +2059,14 @@ impl Ui {
         // when paint follows layout this is a cheap no-op; tests
         // that paint without layout (or callers exploring partial
         // pipelines) get a correct commit on demand.
-        self.tree.commit();
+        self.presentation.commit();
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
         for id in dirty {
             self.present_element(id);
         }
         // We don't yet drive incremental re-lowering off this, but
         // draining keeps the dirty set bounded.
-        let _: Vec<NodeId> = self
-            .presentation
-            .as_mut()
-            .expect("presentation always Some outside present_element")
-            .take_dirty()
-            .collect();
+        let _: Vec<NodeId> = self.presentation.drain_dirty();
 
         output.clear();
         if let Some(root_box) = self.box_for(self.root()) {
@@ -2117,12 +2084,9 @@ impl Ui {
         // both a `&Ui` borrow (for `UiResolveLookup`) and a
         // `&mut PresentationStore` simultaneously. Always put it back
         // before returning.
-        let mut presentation = self
-            .presentation
-            .take()
-            .expect("presentation always Some outside present_element");
+        let mut presentation = self.presentation.take_presentation();
         self.present_element_inner(id, &mut presentation);
-        self.presentation = Some(presentation);
+        self.presentation.restore_presentation(presentation);
     }
 
     fn present_element_inner(
@@ -2158,17 +2122,20 @@ impl Ui {
     /// node's presentation primitives into `output` at its world
     /// bounds.
     fn lower_subtree(&self, node: NodeId, output: &mut Scene) {
-        let clip = self.tree.local_clip(node).flatten();
+        let clip = self.presentation.local_clip(node).flatten();
         let had_clip = clip.is_some();
         if let Some(clip) = clip {
             output.push_clip(Clip::Fill {
-                transform: self.tree.world_transform(node).unwrap_or(Affine::IDENTITY),
+                transform: self
+                    .presentation
+                    .world_transform(node)
+                    .unwrap_or(Affine::IDENTITY),
                 shape: Geometry::RoundedRect(clip),
                 fill_rule: peniko::Fill::NonZero,
             });
         }
         self.lower_one(node, output);
-        let children: Vec<NodeId> = self.tree.children_of(node).to_vec();
+        let children: Vec<NodeId> = self.presentation.children_of(node).to_vec();
         for child in children {
             self.lower_subtree(child, output);
         }
@@ -2178,16 +2145,13 @@ impl Ui {
     }
 
     fn lower_one(&self, node: NodeId, output: &mut Scene) {
-        let Some(bounds) = self.tree.world_bounds(node) else {
+        let Some(bounds) = self.presentation.world_bounds(node) else {
             return;
         };
         if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
             return;
         }
-        let Some(store) = self.presentation.as_ref() else {
-            return;
-        };
-        let Some(presentation) = store.node(node) else {
+        let Some(presentation) = self.presentation.presentation(node) else {
             return;
         };
         lower_presentation(presentation.primitives(), bounds, output, &self.text);
@@ -2240,46 +2204,13 @@ impl Ui {
         self.timers.remove_target(id);
         self.focus.remove_target(id);
         self.layout.remove_element(id);
-        if let Some(nodes) = self.element_to_nodes.remove(&id) {
-            for node in nodes {
-                if let Some(store) = self.presentation.as_mut() {
-                    let _ = store.remove(node);
-                }
-                self.tree.remove(node);
-            }
-        }
+        self.presentation.remove_element(id);
     }
 
     fn mirror_allocated_element(&mut self, id: ElementId, parent: Option<ElementId>) {
         self.layout.insert_element(id, parent);
 
-        // Mirror into the box tree. The new node hangs off its
-        // parent element's primary tree node so the box tree mirrors
-        // the element-tree structure. `LocalNode::default()` gives
-        // IDENTITY transform / no clip / visible + pickable flags;
-        // arrange writes `local_bounds` per element. Bounds are
-        // stored in world coords for now (paired with IDENTITY
-        // transforms at every level), so `world_bounds == local_bounds`
-        // and the tree's hit testing matches what the element-bounds
-        // walk used to do — with `understory_index`'s spatial index
-        // doing the heavy lifting. A future phase will refactor
-        // behaviors to paint in local coords and exercise the tree's
-        // world-transform composition for compositor animation.
-        let parent_node = parent
-            .and_then(|p| self.element_to_nodes.get(&p))
-            .and_then(|v| v.first())
-            .copied();
-        let tree_node = self.tree.insert(parent_node, LocalNode::default());
-        let mut nodes = SmallVec::<[NodeId; 1]>::new();
-        nodes.push(tree_node);
-        self.element_to_nodes.insert(id, nodes);
-        // Create a presentation entry for the primary node, sourced
-        // from the element. Behaviors populate primitives later via
-        // `present`; presence in the store is what lets the lowerer
-        // find this node during paint.
-        if let Some(store) = self.presentation.as_mut() {
-            let _ = store.insert(tree_node, id);
-        }
+        self.presentation.insert_element(id, parent);
     }
 }
 
@@ -2791,9 +2722,7 @@ mod tests {
         let label_node = ui.box_for(label).expect("label should have a box node");
         let foreground = ui
             .presentation
-            .as_ref()
-            .expect("presentation store should exist")
-            .node(label_node)
+            .presentation(label_node)
             .expect("label should have presentation")
             .plain_text()
             .expect("label should present text")
@@ -3491,9 +3420,7 @@ mod tests {
         let label_node = ui.box_for(label).expect("label should have a box node");
         let foreground = ui
             .presentation
-            .as_ref()
-            .expect("presentation store should exist")
-            .node(label_node)
+            .presentation(label_node)
             .expect("label should have presentation")
             .plain_text()
             .expect("label should present text")
@@ -3505,7 +3432,7 @@ mod tests {
     #[test]
     fn hit_test_picks_topmost_child() {
         // Hit testing now goes through `understory_box_tree`'s
-        // spatially-indexed `Tree::hit_test_point`, which reads the
+        // spatially-indexed box-tree hit testing, which reads the
         // tree's `local_bounds` populated by `compute_layout`. Drive
         // the test through the layout pipeline: root 200×200 with
         // 50px padding all around; child fills the content area,
@@ -4280,7 +4207,10 @@ mod tests {
         // Every element has at least one node; `node_to_element`
         // recovers it.
         for elem in [root, a, b] {
-            let nodes = &ui.element_to_nodes[&elem];
+            let nodes = ui
+                .presentation
+                .nodes_for(elem)
+                .expect("element should have tree nodes");
             assert!(!nodes.is_empty(), "element should have a tree node");
             for &node in nodes {
                 assert_eq!(ui.node_to_element(node), Some(elem));
@@ -4289,12 +4219,12 @@ mod tests {
 
         // Tree structure mirrors element-tree structure: `a` and `b`
         // are children of `root`'s tree node.
-        let root_node = ui.element_to_nodes[&root][0];
-        let a_node = ui.element_to_nodes[&a][0];
-        let b_node = ui.element_to_nodes[&b][0];
-        let children = ui.tree.children_of(root_node);
+        let root_node = ui.presentation.nodes_for(root).unwrap()[0];
+        let a_node = ui.presentation.nodes_for(a).unwrap()[0];
+        let b_node = ui.presentation.nodes_for(b).unwrap()[0];
+        let children = ui.presentation.children_of(root_node);
         assert_eq!(children, &[a_node, b_node]);
-        assert_eq!(ui.tree.parent_of(a_node), Some(root_node));
+        assert_eq!(ui.presentation.parent_of(a_node), Some(root_node));
     }
 
     #[test]
