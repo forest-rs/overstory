@@ -2478,20 +2478,7 @@ impl<'a> ParentLookup<ElementId> for UiParentLookup<'a> {
 /// report a tighter min-content (e.g. the longest unbreakable word width
 /// for text).
 fn text_max_advance_for_bounds(bounds: Rect) -> Option<f32> {
-    let width = bounds.width();
-    if width.is_finite() && width > 0.0 {
-        Some(f32_from_text_width(width))
-    } else {
-        None
-    }
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "UI logical bounds fit parley's f32 text layout coordinates"
-)]
-fn f32_from_text_width(width: f64) -> f32 {
-    width as f32
+    crate::text::max_advance_for_logical_width(bounds.width())
 }
 
 /// Lowers a node's resolved presentation primitives into `output`,
@@ -3056,6 +3043,84 @@ mod tests {
             max_y - min_y < 20.0,
             "row label should paint on one line; glyph y span was {}",
             max_y - min_y
+        );
+    }
+
+    #[test]
+    fn control_row_labels_keep_single_line_widths() {
+        use crate::{Spinner, Text, ToggleSwitch, theme};
+
+        let mut ui = Ui::new();
+        ui.set_theme(theme::default_theme());
+        let root = ui.root();
+        ui.set_layout(
+            root,
+            Layout::column(14.0)
+                .logical_size(320.0, 350.0)
+                .padding_all(18.0),
+        );
+
+        let toggle_row = ui.append(root, crate::Panel::row(12.0).align_center());
+        ui.append(toggle_row, ToggleSwitch::new().checked(true));
+        let toggle_label = ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
+
+        let spinner_row = ui.append(root, crate::Panel::row(12.0).align_center());
+        ui.append(spinner_row, Spinner::new());
+        let spinner_label = ui.append(spinner_row, Text::new("Streaming updates").font_size(13.0));
+
+        ui.compute_layout(Size::new(320.0, 350.0));
+
+        let toggle_natural_width = f64::from(
+            ui.text
+                .borrow_mut()
+                .shape("Live rendering", 15.0, Brush::default(), None)
+                .width(),
+        );
+        let spinner_natural_width = f64::from(
+            ui.text
+                .borrow_mut()
+                .shape("Streaming updates", 13.0, Brush::default(), None)
+                .width(),
+        );
+
+        let toggle_bounds = ui.effective_bounds(toggle_label);
+        let spinner_bounds = ui.effective_bounds(spinner_label);
+        assert!(
+            toggle_bounds.width() >= toggle_natural_width - 1.0,
+            "toggle label should retain natural width; natural={toggle_natural_width}, bounds={toggle_bounds:?}"
+        );
+        assert!(
+            spinner_bounds.width() >= spinner_natural_width - 1.0,
+            "spinner label should retain natural width; natural={spinner_natural_width}, bounds={spinner_bounds:?}"
+        );
+
+        let toggle_painted_height = ui
+            .text
+            .borrow_mut()
+            .shape(
+                "Live rendering",
+                15.0,
+                Brush::default(),
+                text_max_advance_for_bounds(toggle_bounds),
+            )
+            .height();
+        let spinner_painted_height = ui
+            .text
+            .borrow_mut()
+            .shape(
+                "Streaming updates",
+                13.0,
+                Brush::default(),
+                text_max_advance_for_bounds(spinner_bounds),
+            )
+            .height();
+        assert!(
+            toggle_painted_height < 24.0,
+            "toggle label should paint on one line; painted height was {toggle_painted_height}"
+        );
+        assert!(
+            spinner_painted_height < 22.0,
+            "spinner label should paint on one line; painted height was {spinner_painted_height}"
         );
     }
 

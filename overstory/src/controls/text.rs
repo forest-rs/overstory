@@ -146,13 +146,5 @@ fn text_wrap_width(constraints: MeasureConstraints) -> Option<f32> {
         .known
         .width
         .filter(|width| width.is_finite() && *width > 0.0)
-        .map(f32_from_f64_for_text)
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "UI logical text widths fit parley's f32 coordinates"
-)]
-fn f32_from_f64_for_text(value: f64) -> f32 {
-    value as f32
+        .and_then(crate::text::max_advance_for_logical_width)
 }

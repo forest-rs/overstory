@@ -15,6 +15,30 @@ use parley::{
 use peniko::{Brush, Fill};
 use smallvec::SmallVec;
 
+const WRAP_WIDTH_TOLERANCE: f32 = 0.5;
+
+/// Converts a logical-pixel width into a Parley wrap advance.
+///
+/// Taffy stores measured widths as `f32`, then Overstory lowers them back
+/// through `f64` bounds before painting. A text run measured at its natural
+/// width can otherwise be re-shaped against a maximum advance that is a hair
+/// smaller than Parley's own line width and wrap spuriously.
+pub(crate) fn max_advance_for_logical_width(width: f64) -> Option<f32> {
+    if width.is_finite() && width > 0.0 {
+        Some(f32_from_logical_width(width) + WRAP_WIDTH_TOLERANCE)
+    } else {
+        None
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "UI logical text widths fit parley's f32 coordinates"
+)]
+fn f32_from_logical_width(width: f64) -> f32 {
+    width as f32
+}
+
 /// Owns parley's font and layout context state. One per [`crate::Ui`].
 pub struct TextEngine {
     /// Font discovery + source cache.
