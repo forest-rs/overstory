@@ -35,6 +35,19 @@ pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
 
 type SharedSelection = Rc<RefCell<Selection<ElementId>>>;
+type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
+type SharedListSelectionChangedHandler = Rc<RefCell<Option<ListSelectionChangedHandler>>>;
+
+/// Event delivered when a [`ListBox`] selection changes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ListSelectionChangedEvent {
+    /// The list box whose selection changed.
+    pub listbox: ElementId,
+    /// The selected direct list items after the change.
+    pub selected: Vec<ElementId>,
+    /// The primary selected item after the change, if any.
+    pub primary: Option<ElementId>,
+}
 
 /// Selection behavior for a [`ListBox`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -52,6 +65,7 @@ pub struct ListBox {
     size: Option<(f32, f32)>,
     state: ControlState,
     selection_mode: ListSelectionMode,
+    on_selection_changed: Option<ListSelectionChangedHandler>,
 }
 
 impl core::fmt::Debug for ListBox {
@@ -71,6 +85,7 @@ impl ListBox {
             size: None,
             state: ControlState::interactive(),
             selection_mode: ListSelectionMode::Single,
+            on_selection_changed: None,
         }
     }
 
@@ -113,6 +128,16 @@ impl ListBox {
     pub fn multiple_selection(self) -> Self {
         self.selection_mode(ListSelectionMode::Multiple)
     }
+
+    /// Registers a handler fired after this list's selection changes.
+    #[must_use]
+    pub fn on_selection_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, ListSelectionChangedEvent) + 'static,
+    {
+        self.on_selection_changed = Some(Box::new(handler));
+        self
+    }
 }
 
 impl Default for ListBox {
@@ -124,11 +149,13 @@ impl Default for ListBox {
 impl AppendSpec for ListBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let selection = Rc::new(RefCell::new(Selection::new()));
+        let selection_changed = Rc::new(RefCell::new(self.on_selection_changed));
         let id = ui.append_widget(
             parent,
             Box::new(ListBoxWidget {
                 selection,
                 selection_mode: self.selection_mode,
+                selection_changed,
             }),
         );
 
@@ -147,6 +174,7 @@ impl AppendSpec for ListBox {
 pub struct ListBoxWidget {
     selection: SharedSelection,
     selection_mode: ListSelectionMode,
+    selection_changed: SharedListSelectionChangedHandler,
 }
 
 impl core::fmt::Debug for ListBoxWidget {
@@ -428,13 +456,14 @@ fn select_list_item_range(
     };
 
     mutate_list_selection(ui, listbox, move |selection| {
-        if extend_existing {
-            selection.extend_with(range);
-        } else {
-            selection.replace_with(range);
+        if !extend_existing {
+            return selection.replace_with_roles(range, Some(&item), Some(&anchor));
         }
-        selection.set_primary(&item);
-        selection.set_anchor(&anchor);
+
+        let mut changed = selection.extend_with(range);
+        changed |= selection.set_primary(&item);
+        changed |= selection.set_anchor(&anchor);
+        changed
     })
     .is_some()
 }
@@ -445,17 +474,18 @@ fn toggle_list_item_selection(ui: &mut Ui, listbox: ElementId, item: ElementId) 
     }
 
     mutate_list_selection(ui, listbox, |selection| {
-        selection.toggle(item);
+        let mut changed = selection.toggle(item);
         if selection.primary().is_none()
             && let Some(first) = selection.items().first().copied()
         {
-            selection.set_primary(&first);
+            changed |= selection.set_primary(&first);
         }
         if selection.anchor().is_none()
             && let Some(primary) = selection.primary().copied()
         {
-            selection.set_anchor(&primary);
+            changed |= selection.set_anchor(&primary);
         }
+        changed
     })
     .is_some()
 }
@@ -472,25 +502,37 @@ fn select_all_list_items(ui: &mut Ui, listbox: ElementId) -> bool {
 fn mutate_list_selection(
     ui: &mut Ui,
     listbox: ElementId,
-    mutate: impl FnOnce(&mut Selection<ElementId>),
+    mutate: impl FnOnce(&mut Selection<ElementId>) -> bool,
 ) -> Option<bool> {
     let selection = list_box_selection(ui, listbox)?;
-    let (previous, previous_revision) = {
-        let selection = selection.borrow();
-        (selection.items().to_vec(), selection.revision())
-    };
+    let selection_changed = list_box_selection_changed_handler(ui, listbox);
+    let previous = selection.borrow().items().to_vec();
 
-    {
+    let changed = {
         let mut selection = selection.borrow_mut();
-        mutate(&mut selection);
-    }
-
-    let (current, current_revision) = {
-        let selection = selection.borrow();
-        (selection.items().to_vec(), selection.revision())
+        mutate(&mut selection)
     };
+
+    let current = selection.borrow().items().to_vec();
     sync_selected_pseudos(ui, listbox, &previous, &current);
-    Some(current_revision != previous_revision)
+    if changed {
+        let selected = current
+            .iter()
+            .copied()
+            .filter(|item| is_direct_list_item(ui, listbox, *item))
+            .collect();
+        let primary = selected_list_item(ui, listbox);
+        dispatch_list_selection_changed(
+            ui,
+            selection_changed,
+            ListSelectionChangedEvent {
+                listbox,
+                selected,
+                primary,
+            },
+        );
+    }
+    Some(changed)
 }
 
 fn sync_selected_pseudos(
@@ -540,6 +582,24 @@ fn is_activation_key(key: &ui_events::keyboard::Key) -> bool {
     matches!(key, Key::Named(NamedKey::Enter)) || matches!(key, Key::Character(s) if s == " ")
 }
 
+fn dispatch_list_selection_changed(
+    ui: &mut Ui,
+    handler: Option<SharedListSelectionChangedHandler>,
+    event: ListSelectionChangedEvent,
+) {
+    let Some(handler) = handler else {
+        return;
+    };
+    let Some(mut callback) = handler.borrow_mut().take() else {
+        return;
+    };
+    callback(ui, event);
+    let should_restore = handler.borrow().is_none();
+    if should_restore {
+        *handler.borrow_mut() = Some(callback);
+    }
+}
+
 fn listbox_parent(ui: &Ui, item: ElementId) -> Option<ElementId> {
     let parent = ui.get(item)?.parent()?;
     list_box_selection(ui, parent).is_some().then_some(parent)
@@ -585,6 +645,16 @@ fn list_box_selection_mode(ui: &Ui, listbox: ElementId) -> Option<ListSelectionM
         .map(|widget| widget.selection_mode)
 }
 
+fn list_box_selection_changed_handler(
+    ui: &Ui,
+    listbox: ElementId,
+) -> Option<SharedListSelectionChangedHandler> {
+    ui.get(listbox)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
+        .map(|widget| Rc::clone(&widget.selection_changed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -628,6 +698,37 @@ mod tests {
         assert_eq!(selected_list_items(&ui, listbox), vec![second]);
         assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
         assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+    }
+
+    #[test]
+    fn selection_changed_handler_observes_semantic_changes() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let observed: Rc<RefCell<Vec<ListSelectionChangedEvent>>> =
+            Rc::new(RefCell::new(Vec::new()));
+        let observed_for_handler = Rc::clone(&observed);
+        let listbox = ui.append(
+            root,
+            ListBox::new()
+                .multiple_selection()
+                .on_selection_changed(move |_ui, event| {
+                    observed_for_handler.borrow_mut().push(event);
+                }),
+        );
+        let first = ui.append(listbox, ListItem::new("First"));
+        let second = ui.append(listbox, ListItem::new("Second"));
+
+        ui.synthesize_click(first, kurbo::Point::ZERO);
+        ui.synthesize_click(first, kurbo::Point::ZERO);
+        ui.synthesize_click_with_modifiers(second, kurbo::Point::ZERO, Modifiers::CONTROL);
+
+        let observed = observed.borrow();
+        assert_eq!(observed.len(), 2, "reselecting the same item is a no-op");
+        assert_eq!(observed[0].listbox, listbox);
+        assert_eq!(observed[0].selected, vec![first]);
+        assert_eq!(observed[0].primary, Some(first));
+        assert_eq!(observed[1].selected, vec![first, second]);
+        assert_eq!(observed[1].primary, Some(second));
     }
 
     #[test]
