@@ -272,7 +272,7 @@ fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
             // bounds origin so click handlers that care about position
             // get a sensible value.
             let pos = ui.effective_bounds(button).origin();
-            ui.synthesize_click(button, pos);
+            ui.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
             event.mark_handled();
         }
     });

@@ -21,7 +21,7 @@ use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, Size};
 use smallvec::SmallVec;
-use ui_events::keyboard::KeyboardEvent;
+use ui_events::keyboard::{KeyboardEvent, Modifiers};
 use ui_events::pointer::{PointerButton, PointerEvent};
 use understory_box_tree::{LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
 use understory_event_state::click::{ClickResult, ClickState};
@@ -475,6 +475,8 @@ pub struct ClickEvent<'a> {
     /// Pointer position at click-recognition time, in physical
     /// pixels. Useful for hit-position-driven controls like Slider.
     pub position: Point,
+    /// Keyboard modifiers active when this click was recognized.
+    pub modifiers: Modifiers,
     state: &'a RoutedEventState,
 }
 
@@ -1638,11 +1640,31 @@ impl Ui {
         self.dispatch_click(target, position)
     }
 
+    /// Programmatically synthesize a click with explicit keyboard
+    /// modifiers.
+    pub fn synthesize_click_with_modifiers(
+        &mut self,
+        target: ElementId,
+        position: Point,
+        modifiers: Modifiers,
+    ) -> RoutedDispatchResult {
+        self.dispatch_click_with_modifiers(target, position, modifiers)
+    }
+
     /// Builds the responder dispatch sequence for `target` and runs
     /// each element's click handler along it (capture, then target,
     /// then bubble). Called when [`ClickState::on_up`] returns
     /// [`ClickResult::Click`] or by [`Self::synthesize_click`].
     fn dispatch_click(&mut self, target: ElementId, position: Point) -> RoutedDispatchResult {
+        self.dispatch_click_with_modifiers(target, position, Modifiers::default())
+    }
+
+    fn dispatch_click_with_modifiers(
+        &mut self,
+        target: ElementId,
+        position: Point,
+        modifiers: Modifiers,
+    ) -> RoutedDispatchResult {
         if !self.is_enabled(self.press_visual_target(target)) {
             return RoutedDispatchResult::default();
         }
@@ -1658,6 +1680,7 @@ impl Ui {
                 current: node,
                 phase,
                 position,
+                modifiers,
                 state,
             };
             ui.click_handler_dispatch.begin(node);
@@ -1790,7 +1813,7 @@ impl Ui {
                 self.press_position = None;
                 self.last_drag_position = None;
                 if let ClickResult::Click(target) = result {
-                    self.dispatch_click(target, pos);
+                    self.dispatch_click_with_modifiers(target, pos, button_event.state.modifiers);
                 }
                 press_changed
             }

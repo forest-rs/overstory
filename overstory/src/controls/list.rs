@@ -1,7 +1,7 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! `ListBox` and `ListItem`: a single-selection list control.
+//! `ListBox` and `ListItem`: a selectable list control.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -36,16 +36,29 @@ pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
 
 type SharedSelection = Rc<RefCell<Selection<ElementId>>>;
 
-/// Builder + spec for a single-selection list.
+/// Selection behavior for a [`ListBox`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ListSelectionMode {
+    /// Plain single-item selection.
+    #[default]
+    Single,
+    /// Multiple selection with platform action-modifier toggles and
+    /// Shift-based range extension.
+    Multiple,
+}
+
+/// Builder + spec for a selectable list.
 pub struct ListBox {
     size: Option<(f32, f32)>,
     state: ControlState,
+    selection_mode: ListSelectionMode,
 }
 
 impl core::fmt::Debug for ListBox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListBox")
             .field("size", &self.size)
+            .field("selection_mode", &self.selection_mode)
             .finish_non_exhaustive()
     }
 }
@@ -57,6 +70,7 @@ impl ListBox {
         Self {
             size: None,
             state: ControlState::interactive(),
+            selection_mode: ListSelectionMode::Single,
         }
     }
 
@@ -86,6 +100,19 @@ impl ListBox {
     pub fn disabled(self) -> Self {
         self.enabled(false)
     }
+
+    /// Sets the list's selection mode.
+    #[must_use]
+    pub fn selection_mode(mut self, mode: ListSelectionMode) -> Self {
+        self.selection_mode = mode;
+        self
+    }
+
+    /// Convenience for [`Self::selection_mode(ListSelectionMode::Multiple)`].
+    #[must_use]
+    pub fn multiple_selection(self) -> Self {
+        self.selection_mode(ListSelectionMode::Multiple)
+    }
 }
 
 impl Default for ListBox {
@@ -97,7 +124,13 @@ impl Default for ListBox {
 impl AppendSpec for ListBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let selection = Rc::new(RefCell::new(Selection::new()));
-        let id = ui.append_widget(parent, Box::new(ListBoxWidget { selection }));
+        let id = ui.append_widget(
+            parent,
+            Box::new(ListBoxWidget {
+                selection,
+                selection_mode: self.selection_mode,
+            }),
+        );
 
         let mut layout = Layout::column(2.0).padding_all(4.0);
         if let Some((width, height)) = self.size {
@@ -113,6 +146,7 @@ impl AppendSpec for ListBox {
 /// Per-element widget for `ListBox`.
 pub struct ListBoxWidget {
     selection: SharedSelection,
+    selection_mode: ListSelectionMode,
 }
 
 impl core::fmt::Debug for ListBoxWidget {
@@ -235,20 +269,8 @@ pub fn select_list_item(ui: &mut Ui, listbox: ElementId, item: ElementId) -> boo
     if !ui.is_enabled(listbox) || !ui.is_enabled(item) || !is_direct_list_item(ui, listbox, item) {
         return false;
     }
-    let Some(selection) = list_box_selection(ui, listbox) else {
-        return false;
-    };
 
-    let previous = selection.borrow().items().to_vec();
-    for selected in previous {
-        if selected != item {
-            ui.remove_pseudo(selected, PSEUDO_SELECTED);
-        }
-    }
-
-    selection.borrow_mut().select_only(item);
-    ui.add_pseudo(item, PSEUDO_SELECTED);
-    true
+    mutate_list_selection(ui, listbox, |selection| selection.select_only(item)).is_some()
 }
 
 /// Returns the currently selected item in `listbox`, if one is still live.
@@ -257,6 +279,22 @@ pub fn selected_list_item(ui: &Ui, listbox: ElementId) -> Option<ElementId> {
     let selection = list_box_selection(ui, listbox)?;
     let selected = selection.borrow().primary().copied()?;
     is_direct_list_item(ui, listbox, selected).then_some(selected)
+}
+
+/// Returns all currently selected direct list items in `listbox`.
+#[must_use]
+pub fn selected_list_items(ui: &Ui, listbox: ElementId) -> Vec<ElementId> {
+    let Some(selection) = list_box_selection(ui, listbox) else {
+        return Vec::new();
+    };
+
+    selection
+        .borrow()
+        .items()
+        .iter()
+        .copied()
+        .filter(|item| is_direct_list_item(ui, listbox, *item))
+        .collect()
 }
 
 fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
@@ -270,7 +308,13 @@ fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
         let Some(listbox) = listbox_parent(ui, item) else {
             return;
         };
-        select_list_item(ui, listbox, item);
+        select_list_item_for_click(
+            ui,
+            listbox,
+            item,
+            event.modifiers.shift(),
+            action_modifier(event.modifiers),
+        );
         let _ = ui.set_pointer_focus(Some(listbox));
         event.mark_handled();
     });
@@ -292,9 +336,22 @@ fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
             return;
         }
 
+        let mode = list_box_selection_mode(ui, listbox).unwrap_or_default();
         let current = selected_list_item(ui, listbox);
         let current_index =
             current.and_then(|selected| items.iter().position(|id| *id == selected));
+        let action_mod = action_modifier(event.key.modifiers);
+        let shift = event.key.modifiers.shift();
+
+        if mode == ListSelectionMode::Multiple
+            && action_mod
+            && matches!(&event.key.key, Key::Character(s) if s.eq_ignore_ascii_case("a"))
+        {
+            select_all_list_items(ui, listbox);
+            event.mark_handled();
+            return;
+        }
+
         let next = match &event.key.key {
             Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
                 Some(next_index(current_index, items.len()))
@@ -312,7 +369,17 @@ fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
         let Some(next) = next else {
             return;
         };
-        select_list_item(ui, listbox, items[next]);
+        let item = items[next];
+        if mode == ListSelectionMode::Multiple && shift {
+            select_list_item_range(ui, listbox, item, false);
+        } else if mode == ListSelectionMode::Multiple
+            && action_mod
+            && is_activation_key(&event.key.key)
+        {
+            toggle_list_item_selection(ui, listbox, item);
+        } else {
+            select_list_item(ui, listbox, item);
+        }
         event.mark_handled();
     });
 }
@@ -323,6 +390,154 @@ fn next_index(current: Option<usize>, len: usize) -> usize {
 
 fn previous_index(current: Option<usize>, len: usize) -> usize {
     current.map(|idx| idx.saturating_sub(1)).unwrap_or(len - 1)
+}
+
+fn select_list_item_for_click(
+    ui: &mut Ui,
+    listbox: ElementId,
+    item: ElementId,
+    shift: bool,
+    action_mod: bool,
+) -> bool {
+    match list_box_selection_mode(ui, listbox).unwrap_or_default() {
+        ListSelectionMode::Single => select_list_item(ui, listbox, item),
+        ListSelectionMode::Multiple if shift => {
+            select_list_item_range(ui, listbox, item, action_mod)
+        }
+        ListSelectionMode::Multiple if action_mod => toggle_list_item_selection(ui, listbox, item),
+        ListSelectionMode::Multiple => select_list_item(ui, listbox, item),
+    }
+}
+
+fn select_list_item_range(
+    ui: &mut Ui,
+    listbox: ElementId,
+    item: ElementId,
+    extend_existing: bool,
+) -> bool {
+    if !ui.is_enabled(listbox) || !ui.is_enabled(item) || !is_direct_list_item(ui, listbox, item) {
+        return false;
+    }
+
+    let items = list_items(ui, listbox);
+    let anchor = selection_anchor(ui, listbox)
+        .filter(|anchor| items.contains(anchor))
+        .unwrap_or(item);
+    let Some(range) = ordered_item_range(&items, anchor, item) else {
+        return false;
+    };
+
+    mutate_list_selection(ui, listbox, move |selection| {
+        if extend_existing {
+            selection.extend_with(range);
+        } else {
+            selection.replace_with(range);
+        }
+        selection.set_primary(&item);
+        selection.set_anchor(&anchor);
+    })
+    .is_some()
+}
+
+fn toggle_list_item_selection(ui: &mut Ui, listbox: ElementId, item: ElementId) -> bool {
+    if !ui.is_enabled(listbox) || !ui.is_enabled(item) || !is_direct_list_item(ui, listbox, item) {
+        return false;
+    }
+
+    mutate_list_selection(ui, listbox, |selection| {
+        selection.toggle(item);
+        if selection.primary().is_none()
+            && let Some(first) = selection.items().first().copied()
+        {
+            selection.set_primary(&first);
+        }
+        if selection.anchor().is_none()
+            && let Some(primary) = selection.primary().copied()
+        {
+            selection.set_anchor(&primary);
+        }
+    })
+    .is_some()
+}
+
+fn select_all_list_items(ui: &mut Ui, listbox: ElementId) -> bool {
+    let items = list_items(ui, listbox);
+    if items.is_empty() {
+        return false;
+    }
+
+    mutate_list_selection(ui, listbox, move |selection| selection.replace_with(items)).is_some()
+}
+
+fn mutate_list_selection(
+    ui: &mut Ui,
+    listbox: ElementId,
+    mutate: impl FnOnce(&mut Selection<ElementId>),
+) -> Option<bool> {
+    let selection = list_box_selection(ui, listbox)?;
+    let (previous, previous_revision) = {
+        let selection = selection.borrow();
+        (selection.items().to_vec(), selection.revision())
+    };
+
+    {
+        let mut selection = selection.borrow_mut();
+        mutate(&mut selection);
+    }
+
+    let (current, current_revision) = {
+        let selection = selection.borrow();
+        (selection.items().to_vec(), selection.revision())
+    };
+    sync_selected_pseudos(ui, listbox, &previous, &current);
+    Some(current_revision != previous_revision)
+}
+
+fn sync_selected_pseudos(
+    ui: &mut Ui,
+    listbox: ElementId,
+    previous: &[ElementId],
+    current: &[ElementId],
+) {
+    for selected in previous {
+        if !current.contains(selected) {
+            ui.remove_pseudo(*selected, PSEUDO_SELECTED);
+        }
+    }
+    for selected in current {
+        if is_direct_list_item(ui, listbox, *selected) {
+            ui.add_pseudo(*selected, PSEUDO_SELECTED);
+        }
+    }
+}
+
+fn ordered_item_range(
+    items: &[ElementId],
+    anchor: ElementId,
+    item: ElementId,
+) -> Option<Vec<ElementId>> {
+    let anchor = items.iter().position(|candidate| *candidate == anchor)?;
+    let item = items.iter().position(|candidate| *candidate == item)?;
+    let (start, end) = if anchor <= item {
+        (anchor, item)
+    } else {
+        (item, anchor)
+    };
+    Some(items[start..=end].to_vec())
+}
+
+fn selection_anchor(ui: &Ui, listbox: ElementId) -> Option<ElementId> {
+    list_box_selection(ui, listbox).and_then(|selection| selection.borrow().anchor().copied())
+}
+
+fn action_modifier(modifiers: ui_events::keyboard::Modifiers) -> bool {
+    modifiers.ctrl() || modifiers.meta()
+}
+
+fn is_activation_key(key: &ui_events::keyboard::Key) -> bool {
+    use ui_events::keyboard::{Key, NamedKey};
+
+    matches!(key, Key::Named(NamedKey::Enter)) || matches!(key, Key::Character(s) if s == " ")
 }
 
 fn listbox_parent(ui: &Ui, item: ElementId) -> Option<ElementId> {
@@ -363,12 +578,19 @@ fn list_box_selection(ui: &Ui, listbox: ElementId) -> Option<SharedSelection> {
         .map(|widget| Rc::clone(&widget.selection))
 }
 
+fn list_box_selection_mode(ui: &Ui, listbox: ElementId) -> Option<ListSelectionMode> {
+    ui.get(listbox)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
+        .map(|widget| widget.selection_mode)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pseudos::PSEUDO_SELECTED;
     use peniko::{Brush, Color};
-    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
 
     #[test]
     fn clicking_item_updates_listbox_selection() {
@@ -386,6 +608,48 @@ mod tests {
         assert_eq!(selected_list_item(&ui, listbox), Some(second));
         assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
         assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+    }
+
+    #[test]
+    fn action_click_toggles_multiple_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, ListBox::new().multiple_selection());
+        let first = ui.append(listbox, ListItem::new("First"));
+        let second = ui.append(listbox, ListItem::new("Second"));
+
+        ui.synthesize_click(first, kurbo::Point::ZERO);
+        ui.synthesize_click_with_modifiers(second, kurbo::Point::ZERO, Modifiers::CONTROL);
+        assert_eq!(selected_list_items(&ui, listbox), vec![first, second]);
+        assert!(ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+        assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+
+        ui.synthesize_click_with_modifiers(first, kurbo::Point::ZERO, Modifiers::CONTROL);
+        assert_eq!(selected_list_items(&ui, listbox), vec![second]);
+        assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+        assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+    }
+
+    #[test]
+    fn shift_click_selects_anchor_range() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, ListBox::new().multiple_selection());
+        let first = ui.append(listbox, ListItem::new("First"));
+        let second = ui.append(listbox, ListItem::new("Second"));
+        let third = ui.append(listbox, ListItem::new("Third"));
+
+        ui.synthesize_click(first, kurbo::Point::ZERO);
+        ui.synthesize_click_with_modifiers(third, kurbo::Point::ZERO, Modifiers::SHIFT);
+
+        assert_eq!(
+            selected_list_items(&ui, listbox),
+            vec![first, second, third]
+        );
+        assert_eq!(selected_list_item(&ui, listbox), Some(third));
+        for item in [first, second, third] {
+            assert!(ui.get(item).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+        }
     }
 
     #[test]
@@ -412,6 +676,47 @@ mod tests {
         let up = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowUp), Code::ArrowUp);
         assert!(ui.dispatch_key(&up).handled);
         assert_eq!(selected_list_item(&ui, listbox), Some(second));
+    }
+
+    #[test]
+    fn shift_arrow_extends_multiple_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, ListBox::new().multiple_selection());
+        let first = ui.append(listbox, ListItem::new("First"));
+        let second = ui.append(listbox, ListItem::new("Second"));
+        let _third = ui.append(listbox, ListItem::new("Third"));
+        assert!(ui.set_focus(Some(listbox)));
+
+        let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        assert!(ui.dispatch_key(&down).handled);
+        assert_eq!(selected_list_items(&ui, listbox), vec![first]);
+
+        let mut shift_down =
+            KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        shift_down.modifiers = Modifiers::SHIFT;
+        assert!(ui.dispatch_key(&shift_down).handled);
+        assert_eq!(selected_list_items(&ui, listbox), vec![first, second]);
+        assert_eq!(selected_list_item(&ui, listbox), Some(second));
+    }
+
+    #[test]
+    fn action_a_selects_all_items_in_multiple_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, ListBox::new().multiple_selection());
+        let first = ui.append(listbox, ListItem::new("First"));
+        let second = ui.append(listbox, ListItem::new("Second"));
+        let third = ui.append(listbox, ListItem::new("Third"));
+        assert!(ui.set_focus(Some(listbox)));
+
+        let mut select_all = KeyboardEvent::key_down(Key::Character(String::from("a")), Code::KeyA);
+        select_all.modifiers = Modifiers::CONTROL;
+        assert!(ui.dispatch_key(&select_all).handled);
+        assert_eq!(
+            selected_list_items(&ui, listbox),
+            vec![first, second, third]
+        );
     }
 
     #[test]

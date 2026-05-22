@@ -51,8 +51,9 @@ pub use controls::checkbox::{
 };
 pub use controls::divider::{Divider, DividerAxis, DividerWidget, TYPE_DIVIDER};
 pub use controls::list::{
-    ListBox, ListBoxWidget, ListItem, ListItemWidget, PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT,
-    TYPE_LIST_BOX, TYPE_LIST_ITEM, select_list_item, selected_list_item,
+    ListBox, ListBoxWidget, ListItem, ListItemWidget, ListSelectionMode, PART_LIST_ITEM_LABEL,
+    SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, select_list_item, selected_list_item,
+    selected_list_items,
 };
 pub use controls::panel::{Panel, PanelWidget};
 pub use controls::progress::{
