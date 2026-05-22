@@ -50,7 +50,9 @@ use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
-use crate::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::pseudos::{
+    PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+};
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::text::TextEngine;
 use crate::widget::{TYPE_GENERIC, Widget};
@@ -1257,25 +1259,54 @@ impl Ui {
         self.focused
     }
 
-    /// Sets keyboard focus. Passes `None` to clear focus. Disabled or stale
-    /// target ids are treated as `None`. Applies / removes the `:focused`
-    /// pseudoclass on the affected elements. Returns `true` if the focus
-    /// changed.
+    /// Sets keyboard-visible focus. Passes `None` to clear focus. Disabled or
+    /// stale target ids are treated as `None`. Applies / removes `:focused`
+    /// and `:focus-visible` on the affected elements. Returns `true` if the
+    /// focus state changed.
     pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
+        self.set_focus_with_visibility(new, true)
+    }
+
+    fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
+        self.set_focus_with_visibility(new, false)
+    }
+
+    fn set_focus_with_visibility(&mut self, new: Option<ElementId>, focus_visible: bool) -> bool {
         let accepted = new.filter(|id| self.is_enabled(*id));
+        let mut changed = false;
         if self.focused == accepted {
-            return false;
+            if let Some(id) = accepted {
+                changed |= self.set_focus_visible_pseudo(id, focus_visible);
+            }
+            return changed;
         }
         if let Some(old_id) = self.focused.take() {
             self.remove_pseudo(old_id, PSEUDO_FOCUSED);
+            self.remove_pseudo(old_id, PSEUDO_FOCUS_VISIBLE);
         }
         if let Some(new_id) = accepted {
             self.add_pseudo(new_id, PSEUDO_FOCUSED);
+            self.set_focus_visible_pseudo(new_id, focus_visible);
             self.focused = Some(new_id);
+            changed = true;
         } else {
             self.focused = None;
+            changed = true;
         }
-        true
+        changed
+    }
+
+    fn set_focus_visible_pseudo(&mut self, id: ElementId, focus_visible: bool) -> bool {
+        let had_visible = self
+            .get(id)
+            .map(|element| element.pseudos().contains(&PSEUDO_FOCUS_VISIBLE))
+            .unwrap_or(false);
+        if focus_visible {
+            self.add_pseudo(id, PSEUDO_FOCUS_VISIBLE);
+        } else {
+            self.remove_pseudo(id, PSEUDO_FOCUS_VISIBLE);
+        }
+        had_visible != focus_visible
     }
 
     /// Moves focus per `direction` (e.g. [`Navigation::Next`] for
@@ -1719,6 +1750,9 @@ impl Ui {
                         self.press_position = None;
                         self.last_drag_position = None;
                         return changed;
+                    }
+                    if self.is_focusable(visual) {
+                        changed |= self.set_pointer_focus(Some(visual));
                     }
                     self.clicks.on_down(None, None, target, pos, time_ms);
                     changed |= self.set_press_target(Some(visual));
@@ -3467,16 +3501,42 @@ mod tests {
         assert!(ui.set_focus(Some(a)));
         assert_eq!(ui.focused(), Some(a));
         assert!(ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert!(ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUS_VISIBLE));
 
-        // Move focus to b — a should lose :focused, b should gain it.
+        // Move focus to b — a should lose focus pseudos, b should gain them.
         assert!(ui.set_focus(Some(b)));
         assert!(!ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert!(!ui.get(a).unwrap().pseudos().contains(&PSEUDO_FOCUS_VISIBLE));
         assert!(ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert!(ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUS_VISIBLE));
 
         // Clear focus.
         assert!(ui.set_focus(None));
         assert!(!ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUSED));
+        assert!(!ui.get(b).unwrap().pseudos().contains(&PSEUDO_FOCUS_VISIBLE));
         assert_eq!(ui.focused(), None);
+    }
+
+    #[test]
+    fn pointer_focus_does_not_set_focus_visible() {
+        use crate::Button;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+        let button = ui.append(root, Button::new("Click"));
+        ui.on_click(button, |_ui, event| event.mark_handled());
+        ui.compute_layout(Size::new(200.0, 80.0));
+
+        let center = ui.effective_bounds(button).center();
+        assert!(ui.dispatch_pointer_event(&pointer_down(center, 1)));
+        assert_eq!(ui.focused(), Some(button));
+        assert!(ui.dispatch_pointer_event(&pointer_up(center, 2)));
+
+        let pseudos = ui.get(button).unwrap().pseudos();
+        assert_eq!(ui.focused(), Some(button));
+        assert!(pseudos.contains(&PSEUDO_FOCUSED));
+        assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
     }
 
     #[test]
@@ -4533,6 +4593,7 @@ mod tests {
         let pseudos = ui.get(button).unwrap().pseudos();
         assert!(pseudos.contains(&PSEUDO_DISABLED));
         assert!(!pseudos.contains(&PSEUDO_FOCUSED));
+        assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
         assert!(!pseudos.contains(&PSEUDO_PRESSED));
 
         ui.set_enabled(button, true);

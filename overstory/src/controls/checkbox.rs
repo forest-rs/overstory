@@ -196,7 +196,6 @@ fn install_check_box_behavior(ui: &mut Ui, checkbox: ElementId) {
         if !ui.is_enabled(checkbox) {
             return;
         }
-        ui.set_focus(Some(checkbox));
         toggle_check_box(ui, checkbox);
         event.mark_handled();
     });
@@ -265,7 +264,6 @@ mod tests {
                 .and_then(|el| el.get_local_value(ui.properties().is_checked).copied()),
             Some(true)
         );
-        assert!(ui.focused() == Some(checkbox));
     }
 
     #[test]

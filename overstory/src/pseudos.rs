@@ -29,3 +29,7 @@ pub const PSEUDO_CHECKED: PseudoClassId = PseudoClassId(5);
 
 /// `:read-only` — this element can be focused/selected but not edited.
 pub const PSEUDO_READ_ONLY: PseudoClassId = PseudoClassId(6);
+
+/// `:focus-visible` — this element has keyboard focus from a keyboard-like
+/// interaction and should show an explicit focus indicator.
+pub const PSEUDO_FOCUS_VISIBLE: PseudoClassId = PseudoClassId(7);

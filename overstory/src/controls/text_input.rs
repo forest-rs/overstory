@@ -279,7 +279,6 @@ fn install_text_input_behavior(
         if !ui.is_enabled(input) {
             return;
         }
-        ui.set_focus(Some(input));
         if click_pointer.borrow_mut().take_dragged() {
             event.mark_handled();
             return;
@@ -310,7 +309,6 @@ fn install_text_input_behavior(
         if !ui.is_enabled(input) {
             return;
         }
-        ui.set_focus(Some(input));
         let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
         let mut state = drag_state.borrow_mut();
         state.sync_style(font_size);

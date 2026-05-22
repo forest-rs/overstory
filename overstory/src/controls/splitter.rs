@@ -255,7 +255,6 @@ fn install_splitter_behavior(
         if !ui.is_enabled(splitter) {
             return;
         }
-        ui.set_focus(Some(splitter));
         event.mark_handled();
     });
 
@@ -267,7 +266,6 @@ fn install_splitter_behavior(
         if !ui.is_enabled(splitter) {
             return;
         }
-        ui.set_focus(Some(splitter));
         let delta = axis_delta(axis, event.delta);
         if delta != 0.0
             && let Some(handler) = drag_handler.borrow_mut().as_mut()
@@ -563,6 +561,26 @@ mod tests {
 
         assert_eq!(ui.hovered(), None);
         assert_eq!(ui.cursor_icon(), Some(CursorIcon::ColResize));
+    }
+
+    #[test]
+    fn splitter_pointer_focus_is_not_focus_visible() {
+        use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(40.0, 180.0));
+        let splitter = ui.append(root, Splitter::vertical().length(160.0));
+        ui.compute_layout(Size::new(40.0, 180.0));
+
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(splitter).center(), 1,))
+        );
+
+        let pseudos = ui.get(splitter).unwrap().pseudos();
+        assert_eq!(ui.focused(), Some(splitter));
+        assert!(pseudos.contains(&PSEUDO_FOCUSED));
+        assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
     }
 
     fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {

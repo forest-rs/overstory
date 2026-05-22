@@ -65,7 +65,8 @@ use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
-    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED, PSEUDO_READ_ONLY,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
+    PSEUDO_PRESSED, PSEUDO_READ_ONLY,
 };
 use crate::selectors;
 use crate::widget::TYPE_GENERIC;
@@ -341,7 +342,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::state(TYPE_BUTTON, PSEUDO_FOCUSED),
+            selectors::state(TYPE_BUTTON, PSEUDO_FOCUS_VISIBLE),
             button_focused,
         )
         .push_rule(
@@ -371,7 +372,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::state(TYPE_TOGGLE, PSEUDO_FOCUSED),
+            selectors::state(TYPE_TOGGLE, PSEUDO_FOCUS_VISIBLE),
             toggle_focused,
         )
         .push_rule(
@@ -419,7 +420,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::state(TYPE_SLIDER, PSEUDO_FOCUSED),
+            selectors::state(TYPE_SLIDER, PSEUDO_FOCUS_VISIBLE),
             slider_focused_style,
         )
         .push_rule(
@@ -439,7 +440,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::state(TYPE_SPLITTER, PSEUDO_FOCUSED),
+            selectors::state(TYPE_SPLITTER, PSEUDO_FOCUS_VISIBLE),
             splitter_focused,
         )
         .push_rule(
@@ -481,7 +482,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
-                SelectorStep::type_tag(TYPE_CHECK_BOX).with_pseudo(PSEUDO_FOCUSED),
+                SelectorStep::type_tag(TYPE_CHECK_BOX).with_pseudo(PSEUDO_FOCUS_VISIBLE),
                 PART_CHECK_BOX_BOX,
             ),
             checkbox_box_focused,
@@ -528,7 +529,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::state(TYPE_TEXT_INPUT, PSEUDO_FOCUSED),
+            selectors::state(TYPE_TEXT_INPUT, PSEUDO_FOCUS_VISIBLE),
             text_input_focused,
         )
         .push_rule(
