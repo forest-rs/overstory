@@ -1540,6 +1540,7 @@ dependencies = [
 name = "overstory"
 version = "0.1.0"
 dependencies = [
+ "cursor-icon",
  "hashbrown 0.17.1",
  "imaging",
  "invalidation",

@@ -74,6 +74,7 @@ pub use controls::text_input::{
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
 };
+pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
 pub use generic::present_surface;
 pub use layouts::Layout;

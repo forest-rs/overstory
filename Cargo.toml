@@ -43,6 +43,7 @@ imaging_vello = { default-features = false, features = ["vello-0-8"], version = 
 imaging_wgpu = { default-features = false, features = ["wgpu-28"], version = "0.0.1" }
 
 # Input event normalization.
+cursor-icon = { version = "1.2.0" }
 ui-events = { default-features = false, features = ["std", "kurbo"], version = "0.3" }
 ui-events-winit = { version = "0.3" }
 

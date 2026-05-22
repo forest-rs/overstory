@@ -27,6 +27,7 @@
 
 use core::any::Any;
 
+use cursor_icon::CursorIcon;
 use kurbo::Size;
 use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
@@ -99,6 +100,16 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     fn default_template(&self) -> Option<&'static dyn Template> {
         None
     }
+
+    /// Returns the cursor icon this widget prefers while it is the
+    /// active hover or press target.
+    ///
+    /// The default leaves cursor selection to ancestors or the host's
+    /// platform default.
+    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
+        let _ = element;
+        None
+    }
 }
 
 /// Widget wrapper that replaces a control's default template without changing
@@ -148,6 +159,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(self.template)
+    }
+
+    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
+        self.widget.cursor_icon(element)
     }
 }
 

@@ -6,10 +6,11 @@
 use alloc::{boxed::Box, rc::Rc};
 use core::cell::RefCell;
 
+use cursor_icon::CursorIcon;
 use understory_style::TypeTag;
 
 use crate::Phase;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
@@ -190,7 +191,7 @@ impl Default for Splitter {
 
 impl AppendSpec for Splitter {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget(parent, Box::new(SplitterWidget));
+        let id = ui.append_widget(parent, Box::new(SplitterWidget { axis: self.axis }));
         ui.set_layout(id, self.layout());
         ui.set_control_state(id, self.state);
         install_splitter_behavior(ui, id, self.axis, self.keyboard_step, self.on_resize);
@@ -200,11 +201,21 @@ impl AppendSpec for Splitter {
 
 /// Per-element widget for `Splitter`.
 #[derive(Debug, Default)]
-pub struct SplitterWidget;
+pub struct SplitterWidget {
+    axis: SplitterAxis,
+}
 
 impl Widget for SplitterWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_SPLITTER)
+    }
+
+    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
+        let _ = element;
+        Some(match self.axis {
+            SplitterAxis::Horizontal => CursorIcon::RowResize,
+            SplitterAxis::Vertical => CursorIcon::ColResize,
+        })
     }
 }
 
@@ -455,6 +466,55 @@ mod tests {
 
         assert!(result.handled);
         assert!(called.get());
+    }
+
+    #[test]
+    fn splitter_hover_exposes_axis_resize_cursor() {
+        use cursor_icon::CursorIcon;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(40.0, 180.0));
+        let vertical = ui.append(root, Splitter::vertical().length(160.0));
+        ui.compute_layout(Size::new(40.0, 180.0));
+
+        assert!(ui.dispatch_pointer_event(&pointer_move(
+            ui.effective_bounds(vertical).center(),
+            1,
+            false,
+        )));
+        assert_eq!(ui.cursor_icon(), Some(CursorIcon::ColResize));
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 40.0));
+        let horizontal = ui.append(root, Splitter::horizontal().length(160.0));
+        ui.compute_layout(Size::new(180.0, 40.0));
+
+        assert!(ui.dispatch_pointer_event(&pointer_move(
+            ui.effective_bounds(horizontal).center(),
+            1,
+            false,
+        )));
+        assert_eq!(ui.cursor_icon(), Some(CursorIcon::RowResize));
+    }
+
+    #[test]
+    fn pressed_splitter_keeps_resize_cursor_off_hover() {
+        use cursor_icon::CursorIcon;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(40.0, 180.0));
+        let splitter = ui.append(root, Splitter::vertical().length(160.0));
+        ui.compute_layout(Size::new(40.0, 180.0));
+
+        let center = ui.effective_bounds(splitter).center();
+        assert!(ui.dispatch_pointer_event(&pointer_down(center, 1)));
+        assert!(ui.dispatch_pointer_event(&pointer_move(Point::new(300.0, 300.0), 2, true,)));
+
+        assert_eq!(ui.hovered(), None);
+        assert_eq!(ui.cursor_icon(), Some(CursorIcon::ColResize));
     }
 
     fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {

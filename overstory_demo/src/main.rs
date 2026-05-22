@@ -49,8 +49,8 @@ use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget, wgpu};
 use kurbo::{self, Size};
 use overstory::{
-    Button, CheckBox, Divider, Panel, ProgressBar, Slider, Spinner, Splitter, Text, TextInput,
-    ToggleSwitch, Ui, layouts, set_progress_value, theme,
+    Button, CheckBox, CursorIcon, Divider, Panel, ProgressBar, Slider, Spinner, Splitter, Text,
+    TextInput, ToggleSwitch, Ui, layouts, set_progress_value, theme,
 };
 use peniko::{Brush, Color};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
@@ -131,6 +131,8 @@ struct WindowState {
     /// Subtract from `Instant::now()` to get nanoseconds since
     /// startup.
     start_instant: Instant,
+    /// Cursor icon currently applied to the platform window.
+    cursor_icon: CursorIcon,
 }
 
 impl WindowState {
@@ -206,6 +208,7 @@ impl ApplicationHandler for App {
                     if state.ui.dispatch_pointer_event(&pointer) {
                         state.window.request_redraw();
                     }
+                    state.sync_cursor();
                 }
                 WindowEventTranslation::Keyboard(key) => {
                     let result = state.ui.dispatch_key(&key);
@@ -263,6 +266,14 @@ impl WindowState {
 
     fn size(&self) -> (u32, u32) {
         (self.surface_config.width, self.surface_config.height)
+    }
+
+    fn sync_cursor(&mut self) {
+        let next = self.ui.cursor_icon().unwrap_or(CursorIcon::Default);
+        if self.cursor_icon != next {
+            self.window.set_cursor(next);
+            self.cursor_icon = next;
+        }
     }
 
     /// Logical-pixel viewport that `Ui` should lay out into.
@@ -400,6 +411,7 @@ fn init_window(event_loop: &ActiveEventLoop) -> Result<WindowState, Box<dyn std:
         scaled_scene: Scene::new(),
         event_reducer: WindowEventReducer::default(),
         start_instant: Instant::now(),
+        cursor_icon: CursorIcon::Default,
     };
     Ok(state)
 }

@@ -15,6 +15,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 
+use cursor_icon::CursorIcon;
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use invalidation::{ChannelSet, InvalidationTracker};
@@ -1105,6 +1106,19 @@ impl Ui {
         self.hover.current_path().last().copied()
     }
 
+    /// Returns the cursor icon preferred by the active press target
+    /// or deepest hovered widget.
+    ///
+    /// Hosts can call this after pointer dispatch and apply the
+    /// result to their platform window. `None` means the host should
+    /// use its platform default.
+    #[must_use]
+    pub fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.press_target
+            .or_else(|| self.hovered())
+            .and_then(|target| self.cursor_icon_for(target))
+    }
+
     /// Hit-tests `point` against the box tree and returns the topmost,
     /// deepest element whose node covers it.
     ///
@@ -1832,6 +1846,21 @@ impl Ui {
                 None => return current,
             }
         }
+    }
+
+    fn cursor_icon_for(&self, target: ElementId) -> Option<CursorIcon> {
+        let mut current = Some(target);
+        while let Some(id) = current {
+            let element = self.get(id)?;
+            if let Some(icon) = element
+                .widget()
+                .and_then(|widget| widget.cursor_icon(element))
+            {
+                return Some(icon);
+            }
+            current = element.templated_parent().or_else(|| element.parent());
+        }
+        None
     }
 
     fn set_press_target(&mut self, new: Option<ElementId>) -> bool {
