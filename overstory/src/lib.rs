@@ -37,6 +37,7 @@ mod lookup;
 mod properties;
 pub mod pseudos;
 pub mod selectors;
+mod style_runtime;
 mod template;
 mod template_runtime;
 mod text;

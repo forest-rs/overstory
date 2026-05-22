@@ -37,9 +37,7 @@ use understory_property_binding::{
 };
 use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
-use understory_style::{
-    MatchState, PartTag, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
-};
+use understory_style::{MatchState, PartTag, ResolveCx, StyleCascade, Theme};
 use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
 use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
@@ -55,11 +53,12 @@ use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
+use crate::style_runtime::StyleRuntime;
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::template_runtime::TemplateRuntime;
 use crate::text::TextEngine;
 use crate::timer_runtime::{TimerEvent, TimerRuntime};
-use crate::widget::{TYPE_GENERIC, Widget};
+use crate::widget::Widget;
 
 /// Public facade for an Overstory UI instance.
 ///
@@ -80,9 +79,7 @@ pub struct Ui {
     /// while it holds a `&Ui` borrow (for `UiResolveLookup`); always
     /// `Some` outside that window.
     presentation: Option<PresentationStore<NodeId, ElementId>>,
-    cascade: StyleCascade,
-    theme: Theme,
-    match_states: HashMap<ElementId, MatchState>,
+    style: StyleRuntime,
     /// Path-based hover state machine from `understory_event_state`.
     /// Tracks the current root→target hover path; `update_path` returns
     /// the minimal Enter/Leave sequence to move from the old path to a
@@ -533,9 +530,6 @@ impl Ui {
     pub fn new() -> Self {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
-        let cascade = StyleCascadeBuilder::new().build();
-        let theme = Theme::default();
-
         // Channel-to-channel cascade in the invalidation tracker:
         // STYLE → TEMPLATE → LAYOUT → PAINT → COMPOSE. Once
         // registered, marking any upstream channel auto-marks every
@@ -565,9 +559,7 @@ impl Ui {
             properties,
             invalidation,
             presentation: Some(PresentationStore::new()),
-            cascade,
-            theme,
-            match_states: HashMap::new(),
+            style: StyleRuntime::new(),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
@@ -621,14 +613,14 @@ impl Ui {
     #[must_use]
     #[inline]
     pub fn cascade(&self) -> &StyleCascade {
-        &self.cascade
+        self.style.cascade()
     }
 
     /// Returns the active theme.
     #[must_use]
     #[inline]
     pub fn theme(&self) -> &Theme {
-        &self.theme
+        self.style.theme()
     }
 
     /// Swaps in a new style cascade and restyles the entire tree.
@@ -643,8 +635,7 @@ impl Ui {
     /// didn't have one — `style_one`'s diff path only triggers on
     /// state *transitions*, not first-time styling.
     pub fn set_cascade(&mut self, cascade: StyleCascade) {
-        self.cascade = cascade;
-        self.match_states.clear();
+        self.style.set_cascade(cascade);
         let ids = collect_preorder(self, self.root());
         for id in ids {
             self.style_one(id);
@@ -655,7 +646,7 @@ impl Ui {
     /// Swaps in a new theme. All elements are marked LAYOUT-dirty since theme
     /// resources can feed layout, text measurement, and paint values.
     pub fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
+        self.style.set_theme(theme);
         let ids = collect_preorder(self, self.root());
         for id in ids {
             self.invalidation.mark(id, LAYOUT);
@@ -723,10 +714,7 @@ impl Ui {
     /// state if the element has not yet been styled.
     #[must_use]
     pub fn match_state(&self, id: ElementId) -> MatchState {
-        self.match_states
-            .get(&id)
-            .copied()
-            .unwrap_or_else(|| self.cascade.root_state())
+        self.style.match_state(id)
     }
 
     /// Inserts a new control under `parent`. The spec's builder
@@ -1650,10 +1638,15 @@ impl Ui {
         element: &Element,
         property: Property<T>,
     ) -> T {
-        ResolveCx::new(&self.registry, &self.theme, UiResolveLookup::new(self)).get_value(
+        ResolveCx::new(
+            &self.registry,
+            self.style.theme(),
+            UiResolveLookup::new(self),
+        )
+        .get_value(
             element,
             property,
-            Some((&self.cascade, self.match_state(element.id()))),
+            Some((self.style.cascade(), self.match_state(element.id()))),
         )
     }
 
@@ -1942,9 +1935,7 @@ impl Ui {
             let taffy = &mut self.taffy;
             let registry = &self.registry;
             let properties = &self.properties;
-            let theme = &self.theme;
-            let cascade = &self.cascade;
-            let match_states = &self.match_states;
+            let style = &self.style;
             let elements = &self.elements;
             let text = &self.text;
             let _ = taffy.compute_layout_with_measure(
@@ -1962,15 +1953,12 @@ impl Ui {
                         // default style-based sizing.
                         return taffy::Size::ZERO;
                     };
-                    let match_state = match_states
-                        .get(&id)
-                        .copied()
-                        .unwrap_or_else(|| cascade.root_state());
+                    let match_state = style.match_state(id);
                     let measure_ctx = crate::behavior::MeasureContext {
                         registry,
                         properties,
-                        theme,
-                        cascade,
+                        theme: style.theme(),
+                        cascade: style.cascade(),
                         match_state,
                         text,
                     };
@@ -2149,16 +2137,12 @@ impl Ui {
         let Some(node) = self.box_for(id) else {
             return;
         };
-        let match_state = self
-            .match_states
-            .get(&id)
-            .copied()
-            .unwrap_or_else(|| self.cascade.root_state());
+        let match_state = self.style.match_state(id);
         let ctx = PresentContext {
             registry: &self.registry,
             properties: &self.properties,
-            theme: &self.theme,
-            cascade: &self.cascade,
+            theme: self.style.theme(),
+            cascade: self.style.cascade(),
             match_state,
             lookup: UiResolveLookup::new(self),
         };
@@ -2228,40 +2212,13 @@ impl Ui {
     /// nested controls while child/descendant selectors can carry owner state
     /// into template parts.
     fn style_one(&mut self, id: ElementId) {
-        let Some(element) = self.get(id) else {
-            self.match_states.remove(&id);
+        let Some(element) = self.elements.get(id) else {
+            self.style.remove(id);
             return;
         };
-        // Anonymous containers fall back to `TYPE_GENERIC` for selector
-        // matching. Widgets may opt out of a global type and rely only on an
-        // owner-local PartTag.
-        let type_tag = element
-            .widget()
-            .map_or(Some(TYPE_GENERIC), Widget::type_tag);
-        // Copy out the slices so the `&Element` borrow of `self` can end
-        // before we mutate `self.match_states`.
-        let classes: SmallVec<[understory_style::ClassId; 4]> =
-            SmallVec::from_slice(element.classes());
-        let pseudos: SmallVec<[understory_style::PseudoClassId; 4]> =
-            SmallVec::from_slice(element.pseudos());
-
-        let parent_state = element
-            .parent()
-            .and_then(|parent| self.match_states.get(&parent).copied())
-            .unwrap_or_else(|| self.cascade.root_state());
-
-        let inputs = SelectorInputs::with_part(type_tag, element.part_tag(), &classes, &pseudos);
-        let old_state = self.match_states.get(&id).copied();
-        let new_state = self.cascade.enter_subject(parent_state, &inputs);
-        self.match_states.insert(id, new_state);
-
-        if let Some(old) = old_state
-            && old != new_state
-        {
-            let restyle = self
-                .cascade
-                .restyle_subject(&self.registry, old, parent_state, &inputs);
-            self.mark_channels(id, restyle.changed_channels());
+        let channels = self.style.style_one(id, element, &self.registry);
+        if let Some(channels) = channels {
+            self.mark_channels(id, channels);
         }
     }
 
@@ -2274,7 +2231,7 @@ impl Ui {
             self.remove_subtree(child);
         }
         let _ = self.elements.remove_slot(id);
-        self.match_states.remove(&id);
+        self.style.remove(id);
         self.invalidation.remove_key(id);
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.clear_owner(id);
@@ -2568,10 +2525,12 @@ fn walk_preorder(ui: &Ui, id: ElementId, out: &mut Vec<ElementId>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TYPE_GENERIC;
     use kurbo::{Point, Rect};
     use peniko::{Brush, Color};
     use understory_style::{
-        ClassId, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleOrigin,
+        ClassId, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder,
+        StyleOrigin,
     };
 
     #[test]
