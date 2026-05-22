@@ -3014,6 +3014,52 @@ mod tests {
     }
 
     #[test]
+    fn row_text_uses_natural_width_until_width_is_chosen() {
+        use crate::{Panel, Text};
+        use imaging::record::{Command, Draw};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(12.0).logical_size(284.0, 80.0));
+
+        let spacer = ui.append(root, Panel::new());
+        ui.set_layout(spacer, Layout::new().logical_size(64.0, 32.0));
+        let label = ui.append(root, Text::new("Live rendering").font_size(15.0));
+
+        ui.compute_layout(Size::new(284.0, 80.0));
+
+        let label_bounds = ui.effective_bounds(label);
+        assert!(
+            label_bounds.width() > 90.0,
+            "row label should keep its natural width instead of measuring wrapped; got {label_bounds:?}"
+        );
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for command in output.commands() {
+            let Command::Draw(id) = command else {
+                continue;
+            };
+            let Draw::GlyphRun(run) = output.draw_op(*id) else {
+                continue;
+            };
+            for glyph in &run.glyphs {
+                min_y = min_y.min(glyph.y);
+                max_y = max_y.max(glyph.y);
+            }
+        }
+
+        assert!(
+            max_y - min_y < 20.0,
+            "row label should paint on one line; glyph y span was {}",
+            max_y - min_y
+        );
+    }
+
+    #[test]
     fn slider_initial_value_positions_thumb() {
         use crate::Slider;
 

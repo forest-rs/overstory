@@ -130,13 +130,7 @@ impl Widget for TextWidget {
         }
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        #[expect(clippy::cast_possible_truncation, reason = "width fits f32")]
-        let max_advance = if constraints.available.width.is_finite() {
-            Some(constraints.available.width as f32)
-        } else {
-            None
-        };
-
+        let max_advance = text_wrap_width(constraints);
         let layout =
             ctx.text
                 .borrow_mut()
@@ -145,4 +139,20 @@ impl Widget for TextWidget {
         let height = f64::from(layout.height());
         Some(Size::new(width, height))
     }
+}
+
+fn text_wrap_width(constraints: MeasureConstraints) -> Option<f32> {
+    constraints
+        .known
+        .width
+        .filter(|width| width.is_finite() && *width > 0.0)
+        .map(f32_from_f64_for_text)
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "UI logical text widths fit parley's f32 coordinates"
+)]
+fn f32_from_f64_for_text(value: f64) -> f32 {
+    value as f32
 }
