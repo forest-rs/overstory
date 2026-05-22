@@ -41,7 +41,7 @@ use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_style::{
     MatchState, PartTag, ResolveCx, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
 };
-use understory_timing::{TimerDuration, TimerId, TimerInstant, TimerQueue, TimerRepeat};
+use understory_timing::{TimerDuration, TimerId, TimerInstant};
 
 use crate::behavior::{KnownDimensions, MeasureConstraints, PresentContext};
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
@@ -57,6 +57,7 @@ use crate::pseudos::{
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::template_runtime::TemplateRuntime;
 use crate::text::TextEngine;
+use crate::timer_runtime::{TimerEvent, TimerRuntime};
 use crate::widget::{TYPE_GENERIC, Widget};
 
 /// Public facade for an Overstory UI instance.
@@ -166,36 +167,13 @@ pub struct Ui {
     /// Reusable scratch buffer for building a `FocusSpace`. Kept on
     /// `Ui` so each navigation call doesn't reallocate.
     focus_buf: Vec<FocusEntry<NodeId>>,
-    /// Pending timers, deadline-ordered. Targets are element ids;
-    /// dispatch goes through `timer_handlers` when `pump_timers`
-    /// fires.
-    timers: TimerQueue<ElementId>,
-    /// Per-element timer handler — one per element, mirroring
-    /// `on_click` / `on_key`. The handler receives the expired
-    /// [`TimerId`] so it can disambiguate when the same element has
-    /// multiple timers scheduled.
-    timer_handlers: HashMap<ElementId, TimerHandler>,
-    /// Handler ids that called [`Self::remove_timer_handler`] while
-    /// they were temporarily removed for dispatch. Without this, the
-    /// dispatch path cannot distinguish self-removal from a normal
-    /// callback that should keep its handler.
-    timer_handler_removals: HashSet<ElementId>,
-    /// The timer handler target currently being dispatched, if any.
-    dispatching_timer_handler: Option<ElementId>,
-    /// Monotonic host-supplied "now" in [`TimerInstant`] units
-    /// (typically nanoseconds). The host updates this through
-    /// [`Self::set_now`] / on each call to [`Self::pump_timers`] /
-    /// [`Self::dispatch_pointer_event`] / [`Self::dispatch_key`],
-    /// and templates / handlers can call [`Self::now`] to schedule
-    /// follow-on timers relative to the current clock.
-    now: TimerInstant,
+    timers: TimerRuntime,
 }
 
 type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>)>;
 type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
 type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
-type TimerHandler = Box<dyn FnMut(&mut Ui, TimerEvent)>;
 
 #[derive(Default)]
 struct HandlerDispatchTracker {
@@ -225,28 +203,6 @@ impl HandlerDispatchTracker {
     fn take_removed(&mut self, id: ElementId) -> bool {
         self.removals.remove(&id)
     }
-}
-
-/// Payload delivered to a timer handler when a scheduled timer
-/// fires. `target` is the element the timer was scheduled against
-/// (and the element the handler is registered on); `timer` is the
-/// queue's id for disambiguating between multiple timers on the
-/// same element; `now` is the monotonic instant at which the
-/// dispatch is happening.
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug)]
-pub struct TimerEvent {
-    /// The element the timer fired on.
-    pub target: ElementId,
-    /// The id assigned by [`TimerQueue`] when the timer was
-    /// scheduled. Compare against your stored token to recognize
-    /// stale deliveries.
-    pub timer: TimerId,
-    /// Host-supplied monotonic time of dispatch.
-    pub now: TimerInstant,
 }
 
 /// Shared state carried by one routed event dispatch.
@@ -708,11 +664,7 @@ impl Ui {
                 wrap: WrapMode::Scope,
             },
             focus_buf: Vec::new(),
-            timers: TimerQueue::new(),
-            timer_handlers: HashMap::new(),
-            timer_handler_removals: HashSet::new(),
-            dispatching_timer_handler: None,
-            now: 0,
+            timers: TimerRuntime::new(),
         };
         me.mirror_allocated_element(root, None);
         me.style_one(root);
@@ -1478,7 +1430,7 @@ impl Ui {
     #[must_use]
     #[inline]
     pub fn now(&self) -> TimerInstant {
-        self.now
+        self.timers.now()
     }
 
     /// Sets the cached monotonic "now" used by relative timer APIs.
@@ -1486,26 +1438,23 @@ impl Ui {
     /// [`Self::pump_timers`], [`Self::dispatch_pointer_event`] (via
     /// the pointer state's timestamp), and [`Self::dispatch_key`].
     pub fn set_now(&mut self, now: TimerInstant) {
-        self.now = now;
+        self.timers.set_now(now);
     }
 
     /// Schedules a one-shot timer targeted at `target`. Returns the
     /// queue's id so callers can cancel it. The deadline is computed
     /// relative to [`Self::now`].
     pub fn schedule_timer_once(&mut self, target: ElementId, delay: TimerDuration) -> TimerId {
-        self.timers.schedule_once(target, self.now, delay)
+        self.timers.schedule_once(target, delay)
     }
 
     /// Schedules a repeating timer targeted at `target` that
     /// coalesces missed intervals (the typical UI-animation policy
-    /// from [`TimerRepeat::coalescing`]). The first fire is `delay`
+    /// from [`understory_timing::TimerRepeat::coalescing`]). The first fire is `delay`
     /// from now; subsequent fires are `delay` apart relative to the
     /// previous drain time.
     pub fn schedule_timer_repeating(&mut self, target: ElementId, delay: TimerDuration) -> TimerId {
-        let interval =
-            core::num::NonZeroU64::new(delay.max(1)).expect("delay clamped to a non-zero value");
-        self.timers
-            .schedule(target, self.now, delay, TimerRepeat::coalescing(interval))
+        self.timers.schedule_repeating(target, delay)
     }
 
     /// Cancels a pending timer. Returns `true` if a pending timer
@@ -1530,17 +1479,13 @@ impl Ui {
     where
         F: FnMut(&mut Self, TimerEvent) + 'static,
     {
-        self.timer_handler_removals.remove(&id);
-        self.timer_handlers.insert(id, Box::new(handler));
+        self.timers.on_handler(id, Box::new(handler));
     }
 
     /// Removes a timer handler previously registered with
     /// [`Self::on_timer`]. No-op if none is registered.
     pub fn remove_timer_handler(&mut self, id: ElementId) {
-        self.timer_handlers.remove(&id);
-        if self.dispatching_timer_handler == Some(id) {
-            self.timer_handler_removals.insert(id);
-        }
+        self.timers.remove_handler(id);
     }
 
     /// Drains every timer due at or before `now`, dispatching each
@@ -1549,7 +1494,7 @@ impl Ui {
     /// handler after dispatch. Updates the cached [`Self::now`] to
     /// `now`.
     pub fn pump_timers(&mut self, now: TimerInstant) {
-        self.now = now;
+        self.timers.set_now(now);
         let mut rearm = Vec::new();
         while let Some(timer) = self.timers.pop_expired(now) {
             let target = *timer.target();
@@ -1559,23 +1504,23 @@ impl Ui {
             // Take the handler out so it can borrow `&mut Ui`; put
             // back unless the handler removed itself or the element
             // vanished.
-            if let Some(mut handler) = self.timer_handlers.remove(&target) {
+            if let Some(mut handler) = self.timers.take_handler(target) {
                 let event = TimerEvent {
                     target,
                     timer: id,
                     now,
                 };
-                let previous_dispatching = self.dispatching_timer_handler.replace(target);
+                let previous_dispatching = self.timers.begin_dispatch(target);
                 handler(self, event);
-                self.dispatching_timer_handler = previous_dispatching;
+                self.timers.end_dispatch(previous_dispatching);
 
                 let target_alive = self.get(target).is_some();
-                let handler_removed = self.timer_handler_removals.remove(&target);
+                let handler_removed = self.timers.take_handler_removed(target);
                 if target_alive {
-                    if !handler_removed && !self.timer_handlers.contains_key(&target) {
-                        self.timer_handlers.insert(target, handler);
+                    if !handler_removed && !self.timers.has_handler(target) {
+                        self.timers.insert_handler_if_absent(target, handler);
                     }
-                    should_rearm = repeating && self.timer_handlers.contains_key(&target);
+                    should_rearm = repeating && self.timers.has_handler(target);
                 }
             }
             if should_rearm {
@@ -1827,7 +1772,7 @@ impl Ui {
         // nanoseconds. Handlers and templates can use `Ui::now()`
         // without threading it through every call.
         if let Some(t) = pointer_event_time(event) {
-            self.now = t;
+            self.timers.set_now(t);
         }
         match event {
             PointerEvent::Move(update) => {
@@ -2436,12 +2381,8 @@ impl Ui {
         self.click_handlers.remove(&id);
         self.drag_handlers.remove(&id);
         self.key_handlers.remove(&id);
-        self.timer_handlers.remove(&id);
-        self.timer_handler_removals.remove(&id);
+        self.timers.remove_target(id);
         self.focusable_preferences.remove(&id);
-        // Purge any pending timers targeting this element so they
-        // don't fire after removal and reach a dropped handler.
-        self.timers.retain_pending(|t| *t.target() != id);
         if self.focused == Some(id) {
             self.focused = None;
         }

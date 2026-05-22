@@ -39,6 +39,7 @@ mod template;
 mod template_runtime;
 mod text;
 pub mod theme;
+mod timer_runtime;
 mod ui;
 mod widget;
 
@@ -100,7 +101,7 @@ pub use template::{
     TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextWrapping};
-pub use ui::TimerEvent;
+pub use timer_runtime::TimerEvent;
 pub use ui::{
     ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult,
     ScrollEvent, Ui,
