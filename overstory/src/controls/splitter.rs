@@ -21,6 +21,7 @@ pub const TYPE_SPLITTER: TypeTag = TypeTag(10);
 const DEFAULT_THICKNESS: f32 = 8.0;
 const DEFAULT_LENGTH: f32 = 160.0;
 const DEFAULT_KEYBOARD_STEP: f64 = 8.0;
+const DEFAULT_KEYBOARD_LARGE_STEP: f64 = 24.0;
 
 /// Orientation for a splitter grip.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub struct Splitter {
     thickness: f32,
     length: f32,
     keyboard_step: f64,
+    keyboard_large_step: f64,
     state: ControlState,
     on_resize: Option<SplitterResizeHandler>,
 }
@@ -88,6 +90,7 @@ impl core::fmt::Debug for Splitter {
             .field("thickness", &self.thickness)
             .field("length", &self.length)
             .field("keyboard_step", &self.keyboard_step)
+            .field("keyboard_large_step", &self.keyboard_large_step)
             .finish_non_exhaustive()
     }
 }
@@ -113,6 +116,7 @@ impl Splitter {
             thickness: DEFAULT_THICKNESS,
             length: DEFAULT_LENGTH,
             keyboard_step: DEFAULT_KEYBOARD_STEP,
+            keyboard_large_step: DEFAULT_KEYBOARD_LARGE_STEP,
             state: ControlState::interactive(),
             on_resize: None,
         }
@@ -137,6 +141,15 @@ impl Splitter {
     pub fn keyboard_step(mut self, step: f64) -> Self {
         if step.is_finite() && step > 0.0 {
             self.keyboard_step = step;
+        }
+        self
+    }
+
+    /// Sets the Shift+arrow resize step.
+    #[must_use]
+    pub fn keyboard_large_step(mut self, step: f64) -> Self {
+        if step.is_finite() && step > 0.0 {
+            self.keyboard_large_step = step;
         }
         self
     }
@@ -194,7 +207,14 @@ impl AppendSpec for Splitter {
         let id = ui.append_widget(parent, Box::new(SplitterWidget { axis: self.axis }));
         ui.set_layout(id, self.layout());
         ui.set_control_state(id, self.state);
-        install_splitter_behavior(ui, id, self.axis, self.keyboard_step, self.on_resize);
+        install_splitter_behavior(
+            ui,
+            id,
+            self.axis,
+            self.keyboard_step,
+            self.keyboard_large_step,
+            self.on_resize,
+        );
         id
     }
 }
@@ -224,6 +244,7 @@ fn install_splitter_behavior(
     splitter: ElementId,
     axis: SplitterAxis,
     keyboard_step: f64,
+    keyboard_large_step: f64,
     on_resize: Option<SplitterResizeHandler>,
 ) {
     let on_resize = Rc::new(RefCell::new(on_resize));
@@ -278,20 +299,16 @@ fn install_splitter_behavior(
         if !ui.is_enabled(splitter) {
             return;
         }
-        let multiplier = if event.key.modifiers.shift() {
-            4.0
+        let step = if event.key.modifiers.shift() {
+            keyboard_large_step
         } else {
-            1.0
+            keyboard_step
         };
         let delta = match (&event.key.key, axis) {
             (Key::Named(NamedKey::ArrowLeft), SplitterAxis::Vertical)
-            | (Key::Named(NamedKey::ArrowUp), SplitterAxis::Horizontal) => {
-                -keyboard_step * multiplier
-            }
+            | (Key::Named(NamedKey::ArrowUp), SplitterAxis::Horizontal) => -step,
             (Key::Named(NamedKey::ArrowRight), SplitterAxis::Vertical)
-            | (Key::Named(NamedKey::ArrowDown), SplitterAxis::Horizontal) => {
-                keyboard_step * multiplier
-            }
+            | (Key::Named(NamedKey::ArrowDown), SplitterAxis::Horizontal) => step,
             _ => return,
         };
         if let Some(handler) = key_handler.borrow_mut().as_mut() {
@@ -466,6 +483,37 @@ mod tests {
 
         assert!(result.handled);
         assert!(called.get());
+    }
+
+    #[test]
+    fn splitter_keyboard_uses_small_and_large_steps() {
+        use core::cell::RefCell;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
+
+        let deltas = Rc::new(RefCell::new(Vec::new()));
+        let deltas_for_handler = Rc::clone(&deltas);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let splitter = ui.append(
+            root,
+            Splitter::vertical()
+                .keyboard_step(5.0)
+                .keyboard_large_step(17.0)
+                .on_resize(move |_ui, event| {
+                    deltas_for_handler.borrow_mut().push(event.delta);
+                }),
+        );
+        ui.set_focus(Some(splitter));
+
+        let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+        assert!(ui.dispatch_key(&right).handled);
+
+        let mut shift_left =
+            KeyboardEvent::key_down(Key::Named(NamedKey::ArrowLeft), Code::ArrowLeft);
+        shift_left.modifiers = Modifiers::SHIFT;
+        assert!(ui.dispatch_key(&shift_left).handled);
+
+        assert_eq!(deltas.borrow().as_slice(), &[5.0, -17.0]);
     }
 
     #[test]
