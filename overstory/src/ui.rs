@@ -17,9 +17,9 @@ use core::cell::{Cell, RefCell};
 
 use cursor_icon::CursorIcon;
 use hashbrown::{HashMap, HashSet};
-use imaging::record::Scene;
+use imaging::record::{Clip, Geometry, Scene};
 use invalidation::{ChannelSet, InvalidationTracker};
-use kurbo::{Affine, Point, Rect, Size};
+use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
 use smallvec::SmallVec;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
 use ui_events::pointer::{PointerButton, PointerEvent};
@@ -427,7 +427,7 @@ pub struct DragEvent<'a> {
     pub press_position: Point,
     /// Movement since the previous drag dispatch in physical
     /// pixels.
-    pub delta: kurbo::Vec2,
+    pub delta: Vec2,
     state: &'a RoutedEventState,
 }
 
@@ -2079,6 +2079,18 @@ impl Ui {
         );
         let bounds_prop = self.properties.bounds;
         self.set_local(id, bounds_prop, rect);
+        let child_offset = self
+            .get(id)
+            .and_then(|element| {
+                element
+                    .widget()
+                    .map(|widget| widget.child_layout_offset(element))
+            })
+            .unwrap_or(Vec2::ZERO);
+        let clips_subtree = self
+            .get(id)
+            .and_then(|element| element.widget().map(|widget| widget.clips_subtree(element)))
+            .unwrap_or(false);
 
         // Mirror the world-space bounds into the box tree's primary
         // node for this element. Since every node is currently a
@@ -2086,14 +2098,17 @@ impl Ui {
         // and `Tree::hit_test_point` matches the old element-bounds walk.
         if let Some(&primary) = self.element_to_nodes.get(&id).and_then(|v| v.first()) {
             self.tree.set_local_bounds(primary, rect);
+            let clip = clips_subtree.then(|| RoundedRect::from_rect(rect, 0.0));
+            self.tree.set_local_clip(primary, clip);
         }
 
         let children: Vec<ElementId> = self
             .get(id)
             .map(|el| el.children().to_vec())
             .unwrap_or_default();
+        let child_origin = origin + child_offset;
         for child in children {
-            self.write_bounds_recursive(child, origin);
+            self.write_bounds_recursive(child, child_origin);
         }
     }
 
@@ -2206,10 +2221,22 @@ impl Ui {
     /// node's presentation primitives into `output` at its world
     /// bounds.
     fn lower_subtree(&self, node: NodeId, output: &mut Scene) {
+        let clip = self.tree.local_clip(node).flatten();
+        let had_clip = clip.is_some();
+        if let Some(clip) = clip {
+            output.push_clip(Clip::Fill {
+                transform: self.tree.world_transform(node).unwrap_or(Affine::IDENTITY),
+                shape: Geometry::RoundedRect(clip),
+                fill_rule: peniko::Fill::NonZero,
+            });
+        }
         self.lower_one(node, output);
         let children: Vec<NodeId> = self.tree.children_of(node).to_vec();
         for child in children {
             self.lower_subtree(child, output);
+        }
+        if had_clip {
+            output.pop_clip();
         }
     }
 

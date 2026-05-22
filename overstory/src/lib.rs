@@ -52,8 +52,9 @@ pub use controls::checkbox::{
 pub use controls::divider::{Divider, DividerAxis, DividerWidget, TYPE_DIVIDER};
 pub use controls::list::{
     ListBox, ListBoxWidget, ListItem, ListItemWidget, ListSelectionChangedEvent, ListSelectionMode,
-    PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, select_list_item,
-    selected_list_item, selected_list_items,
+    PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM,
+    list_scroll_offset_y, scroll_list_item_into_view, select_list_item, selected_list_item,
+    selected_list_items, set_list_scroll_offset_y,
 };
 pub use controls::panel::{Panel, PanelWidget};
 pub use controls::progress::{

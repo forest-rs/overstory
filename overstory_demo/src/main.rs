@@ -586,16 +586,28 @@ fn build_ui() -> Ui {
     ui.append(spinner_row, caption("Streaming updates"));
 
     let selection_card = card(&mut ui, gallery, "SELECTION");
-    ui.append(selection_card, caption("Active renderer"));
-    let renderer_list = ui.append(selection_card, ListBox::new().size(280.0, 174.0));
-    let selected_renderer = ui.append(renderer_list, ListItem::new("Vello scene graph"));
+    ui.append(selection_card, caption("Renderer queue"));
+    let renderer_list = ui.append(
+        selection_card,
+        ListBox::new()
+            .size(280.0, 146.0)
+            .multiple_selection()
+            .scroll_offset_y(34.0),
+    );
+    ui.append(renderer_list, ListItem::new("Vello scene graph"));
     ui.append(renderer_list, ListItem::new("CPU fallback raster"));
-    ui.append(renderer_list, ListItem::new("Text shaping pass"));
+    let selected_renderer = ui.append(renderer_list, ListItem::new("Text shaping pass"));
     ui.append(renderer_list, ListItem::new("Accessibility tree"));
+    ui.append(renderer_list, ListItem::new("Hit testing index"));
+    ui.append(renderer_list, ListItem::new("Presentation cache"));
+    ui.append(renderer_list, ListItem::new("Frame diagnostics"));
     let _ = select_list_item(&mut ui, renderer_list, selected_renderer);
 
     ui.append(selection_card, Divider::horizontal().length(280.0));
-    ui.append(selection_card, caption("Backed by understory_selection"));
+    ui.append(
+        selection_card,
+        caption("Range selection + viewport clipping"),
+    );
 
     let layout_card = card(&mut ui, gallery, "LAYOUT");
     ui.append(layout_card, caption("Resizable panes"));

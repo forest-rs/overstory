@@ -28,7 +28,7 @@
 use core::any::Any;
 
 use cursor_icon::CursorIcon;
-use kurbo::Size;
+use kurbo::{Size, Vec2};
 use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
 use understory_style::TypeTag;
@@ -110,6 +110,25 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         let _ = element;
         None
     }
+
+    /// Returns whether this widget clips its subtree to its arranged bounds.
+    ///
+    /// The default leaves descendants visible and pickable outside the
+    /// element's own box. Viewport-like controls override this.
+    fn clips_subtree(&self, element: &Element) -> bool {
+        let _ = element;
+        false
+    }
+
+    /// Returns a layout-space offset applied to this widget's direct children.
+    ///
+    /// This is intentionally separate from layout sizing: layout still computes
+    /// the normal child positions, then viewport-like controls can translate
+    /// the arranged subtree for scrolling.
+    fn child_layout_offset(&self, element: &Element) -> Vec2 {
+        let _ = element;
+        Vec2::ZERO
+    }
 }
 
 impl dyn Widget {
@@ -169,6 +188,14 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
         self.widget.cursor_icon(element)
+    }
+
+    fn clips_subtree(&self, element: &Element) -> bool {
+        self.widget.clips_subtree(element)
+    }
+
+    fn child_layout_offset(&self, element: &Element) -> Vec2 {
+        self.widget.child_layout_offset(element)
     }
 }
 

@@ -7,14 +7,15 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
+use kurbo::Vec2;
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::controls::text::TextWidget;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
@@ -35,6 +36,7 @@ pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
 
 type SharedSelection = Rc<RefCell<Selection<ElementId>>>;
+type SharedScrollOffset = Rc<Cell<f64>>;
 type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
 type SharedListSelectionChangedHandler = Rc<RefCell<Option<ListSelectionChangedHandler>>>;
 
@@ -65,6 +67,7 @@ pub struct ListBox {
     size: Option<(f32, f32)>,
     state: ControlState,
     selection_mode: ListSelectionMode,
+    scroll_offset_y: f64,
     on_selection_changed: Option<ListSelectionChangedHandler>,
 }
 
@@ -73,6 +76,7 @@ impl core::fmt::Debug for ListBox {
         f.debug_struct("ListBox")
             .field("size", &self.size)
             .field("selection_mode", &self.selection_mode)
+            .field("scroll_offset_y", &self.scroll_offset_y)
             .finish_non_exhaustive()
     }
 }
@@ -85,6 +89,7 @@ impl ListBox {
             size: None,
             state: ControlState::interactive(),
             selection_mode: ListSelectionMode::Single,
+            scroll_offset_y: 0.0,
             on_selection_changed: None,
         }
     }
@@ -129,6 +134,13 @@ impl ListBox {
         self.selection_mode(ListSelectionMode::Multiple)
     }
 
+    /// Sets the initial vertical scroll offset in logical pixels.
+    #[must_use]
+    pub fn scroll_offset_y(mut self, offset: f64) -> Self {
+        self.scroll_offset_y = normalize_scroll_offset(offset);
+        self
+    }
+
     /// Registers a handler fired after this list's selection changes.
     #[must_use]
     pub fn on_selection_changed<F>(mut self, handler: F) -> Self
@@ -149,11 +161,13 @@ impl Default for ListBox {
 impl AppendSpec for ListBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let selection = Rc::new(RefCell::new(Selection::new()));
+        let scroll_offset_y = Rc::new(Cell::new(self.scroll_offset_y));
         let selection_changed = Rc::new(RefCell::new(self.on_selection_changed));
         let id = ui.append_widget(
             parent,
             Box::new(ListBoxWidget {
                 selection,
+                scroll_offset_y,
                 selection_mode: self.selection_mode,
                 selection_changed,
             }),
@@ -173,6 +187,7 @@ impl AppendSpec for ListBox {
 /// Per-element widget for `ListBox`.
 pub struct ListBoxWidget {
     selection: SharedSelection,
+    scroll_offset_y: SharedScrollOffset,
     selection_mode: ListSelectionMode,
     selection_changed: SharedListSelectionChangedHandler,
 }
@@ -186,6 +201,16 @@ impl core::fmt::Debug for ListBoxWidget {
 impl Widget for ListBoxWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_LIST_BOX)
+    }
+
+    fn clips_subtree(&self, element: &Element) -> bool {
+        let _ = element;
+        true
+    }
+
+    fn child_layout_offset(&self, element: &Element) -> Vec2 {
+        let _ = element;
+        Vec2::new(0.0, -self.scroll_offset_y.get())
     }
 }
 
@@ -325,6 +350,55 @@ pub fn selected_list_items(ui: &Ui, listbox: ElementId) -> Vec<ElementId> {
         .collect()
 }
 
+/// Returns the list's current vertical scroll offset in logical pixels.
+#[must_use]
+pub fn list_scroll_offset_y(ui: &Ui, listbox: ElementId) -> Option<f64> {
+    list_box_scroll_offset(ui, listbox).map(|scroll| scroll.get())
+}
+
+/// Sets the list's vertical scroll offset in logical pixels.
+///
+/// Returns `false` if `listbox` is stale or does not own list state.
+pub fn set_list_scroll_offset_y(ui: &mut Ui, listbox: ElementId, offset: f64) -> bool {
+    let Some(scroll) = list_box_scroll_offset(ui, listbox) else {
+        return false;
+    };
+    let offset = normalize_scroll_offset(offset);
+    if (scroll.get() - offset).abs() <= f64::EPSILON {
+        return true;
+    }
+    scroll.set(offset);
+    ui.mark_channels(listbox, crate::channels::LAYOUT.into());
+    true
+}
+
+/// Scrolls `listbox` just enough to bring `item` into its current viewport.
+///
+/// The operation uses the most recently computed bounds, so callers should run
+/// [`Ui::compute_layout`] before calling this for geometry-driven scrolling.
+pub fn scroll_list_item_into_view(ui: &mut Ui, listbox: ElementId, item: ElementId) -> bool {
+    if !is_direct_list_item(ui, listbox, item) {
+        return false;
+    }
+    let Some(current) = list_scroll_offset_y(ui, listbox) else {
+        return false;
+    };
+    let list_bounds = ui.effective_bounds(listbox);
+    let item_bounds = ui.effective_bounds(item);
+    if list_bounds.width() <= 0.0 || list_bounds.height() <= 0.0 || item_bounds.height() <= 0.0 {
+        return false;
+    }
+
+    let next = if item_bounds.y0 < list_bounds.y0 {
+        current - (list_bounds.y0 - item_bounds.y0)
+    } else if item_bounds.y1 > list_bounds.y1 {
+        current + (item_bounds.y1 - list_bounds.y1)
+    } else {
+        current
+    };
+    set_list_scroll_offset_y(ui, listbox, next)
+}
+
 fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
     ui.on_click(item, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
@@ -387,6 +461,15 @@ fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
             Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
                 Some(previous_index(current_index, items.len()))
             }
+            Key::Named(NamedKey::PageDown) => Some(page_down_index(
+                current_index,
+                items.len(),
+                visible_item_count(ui, listbox, &items),
+            )),
+            Key::Named(NamedKey::PageUp) => Some(page_up_index(
+                current_index,
+                visible_item_count(ui, listbox, &items),
+            )),
             Key::Named(NamedKey::Home) => Some(0),
             Key::Named(NamedKey::End) => Some(items.len() - 1),
             Key::Named(NamedKey::Enter) => current_index,
@@ -408,6 +491,7 @@ fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
         } else {
             select_list_item(ui, listbox, item);
         }
+        scroll_list_item_into_view(ui, listbox, item);
         event.mark_handled();
     });
 }
@@ -418,6 +502,34 @@ fn next_index(current: Option<usize>, len: usize) -> usize {
 
 fn previous_index(current: Option<usize>, len: usize) -> usize {
     current.map(|idx| idx.saturating_sub(1)).unwrap_or(len - 1)
+}
+
+fn page_down_index(current: Option<usize>, len: usize, page: usize) -> usize {
+    current.map(|idx| (idx + page).min(len - 1)).unwrap_or(0)
+}
+
+fn page_up_index(current: Option<usize>, page: usize) -> usize {
+    current.map(|idx| idx.saturating_sub(page)).unwrap_or(0)
+}
+
+fn visible_item_count(ui: &Ui, listbox: ElementId, items: &[ElementId]) -> usize {
+    let list_height = ui.effective_bounds(listbox).height();
+    let item_height = items
+        .iter()
+        .map(|item| ui.effective_bounds(*item).height())
+        .find(|height| *height > 0.0)
+        .unwrap_or(0.0);
+    if list_height <= 0.0 || item_height <= 0.0 {
+        return 1;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "positive viewport/item ratio is clamped to at least one visible item"
+    )]
+    {
+        (list_height / item_height).floor().max(1.0) as usize
+    }
 }
 
 fn select_list_item_for_click(
@@ -576,6 +688,14 @@ fn action_modifier(modifiers: ui_events::keyboard::Modifiers) -> bool {
     modifiers.ctrl() || modifiers.meta()
 }
 
+fn normalize_scroll_offset(offset: f64) -> f64 {
+    if offset.is_finite() {
+        offset.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 fn is_activation_key(key: &ui_events::keyboard::Key) -> bool {
     use ui_events::keyboard::{Key, NamedKey};
 
@@ -636,6 +756,13 @@ fn list_box_selection(ui: &Ui, listbox: ElementId) -> Option<SharedSelection> {
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
         .map(|widget| Rc::clone(&widget.selection))
+}
+
+fn list_box_scroll_offset(ui: &Ui, listbox: ElementId) -> Option<SharedScrollOffset> {
+    ui.get(listbox)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
+        .map(|widget| Rc::clone(&widget.scroll_offset_y))
 }
 
 fn list_box_selection_mode(ui: &Ui, listbox: ElementId) -> Option<ListSelectionMode> {
@@ -818,6 +945,69 @@ mod tests {
             selected_list_items(&ui, listbox),
             vec![first, second, third]
         );
+    }
+
+    #[test]
+    fn list_scroll_offset_translates_children_and_clips_paint() {
+        let mut ui = Ui::new();
+        ui.set_theme(crate::theme::default_theme());
+        ui.set_cascade(crate::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 96.0));
+        let listbox = ui.append(root, ListBox::new().size(140.0, 48.0));
+        let first = ui.append(listbox, ListItem::new("First"));
+        ui.append(listbox, ListItem::new("Second"));
+        ui.append(listbox, ListItem::new("Third"));
+        let fourth = ui.append(listbox, ListItem::new("Fourth"));
+
+        ui.compute_layout(kurbo::Size::new(180.0, 96.0));
+        let list_bounds = ui.effective_bounds(listbox);
+        let first_before = ui.effective_bounds(first);
+        let fourth_center = ui.effective_bounds(fourth).center();
+        assert!(fourth_center.y > list_bounds.y1);
+        assert_ne!(ui.hit_test(fourth_center), Some(fourth));
+        assert_eq!(list_scroll_offset_y(&ui, listbox), Some(0.0));
+
+        assert!(set_list_scroll_offset_y(&mut ui, listbox, 18.0));
+        ui.compute_layout(kurbo::Size::new(180.0, 96.0));
+        let first_after = ui.effective_bounds(first);
+        assert!((first_after.y0 - (first_before.y0 - 18.0)).abs() <= 0.01);
+
+        let mut scene = imaging::record::Scene::new();
+        ui.paint(&mut scene);
+        assert!(
+            scene
+                .commands()
+                .iter()
+                .any(|command| matches!(command, imaging::record::Command::PushClip(_)))
+        );
+        scene.validate().expect("list viewport clip should balance");
+    }
+
+    #[test]
+    fn keyboard_selection_scrolls_item_into_view() {
+        let mut ui = Ui::new();
+        ui.set_theme(crate::theme::default_theme());
+        ui.set_cascade(crate::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 120.0));
+        let listbox = ui.append(root, ListBox::new().size(140.0, 56.0));
+        let mut items = Vec::new();
+        for label in ["One", "Two", "Three", "Four", "Five", "Six"] {
+            items.push(ui.append(listbox, ListItem::new(label)));
+        }
+        assert!(ui.set_focus(Some(listbox)));
+
+        ui.compute_layout(kurbo::Size::new(180.0, 120.0));
+        let end = KeyboardEvent::key_down(Key::Named(NamedKey::End), Code::End);
+        assert!(ui.dispatch_key(&end).handled);
+        assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
+
+        ui.compute_layout(kurbo::Size::new(180.0, 120.0));
+        let list_bounds = ui.effective_bounds(listbox);
+        let last_bounds = ui.effective_bounds(*items.last().unwrap());
+        assert!(last_bounds.y0 >= list_bounds.y0 - 0.01);
+        assert!(last_bounds.y1 <= list_bounds.y1 + 0.01);
     }
 
     #[test]
