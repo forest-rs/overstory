@@ -84,7 +84,7 @@ pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,
     TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
-pub use text::TextEngine;
+pub use text::{TextEngine, TextWrapping};
 pub use ui::TimerEvent;
 pub use ui::{
     ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult, Ui,

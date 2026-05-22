@@ -2481,6 +2481,10 @@ fn text_max_advance_for_bounds(bounds: Rect) -> Option<f32> {
     crate::text::max_advance_for_logical_width(bounds.width())
 }
 
+fn plain_text_wraps(plain: &understory_presentation::PlainTextPrimitive) -> bool {
+    plain.style.text_wrap_mode != understory_presentation::TextStyle::default().text_wrap_mode
+}
+
 /// Lowers a node's resolved presentation primitives into `output`,
 /// positioned at `bounds`. Stand-in for a future `imaging`-side
 /// renderer that consumes `understory_presentation` directly.
@@ -2538,7 +2542,11 @@ fn lower_presentation(
                         plain.content.as_str(),
                         plain.style.font_size,
                         fg.clone(),
-                        text_max_advance_for_bounds(bounds),
+                        if plain_text_wraps(plain) {
+                            text_max_advance_for_bounds(bounds)
+                        } else {
+                            None
+                        },
                     );
                     let origin = bounds.origin();
                     crate::text::render_text(
@@ -2950,7 +2958,7 @@ mod tests {
     }
 
     #[test]
-    fn paint_wraps_text_to_element_bounds() {
+    fn paint_keeps_default_text_on_one_line() {
         use crate::Text;
         use imaging::record::{Command, Draw};
 
@@ -2964,6 +2972,53 @@ mod tests {
         let text = ui.append(
             root,
             Text::new("alpha beta gamma delta epsilon").font_size(20.0),
+        );
+        ui.set_layout(text, Layout::new().logical_size(80.0, 200.0));
+
+        ui.compute_layout(Size::new(80.0, 200.0));
+
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for command in output.commands() {
+            let Command::Draw(id) = command else {
+                continue;
+            };
+            let Draw::GlyphRun(run) = output.draw_op(*id) else {
+                continue;
+            };
+            for glyph in &run.glyphs {
+                min_y = min_y.min(glyph.y);
+                max_y = max_y.max(glyph.y);
+            }
+        }
+
+        assert!(
+            max_y - min_y < 20.0,
+            "default text should paint on one line; glyph y span was {}",
+            max_y - min_y
+        );
+    }
+
+    #[test]
+    fn paint_wraps_opted_in_text_to_element_bounds() {
+        use crate::Text;
+        use imaging::record::{Command, Draw};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_local(
+            root,
+            ui.properties().layout,
+            Layout::flex().logical_size(80.0, 200.0),
+        );
+        let text = ui.append(
+            root,
+            Text::new("alpha beta gamma delta epsilon")
+                .font_size(20.0)
+                .wrap(),
         );
         ui.set_layout(text, Layout::new().logical_size(80.0, 200.0));
 
@@ -3094,33 +3149,30 @@ mod tests {
             "spinner label should retain natural width; natural={spinner_natural_width}, bounds={spinner_bounds:?}"
         );
 
-        let toggle_painted_height = ui
-            .text
-            .borrow_mut()
-            .shape(
-                "Live rendering",
-                15.0,
-                Brush::default(),
-                text_max_advance_for_bounds(toggle_bounds),
-            )
-            .height();
-        let spinner_painted_height = ui
-            .text
-            .borrow_mut()
-            .shape(
-                "Streaming updates",
-                13.0,
-                Brush::default(),
-                text_max_advance_for_bounds(spinner_bounds),
-            )
-            .height();
+        let mut output = Scene::new();
+        ui.paint(&mut output);
+
+        let mut max_span = 0.0_f32;
+        for command in output.commands() {
+            let imaging::record::Command::Draw(id) = command else {
+                continue;
+            };
+            let imaging::record::Draw::GlyphRun(run) = output.draw_op(*id) else {
+                continue;
+            };
+            let mut min_y = f32::INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+            for glyph in &run.glyphs {
+                min_y = min_y.min(glyph.y);
+                max_y = max_y.max(glyph.y);
+            }
+            if min_y.is_finite() && max_y.is_finite() {
+                max_span = max_span.max(max_y - min_y);
+            }
+        }
         assert!(
-            toggle_painted_height < 24.0,
-            "toggle label should paint on one line; painted height was {toggle_painted_height}"
-        );
-        assert!(
-            spinner_painted_height < 22.0,
-            "spinner label should paint on one line; painted height was {spinner_painted_height}"
+            max_span < 20.0,
+            "control row labels should paint on one line; max glyph y span was {max_span}"
         );
     }
 

@@ -17,6 +17,21 @@ use smallvec::SmallVec;
 
 const WRAP_WIDTH_TOLERANCE: f32 = 0.5;
 
+/// Text line wrapping policy for Overstory text elements.
+///
+/// `Text` defaults to [`TextWrapping::NoWrap`], matching the common label
+/// case. Body text that should flow inside a chosen width should opt in with
+/// [`crate::Text::wrap`] or by setting [`crate::BuiltInProperties::text_wrapping`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TextWrapping {
+    /// Keep text on one line unless the content itself contains hard breaks.
+    #[default]
+    NoWrap,
+
+    /// Wrap at soft line-break opportunities when layout has chosen a width.
+    Wrap,
+}
+
 /// Converts a logical-pixel width into a Parley wrap advance.
 ///
 /// Taffy stores measured widths as `f32`, then Overstory lowers them back
