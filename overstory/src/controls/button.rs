@@ -51,7 +51,7 @@ pub struct Button {
     on_key: Option<BoxedKeyHandler>,
 }
 
-type BoxedClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent) + 'static>;
+type BoxedClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>) + 'static>;
 type BoxedKeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>) + 'static>;
 
 impl core::fmt::Debug for Button {
@@ -143,7 +143,7 @@ impl Button {
     #[must_use]
     pub fn on_click<F>(mut self, handler: F) -> Self
     where
-        F: FnMut(&mut Ui, ClickEvent) + 'static,
+        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
     {
         self.on_click = Some(Box::new(handler));
         self

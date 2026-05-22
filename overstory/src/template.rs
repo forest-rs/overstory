@@ -503,7 +503,7 @@ impl<'a> TemplateContext<'a> {
     /// Registers a click handler on `id`.
     pub fn on_click<F>(&mut self, id: ElementId, handler: F)
     where
-        F: FnMut(&mut Ui, ClickEvent) + 'static,
+        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
     {
         self.ui.on_click(id, handler);
     }
@@ -511,7 +511,7 @@ impl<'a> TemplateContext<'a> {
     /// Registers a drag handler on `id`.
     pub fn on_drag<F>(&mut self, id: ElementId, handler: F)
     where
-        F: FnMut(&mut Ui, DragEvent) + 'static,
+        F: FnMut(&mut Ui, DragEvent<'_>) + 'static,
     {
         self.ui.on_drag(id, handler);
     }

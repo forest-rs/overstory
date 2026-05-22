@@ -411,7 +411,7 @@ fn caption(text: &str) -> Text {
 /// it fires. `event.current` points at the element the handler is
 /// registered on — i.e. the button — so we don't need the id
 /// captured separately.
-fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent) + 'static {
+fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
     let activations = std::cell::Cell::new(0_u32);
     move |ui: &mut Ui, event| {
         if !matches!(

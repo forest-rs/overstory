@@ -123,10 +123,16 @@ pub struct Ui {
     /// click is recognized by [`ClickState`]. One handler per
     /// element for now; subsequent `on_click` calls replace.
     click_handlers: HashMap<ElementId, ClickHandler>,
+    /// Tracks click handlers that remove themselves or another
+    /// currently-dispatching click handler while that handler is
+    /// temporarily out of the map.
+    click_handler_dispatch: HandlerDispatchTracker,
     /// Per-element drag handlers. Fire on every primary-button
     /// `Move` while a press is active, along the responder path
     /// rooted at the press target.
     drag_handlers: HashMap<ElementId, DragHandler>,
+    /// Tracks drag handler removals during dispatch.
+    drag_handler_dispatch: HandlerDispatchTracker,
     /// Pointer position captured at the most recent primary-button
     /// `Down`. Used by the drag dispatch to compute total offset
     /// from the press anchor. Cleared on `Up` / `Cancel`.
@@ -139,6 +145,8 @@ pub struct Ui {
     /// sequence rooted at the currently focused element. Same
     /// one-handler-per-element model as `click_handlers`.
     key_handlers: HashMap<ElementId, KeyHandler>,
+    /// Tracks key handler removals during dispatch.
+    key_handler_dispatch: HandlerDispatchTracker,
     /// Currently focused element (the keyboard target). `:focused`
     /// is applied to this element's pseudoclass set.
     focused: Option<ElementId>,
@@ -176,10 +184,40 @@ pub struct Ui {
     now: TimerInstant,
 }
 
-type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent)>;
-type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent)>;
+type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>)>;
+type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
 type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 type TimerHandler = Box<dyn FnMut(&mut Ui, TimerEvent)>;
+
+#[derive(Default)]
+struct HandlerDispatchTracker {
+    active: Vec<ElementId>,
+    removals: HashSet<ElementId>,
+}
+
+impl HandlerDispatchTracker {
+    fn begin(&mut self, id: ElementId) {
+        self.active.push(id);
+    }
+
+    fn end(&mut self, id: ElementId) {
+        let popped = self.active.pop();
+        debug_assert!(
+            popped == Some(id),
+            "handler dispatch tracker should end the current handler"
+        );
+    }
+
+    fn note_removal(&mut self, id: ElementId) {
+        if self.active.contains(&id) {
+            self.removals.insert(id);
+        }
+    }
+
+    fn take_removed(&mut self, id: ElementId) -> bool {
+        self.removals.remove(&id)
+    }
+}
 
 /// Payload delivered to a timer handler when a scheduled timer
 /// fires. `target` is the element the timer was scheduled against
@@ -201,6 +239,84 @@ pub struct TimerEvent {
     pub timer: TimerId,
     /// Host-supplied monotonic time of dispatch.
     pub now: TimerInstant,
+}
+
+/// Shared state carried by one routed event dispatch.
+///
+/// The state is created by `Ui` for a single responder route and is shared by
+/// every handler invocation for that route. Calling [`Self::mark_handled`] or
+/// [`Self::stop_propagation`] stops the remaining ordinary route; a future
+/// handler registration API can add a "handled events too" opt-in without
+/// changing event payloads.
+#[derive(Debug)]
+struct RoutedEventState {
+    handled: Cell<bool>,
+    propagation_stopped: Cell<bool>,
+}
+
+impl Default for RoutedEventState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RoutedEventState {
+    /// Creates a fresh unhandled route state.
+    #[must_use]
+    fn new() -> Self {
+        Self {
+            handled: Cell::new(false),
+            propagation_stopped: Cell::new(false),
+        }
+    }
+
+    /// Marks this event handled.
+    fn mark_handled(&self) {
+        self.handled.set(true);
+    }
+
+    /// Returns whether this event has been marked handled.
+    #[must_use]
+    fn is_handled(&self) -> bool {
+        self.handled.get()
+    }
+
+    /// Stops propagation without marking the event handled.
+    fn stop_propagation(&self) {
+        self.propagation_stopped.set(true);
+    }
+
+    /// Returns whether propagation has been explicitly stopped.
+    #[must_use]
+    fn is_propagation_stopped(&self) -> bool {
+        self.propagation_stopped.get()
+    }
+
+    fn should_stop_route(&self) -> bool {
+        self.is_handled() || self.is_propagation_stopped()
+    }
+}
+
+/// Result returned by routed event dispatch helpers.
+#[allow(
+    unnameable_types,
+    reason = "re-exported from the crate root via lib.rs"
+)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct RoutedDispatchResult {
+    /// Whether the routed event was consumed by a handler.
+    pub handled: bool,
+    /// Whether a handler explicitly stopped propagation.
+    pub propagation_stopped: bool,
+}
+
+impl RoutedDispatchResult {
+    fn from_state(state: &RoutedEventState) -> Self {
+        Self {
+            handled: state.is_handled(),
+            propagation_stopped: state.is_propagation_stopped(),
+        }
+    }
 }
 
 /// Payload delivered to a key handler. Carries the normalized
@@ -231,7 +347,7 @@ pub struct KeyEvent<'a> {
     pub phase: Phase,
     /// The full normalized keyboard event.
     pub key: &'a KeyboardEvent,
-    handled: &'a Cell<bool>,
+    state: &'a RoutedEventState,
 }
 
 impl KeyEvent<'_> {
@@ -241,13 +357,24 @@ impl KeyEvent<'_> {
     /// Future routed-event APIs may add an explicit "handled events too"
     /// subscription mode.
     pub fn mark_handled(&self) {
-        self.handled.set(true);
+        self.state.mark_handled();
     }
 
     /// Returns whether this key event has been marked handled.
     #[must_use]
     pub fn is_handled(&self) -> bool {
-        self.handled.get()
+        self.state.is_handled()
+    }
+
+    /// Stops this key event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.state.stop_propagation();
+    }
+
+    /// Returns whether this key event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.state.is_propagation_stopped()
     }
 }
 
@@ -260,6 +387,8 @@ impl KeyEvent<'_> {
 pub struct KeyDispatchResult {
     /// Whether the key was consumed by framework policy or a key handler.
     pub handled: bool,
+    /// Whether a key handler explicitly stopped propagation.
+    pub propagation_stopped: bool,
     /// Whether dispatch changed the focused element.
     pub focus_changed: bool,
     /// Focused element after dispatch, if any.
@@ -276,7 +405,7 @@ pub struct KeyDispatchResult {
     reason = "re-exported from the crate root via lib.rs"
 )]
 #[derive(Copy, Clone, Debug)]
-pub struct DragEvent {
+pub struct DragEvent<'a> {
     /// The element captured when the press started — the deepest
     /// hit at primary-button `Down`. Stable across the drag.
     pub source: ElementId,
@@ -296,6 +425,31 @@ pub struct DragEvent {
     /// Movement since the previous drag dispatch in physical
     /// pixels.
     pub delta: kurbo::Vec2,
+    state: &'a RoutedEventState,
+}
+
+impl DragEvent<'_> {
+    /// Marks this drag event handled and stops the remaining ordinary route.
+    pub fn mark_handled(&self) {
+        self.state.mark_handled();
+    }
+
+    /// Returns whether this drag event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.state.is_handled()
+    }
+
+    /// Stops this drag event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.state.stop_propagation();
+    }
+
+    /// Returns whether this drag event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.state.is_propagation_stopped()
+    }
 }
 
 /// Payload delivered to a click handler.
@@ -304,7 +458,7 @@ pub struct DragEvent {
     reason = "re-exported from the crate root via lib.rs"
 )]
 #[derive(Copy, Clone, Debug)]
-pub struct ClickEvent {
+pub struct ClickEvent<'a> {
     /// The element the user actually clicked (the target).
     pub source: ElementId,
     /// The element this handler is registered on (where in the
@@ -318,6 +472,31 @@ pub struct ClickEvent {
     /// Pointer position at click-recognition time, in physical
     /// pixels. Useful for hit-position-driven controls like Slider.
     pub position: Point,
+    state: &'a RoutedEventState,
+}
+
+impl ClickEvent<'_> {
+    /// Marks this click event handled and stops the remaining ordinary route.
+    pub fn mark_handled(&self) {
+        self.state.mark_handled();
+    }
+
+    /// Returns whether this click event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.state.is_handled()
+    }
+
+    /// Stops this click event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.state.stop_propagation();
+    }
+
+    /// Returns whether this click event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.state.is_propagation_stopped()
+    }
 }
 
 /// Shared construction-time state for interactive controls.
@@ -457,10 +636,13 @@ impl Ui {
             tree: Tree::new(),
             element_to_nodes: HashMap::new(),
             click_handlers: HashMap::new(),
+            click_handler_dispatch: HandlerDispatchTracker::default(),
             drag_handlers: HashMap::new(),
+            drag_handler_dispatch: HandlerDispatchTracker::default(),
             press_position: None,
             last_drag_position: None,
             key_handlers: HashMap::new(),
+            key_handler_dispatch: HandlerDispatchTracker::default(),
             focused: None,
             focusable_preferences: HashMap::new(),
             focus_policy: DefaultPolicy {
@@ -840,12 +1022,8 @@ impl Ui {
     }
 
     /// Drains dirty bindings and panics if a real binding evaluation error is
-    /// found.
-    ///
-    /// Migration note: callers that need to recover from binding graph or host
-    /// type errors should use [`Self::try_flush_bindings`]. This method preserves
-    /// the original infallible call shape for existing code, but it no longer
-    /// silently discards non-missing-source errors.
+    /// found. Use [`Self::try_flush_bindings`] when binding graph or host type
+    /// errors should be handled by the caller.
     pub fn flush_bindings(&mut self) -> BindingReport {
         self.try_flush_bindings()
             .expect("binding drain failed; use try_flush_bindings to inspect the error")
@@ -1117,6 +1295,41 @@ impl Ui {
     /// [`Self::on_key`]. No-op if none is registered.
     pub fn remove_key_handler(&mut self, id: ElementId) {
         self.key_handlers.remove(&id);
+        self.key_handler_dispatch.note_removal(id);
+    }
+
+    /// Runs `dispatch_current` across the responder route for `source`.
+    ///
+    /// Route construction belongs to [`understory_responder::Router`]; this
+    /// helper owns only Overstory's execution semantics: temporarily remove a
+    /// handler before invoking it, share routed event state across invocations,
+    /// and stop the ordinary route once an event is handled or propagation is
+    /// explicitly stopped.
+    fn dispatch_routed(
+        &mut self,
+        source: ElementId,
+        mut dispatch_current: impl FnMut(&mut Self, Phase, ElementId, &RoutedEventState),
+    ) -> RoutedDispatchResult {
+        let state = RoutedEventState::new();
+        for (phase, node) in self.responder_sequence(source) {
+            dispatch_current(self, phase, node, &state);
+            if state.should_stop_route() {
+                break;
+            }
+        }
+        RoutedDispatchResult::from_state(&state)
+    }
+
+    fn responder_sequence(&self, source: ElementId) -> Vec<(Phase, ElementId)> {
+        let lookup = UiWidgetLookup;
+        let parent = UiParentLookup { ui: self };
+        let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
+            Router::with_parent(lookup, parent);
+        router
+            .dispatch_for::<()>(source)
+            .into_iter()
+            .map(|d| (d.phase, d.node))
+            .collect()
     }
 
     /// Routes `event` through the framework keyboard policy and,
@@ -1127,11 +1340,6 @@ impl Ui {
     /// responder capture → target → bubble path rooted at the
     /// focused element. A handler can call [`KeyEvent::mark_handled`]
     /// to stop the remaining route.
-    ///
-    /// Migration note: callers should inspect the returned
-    /// [`KeyDispatchResult`] instead of assuming every keyboard event requests a
-    /// redraw. Demo or host bridges should leave framework-owned focus keys to
-    /// this method.
     #[must_use]
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> KeyDispatchResult {
         let previous_focus = self.focused;
@@ -1139,6 +1347,7 @@ impl Ui {
             let focused = self.focus_navigate(direction);
             return KeyDispatchResult {
                 handled: focused.is_some(),
+                propagation_stopped: false,
                 focus_changed: previous_focus != self.focused,
                 focused: self.focused,
             };
@@ -1147,40 +1356,29 @@ impl Ui {
         let Some(focused) = self.focused else {
             return KeyDispatchResult::default();
         };
-        let handled = Cell::new(false);
-        let seq: Vec<(Phase, ElementId)> = {
-            let lookup = UiWidgetLookup;
-            let parent = UiParentLookup { ui: self };
-            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
-                Router::with_parent(lookup, parent);
-            router
-                .dispatch_for::<()>(focused)
-                .into_iter()
-                .map(|d| (d.phase, d.node))
-                .collect()
-        };
-        for (phase, node) in seq {
-            let Some(mut handler) = self.key_handlers.remove(&node) else {
-                continue;
+        let routed = self.dispatch_routed(focused, |ui, phase, node, state| {
+            let Some(mut handler) = ui.key_handlers.remove(&node) else {
+                return;
             };
             let ev = KeyEvent {
                 source: focused,
                 current: node,
                 phase,
                 key: event,
-                handled: &handled,
+                state,
             };
-            handler(self, ev);
-            if self.get(node).is_some() && !self.key_handlers.contains_key(&node) {
-                self.key_handlers.insert(node, handler);
+            ui.key_handler_dispatch.begin(node);
+            handler(ui, ev);
+            ui.key_handler_dispatch.end(node);
+            let handler_removed = ui.key_handler_dispatch.take_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.key_handlers.contains_key(&node) {
+                ui.key_handlers.insert(node, handler);
             }
-            if handled.get() {
-                break;
-            }
-        }
+        });
 
         KeyDispatchResult {
-            handled: handled.get(),
+            handled: routed.handled,
+            propagation_stopped: routed.propagation_stopped,
             focus_changed: previous_focus != self.focused,
             focused: self.focused,
         }
@@ -1310,7 +1508,7 @@ impl Ui {
     /// subsequent calls replace the previous handler.
     pub fn on_click<F>(&mut self, id: ElementId, handler: F)
     where
-        F: FnMut(&mut Self, ClickEvent) + 'static,
+        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
     {
         self.click_handlers.insert(id, Box::new(handler));
     }
@@ -1319,6 +1517,7 @@ impl Ui {
     /// [`Self::on_click`]. No-op if no handler is registered.
     pub fn remove_click_handler(&mut self, id: ElementId) {
         self.click_handlers.remove(&id);
+        self.click_handler_dispatch.note_removal(id);
     }
 
     /// Registers a drag handler on `id`. Fires on every
@@ -1328,7 +1527,7 @@ impl Ui {
     /// items. One handler per element; subsequent calls replace.
     pub fn on_drag<F>(&mut self, id: ElementId, handler: F)
     where
-        F: FnMut(&mut Self, DragEvent) + 'static,
+        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
     {
         self.drag_handlers.insert(id, Box::new(handler));
     }
@@ -1337,37 +1536,27 @@ impl Ui {
     /// [`Self::on_drag`]. No-op if no handler is registered.
     pub fn remove_drag_handler(&mut self, id: ElementId) {
         self.drag_handlers.remove(&id);
+        self.drag_handler_dispatch.note_removal(id);
     }
 
     /// Builds the responder dispatch sequence for the current
     /// press target and runs each drag handler along it. Called
     /// from `dispatch_pointer_event` on every `Move` while a press
     /// is active.
-    fn dispatch_drag(&mut self, position: Point) {
+    fn dispatch_drag(&mut self, position: Point) -> RoutedDispatchResult {
         let Some(source) = self.press_target else {
-            return;
+            return RoutedDispatchResult::default();
         };
         let Some(press_position) = self.press_position else {
-            return;
+            return RoutedDispatchResult::default();
         };
         let last = self.last_drag_position.unwrap_or(press_position);
         let delta = position - last;
         self.last_drag_position = Some(position);
 
-        let seq: Vec<(Phase, ElementId)> = {
-            let lookup = UiWidgetLookup;
-            let parent = UiParentLookup { ui: self };
-            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
-                Router::with_parent(lookup, parent);
-            router
-                .dispatch_for::<()>(source)
-                .into_iter()
-                .map(|d| (d.phase, d.node))
-                .collect()
-        };
-        for (phase, node) in seq {
-            let Some(mut handler) = self.drag_handlers.remove(&node) else {
-                continue;
+        self.dispatch_routed(source, |ui, phase, node, state| {
+            let Some(mut handler) = ui.drag_handlers.remove(&node) else {
+                return;
             };
             let event = DragEvent {
                 source,
@@ -1376,61 +1565,59 @@ impl Ui {
                 position,
                 press_position,
                 delta,
+                state,
             };
-            handler(self, event);
-            if self.get(node).is_some() && !self.drag_handlers.contains_key(&node) {
-                self.drag_handlers.insert(node, handler);
+            ui.drag_handler_dispatch.begin(node);
+            handler(ui, event);
+            ui.drag_handler_dispatch.end(node);
+            let handler_removed = ui.drag_handler_dispatch.take_removed(node);
+            if ui.get(node).is_some() && !handler_removed && !ui.drag_handlers.contains_key(&node) {
+                ui.drag_handlers.insert(node, handler);
             }
-        }
+        })
+    }
+
+    /// Programmatically synthesize a click on `target` at
+    /// `position`. Used by widgets that translate non-pointer input
+    /// (e.g. Button's Space / Enter key activation) into the same
+    /// click dispatch the pointer pipeline would produce.
+    pub fn synthesize_click(&mut self, target: ElementId, position: Point) -> RoutedDispatchResult {
+        self.dispatch_click(target, position)
     }
 
     /// Builds the responder dispatch sequence for `target` and runs
     /// each element's click handler along it (capture, then target,
     /// then bubble). Called when [`ClickState::on_up`] returns
-    /// [`ClickResult::Click`].
-    /// Programmatically synthesize a click on `target` at
-    /// `position`. Used by widgets that translate non-pointer input
-    /// (e.g. Button's Space / Enter key activation) into the same
-    /// click dispatch the pointer pipeline would produce.
-    pub fn synthesize_click(&mut self, target: ElementId, position: Point) {
-        self.dispatch_click(target, position);
-    }
-
-    fn dispatch_click(&mut self, target: ElementId, position: Point) {
+    /// [`ClickResult::Click`] or by [`Self::synthesize_click`].
+    fn dispatch_click(&mut self, target: ElementId, position: Point) -> RoutedDispatchResult {
         if !self.is_enabled(self.press_visual_target(target)) {
-            return;
+            return RoutedDispatchResult::default();
         }
 
-        // Compute the sequence with `&self` borrows, drop them, then
-        // run handlers with `&mut self`.
-        let seq: Vec<(Phase, ElementId)> = {
-            let lookup = UiWidgetLookup;
-            let parent = UiParentLookup { ui: self };
-            let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
-                Router::with_parent(lookup, parent);
-            let dispatches = router.dispatch_for::<()>(target);
-            dispatches.into_iter().map(|d| (d.phase, d.node)).collect()
-        };
-
-        for (phase, node) in seq {
+        self.dispatch_routed(target, |ui, phase, node, state| {
             // Take the handler out so it can call `&mut self`, then
             // put it back unless the handler removed itself.
-            let Some(mut handler) = self.click_handlers.remove(&node) else {
-                continue;
+            let Some(mut handler) = ui.click_handlers.remove(&node) else {
+                return;
             };
             let event = ClickEvent {
                 source: target,
                 current: node,
                 phase,
                 position,
+                state,
             };
-            handler(self, event);
+            ui.click_handler_dispatch.begin(node);
+            handler(ui, event);
+            ui.click_handler_dispatch.end(node);
+            let handler_removed = ui.click_handler_dispatch.take_removed(node);
             // Reinstate iff the element is still alive AND the
-            // handler didn't replace itself during the call.
-            if self.get(node).is_some() && !self.click_handlers.contains_key(&node) {
-                self.click_handlers.insert(node, handler);
+            // handler didn't remove or replace itself during the call.
+            if ui.get(node).is_some() && !handler_removed && !ui.click_handlers.contains_key(&node)
+            {
+                ui.click_handlers.insert(node, handler);
             }
-        }
+        })
     }
 
     /// Resolves the effective `Bounds` for `id` through the cascade.
@@ -3292,9 +3479,44 @@ mod tests {
         let result = ui.dispatch_key(&key);
 
         assert!(result.handled);
+        assert!(!result.propagation_stopped);
         assert!(
             !child_fired.get(),
             "handled capture-phase key should stop before target"
+        );
+    }
+
+    #[test]
+    fn dispatch_key_stops_route_when_handler_stops_propagation() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        ui.set_focusable(child, true);
+        ui.set_focus(Some(child));
+
+        let child_fired = Rc::new(Cell::new(false));
+        let child_fired_for_handler = Rc::clone(&child_fired);
+        ui.on_key(root, move |_ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                event.stop_propagation();
+            }
+        });
+        ui.on_key(child, move |_ui, _event| {
+            child_fired_for_handler.set(true);
+        });
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(!result.handled);
+        assert!(result.propagation_stopped);
+        assert!(
+            !child_fired.get(),
+            "stopped capture-phase key should stop before target"
         );
     }
 
@@ -3460,6 +3682,69 @@ mod tests {
     }
 
     #[test]
+    fn dispatch_click_stops_route_when_handler_stops_propagation() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+
+        let child_fired = Rc::new(Cell::new(false));
+        let child_fired_for_handler = Rc::clone(&child_fired);
+        ui.on_click(root, move |_ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                event.stop_propagation();
+            }
+        });
+        ui.on_click(child, move |_ui, _event| {
+            child_fired_for_handler.set(true);
+        });
+
+        let result = ui.dispatch_click(child, Point::ZERO);
+
+        assert!(!result.handled);
+        assert!(result.propagation_stopped);
+        assert!(
+            !child_fired.get(),
+            "stopped capture-phase click should stop before target"
+        );
+    }
+
+    #[test]
+    fn dispatch_drag_stops_route_when_handler_marks_handled() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        ui.press_target = Some(child);
+        ui.press_position = Some(Point::ZERO);
+        ui.last_drag_position = Some(Point::ZERO);
+
+        let child_fired = Rc::new(Cell::new(false));
+        let child_fired_for_handler = Rc::clone(&child_fired);
+        ui.on_drag(root, move |_ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                event.mark_handled();
+            }
+        });
+        ui.on_drag(child, move |_ui, _event| {
+            child_fired_for_handler.set(true);
+        });
+
+        let result = ui.dispatch_drag(Point::new(4.0, 0.0));
+
+        assert!(result.handled);
+        assert!(!result.propagation_stopped);
+        assert!(
+            !child_fired.get(),
+            "handled capture-phase drag should stop before target"
+        );
+    }
+
+    #[test]
     fn remove_click_handler_stops_firing() {
         use core::cell::Cell;
         use std::rc::Rc;
@@ -3480,6 +3765,85 @@ mod tests {
         ui.remove_click_handler(child);
         ui.dispatch_click(child, Point::ZERO);
         assert_eq!(count.get(), 1, "removed handler should not fire");
+    }
+
+    #[test]
+    fn click_handler_can_remove_itself_during_dispatch() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+        ui.on_click(child, move |ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                count_for_handler.set(count_for_handler.get() + 1);
+                ui.remove_click_handler(child);
+            }
+        });
+
+        ui.dispatch_click(child, Point::ZERO);
+        ui.dispatch_click(child, Point::ZERO);
+
+        assert_eq!(count.get(), 1, "self-removed handler should stay removed");
+    }
+
+    #[test]
+    fn key_handler_can_remove_itself_during_dispatch() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        ui.set_focusable(child, true);
+        ui.set_focus(Some(child));
+
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+        ui.on_key(child, move |ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                count_for_handler.set(count_for_handler.get() + 1);
+                ui.remove_key_handler(child);
+            }
+        });
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let _ = ui.dispatch_key(&key);
+        let _ = ui.dispatch_key(&key);
+
+        assert_eq!(count.get(), 1, "self-removed handler should stay removed");
+    }
+
+    #[test]
+    fn drag_handler_can_remove_itself_during_dispatch() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+        ui.press_target = Some(child);
+        ui.press_position = Some(Point::ZERO);
+        ui.last_drag_position = Some(Point::ZERO);
+
+        let count = Rc::new(Cell::new(0_u32));
+        let count_for_handler = Rc::clone(&count);
+        ui.on_drag(child, move |ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                count_for_handler.set(count_for_handler.get() + 1);
+                ui.remove_drag_handler(child);
+            }
+        });
+
+        ui.dispatch_drag(Point::new(1.0, 0.0));
+        ui.dispatch_drag(Point::new(2.0, 0.0));
+
+        assert_eq!(count.get(), 1, "self-removed handler should stay removed");
     }
 
     #[test]
