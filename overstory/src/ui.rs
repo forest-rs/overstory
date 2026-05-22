@@ -47,6 +47,7 @@ use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
 use crate::focus_runtime::FocusRuntime;
+use crate::layout_runtime::LayoutRuntime;
 use crate::layouts::Layout;
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
@@ -97,8 +98,7 @@ pub struct Ui {
     /// `clicks` so we can flip pseudos without re-querying its
     /// per-pointer press map.
     press_target: Option<ElementId>,
-    taffy: taffy::TaffyTree<ElementId>,
-    element_to_taffy: HashMap<ElementId, taffy::NodeId>,
+    layout: LayoutRuntime,
     /// Retained default-template expansion data for each templated owner.
     templates: TemplateRuntime,
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
@@ -563,8 +563,7 @@ impl Ui {
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
-            taffy: taffy::TaffyTree::new(),
-            element_to_taffy: HashMap::new(),
+            layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
             text: RefCell::new(TextEngine::new()),
             bindings: Some(BindingSet::new(BINDING)),
@@ -1909,16 +1908,16 @@ impl Ui {
         let updates: Vec<(taffy::NodeId, taffy::Style)> = dirty
             .into_iter()
             .filter_map(|id| {
-                let taffy_node = *self.element_to_taffy.get(&id)?;
+                let taffy_node = self.layout.node_for(id)?;
                 let style = self.effective_layout(id).to_taffy();
                 Some((taffy_node, style))
             })
             .collect();
         for (node, style) in updates {
-            let _ = self.taffy.set_style(node, style);
+            self.layout.set_style(node, style);
         }
 
-        let Some(root_taffy) = self.element_to_taffy.get(&self.root()).copied() else {
+        let Some(root_taffy) = self.layout.node_for(self.root()) else {
             return;
         };
         let available = taffy::Size {
@@ -1932,7 +1931,7 @@ impl Ui {
         // widgets. Split-borrow the disjoint Ui fields so the closure can
         // read everything it needs while the taffy tree is &mut.
         {
-            let taffy = &mut self.taffy;
+            let taffy = self.layout.taffy_mut();
             let registry = &self.registry;
             let properties = &self.properties;
             let style = &self.style;
@@ -1996,10 +1995,10 @@ impl Ui {
     }
 
     fn write_bounds_recursive(&mut self, id: ElementId, parent_origin: Point) {
-        let Some(taffy_node) = self.element_to_taffy.get(&id).copied() else {
+        let Some(taffy_node) = self.layout.node_for(id) else {
             return;
         };
-        let Ok(layout) = self.taffy.layout(taffy_node).copied() else {
+        let Some(layout) = self.layout.layout(taffy_node) else {
             return;
         };
         let origin = Point::new(
@@ -2240,14 +2239,7 @@ impl Ui {
         self.events.remove_target(id);
         self.timers.remove_target(id);
         self.focus.remove_target(id);
-        if let Some(taffy_node) = self.element_to_taffy.remove(&id) {
-            // `taffy.remove` also detaches from its parent and frees children
-            // recursively — but we've already walked our subtree top-down and
-            // recursed into our children before reaching this point, so the
-            // children's taffy nodes are already gone. Removing the (now
-            // childless) taffy node here just finalizes the leaf.
-            let _ = self.taffy.remove(taffy_node);
-        }
+        self.layout.remove_element(id);
         if let Some(nodes) = self.element_to_nodes.remove(&id) {
             for node in nodes {
                 if let Some(store) = self.presentation.as_mut() {
@@ -2259,20 +2251,7 @@ impl Ui {
     }
 
     fn mirror_allocated_element(&mut self, id: ElementId, parent: Option<ElementId>) {
-        // Mirror into taffy. The element id is stored as the node context so
-        // taffy's measure callback can identify which element it's measuring.
-        let taffy_node = self
-            .taffy
-            .new_leaf_with_context(taffy::Style::default(), id)
-            .expect("taffy leaf allocation should succeed");
-        self.element_to_taffy.insert(id, taffy_node);
-        if let Some(parent_id) = parent
-            && let Some(parent_node) = self.element_to_taffy.get(&parent_id).copied()
-        {
-            self.taffy
-                .add_child(parent_node, taffy_node)
-                .expect("taffy add_child should succeed for fresh node");
-        }
+        self.layout.insert_element(id, parent);
 
         // Mirror into the box tree. The new node hangs off its
         // parent element's primary tree node so the box tree mirrors
