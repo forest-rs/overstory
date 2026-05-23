@@ -8,6 +8,9 @@ use hashbrown::{HashMap, HashSet};
 use kurbo::{Point, Vec2};
 use ui_events::ScrollDelta;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
+use ui_events::pointer::{
+    PointerButton, PointerEvent as RawPointerEvent, PointerInfo, PointerState,
+};
 use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
 use understory_responder::types::Phase;
@@ -20,6 +23,7 @@ pub(crate) type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
 pub(crate) type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 pub(crate) type FocusHandler = Box<dyn FnMut(&mut Ui, FocusEvent<'_>)>;
+pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HandlerLane {
@@ -59,6 +63,18 @@ impl RoutedHandlerOptions {
 pub enum RoutedEventKind {
     /// Keyboard input routed from the focused element.
     Key,
+    /// Pointer button press routed from the hit element.
+    PointerDown,
+    /// Pointer movement routed from the captured or hit element.
+    PointerMove,
+    /// Pointer button release routed from the captured or hit element.
+    PointerUp,
+    /// Pointer entered a hit-tested element.
+    PointerEnter,
+    /// Pointer left a hit-tested element.
+    PointerLeave,
+    /// Pointer interaction was canceled.
+    PointerCancel,
     /// Primary pointer click routed from the clicked element.
     Click,
     /// Primary pointer drag routed from the original press target.
@@ -296,6 +312,64 @@ impl PointerDispatchResult {
             || self.press_changed
             || self.capture_changed
     }
+
+    pub(crate) fn include_routed(&mut self, routed: RoutedDispatchResult) {
+        self.handled |= routed.handled;
+        self.propagation_stopped |= routed.propagation_stopped;
+    }
+}
+
+/// Payload delivered to a pointer handler.
+#[derive(Copy, Clone, Debug)]
+pub struct PointerRoutedEvent<'a> {
+    /// Shared routed-event metadata.
+    pub route: RoutedEventContext<'a>,
+    /// Pointer identity and device type.
+    pub pointer: PointerInfo,
+    /// Current pointer state, when this event carries coordinates.
+    pub state: Option<&'a PointerState>,
+    /// Current logical pointer position, when available.
+    pub position: Option<Point>,
+    /// Button associated with this event, if any.
+    pub button: Option<PointerButton>,
+    /// Keyboard modifiers active when the event was produced.
+    pub modifiers: Modifiers,
+    /// Original normalized pointer event from `ui_events`, when this routed
+    /// event came directly from host input.
+    pub raw: Option<&'a RawPointerEvent>,
+}
+
+impl<'a> core::ops::Deref for PointerRoutedEvent<'a> {
+    type Target = RoutedEventContext<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.route
+    }
+}
+
+impl PointerRoutedEvent<'_> {
+    /// Marks this pointer event handled and skips ordinary handlers that did
+    /// not opt into handled events.
+    pub fn mark_handled(&self) {
+        self.route.mark_handled();
+    }
+
+    /// Returns whether this pointer event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.route.is_handled()
+    }
+
+    /// Stops this pointer event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.route.stop_propagation();
+    }
+
+    /// Returns whether this pointer event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.route.is_propagation_stopped()
+    }
 }
 
 /// Payload delivered to a focus handler.
@@ -504,6 +578,12 @@ pub(crate) struct EventRuntime {
     scroll: HandlerPair<ScrollHandler>,
     key: HandlerPair<KeyHandler>,
     focus: HandlerPair<FocusHandler>,
+    pointer_down: HandlerPair<PointerHandler>,
+    pointer_move: HandlerPair<PointerHandler>,
+    pointer_up: HandlerPair<PointerHandler>,
+    pointer_enter: HandlerPair<PointerHandler>,
+    pointer_leave: HandlerPair<PointerHandler>,
+    pointer_cancel: HandlerPair<PointerHandler>,
     hover: HoverState<ElementId>,
     clicks: ClickState<ElementId>,
     press_target: Option<ElementId>,
@@ -520,6 +600,12 @@ impl EventRuntime {
             scroll: HandlerPair::new(),
             key: HandlerPair::new(),
             focus: HandlerPair::new(),
+            pointer_down: HandlerPair::new(),
+            pointer_move: HandlerPair::new(),
+            pointer_up: HandlerPair::new(),
+            pointer_enter: HandlerPair::new(),
+            pointer_leave: HandlerPair::new(),
+            pointer_cancel: HandlerPair::new(),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
@@ -641,12 +727,42 @@ impl EventRuntime {
         self.focus.remove(HandlerLane::User, id);
     }
 
+    pub(crate) fn on_pointer(
+        &mut self,
+        kind: RoutedEventKind,
+        id: ElementId,
+        handler: PointerHandler,
+    ) {
+        self.on_pointer_with_options(kind, id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_pointer_with_options(
+        &mut self,
+        kind: RoutedEventKind,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: PointerHandler,
+    ) {
+        self.pointer_pair_mut(kind)
+            .insert(HandlerLane::User, id, options, handler);
+    }
+
+    pub(crate) fn remove_pointer(&mut self, kind: RoutedEventKind, id: ElementId) {
+        self.pointer_pair_mut(kind).remove(HandlerLane::User, id);
+    }
+
     pub(crate) fn remove_target(&mut self, id: ElementId) {
         self.click.remove_target(id);
         self.drag.remove_target(id);
         self.scroll.remove_target(id);
         self.key.remove_target(id);
         self.focus.remove_target(id);
+        self.pointer_down.remove_target(id);
+        self.pointer_move.remove_target(id);
+        self.pointer_up.remove_target(id);
+        self.pointer_enter.remove_target(id);
+        self.pointer_leave.remove_target(id);
+        self.pointer_cancel.remove_target(id);
         if self.press_target == Some(id) {
             self.press_target = None;
         }
@@ -827,6 +943,58 @@ impl EventRuntime {
         self.focus.has(lane, id)
     }
 
+    pub(crate) fn take_pointer(
+        &mut self,
+        lane: HandlerLane,
+        kind: RoutedEventKind,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<PointerHandler>> {
+        self.pointer_pair_mut(kind).take(lane, id, handled)
+    }
+
+    pub(crate) fn begin_pointer(
+        &mut self,
+        lane: HandlerLane,
+        kind: RoutedEventKind,
+        id: ElementId,
+    ) {
+        self.pointer_pair_mut(kind).begin(lane, id);
+    }
+
+    pub(crate) fn end_pointer(&mut self, lane: HandlerLane, kind: RoutedEventKind, id: ElementId) {
+        self.pointer_pair_mut(kind).end(lane, id);
+    }
+
+    pub(crate) fn pointer_removed(
+        &mut self,
+        lane: HandlerLane,
+        kind: RoutedEventKind,
+        id: ElementId,
+    ) -> bool {
+        self.pointer_pair_mut(kind).take_removed(lane, id)
+    }
+
+    pub(crate) fn insert_pointer_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        kind: RoutedEventKind,
+        id: ElementId,
+        handler: HandlerRegistration<PointerHandler>,
+    ) {
+        self.pointer_pair_mut(kind)
+            .insert_if_absent(lane, id, handler);
+    }
+
+    pub(crate) fn has_pointer(
+        &self,
+        lane: HandlerLane,
+        kind: RoutedEventKind,
+        id: ElementId,
+    ) -> bool {
+        self.pointer_pair(kind).has(lane, id)
+    }
+
     pub(crate) fn hovered(&self) -> Option<ElementId> {
         self.hover.current_path().last().copied()
     }
@@ -896,6 +1064,30 @@ impl EventRuntime {
 
     pub(crate) fn set_last_drag_position(&mut self, position: Point) {
         self.last_drag_position = Some(position);
+    }
+
+    fn pointer_pair(&self, kind: RoutedEventKind) -> &HandlerPair<PointerHandler> {
+        match kind {
+            RoutedEventKind::PointerDown => &self.pointer_down,
+            RoutedEventKind::PointerMove => &self.pointer_move,
+            RoutedEventKind::PointerUp => &self.pointer_up,
+            RoutedEventKind::PointerEnter => &self.pointer_enter,
+            RoutedEventKind::PointerLeave => &self.pointer_leave,
+            RoutedEventKind::PointerCancel => &self.pointer_cancel,
+            _ => panic!("pointer handler requested for non-pointer event kind"),
+        }
+    }
+
+    fn pointer_pair_mut(&mut self, kind: RoutedEventKind) -> &mut HandlerPair<PointerHandler> {
+        match kind {
+            RoutedEventKind::PointerDown => &mut self.pointer_down,
+            RoutedEventKind::PointerMove => &mut self.pointer_move,
+            RoutedEventKind::PointerUp => &mut self.pointer_up,
+            RoutedEventKind::PointerEnter => &mut self.pointer_enter,
+            RoutedEventKind::PointerLeave => &mut self.pointer_leave,
+            RoutedEventKind::PointerCancel => &mut self.pointer_cancel,
+            _ => panic!("pointer handler requested for non-pointer event kind"),
+        }
     }
 }
 

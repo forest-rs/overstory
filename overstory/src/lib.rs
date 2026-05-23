@@ -100,8 +100,8 @@ pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
 pub use event_runtime::{
     ClickEvent, DragEvent, FocusChangeReason, FocusEvent, KeyDispatchResult, KeyEvent,
-    PointerDispatchResult, RoutedDispatchResult, RoutedEventContext, RoutedEventKind,
-    RoutedHandlerOptions, ScrollEvent,
+    PointerDispatchResult, PointerRoutedEvent, RoutedDispatchResult, RoutedEventContext,
+    RoutedEventKind, RoutedHandlerOptions, ScrollEvent,
 };
 pub use generic::present_surface;
 pub use layouts::Layout;

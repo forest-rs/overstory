@@ -20,7 +20,10 @@ use invalidation::{ChannelSet, InvalidationTracker};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
 use ui_events::ScrollDelta;
 use ui_events::keyboard::{KeyboardEvent, Modifiers};
-use ui_events::pointer::{PointerButton, PointerEvent};
+use ui_events::pointer::{
+    PointerButton, PointerButtonEvent, PointerEvent, PointerInfo, PointerScrollEvent, PointerState,
+    PointerUpdate,
+};
 use understory_box_tree::{NodeFlags, NodeId};
 use understory_event_state::click::ClickResult;
 use understory_event_state::hover::HoverEvent;
@@ -46,8 +49,8 @@ use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::{
     ClickEvent, DragEvent, EventRuntime, FocusChangeReason, FocusEvent, HandlerLane,
-    KeyDispatchResult, KeyEvent, PointerDispatchResult, RoutedDispatchResult, RoutedEventContext,
-    RoutedEventKind, RoutedEventState, RoutedHandlerOptions, ScrollEvent,
+    KeyDispatchResult, KeyEvent, PointerDispatchResult, PointerRoutedEvent, RoutedDispatchResult,
+    RoutedEventContext, RoutedEventKind, RoutedEventState, RoutedHandlerOptions, ScrollEvent,
 };
 use crate::focus_runtime::FocusRuntime;
 use crate::layout_runtime::LayoutRuntime;
@@ -88,6 +91,30 @@ pub struct Ui {
     events: EventRuntime,
     focus: FocusRuntime,
     timers: TimerRuntime,
+}
+
+#[derive(Copy, Clone)]
+struct PointerRouteData<'a> {
+    raw: Option<&'a PointerEvent>,
+    pointer: PointerInfo,
+    state: Option<&'a PointerState>,
+    position: Option<Point>,
+    button: Option<PointerButton>,
+    modifiers: Modifiers,
+}
+
+impl<'a> PointerRouteData<'a> {
+    fn event(self, route: RoutedEventContext<'a>) -> PointerRoutedEvent<'a> {
+        PointerRoutedEvent {
+            route,
+            pointer: self.pointer,
+            state: self.state,
+            position: self.position,
+            button: self.button,
+            modifiers: self.modifiers,
+            raw: self.raw,
+        }
+    }
 }
 
 /// Shared construction-time state for interactive controls.
@@ -626,6 +653,26 @@ impl Ui {
         self.events.pointer_capture()
     }
 
+    /// Captures primary-pointer movement and release events to `id`.
+    ///
+    /// Capture is explicit UI state: while present, pointer move/up/cancel
+    /// events route from the captured element even when hit testing points
+    /// somewhere else. Stale or disabled targets are rejected.
+    pub fn capture_pointer(&mut self, id: ElementId) -> bool {
+        if self.get(id).is_none() || !self.is_enabled(id) {
+            return false;
+        }
+        self.set_pointer_capture(Some(id))
+    }
+
+    /// Releases primary-pointer capture if `id` currently owns it.
+    pub fn release_pointer_capture(&mut self, id: ElementId) -> bool {
+        if self.pointer_capture() != Some(id) {
+            return false;
+        }
+        self.set_pointer_capture(None)
+    }
+
     /// Returns the cursor icon preferred by the active press target
     /// or deepest hovered widget.
     ///
@@ -921,6 +968,185 @@ impl Ui {
         self.events.remove_focus(id);
     }
 
+    fn on_pointer_kind<F>(&mut self, kind: RoutedEventKind, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.events.on_pointer(kind, id, Box::new(handler));
+    }
+
+    fn on_pointer_kind_with_options<F>(
+        &mut self,
+        kind: RoutedEventKind,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.events
+            .on_pointer_with_options(kind, id, options, Box::new(handler));
+    }
+
+    /// Registers a pointer-down handler on `id`.
+    pub fn on_pointer_down<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerDown, id, handler);
+    }
+
+    /// Registers a pointer-down handler with explicit routed handler options.
+    pub fn on_pointer_down_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerDown, id, options, handler);
+    }
+
+    /// Removes a pointer-down handler previously registered with
+    /// [`Self::on_pointer_down`].
+    pub fn remove_pointer_down_handler(&mut self, id: ElementId) {
+        self.events.remove_pointer(RoutedEventKind::PointerDown, id);
+    }
+
+    /// Registers a pointer-move handler on `id`.
+    pub fn on_pointer_move<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerMove, id, handler);
+    }
+
+    /// Registers a pointer-move handler with explicit routed handler options.
+    pub fn on_pointer_move_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerMove, id, options, handler);
+    }
+
+    /// Removes a pointer-move handler previously registered with
+    /// [`Self::on_pointer_move`].
+    pub fn remove_pointer_move_handler(&mut self, id: ElementId) {
+        self.events.remove_pointer(RoutedEventKind::PointerMove, id);
+    }
+
+    /// Registers a pointer-up handler on `id`.
+    pub fn on_pointer_up<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerUp, id, handler);
+    }
+
+    /// Registers a pointer-up handler with explicit routed handler options.
+    pub fn on_pointer_up_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerUp, id, options, handler);
+    }
+
+    /// Removes a pointer-up handler previously registered with
+    /// [`Self::on_pointer_up`].
+    pub fn remove_pointer_up_handler(&mut self, id: ElementId) {
+        self.events.remove_pointer(RoutedEventKind::PointerUp, id);
+    }
+
+    /// Registers a pointer-enter handler on `id`.
+    pub fn on_pointer_enter<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerEnter, id, handler);
+    }
+
+    /// Registers a pointer-enter handler with explicit routed handler options.
+    pub fn on_pointer_enter_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerEnter, id, options, handler);
+    }
+
+    /// Removes a pointer-enter handler previously registered with
+    /// [`Self::on_pointer_enter`].
+    pub fn remove_pointer_enter_handler(&mut self, id: ElementId) {
+        self.events
+            .remove_pointer(RoutedEventKind::PointerEnter, id);
+    }
+
+    /// Registers a pointer-leave handler on `id`.
+    pub fn on_pointer_leave<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerLeave, id, handler);
+    }
+
+    /// Registers a pointer-leave handler with explicit routed handler options.
+    pub fn on_pointer_leave_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerLeave, id, options, handler);
+    }
+
+    /// Removes a pointer-leave handler previously registered with
+    /// [`Self::on_pointer_leave`].
+    pub fn remove_pointer_leave_handler(&mut self, id: ElementId) {
+        self.events
+            .remove_pointer(RoutedEventKind::PointerLeave, id);
+    }
+
+    /// Registers a pointer-cancel handler on `id`.
+    pub fn on_pointer_cancel<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind(RoutedEventKind::PointerCancel, id, handler);
+    }
+
+    /// Registers a pointer-cancel handler with explicit routed handler options.
+    pub fn on_pointer_cancel_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.on_pointer_kind_with_options(RoutedEventKind::PointerCancel, id, options, handler);
+    }
+
+    /// Removes a pointer-cancel handler previously registered with
+    /// [`Self::on_pointer_cancel`].
+    pub fn remove_pointer_cancel_handler(&mut self, id: ElementId) {
+        self.events
+            .remove_pointer(RoutedEventKind::PointerCancel, id);
+    }
+
     /// Runs `dispatch_current` across the responder route for `source`.
     ///
     /// Route construction belongs to [`understory_responder::Router`]; this
@@ -1183,6 +1409,61 @@ impl Ui {
                 },
             );
         });
+    }
+
+    fn dispatch_pointer_handler_lane(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'_>,
+        data: PointerRouteData<'_>,
+    ) {
+        let node = route.current;
+        let Some(mut registration) =
+            self.events
+                .take_pointer(lane, route.kind, node, route.is_handled())
+        else {
+            return;
+        };
+        let event = data.event(route);
+        self.events.begin_pointer(lane, event.kind, node);
+        (registration.handler)(self, event);
+        self.events.end_pointer(lane, route.kind, node);
+        let handler_removed = self.events.pointer_removed(lane, route.kind, node);
+        if self.get(node).is_some()
+            && !handler_removed
+            && !self.events.has_pointer(lane, route.kind, node)
+        {
+            self.events
+                .insert_pointer_if_absent(lane, route.kind, node, registration);
+        }
+    }
+
+    fn dispatch_widget_pointer(
+        &mut self,
+        route: RoutedEventContext<'_>,
+        data: PointerRouteData<'_>,
+    ) {
+        let node = route.current;
+        self.with_widget_mut(node, |widget, ui| {
+            widget.handle_pointer(node, ui, data.event(route));
+        });
+    }
+
+    fn dispatch_routed_pointer_event(
+        &mut self,
+        kind: RoutedEventKind,
+        source: ElementId,
+        data: PointerRouteData<'_>,
+    ) -> RoutedDispatchResult {
+        self.dispatch_routed(kind, source, |ui, route| {
+            ui.dispatch_pointer_handler_lane(HandlerLane::User, route, data);
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_pointer(route, data);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_pointer_handler_lane(HandlerLane::Control, route, data);
+            }
+        })
     }
 
     fn dispatch_focus_event(
@@ -1673,13 +1954,15 @@ impl Ui {
 
     /// Dispatches a normalized pointer event.
     ///
-    /// Handles hover, primary-button press/click/drag, and routed scroll.
-    /// Gesture and non-primary button presses are ignored for now.
+    /// Handles routed pointer down/move/up/enter/leave/cancel, hover,
+    /// primary-button press/click/drag, and routed scroll. Gesture events are
+    /// ignored for now.
     ///
     /// `:pressed` follows WPF semantics: a primary-button press marks the
     /// control visual pressed and that visual state survives even if the cursor
     /// leaves it. The original hit element is pointer-captured for routed drag
-    /// events until the matching Up or Cancel.
+    /// events until the matching Up or Cancel unless a pointer-down handler
+    /// captures another element first.
     ///
     /// Returns what changed or was handled while dispatching the event.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> PointerDispatchResult {
@@ -1690,37 +1973,47 @@ impl Ui {
         if let Some(t) = pointer_event_time(event) {
             self.timers.set_now(t);
         }
-        match event {
+        let focused_before = self.focus.focused();
+        let capture_before = self.events.pointer_capture();
+
+        let mut result = match event {
             PointerEvent::Move(update) => {
+                let data = pointer_route_data_for_move(event, update);
                 let pos = update.current.logical_point();
-                let hover_changed = self.update_hover_at(pos);
-                let mut result = PointerDispatchResult {
-                    hover_changed,
-                    ..PointerDispatchResult::default()
-                };
+                let mut result = PointerDispatchResult::default();
+                self.update_hover_at_with_pointer(pos, data, &mut result);
+                let source = self.events.pointer_capture().or_else(|| self.hit_test(pos));
+                let pointer_move = source
+                    .filter(|source| self.is_enabled(self.press_visual_target(*source)))
+                    .map(|source| {
+                        self.dispatch_routed_pointer_event(
+                            RoutedEventKind::PointerMove,
+                            source,
+                            data,
+                        )
+                    })
+                    .unwrap_or_default();
+                result.include_routed(pointer_move);
                 // If a primary press is captured, fan the move out to drag
-                // handlers along the captured source's responder path before
-                // returning.
-                if self.events.pointer_capture().is_some() {
-                    let routed = self.dispatch_drag(pos);
-                    result.handled = routed.handled;
-                    result.propagation_stopped = routed.propagation_stopped;
+                // handlers along the captured source's responder path after
+                // ordinary pointer-move handlers have had first refusal.
+                if self.events.pointer_capture().is_some()
+                    && !pointer_move.handled
+                    && !pointer_move.propagation_stopped
+                {
+                    result.include_routed(self.dispatch_drag(pos));
                 }
                 result
             }
             PointerEvent::Down(button_event) => {
-                if button_event.button != Some(PointerButton::Primary) {
-                    return PointerDispatchResult::default();
-                }
+                let data = pointer_route_data_for_button(event, button_event);
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
+                let mut result = PointerDispatchResult::default();
                 // A Down without a preceding Move can arrive on some
                 // platforms; refresh hover first so any newly-entered
                 // path is set up before we press.
-                let mut result = PointerDispatchResult {
-                    hover_changed: self.update_hover_at(pos),
-                    ..PointerDispatchResult::default()
-                };
+                self.update_hover_at_with_pointer(pos, data, &mut result);
                 if let Some(target) = self.hit_test(pos) {
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
@@ -1728,15 +2021,28 @@ impl Ui {
                         result.press_changed = self.set_press_target(None);
                         result.capture_changed = self.set_pointer_capture(None);
                         self.events.clear_press();
-                        return result;
+                    } else {
+                        if self.is_focusable(visual) {
+                            result.focus_changed = self.set_pointer_focus(Some(visual));
+                        }
+                        let pointer_down = self.dispatch_routed_pointer_event(
+                            RoutedEventKind::PointerDown,
+                            target,
+                            data,
+                        );
+                        result.include_routed(pointer_down);
+                        if button_event.button == Some(PointerButton::Primary)
+                            && !pointer_down.handled
+                            && !pointer_down.propagation_stopped
+                        {
+                            self.events.click_down(target, pos, time_ms);
+                            result.press_changed = self.set_press_target(Some(visual));
+                            if self.events.pointer_capture().is_none() {
+                                result.capture_changed = self.set_pointer_capture(Some(target));
+                            }
+                            self.events.start_press(pos);
+                        }
                     }
-                    if self.is_focusable(visual) {
-                        result.focus_changed = self.set_pointer_focus(Some(visual));
-                    }
-                    self.events.click_down(target, pos, time_ms);
-                    result.press_changed = self.set_press_target(Some(visual));
-                    result.capture_changed = self.set_pointer_capture(Some(target));
-                    self.events.start_press(pos);
                 } else {
                     result.press_changed = self.set_press_target(None);
                     result.capture_changed = self.set_pointer_capture(None);
@@ -1745,48 +2051,57 @@ impl Ui {
                 result
             }
             PointerEvent::Up(button_event) => {
-                if button_event.button != Some(PointerButton::Primary) {
-                    return PointerDispatchResult::default();
-                }
+                let data = pointer_route_data_for_button(event, button_event);
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 let hit = self.hit_test(pos);
-                // Hand the up to the click recognizer — produces a
-                // `ClickResult::Click(target)` when the press is
-                // recognized; dispatch handlers along the responder
-                // path for that target.
-                let click_result = match hit {
-                    Some(target) => self.events.click_up(&target, pos, time_ms),
-                    None => {
-                        // Up off any element — cancel any open press
-                        // so it doesn't dangle and pretend to click
-                        // later.
+                let source = self.events.pointer_capture().or(hit);
+                let pointer_up = source
+                    .filter(|source| self.is_enabled(self.press_visual_target(*source)))
+                    .map(|source| {
+                        self.dispatch_routed_pointer_event(RoutedEventKind::PointerUp, source, data)
+                    })
+                    .unwrap_or_default();
+                let mut result = PointerDispatchResult::default();
+                result.include_routed(pointer_up);
+                if button_event.button == Some(PointerButton::Primary) {
+                    // Hand the up to the click recognizer — produces a
+                    // `ClickResult::Click(target)` when the press is
+                    // recognized; dispatch handlers along the responder
+                    // path for that target.
+                    let click_result = if pointer_up.handled || pointer_up.propagation_stopped {
                         self.events.cancel_click();
                         ClickResult::Suppressed(None)
+                    } else {
+                        match hit {
+                            Some(target) => self.events.click_up(&target, pos, time_ms),
+                            None => {
+                                // Up off any element — cancel any open press
+                                // so it doesn't dangle and pretend to click
+                                // later.
+                                self.events.cancel_click();
+                                ClickResult::Suppressed(None)
+                            }
+                        }
+                    };
+                    result.press_changed = self.set_press_target(None);
+                    result.capture_changed = self.set_pointer_capture(None);
+                    self.events.clear_press();
+                    if let ClickResult::Click(target) = click_result {
+                        result.include_routed(self.dispatch_click_with_modifiers(
+                            target,
+                            pos,
+                            button_event.state.modifiers,
+                        ));
                     }
-                };
-                let press_changed = self.set_press_target(None);
-                let capture_changed = self.set_pointer_capture(None);
-                self.events.clear_press();
-                let mut result = PointerDispatchResult {
-                    press_changed,
-                    capture_changed,
-                    ..PointerDispatchResult::default()
-                };
-                if let ClickResult::Click(target) = click_result {
-                    let routed = self.dispatch_click_with_modifiers(
-                        target,
-                        pos,
-                        button_event.state.modifiers,
-                    );
-                    result.handled = routed.handled;
-                    result.propagation_stopped = routed.propagation_stopped;
                 }
                 result
             }
             PointerEvent::Scroll(scroll_event) => {
+                let data = pointer_route_data_for_scroll(event, scroll_event);
                 let pos = scroll_event.state.logical_point();
-                let hover_changed = self.update_hover_at(pos);
+                let mut result = PointerDispatchResult::default();
+                self.update_hover_at_with_pointer(pos, data, &mut result);
                 let routed = self
                     .hit_test(pos)
                     .map(|target| {
@@ -1798,32 +2113,39 @@ impl Ui {
                         )
                     })
                     .unwrap_or_default();
-                PointerDispatchResult {
-                    handled: routed.handled,
-                    propagation_stopped: routed.propagation_stopped,
-                    hover_changed,
-                    ..PointerDispatchResult::default()
-                }
+                result.include_routed(routed);
+                result
             }
-            PointerEvent::Leave(_) => PointerDispatchResult {
-                hover_changed: self.clear_hover(),
-                ..PointerDispatchResult::default()
-            },
-            PointerEvent::Cancel(_) => {
+            PointerEvent::Leave(pointer) => {
+                let data = pointer_route_data_for_info(event, *pointer);
+                let mut result = PointerDispatchResult::default();
+                self.clear_hover_with_pointer(data, &mut result);
+                result
+            }
+            PointerEvent::Cancel(pointer) => {
+                let data = pointer_route_data_for_info(event, *pointer);
+                let mut result = PointerDispatchResult::default();
+                let source = self.events.pointer_capture().or_else(|| self.hovered());
+                if let Some(source) = source.filter(|source| self.get(*source).is_some()) {
+                    result.include_routed(self.dispatch_routed_pointer_event(
+                        RoutedEventKind::PointerCancel,
+                        source,
+                        data,
+                    ));
+                }
                 self.events.cancel_click();
-                let h = self.clear_hover();
-                let p = self.set_press_target(None);
-                let c = self.set_pointer_capture(None);
+                result.press_changed = self.set_press_target(None);
+                result.capture_changed = self.set_pointer_capture(None);
                 self.events.clear_press();
-                PointerDispatchResult {
-                    hover_changed: h,
-                    press_changed: p,
-                    capture_changed: c,
-                    ..PointerDispatchResult::default()
-                }
+                self.clear_hover_with_pointer(data, &mut result);
+                result
             }
-            _ => PointerDispatchResult::default(),
-        }
+            PointerEvent::Enter(_) | PointerEvent::Gesture(_) => PointerDispatchResult::default(),
+        };
+
+        result.focus_changed |= focused_before != self.focus.focused();
+        result.capture_changed |= capture_before != self.events.pointer_capture();
+        result
     }
 
     /// Updates the hover state to reflect a pointer at `pos`. Computes
@@ -1845,11 +2167,63 @@ impl Ui {
         self.apply_hover_events(events)
     }
 
+    fn update_hover_at_with_pointer(
+        &mut self,
+        pos: Point,
+        data: PointerRouteData<'_>,
+        result: &mut PointerDispatchResult,
+    ) {
+        let previous = self.hovered();
+        result.hover_changed |= self.update_hover_at(pos);
+        let current = self.hovered();
+        self.dispatch_hover_transition(previous, current, data, result);
+    }
+
     /// Clears the hover state (e.g. on pointer Leave). Returns `true`
     /// if anything changed.
     fn clear_hover(&mut self) -> bool {
         let events = self.events.clear_hover();
         self.apply_hover_events(events)
+    }
+
+    fn clear_hover_with_pointer(
+        &mut self,
+        data: PointerRouteData<'_>,
+        result: &mut PointerDispatchResult,
+    ) {
+        let previous = self.hovered();
+        result.hover_changed |= self.clear_hover();
+        self.dispatch_hover_transition(previous, None, data, result);
+    }
+
+    fn dispatch_hover_transition(
+        &mut self,
+        previous: Option<ElementId>,
+        current: Option<ElementId>,
+        data: PointerRouteData<'_>,
+        result: &mut PointerDispatchResult,
+    ) {
+        if previous == current {
+            return;
+        }
+        if let Some(previous) = previous
+            && self.get(previous).is_some()
+        {
+            result.include_routed(self.dispatch_routed_pointer_event(
+                RoutedEventKind::PointerLeave,
+                previous,
+                data,
+            ));
+        }
+        if let Some(current) = current
+            && self.get(current).is_some()
+        {
+            result.include_routed(self.dispatch_routed_pointer_event(
+                RoutedEventKind::PointerEnter,
+                current,
+                data,
+            ));
+        }
     }
 
     fn apply_hover_events(&mut self, events: Vec<HoverEvent<ElementId>>) -> bool {
@@ -2477,6 +2851,59 @@ fn pointer_event_time(event: &PointerEvent) -> Option<TimerInstant> {
         PointerEvent::Scroll(s) => Some(s.state.time),
         PointerEvent::Enter(_) | PointerEvent::Leave(_) | PointerEvent::Cancel(_) => None,
         _ => None,
+    }
+}
+
+fn pointer_route_data_for_button<'a>(
+    raw: &'a PointerEvent,
+    event: &'a PointerButtonEvent,
+) -> PointerRouteData<'a> {
+    PointerRouteData {
+        raw: Some(raw),
+        pointer: event.pointer,
+        state: Some(&event.state),
+        position: Some(event.state.logical_point()),
+        button: event.button,
+        modifiers: event.state.modifiers,
+    }
+}
+
+fn pointer_route_data_for_move<'a>(
+    raw: &'a PointerEvent,
+    event: &'a PointerUpdate,
+) -> PointerRouteData<'a> {
+    PointerRouteData {
+        raw: Some(raw),
+        pointer: event.pointer,
+        state: Some(&event.current),
+        position: Some(event.current.logical_point()),
+        button: None,
+        modifiers: event.current.modifiers,
+    }
+}
+
+fn pointer_route_data_for_scroll<'a>(
+    raw: &'a PointerEvent,
+    event: &'a PointerScrollEvent,
+) -> PointerRouteData<'a> {
+    PointerRouteData {
+        raw: Some(raw),
+        pointer: event.pointer,
+        state: Some(&event.state),
+        position: Some(event.state.logical_point()),
+        button: None,
+        modifiers: event.state.modifiers,
+    }
+}
+
+fn pointer_route_data_for_info(raw: &PointerEvent, pointer: PointerInfo) -> PointerRouteData<'_> {
+    PointerRouteData {
+        raw: Some(raw),
+        pointer,
+        state: None,
+        position: None,
+        button: None,
+        modifiers: Modifiers::default(),
     }
 }
 
@@ -4179,6 +4606,194 @@ mod tests {
     }
 
     #[test]
+    fn pointer_down_walks_capture_target_bubble() {
+        use alloc::string::String;
+        use core::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(200.0, 200.0));
+        let child = ui.insert_child(root);
+        ui.set_layout(child, Layout::new().logical_size(100.0, 100.0));
+        let grand = ui.insert_child(child);
+        ui.set_layout(grand, Layout::new().logical_size(50.0, 50.0));
+        ui.compute_layout(Size::new(200.0, 200.0));
+
+        let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
+            let log = Rc::clone(&log);
+            ui.on_pointer_down(id, move |_ui, event| {
+                let phase = match event.phase {
+                    Phase::Capture => "capture",
+                    Phase::Target => "target",
+                    Phase::Bubble => "bubble",
+                };
+                assert_eq!(event.kind, RoutedEventKind::PointerDown);
+                assert_eq!(event.position, Some(Point::new(20.0, 20.0)));
+                log.borrow_mut().push(alloc::format!("{name}:{phase}"));
+            });
+        }
+
+        let result = ui.dispatch_pointer_event(&pointer_down(Point::new(20.0, 20.0), 1));
+
+        assert!(result.capture_changed);
+        assert_eq!(
+            log.borrow().as_slice(),
+            &[
+                "root:capture".to_owned(),
+                "child:capture".to_owned(),
+                "grand:target".to_owned(),
+                "child:bubble".to_owned(),
+                "root:bubble".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn handled_pointer_down_suppresses_derived_click() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+        let child = ui.insert_child(root);
+        ui.set_layout(child, Layout::new().logical_size(100.0, 60.0));
+        ui.compute_layout(Size::new(200.0, 80.0));
+
+        ui.on_pointer_down(child, |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                event.mark_handled();
+            }
+        });
+
+        let click_fired = Rc::new(Cell::new(false));
+        let click_fired_for_handler = Rc::clone(&click_fired);
+        ui.on_click(child, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                click_fired_for_handler.set(true);
+            }
+        });
+
+        let point = Point::new(20.0, 20.0);
+        assert!(ui.dispatch_pointer_event(&pointer_down(point, 1)).handled);
+        let up = ui.dispatch_pointer_event(&pointer_up(point, 2));
+
+        assert!(!click_fired.get());
+        assert!(!up.handled);
+    }
+
+    #[test]
+    fn explicit_pointer_capture_routes_move_outside_hit_target() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(100.0, 100.0));
+        let child = ui.insert_child(root);
+        ui.set_layout(child, Layout::new().logical_size(40.0, 40.0));
+        ui.compute_layout(Size::new(100.0, 100.0));
+
+        ui.on_pointer_down(root, move |ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                assert!(ui.capture_pointer(root));
+                event.mark_handled();
+            }
+        });
+
+        let move_seen = Rc::new(Cell::new(None::<(ElementId, Phase)>));
+        let move_seen_for_handler = Rc::clone(&move_seen);
+        ui.on_pointer_move(root, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                move_seen_for_handler.set(Some((event.source, event.phase)));
+                event.mark_handled();
+            }
+        });
+
+        let down = ui.dispatch_pointer_event(&pointer_down(Point::new(10.0, 10.0), 1));
+        assert!(down.capture_changed);
+        assert_eq!(ui.pointer_capture(), Some(root));
+
+        let moved = ui.dispatch_pointer_event(&pointer_move(Point::new(160.0, 160.0), 2, true));
+        assert!(moved.handled);
+        assert_eq!(move_seen.get(), Some((root, Phase::Target)));
+
+        let up = ui.dispatch_pointer_event(&pointer_up(Point::new(160.0, 160.0), 3));
+        assert!(up.capture_changed);
+        assert_eq!(ui.pointer_capture(), None);
+    }
+
+    #[test]
+    fn public_pointer_capture_release_updates_capture_state() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.insert_child(root);
+
+        assert!(ui.capture_pointer(child));
+        assert_eq!(ui.pointer_capture(), Some(child));
+        assert!(!ui.release_pointer_capture(root));
+        assert_eq!(ui.pointer_capture(), Some(child));
+        assert!(ui.release_pointer_capture(child));
+        assert_eq!(ui.pointer_capture(), None);
+
+        ui.set_enabled(child, false);
+        assert!(!ui.capture_pointer(child));
+        assert_eq!(ui.pointer_capture(), None);
+    }
+
+    #[test]
+    fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
+        use alloc::string::String;
+        use core::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(200.0, 200.0));
+        let child = ui.insert_child(root);
+        ui.set_layout(child, Layout::new().logical_size(80.0, 80.0));
+        ui.compute_layout(Size::new(200.0, 200.0));
+
+        let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        for (name, id) in [("root", root), ("child", child)] {
+            let enter_log = Rc::clone(&log);
+            ui.on_pointer_enter(id, move |_ui, event| {
+                if matches!(event.phase, Phase::Target | Phase::Bubble) {
+                    enter_log
+                        .borrow_mut()
+                        .push(alloc::format!("{name}:enter:{:?}", event.phase));
+                }
+            });
+            let leave_log = Rc::clone(&log);
+            ui.on_pointer_leave(id, move |_ui, event| {
+                if matches!(event.phase, Phase::Target | Phase::Bubble) {
+                    leave_log
+                        .borrow_mut()
+                        .push(alloc::format!("{name}:leave:{:?}", event.phase));
+                }
+            });
+        }
+
+        let enter = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 20.0), 1, false));
+        let leave = ui.dispatch_pointer_event(&pointer_move(Point::new(120.0, 120.0), 2, false));
+
+        assert!(enter.hover_changed);
+        assert!(leave.hover_changed);
+        assert_eq!(
+            log.borrow().as_slice(),
+            &[
+                "child:enter:Target".to_owned(),
+                "root:enter:Bubble".to_owned(),
+                "child:leave:Target".to_owned(),
+                "root:leave:Bubble".to_owned(),
+                "root:enter:Target".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
     fn dispatch_drag_stops_route_when_handler_marks_handled() {
         use core::cell::Cell;
         use std::rc::Rc;
@@ -5071,7 +5686,7 @@ mod tests {
         })
     }
 
-    fn pointer_info() -> ui_events::pointer::PointerInfo {
+    fn pointer_info() -> PointerInfo {
         use ui_events::pointer::{PointerId, PointerInfo, PointerType};
 
         PointerInfo {
@@ -5081,11 +5696,7 @@ mod tests {
         }
     }
 
-    fn pointer_state(
-        point: Point,
-        time: u64,
-        primary_down: bool,
-    ) -> ui_events::pointer::PointerState {
+    fn pointer_state(point: Point, time: u64, primary_down: bool) -> PointerState {
         use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
 
         let mut buttons = PointerButtons::new();
