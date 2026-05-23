@@ -23,11 +23,12 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
 };
-use crate::ui::{ClickEvent, ControlState, KeyEvent, Ui};
+use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `Button`.

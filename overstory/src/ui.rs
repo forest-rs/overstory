@@ -12,7 +12,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 
 use cursor_icon::CursorIcon;
 use imaging::record::{Clip, Geometry, Scene};
@@ -44,7 +44,10 @@ use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
-use crate::event_runtime::EventRuntime;
+use crate::event_runtime::{
+    ClickEvent, DragEvent, EventRuntime, KeyDispatchResult, KeyEvent, RoutedDispatchResult,
+    RoutedEventContext, RoutedEventKind, RoutedEventState, ScrollEvent,
+};
 use crate::focus_runtime::FocusRuntime;
 use crate::layout_runtime::LayoutRuntime;
 use crate::layouts::Layout;
@@ -84,327 +87,6 @@ pub struct Ui {
     events: EventRuntime,
     focus: FocusRuntime,
     timers: TimerRuntime,
-}
-
-/// Shared state carried by one routed event dispatch.
-///
-/// The state is created by `Ui` for a single responder route and is shared by
-/// every handler invocation for that route. Calling [`Self::mark_handled`] or
-/// [`Self::stop_propagation`] stops the remaining ordinary route; a future
-/// handler registration API can add a "handled events too" opt-in without
-/// changing event payloads.
-#[derive(Debug)]
-struct RoutedEventState {
-    handled: Cell<bool>,
-    propagation_stopped: Cell<bool>,
-}
-
-impl Default for RoutedEventState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RoutedEventState {
-    /// Creates a fresh unhandled route state.
-    #[must_use]
-    fn new() -> Self {
-        Self {
-            handled: Cell::new(false),
-            propagation_stopped: Cell::new(false),
-        }
-    }
-
-    /// Marks this event handled.
-    fn mark_handled(&self) {
-        self.handled.set(true);
-    }
-
-    /// Returns whether this event has been marked handled.
-    #[must_use]
-    fn is_handled(&self) -> bool {
-        self.handled.get()
-    }
-
-    /// Stops propagation without marking the event handled.
-    fn stop_propagation(&self) {
-        self.propagation_stopped.set(true);
-    }
-
-    /// Returns whether propagation has been explicitly stopped.
-    #[must_use]
-    fn is_propagation_stopped(&self) -> bool {
-        self.propagation_stopped.get()
-    }
-
-    fn should_stop_route(&self) -> bool {
-        self.is_handled() || self.is_propagation_stopped()
-    }
-}
-
-/// Result returned by routed event dispatch helpers.
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct RoutedDispatchResult {
-    /// Whether the routed event was consumed by a handler.
-    pub handled: bool,
-    /// Whether a handler explicitly stopped propagation.
-    pub propagation_stopped: bool,
-}
-
-impl RoutedDispatchResult {
-    fn from_state(state: &RoutedEventState) -> Self {
-        Self {
-            handled: state.is_handled(),
-            propagation_stopped: state.is_propagation_stopped(),
-        }
-    }
-}
-
-/// Payload delivered to a key handler. Carries the normalized
-/// `ui_events`/`keyboard-types` event by reference plus the
-/// responder dispatch context. Handlers filter `key.state`,
-/// `key.key`, `key.modifiers`, etc. themselves — `Ui::on_key`
-/// does no internal filtering except for framework-owned navigation keys.
-///
-/// `KeyEvent` values are constructed by [`Ui::dispatch_key`]. Callers should
-/// install handlers with [`Ui::on_key`] rather than constructing this payload
-/// directly.
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Debug)]
-pub struct KeyEvent<'a> {
-    /// The element keyboard input was routed to (the focused
-    /// element at the time of dispatch).
-    pub source: ElementId,
-    /// The element this handler is registered on — the current
-    /// node in the responder sequence. Equal to `source` for the
-    /// target-phase invocation; differs for ancestors during
-    /// capture and bubble.
-    pub current: ElementId,
-    /// Propagation phase (capture, target, or bubble) for this
-    /// invocation.
-    pub phase: Phase,
-    /// The full normalized keyboard event.
-    pub key: &'a KeyboardEvent,
-    state: &'a RoutedEventState,
-}
-
-impl KeyEvent<'_> {
-    /// Marks this key event handled.
-    ///
-    /// Handled events stop the remaining key route for ordinary handlers.
-    /// Future routed-event APIs may add an explicit "handled events too"
-    /// subscription mode.
-    pub fn mark_handled(&self) {
-        self.state.mark_handled();
-    }
-
-    /// Returns whether this key event has been marked handled.
-    #[must_use]
-    pub fn is_handled(&self) -> bool {
-        self.state.is_handled()
-    }
-
-    /// Stops this key event's remaining route without marking it handled.
-    pub fn stop_propagation(&self) {
-        self.state.stop_propagation();
-    }
-
-    /// Returns whether this key event's propagation has been stopped.
-    #[must_use]
-    pub fn is_propagation_stopped(&self) -> bool {
-        self.state.is_propagation_stopped()
-    }
-}
-
-/// Result returned by [`Ui::dispatch_key`].
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct KeyDispatchResult {
-    /// Whether the key was consumed by framework policy or a key handler.
-    pub handled: bool,
-    /// Whether a key handler explicitly stopped propagation.
-    pub propagation_stopped: bool,
-    /// Whether dispatch changed the focused element.
-    pub focus_changed: bool,
-    /// Focused element after dispatch, if any.
-    pub focused: Option<ElementId>,
-}
-
-/// Payload delivered to a drag handler as the primary pointer
-/// moves while pressed. Drag handlers fire along the
-/// capture → target → bubble path rooted at the press target — so
-/// e.g. a Slider's drag handler fires when the user drags the
-/// thumb (Bubble phase) or the slider itself (Target phase).
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug)]
-pub struct DragEvent<'a> {
-    /// The element captured when the press started — the deepest
-    /// hit at primary-button `Down`. Stable across the drag.
-    pub source: ElementId,
-    /// The element this handler is registered on (current node in
-    /// the responder sequence). Equal to `source` for the
-    /// target-phase invocation; differs for ancestors during
-    /// capture and bubble.
-    pub current: ElementId,
-    /// Propagation phase (capture, target, or bubble) for this
-    /// invocation.
-    pub phase: Phase,
-    /// Current pointer position in physical pixels.
-    pub position: Point,
-    /// Pointer position when the press started, in physical
-    /// pixels. Useful for computing total drag distance.
-    pub press_position: Point,
-    /// Movement since the previous drag dispatch in physical
-    /// pixels.
-    pub delta: Vec2,
-    state: &'a RoutedEventState,
-}
-
-impl DragEvent<'_> {
-    /// Marks this drag event handled and stops the remaining ordinary route.
-    pub fn mark_handled(&self) {
-        self.state.mark_handled();
-    }
-
-    /// Returns whether this drag event has been marked handled.
-    #[must_use]
-    pub fn is_handled(&self) -> bool {
-        self.state.is_handled()
-    }
-
-    /// Stops this drag event's remaining route without marking it handled.
-    pub fn stop_propagation(&self) {
-        self.state.stop_propagation();
-    }
-
-    /// Returns whether this drag event's propagation has been stopped.
-    #[must_use]
-    pub fn is_propagation_stopped(&self) -> bool {
-        self.state.is_propagation_stopped()
-    }
-}
-
-/// Payload delivered to a click handler.
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug)]
-pub struct ClickEvent<'a> {
-    /// The element the user actually clicked (the target).
-    pub source: ElementId,
-    /// The element this handler is registered on (where in the
-    /// responder path the dispatch is currently). Equal to `source`
-    /// for the target-phase invocation; differs for ancestors during
-    /// capture and bubble.
-    pub current: ElementId,
-    /// The propagation phase (capture, target, or bubble) this
-    /// invocation belongs to.
-    pub phase: Phase,
-    /// Pointer position at click-recognition time, in physical
-    /// pixels. Useful for hit-position-driven controls like Slider.
-    pub position: Point,
-    /// Keyboard modifiers active when this click was recognized.
-    pub modifiers: Modifiers,
-    state: &'a RoutedEventState,
-}
-
-impl ClickEvent<'_> {
-    /// Marks this click event handled and stops the remaining ordinary route.
-    pub fn mark_handled(&self) {
-        self.state.mark_handled();
-    }
-
-    /// Returns whether this click event has been marked handled.
-    #[must_use]
-    pub fn is_handled(&self) -> bool {
-        self.state.is_handled()
-    }
-
-    /// Stops this click event's remaining route without marking it handled.
-    pub fn stop_propagation(&self) {
-        self.state.stop_propagation();
-    }
-
-    /// Returns whether this click event's propagation has been stopped.
-    #[must_use]
-    pub fn is_propagation_stopped(&self) -> bool {
-        self.state.is_propagation_stopped()
-    }
-}
-
-/// Payload delivered to a scroll handler.
-#[allow(
-    unnameable_types,
-    reason = "re-exported from the crate root via lib.rs"
-)]
-#[derive(Copy, Clone, Debug)]
-pub struct ScrollEvent<'a> {
-    /// The element under the pointer when the scroll was requested.
-    pub source: ElementId,
-    /// The element this handler is registered on.
-    pub current: ElementId,
-    /// The propagation phase for this invocation.
-    pub phase: Phase,
-    /// Pointer position at scroll-recognition time, in logical pixels.
-    pub position: Point,
-    /// Raw scroll delta reported by `ui_events`.
-    pub delta: ScrollDelta,
-    /// Keyboard modifiers active when this scroll was requested.
-    pub modifiers: Modifiers,
-    state: &'a RoutedEventState,
-}
-
-impl ScrollEvent<'_> {
-    /// Converts this event's raw delta into logical pixels with caller-owned
-    /// line and page policies.
-    #[must_use]
-    pub fn logical_delta(&self, line_px: Vec2, page_px: Vec2) -> Vec2 {
-        match self.delta {
-            ScrollDelta::PixelDelta(delta) => Vec2::new(delta.x, delta.y),
-            ScrollDelta::LineDelta(x, y) => {
-                Vec2::new(f64::from(x) * line_px.x, f64::from(y) * line_px.y)
-            }
-            ScrollDelta::PageDelta(x, y) => {
-                Vec2::new(f64::from(x) * page_px.x, f64::from(y) * page_px.y)
-            }
-        }
-    }
-
-    /// Marks this scroll event handled and stops the remaining ordinary route.
-    pub fn mark_handled(&self) {
-        self.state.mark_handled();
-    }
-
-    /// Returns whether this scroll event has been marked handled.
-    #[must_use]
-    pub fn is_handled(&self) -> bool {
-        self.state.is_handled()
-    }
-
-    /// Stops this scroll event's remaining route without marking it handled.
-    pub fn stop_propagation(&self) {
-        self.state.stop_propagation();
-    }
-
-    /// Returns whether this scroll event's propagation has been stopped.
-    #[must_use]
-    pub fn is_propagation_stopped(&self) -> bool {
-        self.state.is_propagation_stopped()
-    }
 }
 
 /// Shared construction-time state for interactive controls.
@@ -1166,12 +848,14 @@ impl Ui {
     /// explicitly stopped.
     fn dispatch_routed(
         &mut self,
+        kind: RoutedEventKind,
         source: ElementId,
-        mut dispatch_current: impl FnMut(&mut Self, Phase, ElementId, &RoutedEventState),
+        mut dispatch_current: impl FnMut(&mut Self, RoutedEventContext<'_>),
     ) -> RoutedDispatchResult {
         let state = RoutedEventState::new();
         for (phase, node) in self.responder_sequence(source) {
-            dispatch_current(self, phase, node, &state);
+            let route = RoutedEventContext::new(kind, source, node, phase, &state);
+            dispatch_current(self, route);
             if state.should_stop_route() {
                 break;
             }
@@ -1215,17 +899,12 @@ impl Ui {
         let Some(focused) = self.focus.focused() else {
             return KeyDispatchResult::default();
         };
-        let routed = self.dispatch_routed(focused, |ui, phase, node, state| {
+        let routed = self.dispatch_routed(RoutedEventKind::Key, focused, |ui, route| {
+            let node = route.current;
             let Some(mut handler) = ui.events.take_key(node) else {
                 return;
             };
-            let ev = KeyEvent {
-                source: focused,
-                current: node,
-                phase,
-                key: event,
-                state,
-            };
+            let ev = KeyEvent { route, key: event };
             ui.events.begin_key(node);
             handler(ui, ev);
             ui.events.end_key(node);
@@ -1420,18 +1099,16 @@ impl Ui {
         let delta = position - last;
         self.events.set_last_drag_position(position);
 
-        self.dispatch_routed(source, |ui, phase, node, state| {
+        self.dispatch_routed(RoutedEventKind::Drag, source, |ui, route| {
+            let node = route.current;
             let Some(mut handler) = ui.events.take_drag(node) else {
                 return;
             };
             let event = DragEvent {
-                source,
-                current: node,
-                phase,
+                route,
                 position,
                 press_position,
                 delta,
-                state,
             };
             ui.events.begin_drag(node);
             handler(ui, event);
@@ -1480,19 +1157,17 @@ impl Ui {
             return RoutedDispatchResult::default();
         }
 
-        self.dispatch_routed(target, |ui, phase, node, state| {
+        self.dispatch_routed(RoutedEventKind::Click, target, |ui, route| {
+            let node = route.current;
             // Take the handler out so it can call `&mut self`, then
             // put it back unless the handler removed itself.
             let Some(mut handler) = ui.events.take_click(node) else {
                 return;
             };
             let event = ClickEvent {
-                source: target,
-                current: node,
-                phase,
+                route,
                 position,
                 modifiers,
-                state,
             };
             ui.events.begin_click(node);
             handler(ui, event);
@@ -1527,18 +1202,16 @@ impl Ui {
             return RoutedDispatchResult::default();
         }
 
-        self.dispatch_routed(target, |ui, phase, node, state| {
+        self.dispatch_routed(RoutedEventKind::Scroll, target, |ui, route| {
+            let node = route.current;
             let Some(mut handler) = ui.events.take_scroll(node) else {
                 return;
             };
             let event = ScrollEvent {
-                source: target,
-                current: node,
-                phase,
+                route,
                 position,
                 delta,
                 modifiers,
-                state,
             };
             ui.events.begin_scroll(node);
             handler(ui, event);
@@ -3506,6 +3179,7 @@ mod tests {
         let inc = fired.clone();
         ui.on_key(child, move |_ui, event| {
             if matches!(event.phase, Phase::Target) {
+                assert_eq!(event.kind, RoutedEventKind::Key);
                 inc.set(true);
             }
         });
@@ -3711,6 +3385,7 @@ mod tests {
         let fired = fired_with.clone();
         ui.on_click(child, move |_ui, event| {
             if matches!(event.phase, Phase::Target) {
+                assert_eq!(event.kind, RoutedEventKind::Click);
                 fired.set(Some((event.phase, event.source, event.current)));
             }
         });
@@ -3819,6 +3494,7 @@ mod tests {
                     Phase::Bubble => "bubble",
                 };
                 if matches!(event.phase, Phase::Target) {
+                    assert_eq!(event.kind, RoutedEventKind::Scroll);
                     *target_delta.borrow_mut() =
                         event.logical_delta(Vec2::new(16.0, 20.0), Vec2::new(160.0, 200.0));
                     event.mark_handled();
@@ -3894,6 +3570,7 @@ mod tests {
             }
         });
         ui.on_drag(child, move |_ui, _event| {
+            assert_eq!(_event.kind, RoutedEventKind::Drag);
             child_fired_for_handler.set(true);
         });
 

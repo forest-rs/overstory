@@ -20,8 +20,9 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::properties::BuiltInProperties;
-use crate::ui::{ClickEvent, DragEvent, KeyEvent, Ui};
+use crate::ui::Ui;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_property::{DependencyObjectExt, Property};
 use understory_property_binding::{BindingError, BindingId, PropertyEndpoint};

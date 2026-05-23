@@ -98,6 +98,10 @@ pub use controls::toggle::{
 };
 pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
+pub use event_runtime::{
+    ClickEvent, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult, RoutedEventContext,
+    RoutedEventKind, ScrollEvent,
+};
 pub use generic::present_surface;
 pub use layouts::Layout;
 pub use lookup::{UiResolveLookup, UiStoreLookup};
@@ -108,10 +112,7 @@ pub use template::{
 };
 pub use text::{TextEngine, TextWrapping};
 pub use timer_runtime::TimerEvent;
-pub use ui::{
-    ClickEvent, ControlState, DragEvent, KeyDispatchResult, KeyEvent, RoutedDispatchResult,
-    ScrollEvent, Ui,
-};
+pub use ui::{ControlState, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 
 // Re-export the responder's `Phase` so callers can read
