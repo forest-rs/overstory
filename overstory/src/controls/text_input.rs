@@ -3,8 +3,7 @@
 
 //! `TextInput`: single-line editable text field.
 
-use alloc::{boxed::Box, rc::Rc, string::String};
-use core::cell::RefCell;
+use alloc::{boxed::Box, string::String};
 
 use kurbo::Rect;
 use parley::{FontFamily, FontWeight, LineHeight, PlainEditor, StyleProperty};
@@ -15,6 +14,7 @@ use understory_style::{ClassId, PartTag, TypeTag};
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_READ_ONLY;
 use crate::template::{Template, TemplateContext, TemplateSlot};
@@ -160,64 +160,61 @@ impl Default for TextInput {
 
 impl AppendSpec for TextInput {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(TextInputWidget, template)),
-            None => Box::new(TextInputWidget),
+        let Self {
+            text,
+            placeholder,
+            width,
+            font_size,
+            read_only,
+            state,
+            template,
+        } = self;
+        let mut edit = TextInputEditState::new(text.clone(), font_size);
+        ui.with_plain_editor(&mut edit.editor, |driver| driver.move_to_text_end());
+        let input_widget = TextInputWidget {
+            placeholder,
+            edit,
+            pointer: TextInputPointerState::default(),
+        };
+        let widget: Box<dyn Widget> = match template {
+            Some(template) => Box::new(TemplateOverrideWidget::new(input_widget, template)),
+            None => Box::new(input_widget),
         };
         let id = ui.append_widget_deferred_template(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         let layout_prop = ui.properties().layout;
-        ui.set_local(id, content_prop, self.text.clone());
-        ui.set_local(id, font_size_prop, self.font_size);
+        ui.set_local(id, content_prop, text);
+        ui.set_local(id, font_size_prop, font_size);
         ui.set_local(
             id,
             layout_prop,
             Layout::new()
                 .relative()
-                .logical_size(self.width, TEXT_INPUT_HEIGHT),
+                .logical_size(width, TEXT_INPUT_HEIGHT),
         );
-        ui.set_control_state(id, self.state);
-        set_text_input_read_only(ui, id, self.read_only);
+        ui.set_control_state(id, state);
+        set_text_input_read_only(ui, id, read_only);
         ui.expand_default_template(id);
-
-        let text_part = ui
-            .slot(id, SLOT_TEXT_INPUT_TEXT)
-            .expect("text input template should create SLOT_TEXT_INPUT_TEXT");
-        let selection_part = ui
-            .slot(id, SLOT_TEXT_INPUT_SELECTION)
-            .expect("text input template should create SLOT_TEXT_INPUT_SELECTION");
-        let caret_part = ui
-            .slot(id, SLOT_TEXT_INPUT_CARET)
-            .expect("text input template should create SLOT_TEXT_INPUT_CARET");
-        let placeholder = self.placeholder;
-        let mut state = TextInputEditState::new(self.text, self.font_size);
-        ui.with_plain_editor(&mut state.editor, |driver| driver.move_to_text_end());
-        refresh_text_input_parts(
-            ui,
-            id,
-            text_part,
-            selection_part,
-            caret_part,
-            &mut state,
-            placeholder.as_deref(),
-        );
-        install_text_input_behavior(
-            ui,
-            id,
-            text_part,
-            selection_part,
-            caret_part,
-            placeholder,
-            state,
-        );
+        ui.with_widget_mut(id, |widget, ui| widget.template_expanded(id, ui));
         id
     }
 }
 
 /// Per-element widget for `TextInput`.
-#[derive(Debug, Default)]
-pub struct TextInputWidget;
+pub struct TextInputWidget {
+    placeholder: Option<String>,
+    edit: TextInputEditState,
+    pointer: TextInputPointerState,
+}
+
+impl core::fmt::Debug for TextInputWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextInputWidget")
+            .field("placeholder", &self.placeholder)
+            .finish_non_exhaustive()
+    }
+}
 
 impl Widget for TextInputWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -226,6 +223,104 @@ impl Widget for TextInputWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TEXT_INPUT_TEMPLATE)
+    }
+
+    fn template_expanded(&mut self, input: ElementId, ui: &mut Ui) {
+        self.refresh_parts(ui, input);
+    }
+
+    fn handle_click(&mut self, input: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(input) {
+            return;
+        }
+        if self.pointer.take_dragged() {
+            event.mark_handled();
+            return;
+        }
+        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        self.edit.sync_style(font_size);
+        move_editor_to_point(ui, input, event.position, font_size, &mut self.edit.editor);
+        self.refresh_parts(ui, input);
+        event.mark_handled();
+    }
+
+    fn handle_drag(&mut self, input: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(input) {
+            return;
+        }
+        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        self.edit.sync_style(font_size);
+        if !self.pointer.dragging {
+            let (x, y) = editor_local_point(ui, input, event.press_position, font_size);
+            ui.with_plain_editor(&mut self.edit.editor, |driver| {
+                driver.move_to_point(x, y);
+            });
+            self.pointer.dragging = true;
+        }
+        self.pointer.dragged = true;
+        let (x, y) = editor_local_point(ui, input, event.position, font_size);
+        ui.with_plain_editor(&mut self.edit.editor, |driver| {
+            driver.extend_selection_to_point(x, y);
+        });
+        self.refresh_parts(ui, input);
+        event.mark_handled();
+    }
+
+    fn handle_key(&mut self, input: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        use ui_events::keyboard::KeyState;
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        if !ui.is_enabled(input) {
+            return;
+        }
+        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let read_only = read_or(ui, input, ui.properties().is_read_only, false);
+        self.edit.sync_style(font_size);
+        let edit = self.edit.edit_from_key(ui, event.key, read_only);
+        if edit.handled {
+            if edit.changed {
+                ui.set_local(
+                    input,
+                    ui.properties().content,
+                    String::from(self.edit.text()),
+                );
+            }
+            self.refresh_parts(ui, input);
+            event.mark_handled();
+        }
+    }
+}
+
+impl TextInputWidget {
+    fn refresh_parts(&mut self, ui: &mut Ui, input: ElementId) {
+        let Some(text_part) = ui.slot(input, SLOT_TEXT_INPUT_TEXT) else {
+            return;
+        };
+        let Some(selection_part) = ui.slot(input, SLOT_TEXT_INPUT_SELECTION) else {
+            return;
+        };
+        let Some(caret_part) = ui.slot(input, SLOT_TEXT_INPUT_CARET) else {
+            return;
+        };
+        refresh_text_input_parts(
+            ui,
+            input,
+            text_part,
+            selection_part,
+            caret_part,
+            &mut self.edit,
+            self.placeholder.as_deref(),
+        );
     }
 }
 
@@ -256,122 +351,6 @@ impl Template for TextInputTemplate {
             ),
         );
     }
-}
-
-fn install_text_input_behavior(
-    ui: &mut Ui,
-    input: ElementId,
-    text_part: ElementId,
-    selection_part: ElementId,
-    caret_part: ElementId,
-    placeholder: Option<String>,
-    state: TextInputEditState,
-) {
-    let state = Rc::new(RefCell::new(state));
-    let pointer = Rc::new(RefCell::new(TextInputPointerState::default()));
-    let click_placeholder = placeholder.clone();
-    let click_state = Rc::clone(&state);
-    let click_pointer = Rc::clone(&pointer);
-    ui.on_control_click(input, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(input) {
-            return;
-        }
-        if click_pointer.borrow_mut().take_dragged() {
-            event.mark_handled();
-            return;
-        }
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-        let mut state = click_state.borrow_mut();
-        state.sync_style(font_size);
-        move_editor_to_point(ui, input, event.position, font_size, &mut state.editor);
-        refresh_text_input_parts(
-            ui,
-            input,
-            text_part,
-            selection_part,
-            caret_part,
-            &mut state,
-            click_placeholder.as_deref(),
-        );
-        event.mark_handled();
-    });
-
-    let drag_placeholder = placeholder.clone();
-    let drag_state = Rc::clone(&state);
-    let drag_pointer = Rc::clone(&pointer);
-    ui.on_control_drag(input, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(input) {
-            return;
-        }
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-        let mut state = drag_state.borrow_mut();
-        state.sync_style(font_size);
-        {
-            let mut pointer = drag_pointer.borrow_mut();
-            if !pointer.dragging {
-                let (x, y) = editor_local_point(ui, input, event.press_position, font_size);
-                ui.with_plain_editor(&mut state.editor, |driver| {
-                    driver.move_to_point(x, y);
-                });
-                pointer.dragging = true;
-            }
-            pointer.dragged = true;
-        }
-        let (x, y) = editor_local_point(ui, input, event.position, font_size);
-        ui.with_plain_editor(&mut state.editor, |driver| {
-            driver.extend_selection_to_point(x, y);
-        });
-        refresh_text_input_parts(
-            ui,
-            input,
-            text_part,
-            selection_part,
-            caret_part,
-            &mut state,
-            drag_placeholder.as_deref(),
-        );
-        event.mark_handled();
-    });
-
-    let key_state = Rc::clone(&state);
-    ui.on_control_key(input, move |ui, event| {
-        use ui_events::keyboard::KeyState;
-        if !matches!(event.phase, Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down {
-            return;
-        }
-        if !ui.is_enabled(input) {
-            return;
-        }
-        let mut state = key_state.borrow_mut();
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-        let read_only = read_or(ui, input, ui.properties().is_read_only, false);
-        state.sync_style(font_size);
-        let edit = state.edit_from_key(ui, event.key, read_only);
-        if edit.handled {
-            if edit.changed {
-                ui.set_local(input, ui.properties().content, String::from(state.text()));
-            }
-            refresh_text_input_parts(
-                ui,
-                input,
-                text_part,
-                selection_part,
-                caret_part,
-                &mut state,
-                placeholder.as_deref(),
-            );
-            event.mark_handled();
-        }
-    });
 }
 
 #[derive(Debug, Default)]

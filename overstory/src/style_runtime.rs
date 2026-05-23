@@ -8,7 +8,7 @@ use understory_property::PropertyRegistry;
 use understory_style::{MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme};
 
 use crate::element::{Element, ElementId};
-use crate::widget::{TYPE_GENERIC, Widget};
+use crate::widget::TYPE_GENERIC;
 
 /// Active style cascade, theme resources, and per-element match states.
 pub(crate) struct StyleRuntime {
@@ -63,9 +63,11 @@ impl StyleRuntime {
         // Anonymous containers fall back to `TYPE_GENERIC` for selector
         // matching. Widgets may opt out of a global type and rely only on an
         // owner-local PartTag.
-        let type_tag = element
-            .widget()
-            .map_or(Some(TYPE_GENERIC), Widget::type_tag);
+        let type_tag = if element.has_widget_identity() {
+            element.type_tag()
+        } else {
+            Some(TYPE_GENERIC)
+        };
         let classes: SmallVec<[understory_style::ClassId; 4]> =
             SmallVec::from_slice(element.classes());
         let pseudos: SmallVec<[understory_style::PseudoClassId; 4]> =

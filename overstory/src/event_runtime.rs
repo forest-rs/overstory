@@ -427,10 +427,6 @@ impl EventRuntime {
         self.scroll.insert(HandlerLane::User, id, handler);
     }
 
-    pub(crate) fn on_control_scroll(&mut self, id: ElementId, handler: ScrollHandler) {
-        self.scroll.insert(HandlerLane::Control, id, handler);
-    }
-
     pub(crate) fn remove_scroll(&mut self, id: ElementId) {
         self.scroll.remove(HandlerLane::User, id);
     }

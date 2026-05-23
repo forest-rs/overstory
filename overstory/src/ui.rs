@@ -870,7 +870,7 @@ impl Ui {
         RoutedDispatchResult::from_state(&state)
     }
 
-    fn with_dispatched_widget(
+    pub(crate) fn with_widget_mut(
         &mut self,
         id: ElementId,
         dispatch: impl FnOnce(&mut dyn Widget, &mut Self),
@@ -908,7 +908,7 @@ impl Ui {
 
     fn dispatch_widget_key<'a>(&mut self, route: RoutedEventContext<'a>, event: &'a KeyboardEvent) {
         let node = route.current;
-        self.with_dispatched_widget(node, |widget, ui| {
+        self.with_widget_mut(node, |widget, ui| {
             widget.handle_key(node, ui, KeyEvent { route, key: event });
         });
     }
@@ -945,7 +945,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        self.with_dispatched_widget(node, |widget, ui| {
+        self.with_widget_mut(node, |widget, ui| {
             widget.handle_click(
                 node,
                 ui,
@@ -993,7 +993,7 @@ impl Ui {
         delta: Vec2,
     ) {
         let node = route.current;
-        self.with_dispatched_widget(node, |widget, ui| {
+        self.with_widget_mut(node, |widget, ui| {
             widget.handle_drag(
                 node,
                 ui,
@@ -1042,7 +1042,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        self.with_dispatched_widget(node, |widget, ui| {
+        self.with_widget_mut(node, |widget, ui| {
             widget.handle_scroll(
                 node,
                 ui,
@@ -1278,13 +1278,6 @@ impl Ui {
         F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
     {
         self.events.on_scroll(id, Box::new(handler));
-    }
-
-    pub(crate) fn on_control_scroll<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
-    {
-        self.events.on_control_scroll(id, Box::new(handler));
     }
 
     /// Removes a scroll handler previously registered with [`Self::on_scroll`].

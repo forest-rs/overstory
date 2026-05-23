@@ -16,11 +16,12 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::LayoutContext;
 use crate::controls::scroll::{
-    ScrollState, install_wheel_scroll_behavior, normalize_scroll_offset_y, scroll_child_into_view,
+    ScrollState, handle_wheel_scroll, normalize_scroll_offset_y, scroll_child_into_view,
     scroll_offset_y, set_scroll_offset_y,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
+use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
@@ -198,8 +199,6 @@ impl AppendSpec for ListBox {
         }
         ui.set_layout(id, layout);
         ui.set_control_state(id, self.state);
-        install_wheel_scroll_behavior(ui, id, scroll_state);
-        install_list_box_key_behavior(ui, id);
         id
     }
 }
@@ -239,6 +238,210 @@ impl Widget for ListBoxWidget {
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         let _ = element;
         -self.scroll_state.offset()
+    }
+
+    fn handle_scroll(&mut self, listbox: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
+        handle_wheel_scroll(ui, listbox, &self.scroll_state, event);
+    }
+
+    fn handle_key(&mut self, listbox: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down || !ui.is_enabled(listbox) {
+            return;
+        }
+
+        let items = list_items(ui, listbox);
+        if items.is_empty() {
+            return;
+        }
+
+        let mode = self.selection_mode;
+        let current = self.selected_item(ui, listbox);
+        let current_index =
+            current.and_then(|selected| items.iter().position(|id| *id == selected));
+        let action_mod = action_modifier(event.key.modifiers);
+        let shift = event.key.modifiers.shift();
+
+        if mode == ListSelectionMode::Multiple
+            && action_mod
+            && matches!(&event.key.key, Key::Character(s) if s.eq_ignore_ascii_case("a"))
+        {
+            self.select_all(ui, listbox);
+            event.mark_handled();
+            return;
+        }
+
+        let next = match &event.key.key {
+            Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
+                Some(next_index(current_index, items.len()))
+            }
+            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
+                Some(previous_index(current_index, items.len()))
+            }
+            Key::Named(NamedKey::PageDown) => Some(page_down_index(
+                current_index,
+                items.len(),
+                visible_item_count(ui, listbox, &items),
+            )),
+            Key::Named(NamedKey::PageUp) => Some(page_up_index(
+                current_index,
+                visible_item_count(ui, listbox, &items),
+            )),
+            Key::Named(NamedKey::Home) => Some(0),
+            Key::Named(NamedKey::End) => Some(items.len() - 1),
+            Key::Named(NamedKey::Enter) => current_index,
+            Key::Character(s) if s == " " => current_index,
+            _ => None,
+        };
+
+        let Some(next) = next else {
+            return;
+        };
+        let item = items[next];
+        if mode == ListSelectionMode::Multiple && shift {
+            self.select_range(ui, listbox, item, false);
+        } else if mode == ListSelectionMode::Multiple
+            && action_mod
+            && is_activation_key(&event.key.key)
+        {
+            self.toggle_item(ui, listbox, item);
+        } else {
+            self.select_item(ui, listbox, item);
+        }
+        scroll_child_into_view(ui, listbox, &self.scroll_state, item);
+        event.mark_handled();
+    }
+}
+
+impl ListBoxWidget {
+    fn selected_item(&self, ui: &Ui, listbox: ElementId) -> Option<ElementId> {
+        let selected = self.selection.borrow().primary().copied()?;
+        is_direct_list_item(ui, listbox, selected).then_some(selected)
+    }
+
+    fn select_item(&self, ui: &mut Ui, listbox: ElementId, item: ElementId) -> bool {
+        if !ui.is_enabled(listbox)
+            || !ui.is_enabled(item)
+            || !is_direct_list_item(ui, listbox, item)
+        {
+            return false;
+        }
+
+        self.mutate_selection(ui, listbox, |selection| selection.select_only(item))
+            .is_some()
+    }
+
+    fn select_range(
+        &self,
+        ui: &mut Ui,
+        listbox: ElementId,
+        item: ElementId,
+        extend_existing: bool,
+    ) -> bool {
+        if !ui.is_enabled(listbox)
+            || !ui.is_enabled(item)
+            || !is_direct_list_item(ui, listbox, item)
+        {
+            return false;
+        }
+
+        let items = list_items(ui, listbox);
+        let anchor = self
+            .selection
+            .borrow()
+            .anchor()
+            .copied()
+            .filter(|anchor| items.contains(anchor))
+            .unwrap_or(item);
+        let Some(range) = ordered_item_range(&items, anchor, item) else {
+            return false;
+        };
+
+        self.mutate_selection(ui, listbox, move |selection| {
+            if !extend_existing {
+                return selection.replace_with_roles(range, Some(&item), Some(&anchor));
+            }
+
+            let mut changed = selection.extend_with(range);
+            changed |= selection.set_primary(&item);
+            changed |= selection.set_anchor(&anchor);
+            changed
+        })
+        .is_some()
+    }
+
+    fn toggle_item(&self, ui: &mut Ui, listbox: ElementId, item: ElementId) -> bool {
+        if !ui.is_enabled(listbox)
+            || !ui.is_enabled(item)
+            || !is_direct_list_item(ui, listbox, item)
+        {
+            return false;
+        }
+
+        self.mutate_selection(ui, listbox, |selection| {
+            let mut changed = selection.toggle(item);
+            if selection.primary().is_none()
+                && let Some(first) = selection.items().first().copied()
+            {
+                changed |= selection.set_primary(&first);
+            }
+            if selection.anchor().is_none()
+                && let Some(primary) = selection.primary().copied()
+            {
+                changed |= selection.set_anchor(&primary);
+            }
+            changed
+        })
+        .is_some()
+    }
+
+    fn select_all(&self, ui: &mut Ui, listbox: ElementId) -> bool {
+        let items = list_items(ui, listbox);
+        if items.is_empty() {
+            return false;
+        }
+
+        self.mutate_selection(ui, listbox, move |selection| selection.replace_with(items))
+            .is_some()
+    }
+
+    fn mutate_selection(
+        &self,
+        ui: &mut Ui,
+        listbox: ElementId,
+        mutate: impl FnOnce(&mut Selection<ElementId>) -> bool,
+    ) -> Option<bool> {
+        let previous = self.selection.borrow().items().to_vec();
+
+        let changed = {
+            let mut selection = self.selection.borrow_mut();
+            mutate(&mut selection)
+        };
+
+        let current = self.selection.borrow().items().to_vec();
+        sync_selected_pseudos(ui, listbox, &previous, &current);
+        if changed {
+            let selected = current
+                .iter()
+                .copied()
+                .filter(|item| is_direct_list_item(ui, listbox, *item))
+                .collect();
+            let primary = self.selected_item(ui, listbox);
+            dispatch_list_selection_changed(
+                ui,
+                Some(Rc::clone(&self.selection_changed)),
+                ListSelectionChangedEvent {
+                    listbox,
+                    selected,
+                    primary,
+                },
+            );
+        }
+        Some(changed)
     }
 }
 
@@ -296,7 +499,6 @@ impl AppendSpec for ListItem {
         ui.set_local(id, ui.properties().content, self.content);
         ui.set_local(id, ui.properties().font_size, self.font_size);
         ui.set_control_state(id, self.state);
-        install_list_item_click_behavior(ui, id);
         id
     }
 }
@@ -312,6 +514,27 @@ impl Widget for ListItemWidget {
 
     fn default_template(&self) -> Option<&'static dyn crate::Template> {
         Some(&LIST_ITEM_TEMPLATE)
+    }
+
+    fn handle_click(&mut self, item: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(item) {
+            return;
+        }
+        let Some(listbox) = listbox_parent(ui, item) else {
+            return;
+        };
+        select_list_item_for_click(
+            ui,
+            listbox,
+            item,
+            event.modifiers.shift(),
+            action_modifier(event.modifiers),
+        );
+        let _ = ui.set_pointer_focus(Some(listbox));
+        event.mark_handled();
     }
 }
 
@@ -406,103 +629,6 @@ pub fn scroll_list_item_into_view(ui: &mut Ui, listbox: ElementId, item: Element
         return false;
     };
     scroll_child_into_view(ui, listbox, &state, item)
-}
-
-fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
-    ui.on_control_click(item, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(item) {
-            return;
-        }
-        let Some(listbox) = listbox_parent(ui, item) else {
-            return;
-        };
-        select_list_item_for_click(
-            ui,
-            listbox,
-            item,
-            event.modifiers.shift(),
-            action_modifier(event.modifiers),
-        );
-        let _ = ui.set_pointer_focus(Some(listbox));
-        event.mark_handled();
-    });
-}
-
-fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
-    ui.on_control_key(listbox, move |ui, event| {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
-
-        if !matches!(event.phase, Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down || !ui.is_enabled(listbox) {
-            return;
-        }
-
-        let items = list_items(ui, listbox);
-        if items.is_empty() {
-            return;
-        }
-
-        let mode = list_box_selection_mode(ui, listbox).unwrap_or_default();
-        let current = selected_list_item(ui, listbox);
-        let current_index =
-            current.and_then(|selected| items.iter().position(|id| *id == selected));
-        let action_mod = action_modifier(event.key.modifiers);
-        let shift = event.key.modifiers.shift();
-
-        if mode == ListSelectionMode::Multiple
-            && action_mod
-            && matches!(&event.key.key, Key::Character(s) if s.eq_ignore_ascii_case("a"))
-        {
-            select_all_list_items(ui, listbox);
-            event.mark_handled();
-            return;
-        }
-
-        let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
-                Some(next_index(current_index, items.len()))
-            }
-            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
-                Some(previous_index(current_index, items.len()))
-            }
-            Key::Named(NamedKey::PageDown) => Some(page_down_index(
-                current_index,
-                items.len(),
-                visible_item_count(ui, listbox, &items),
-            )),
-            Key::Named(NamedKey::PageUp) => Some(page_up_index(
-                current_index,
-                visible_item_count(ui, listbox, &items),
-            )),
-            Key::Named(NamedKey::Home) => Some(0),
-            Key::Named(NamedKey::End) => Some(items.len() - 1),
-            Key::Named(NamedKey::Enter) => current_index,
-            Key::Character(s) if s == " " => current_index,
-            _ => None,
-        };
-
-        let Some(next) = next else {
-            return;
-        };
-        let item = items[next];
-        if mode == ListSelectionMode::Multiple && shift {
-            select_list_item_range(ui, listbox, item, false);
-        } else if mode == ListSelectionMode::Multiple
-            && action_mod
-            && is_activation_key(&event.key.key)
-        {
-            toggle_list_item_selection(ui, listbox, item);
-        } else {
-            select_list_item(ui, listbox, item);
-        }
-        scroll_list_item_into_view(ui, listbox, item);
-        event.mark_handled();
-    });
 }
 
 fn next_index(current: Option<usize>, len: usize) -> usize {
@@ -609,15 +735,6 @@ fn toggle_list_item_selection(ui: &mut Ui, listbox: ElementId, item: ElementId) 
         changed
     })
     .is_some()
-}
-
-fn select_all_list_items(ui: &mut Ui, listbox: ElementId) -> bool {
-    let items = list_items(ui, listbox);
-    if items.is_empty() {
-        return false;
-    }
-
-    mutate_list_selection(ui, listbox, move |selection| selection.replace_with(items)).is_some()
 }
 
 fn mutate_list_selection(
@@ -746,10 +863,7 @@ fn is_direct_list_item(ui: &Ui, listbox: ElementId, item: ElementId) -> bool {
 }
 
 fn is_list_item(ui: &Ui, id: ElementId) -> bool {
-    ui.get(id)
-        .and_then(|element| element.widget())
-        .and_then(Widget::type_tag)
-        == Some(TYPE_LIST_ITEM)
+    ui.get(id).and_then(Element::type_tag) == Some(TYPE_LIST_ITEM)
 }
 
 fn list_box_selection(ui: &Ui, listbox: ElementId) -> Option<SharedSelection> {

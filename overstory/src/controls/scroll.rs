@@ -16,6 +16,7 @@ use crate::Phase;
 use crate::behavior::LayoutContext;
 use crate::channels::LAYOUT;
 use crate::element::{Element, ElementId};
+use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::template::{Template, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -268,7 +269,6 @@ impl AppendSpec for ScrollView {
         }
         ui.set_layout(id, layout);
         ui.set_control_state(id, self.control_state);
-        install_wheel_scroll_behavior(ui, id, state);
         id
     }
 }
@@ -296,6 +296,10 @@ impl Widget for ScrollViewWidget {
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         let _ = element;
         -self.state.offset()
+    }
+
+    fn handle_scroll(&mut self, viewport: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
+        handle_wheel_scroll(ui, viewport, &self.state, event);
     }
 }
 
@@ -409,6 +413,7 @@ impl AppendSpec for ScrollBar {
             length: self.length,
             thickness: self.thickness,
             thumb_extent: self.thumb_extent,
+            drag: ScrollBarDragState::default(),
         };
         let boxed: Box<dyn Widget> = match self.template {
             Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
@@ -422,7 +427,6 @@ impl AppendSpec for ScrollBar {
         ui.set_control_state(id, self.control_state);
         ui.expand_default_template(id);
         sync_scroll_bar_thumb_size(ui, id);
-        install_scroll_bar_behavior(ui, id);
         id
     }
 }
@@ -436,6 +440,7 @@ pub struct ScrollBarWidget {
     length: f32,
     thickness: f32,
     thumb_extent: f32,
+    drag: ScrollBarDragState,
 }
 
 impl Widget for ScrollBarWidget {
@@ -460,6 +465,50 @@ impl Widget for ScrollBarWidget {
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         let _ = element;
         scroll_bar_thumb_offset(self.axis, &self.state, self.length, self.thumb_extent)
+    }
+
+    fn handle_click(&mut self, scroll_bar: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
+            return;
+        }
+        if is_scroll_bar_thumb(ui, scroll_bar, event.source) {
+            return;
+        }
+        let page = scroll_bar_page(&self.state, self.axis);
+        let current = state_axis_scroll_offset(&self.state, self.axis);
+        let thumb_start = axis_thumb_start(
+            self.axis,
+            ui.effective_bounds(scroll_bar).origin(),
+            self.state.offset(),
+            self.state.max_offset(),
+            self.length,
+            self.thumb_extent,
+        );
+        let pointer = axis_point(self.axis, event.position);
+        let next = if pointer < thumb_start {
+            current - page
+        } else {
+            current + page
+        };
+        set_axis_scroll_offset(ui, self.viewport, &self.state, self.axis, next);
+        event.mark_handled();
+    }
+
+    fn handle_drag(&mut self, scroll_bar: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
+            return;
+        }
+        let snapshot = ScrollBarSnapshot::from(&*self);
+        self.drag.update(
+            ui,
+            scroll_bar,
+            &snapshot,
+            event.source,
+            event.press_position,
+            event.position,
+            event.delta,
+        );
+        event.mark_handled();
     }
 }
 
@@ -506,22 +555,25 @@ pub fn scroll_view_state(ui: &Ui, scroll_view: ElementId) -> Option<ScrollState>
         .map(|widget| widget.state.clone())
 }
 
-pub(crate) fn install_wheel_scroll_behavior(ui: &mut Ui, viewport: ElementId, state: ScrollState) {
-    ui.on_control_scroll(viewport, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
-            return;
-        }
-        let bounds = ui.effective_bounds(viewport);
-        let page = Vec2::new(bounds.width(), bounds.height());
-        let delta = event.logical_delta(
-            Vec2::new(DEFAULT_SCROLL_LINE_Y, DEFAULT_SCROLL_LINE_Y),
-            page,
-        );
-        if delta != Vec2::ZERO {
-            scroll_by(ui, viewport, &state, delta);
-            event.mark_handled();
-        }
-    });
+pub(crate) fn handle_wheel_scroll(
+    ui: &mut Ui,
+    viewport: ElementId,
+    state: &ScrollState,
+    event: ScrollEvent<'_>,
+) {
+    if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
+        return;
+    }
+    let bounds = ui.effective_bounds(viewport);
+    let page = Vec2::new(bounds.width(), bounds.height());
+    let delta = event.logical_delta(
+        Vec2::new(DEFAULT_SCROLL_LINE_Y, DEFAULT_SCROLL_LINE_Y),
+        page,
+    );
+    if delta != Vec2::ZERO {
+        scroll_by(ui, viewport, state, delta);
+        event.mark_handled();
+    }
 }
 
 pub(crate) fn set_scroll_offset_y(
@@ -572,58 +624,6 @@ pub(crate) fn update_viewport_metrics_from_layout(
     state: &ScrollState,
 ) {
     update_scroll_metrics_from_layout(element, ctx, state);
-}
-
-fn install_scroll_bar_behavior(ui: &mut Ui, scroll_bar: ElementId) {
-    ui.on_control_click(scroll_bar, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
-            return;
-        }
-        let Some(widget) = scroll_bar_widget(ui, scroll_bar) else {
-            return;
-        };
-        if is_scroll_bar_thumb(ui, scroll_bar, event.source) {
-            return;
-        }
-        let page = scroll_bar_page(&widget.state, widget.axis);
-        let current = state_axis_scroll_offset(&widget.state, widget.axis);
-        let thumb_start = axis_thumb_start(
-            widget.axis,
-            ui.effective_bounds(scroll_bar).origin(),
-            widget.state.offset(),
-            widget.state.max_offset(),
-            widget.length,
-            widget.thumb_extent,
-        );
-        let pointer = axis_point(widget.axis, event.position);
-        let next = if pointer < thumb_start {
-            current - page
-        } else {
-            current + page
-        };
-        set_axis_scroll_offset(ui, widget.viewport, &widget.state, widget.axis, next);
-        event.mark_handled();
-    });
-
-    let mut drag = ScrollBarDragState::default();
-    ui.on_control_drag(scroll_bar, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
-            return;
-        }
-        let Some(widget) = scroll_bar_widget(ui, scroll_bar) else {
-            return;
-        };
-        drag.update(
-            ui,
-            scroll_bar,
-            &widget,
-            event.source,
-            event.press_position,
-            event.position,
-            event.delta,
-        );
-        event.mark_handled();
-    });
 }
 
 #[derive(Clone, Debug)]

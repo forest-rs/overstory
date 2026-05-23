@@ -111,6 +111,13 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
+    /// Called after this widget's default template has expanded.
+    ///
+    /// Most widgets have all state in properties or template bindings and do
+    /// nothing here. Stateful controls use this to synchronize freshly-created
+    /// template parts with widget-owned state.
+    fn template_expanded(&mut self, _id: ElementId, _ui: &mut Ui) {}
+
     /// Returns the cursor icon this widget prefers while it is the
     /// active hover or press target.
     ///
@@ -222,6 +229,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(self.template)
+    }
+
+    fn template_expanded(&mut self, id: ElementId, ui: &mut Ui) {
+        self.widget.template_expanded(id, ui);
     }
 
     fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {

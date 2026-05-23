@@ -16,7 +16,7 @@ use core::fmt;
 use invalidation::DenseKey;
 use smallvec::SmallVec;
 use understory_property::{DependencyObject, PropertyStore};
-use understory_style::{ClassId, PartTag, PseudoClassId};
+use understory_style::{ClassId, PartTag, PseudoClassId, TypeTag};
 
 use crate::widget::Widget;
 
@@ -94,6 +94,11 @@ pub struct Element {
     pseudos: SmallVec<[PseudoClassId; 2]>,
     /// Per-element behavior + state. `None` for anonymous containers.
     widget: Option<Box<dyn Widget>>,
+    /// Whether this element was created with widget identity. Kept separate
+    /// from `widget` because event dispatch temporarily takes the widget out.
+    has_widget_identity: bool,
+    /// Stable selector type identity copied from the widget at insertion.
+    type_tag: Option<TypeTag>,
 }
 
 impl fmt::Debug for Element {
@@ -105,6 +110,8 @@ impl fmt::Debug for Element {
             .field("part_tag", &self.part_tag)
             .field("children_len", &self.children.len())
             .field("widget", &self.widget)
+            .field("has_widget_identity", &self.has_widget_identity)
+            .field("type_tag", &self.type_tag)
             .field("classes", &self.classes.as_slice())
             .field("pseudos", &self.pseudos.as_slice())
             .finish_non_exhaustive()
@@ -119,6 +126,8 @@ impl Element {
         part_tag: Option<PartTag>,
         widget: Option<Box<dyn Widget>>,
     ) -> Self {
+        let has_widget_identity = widget.is_some();
+        let type_tag = widget.as_deref().and_then(Widget::type_tag);
         Self {
             id,
             parent,
@@ -129,6 +138,8 @@ impl Element {
             classes: SmallVec::new(),
             pseudos: SmallVec::new(),
             widget,
+            has_widget_identity,
+            type_tag,
         }
     }
 
@@ -224,6 +235,21 @@ impl Element {
     #[inline]
     pub fn part_tag(&self) -> Option<PartTag> {
         self.part_tag
+    }
+
+    /// Returns this element's cached selector type identity, if any.
+    #[must_use]
+    #[inline]
+    pub fn type_tag(&self) -> Option<TypeTag> {
+        self.type_tag
+    }
+
+    /// Returns whether this element has widget selector identity, even if the
+    /// widget is temporarily borrowed out during event dispatch.
+    #[must_use]
+    #[inline]
+    pub fn has_widget_identity(&self) -> bool {
+        self.has_widget_identity
     }
 
     /// Returns this element's children in document order.
