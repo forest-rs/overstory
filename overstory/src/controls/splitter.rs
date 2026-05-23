@@ -248,7 +248,7 @@ fn install_splitter_behavior(
     on_resize: Option<SplitterResizeHandler>,
 ) {
     let on_resize = Rc::new(RefCell::new(on_resize));
-    ui.on_click(splitter, move |ui, event| {
+    ui.on_control_click(splitter, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -259,7 +259,7 @@ fn install_splitter_behavior(
     });
 
     let drag_handler = Rc::clone(&on_resize);
-    ui.on_drag(splitter, move |ui, event| {
+    ui.on_control_drag(splitter, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -286,7 +286,7 @@ fn install_splitter_behavior(
     });
 
     let key_handler = Rc::clone(&on_resize);
-    ui.on_key(splitter, move |ui, event| {
+    ui.on_control_key(splitter, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;

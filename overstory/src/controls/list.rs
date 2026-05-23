@@ -409,7 +409,7 @@ pub fn scroll_list_item_into_view(ui: &mut Ui, listbox: ElementId, item: Element
 }
 
 fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
-    ui.on_click(item, move |ui, event| {
+    ui.on_control_click(item, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -432,7 +432,7 @@ fn install_list_item_click_behavior(ui: &mut Ui, item: ElementId) {
 }
 
 fn install_list_box_key_behavior(ui: &mut Ui, listbox: ElementId) {
-    ui.on_key(listbox, move |ui, event| {
+    ui.on_control_key(listbox, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
 
         if !matches!(event.phase, Phase::Target) {

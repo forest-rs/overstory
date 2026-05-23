@@ -507,7 +507,7 @@ pub fn scroll_view_state(ui: &Ui, scroll_view: ElementId) -> Option<ScrollState>
 }
 
 pub(crate) fn install_wheel_scroll_behavior(ui: &mut Ui, viewport: ElementId, state: ScrollState) {
-    ui.on_scroll(viewport, move |ui, event| {
+    ui.on_control_scroll(viewport, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
             return;
         }
@@ -575,7 +575,7 @@ pub(crate) fn update_viewport_metrics_from_layout(
 }
 
 fn install_scroll_bar_behavior(ui: &mut Ui, scroll_bar: ElementId) {
-    ui.on_click(scroll_bar, move |ui, event| {
+    ui.on_control_click(scroll_bar, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
             return;
         }
@@ -606,7 +606,7 @@ fn install_scroll_bar_behavior(ui: &mut Ui, scroll_bar: ElementId) {
     });
 
     let mut drag = ScrollBarDragState::default();
-    ui.on_drag(scroll_bar, move |ui, event| {
+    ui.on_control_drag(scroll_bar, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
             return;
         }

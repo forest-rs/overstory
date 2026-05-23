@@ -252,7 +252,7 @@ fn button_label_widget() -> Box<dyn Widget> {
 /// `AppendSpec::append_to` when the app didn't supply its own
 /// `on_key`.
 fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
-    ui.on_key(button, move |ui, event| {
+    ui.on_control_key(button, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;

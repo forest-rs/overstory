@@ -189,7 +189,7 @@ fn check_box_label_widget() -> Box<dyn Widget> {
 }
 
 fn install_check_box_behavior(ui: &mut Ui, checkbox: ElementId) {
-    ui.on_click(checkbox, move |ui, event| {
+    ui.on_control_click(checkbox, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -200,7 +200,7 @@ fn install_check_box_behavior(ui: &mut Ui, checkbox: ElementId) {
         event.mark_handled();
     });
 
-    ui.on_key(checkbox, move |ui, event| {
+    ui.on_control_key(checkbox, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;

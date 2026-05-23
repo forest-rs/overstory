@@ -315,7 +315,7 @@ impl Template for SliderTemplate {
 }
 
 fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
-    ui.on_click(slider, move |ui, event| {
+    ui.on_control_click(slider, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -328,7 +328,7 @@ fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
         set_value_from_position(ui, slider, thumb, event.position);
     });
     let mut drag = SliderDragState::default();
-    ui.on_drag(slider, move |ui, event| {
+    ui.on_control_drag(slider, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -344,7 +344,7 @@ fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
             event.delta,
         );
     });
-    ui.on_key(slider, move |ui, event| {
+    ui.on_control_key(slider, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;

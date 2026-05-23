@@ -272,7 +272,7 @@ fn install_text_input_behavior(
     let click_placeholder = placeholder.clone();
     let click_state = Rc::clone(&state);
     let click_pointer = Rc::clone(&pointer);
-    ui.on_click(input, move |ui, event| {
+    ui.on_control_click(input, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -302,7 +302,7 @@ fn install_text_input_behavior(
     let drag_placeholder = placeholder.clone();
     let drag_state = Rc::clone(&state);
     let drag_pointer = Rc::clone(&pointer);
-    ui.on_drag(input, move |ui, event| {
+    ui.on_control_drag(input, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -340,7 +340,7 @@ fn install_text_input_behavior(
     });
 
     let key_state = Rc::clone(&state);
-    ui.on_key(input, move |ui, event| {
+    ui.on_control_key(input, move |ui, event| {
         use ui_events::keyboard::KeyState;
         if !matches!(event.phase, Phase::Target) {
             return;

@@ -152,7 +152,7 @@ impl Template for ToggleTemplate {
 }
 
 fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
-    ui.on_click(toggle, move |ui, event| {
+    ui.on_control_click(toggle, move |ui, event| {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -160,9 +160,10 @@ fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
             return;
         }
         toggle_checked(ui, toggle);
+        event.mark_handled();
     });
 
-    ui.on_key(toggle, move |ui, event| {
+    ui.on_control_key(toggle, move |ui, event| {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;

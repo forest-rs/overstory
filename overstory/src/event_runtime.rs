@@ -20,6 +20,16 @@ pub(crate) type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
 pub(crate) type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum HandlerLane {
+    User,
+    Control,
+}
+
+impl HandlerLane {
+    pub(crate) const DISPATCH_ORDER: [Self; 2] = [Self::User, Self::Control];
+}
+
 /// The routed event family currently being dispatched.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RoutedEventKind {
@@ -367,10 +377,10 @@ impl ScrollEvent<'_> {
 
 /// Routed event handler stores and in-flight removal tracking.
 pub(crate) struct EventRuntime {
-    click: HandlerSlot<ClickHandler>,
-    drag: HandlerSlot<DragHandler>,
-    scroll: HandlerSlot<ScrollHandler>,
-    key: HandlerSlot<KeyHandler>,
+    click: HandlerPair<ClickHandler>,
+    drag: HandlerPair<DragHandler>,
+    scroll: HandlerPair<ScrollHandler>,
+    key: HandlerPair<KeyHandler>,
     hover: HoverState<ElementId>,
     clicks: ClickState<ElementId>,
     press_target: Option<ElementId>,
@@ -381,10 +391,10 @@ pub(crate) struct EventRuntime {
 impl EventRuntime {
     pub(crate) fn new() -> Self {
         Self {
-            click: HandlerSlot::new(),
-            drag: HandlerSlot::new(),
-            scroll: HandlerSlot::new(),
-            key: HandlerSlot::new(),
+            click: HandlerPair::new(),
+            drag: HandlerPair::new(),
+            scroll: HandlerPair::new(),
+            key: HandlerPair::new(),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
@@ -394,138 +404,178 @@ impl EventRuntime {
     }
 
     pub(crate) fn on_click(&mut self, id: ElementId, handler: ClickHandler) {
-        self.click.insert(id, handler);
+        self.click.insert(HandlerLane::User, id, handler);
+    }
+
+    pub(crate) fn on_control_click(&mut self, id: ElementId, handler: ClickHandler) {
+        self.click.insert(HandlerLane::Control, id, handler);
     }
 
     pub(crate) fn remove_click(&mut self, id: ElementId) {
-        self.click.remove(id);
+        self.click.remove(HandlerLane::User, id);
     }
 
     pub(crate) fn on_drag(&mut self, id: ElementId, handler: DragHandler) {
-        self.drag.insert(id, handler);
+        self.drag.insert(HandlerLane::User, id, handler);
+    }
+
+    pub(crate) fn on_control_drag(&mut self, id: ElementId, handler: DragHandler) {
+        self.drag.insert(HandlerLane::Control, id, handler);
     }
 
     pub(crate) fn remove_drag(&mut self, id: ElementId) {
-        self.drag.remove(id);
+        self.drag.remove(HandlerLane::User, id);
     }
 
     pub(crate) fn on_scroll(&mut self, id: ElementId, handler: ScrollHandler) {
-        self.scroll.insert(id, handler);
+        self.scroll.insert(HandlerLane::User, id, handler);
+    }
+
+    pub(crate) fn on_control_scroll(&mut self, id: ElementId, handler: ScrollHandler) {
+        self.scroll.insert(HandlerLane::Control, id, handler);
     }
 
     pub(crate) fn remove_scroll(&mut self, id: ElementId) {
-        self.scroll.remove(id);
+        self.scroll.remove(HandlerLane::User, id);
     }
 
     pub(crate) fn on_key(&mut self, id: ElementId, handler: KeyHandler) {
-        self.key.insert(id, handler);
+        self.key.insert(HandlerLane::User, id, handler);
+    }
+
+    pub(crate) fn on_control_key(&mut self, id: ElementId, handler: KeyHandler) {
+        self.key.insert(HandlerLane::Control, id, handler);
     }
 
     pub(crate) fn remove_key(&mut self, id: ElementId) {
-        self.key.remove(id);
+        self.key.remove(HandlerLane::User, id);
     }
 
     pub(crate) fn remove_target(&mut self, id: ElementId) {
-        self.click.remove(id);
-        self.drag.remove(id);
-        self.scroll.remove(id);
-        self.key.remove(id);
+        self.click.remove_target(id);
+        self.drag.remove_target(id);
+        self.scroll.remove_target(id);
+        self.key.remove_target(id);
     }
 
-    pub(crate) fn take_click(&mut self, id: ElementId) -> Option<ClickHandler> {
-        self.click.take(id)
+    pub(crate) fn take_click(&mut self, lane: HandlerLane, id: ElementId) -> Option<ClickHandler> {
+        self.click.take(lane, id)
     }
 
-    pub(crate) fn begin_click(&mut self, id: ElementId) {
-        self.click.begin(id);
+    pub(crate) fn begin_click(&mut self, lane: HandlerLane, id: ElementId) {
+        self.click.begin(lane, id);
     }
 
-    pub(crate) fn end_click(&mut self, id: ElementId) {
-        self.click.end(id);
+    pub(crate) fn end_click(&mut self, lane: HandlerLane, id: ElementId) {
+        self.click.end(lane, id);
     }
 
-    pub(crate) fn click_removed(&mut self, id: ElementId) -> bool {
-        self.click.take_removed(id)
+    pub(crate) fn click_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.click.take_removed(lane, id)
     }
 
-    pub(crate) fn insert_click_if_absent(&mut self, id: ElementId, handler: ClickHandler) {
-        self.click.insert_if_absent(id, handler);
+    pub(crate) fn insert_click_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: ClickHandler,
+    ) {
+        self.click.insert_if_absent(lane, id, handler);
     }
 
-    pub(crate) fn has_click(&self, id: ElementId) -> bool {
-        self.click.has(id)
+    pub(crate) fn has_click(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.click.has(lane, id)
     }
 
-    pub(crate) fn take_drag(&mut self, id: ElementId) -> Option<DragHandler> {
-        self.drag.take(id)
+    pub(crate) fn take_drag(&mut self, lane: HandlerLane, id: ElementId) -> Option<DragHandler> {
+        self.drag.take(lane, id)
     }
 
-    pub(crate) fn begin_drag(&mut self, id: ElementId) {
-        self.drag.begin(id);
+    pub(crate) fn begin_drag(&mut self, lane: HandlerLane, id: ElementId) {
+        self.drag.begin(lane, id);
     }
 
-    pub(crate) fn end_drag(&mut self, id: ElementId) {
-        self.drag.end(id);
+    pub(crate) fn end_drag(&mut self, lane: HandlerLane, id: ElementId) {
+        self.drag.end(lane, id);
     }
 
-    pub(crate) fn drag_removed(&mut self, id: ElementId) -> bool {
-        self.drag.take_removed(id)
+    pub(crate) fn drag_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.drag.take_removed(lane, id)
     }
 
-    pub(crate) fn insert_drag_if_absent(&mut self, id: ElementId, handler: DragHandler) {
-        self.drag.insert_if_absent(id, handler);
+    pub(crate) fn insert_drag_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: DragHandler,
+    ) {
+        self.drag.insert_if_absent(lane, id, handler);
     }
 
-    pub(crate) fn has_drag(&self, id: ElementId) -> bool {
-        self.drag.has(id)
+    pub(crate) fn has_drag(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.drag.has(lane, id)
     }
 
-    pub(crate) fn take_scroll(&mut self, id: ElementId) -> Option<ScrollHandler> {
-        self.scroll.take(id)
+    pub(crate) fn take_scroll(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+    ) -> Option<ScrollHandler> {
+        self.scroll.take(lane, id)
     }
 
-    pub(crate) fn begin_scroll(&mut self, id: ElementId) {
-        self.scroll.begin(id);
+    pub(crate) fn begin_scroll(&mut self, lane: HandlerLane, id: ElementId) {
+        self.scroll.begin(lane, id);
     }
 
-    pub(crate) fn end_scroll(&mut self, id: ElementId) {
-        self.scroll.end(id);
+    pub(crate) fn end_scroll(&mut self, lane: HandlerLane, id: ElementId) {
+        self.scroll.end(lane, id);
     }
 
-    pub(crate) fn scroll_removed(&mut self, id: ElementId) -> bool {
-        self.scroll.take_removed(id)
+    pub(crate) fn scroll_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.scroll.take_removed(lane, id)
     }
 
-    pub(crate) fn insert_scroll_if_absent(&mut self, id: ElementId, handler: ScrollHandler) {
-        self.scroll.insert_if_absent(id, handler);
+    pub(crate) fn insert_scroll_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: ScrollHandler,
+    ) {
+        self.scroll.insert_if_absent(lane, id, handler);
     }
 
-    pub(crate) fn has_scroll(&self, id: ElementId) -> bool {
-        self.scroll.has(id)
+    pub(crate) fn has_scroll(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.scroll.has(lane, id)
     }
 
-    pub(crate) fn take_key(&mut self, id: ElementId) -> Option<KeyHandler> {
-        self.key.take(id)
+    pub(crate) fn take_key(&mut self, lane: HandlerLane, id: ElementId) -> Option<KeyHandler> {
+        self.key.take(lane, id)
     }
 
-    pub(crate) fn begin_key(&mut self, id: ElementId) {
-        self.key.begin(id);
+    pub(crate) fn begin_key(&mut self, lane: HandlerLane, id: ElementId) {
+        self.key.begin(lane, id);
     }
 
-    pub(crate) fn end_key(&mut self, id: ElementId) {
-        self.key.end(id);
+    pub(crate) fn end_key(&mut self, lane: HandlerLane, id: ElementId) {
+        self.key.end(lane, id);
     }
 
-    pub(crate) fn key_removed(&mut self, id: ElementId) -> bool {
-        self.key.take_removed(id)
+    pub(crate) fn key_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.key.take_removed(lane, id)
     }
 
-    pub(crate) fn insert_key_if_absent(&mut self, id: ElementId, handler: KeyHandler) {
-        self.key.insert_if_absent(id, handler);
+    pub(crate) fn insert_key_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: KeyHandler,
+    ) {
+        self.key.insert_if_absent(lane, id, handler);
     }
 
-    pub(crate) fn has_key(&self, id: ElementId) -> bool {
-        self.key.has(id)
+    pub(crate) fn has_key(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.key.has(lane, id)
     }
 
     pub(crate) fn hovered(&self) -> Option<ElementId> {
@@ -589,6 +639,71 @@ impl EventRuntime {
 
     pub(crate) fn set_last_drag_position(&mut self, position: Point) {
         self.last_drag_position = Some(position);
+    }
+}
+
+struct HandlerPair<H> {
+    user: HandlerSlot<H>,
+    control: HandlerSlot<H>,
+}
+
+impl<H> HandlerPair<H> {
+    fn new() -> Self {
+        Self {
+            user: HandlerSlot::new(),
+            control: HandlerSlot::new(),
+        }
+    }
+
+    fn insert(&mut self, lane: HandlerLane, id: ElementId, handler: H) {
+        self.slot_mut(lane).insert(id, handler);
+    }
+
+    fn remove(&mut self, lane: HandlerLane, id: ElementId) {
+        self.slot_mut(lane).remove(id);
+    }
+
+    fn remove_target(&mut self, id: ElementId) {
+        self.user.remove(id);
+        self.control.remove(id);
+    }
+
+    fn take(&mut self, lane: HandlerLane, id: ElementId) -> Option<H> {
+        self.slot_mut(lane).take(id)
+    }
+
+    fn begin(&mut self, lane: HandlerLane, id: ElementId) {
+        self.slot_mut(lane).begin(id);
+    }
+
+    fn end(&mut self, lane: HandlerLane, id: ElementId) {
+        self.slot_mut(lane).end(id);
+    }
+
+    fn take_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.slot_mut(lane).take_removed(id)
+    }
+
+    fn insert_if_absent(&mut self, lane: HandlerLane, id: ElementId, handler: H) {
+        self.slot_mut(lane).insert_if_absent(id, handler);
+    }
+
+    fn has(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.slot(lane).has(id)
+    }
+
+    fn slot(&self, lane: HandlerLane) -> &HandlerSlot<H> {
+        match lane {
+            HandlerLane::User => &self.user,
+            HandlerLane::Control => &self.control,
+        }
+    }
+
+    fn slot_mut(&mut self, lane: HandlerLane) -> &mut HandlerSlot<H> {
+        match lane {
+            HandlerLane::User => &mut self.user,
+            HandlerLane::Control => &mut self.control,
+        }
     }
 }
 

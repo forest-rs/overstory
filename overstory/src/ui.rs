@@ -45,8 +45,8 @@ use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::{
-    ClickEvent, DragEvent, EventRuntime, KeyDispatchResult, KeyEvent, RoutedDispatchResult,
-    RoutedEventContext, RoutedEventKind, RoutedEventState, ScrollEvent,
+    ClickEvent, DragEvent, EventRuntime, HandlerLane, KeyDispatchResult, KeyEvent,
+    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventState, ScrollEvent,
 };
 use crate::focus_runtime::FocusRuntime;
 use crate::layout_runtime::LayoutRuntime;
@@ -833,6 +833,13 @@ impl Ui {
         self.events.on_key(id, Box::new(handler));
     }
 
+    pub(crate) fn on_control_key<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
+    {
+        self.events.on_control_key(id, Box::new(handler));
+    }
+
     /// Removes a key handler previously registered with
     /// [`Self::on_key`]. No-op if none is registered.
     pub fn remove_key_handler(&mut self, id: ElementId) {
@@ -901,16 +908,21 @@ impl Ui {
         };
         let routed = self.dispatch_routed(RoutedEventKind::Key, focused, |ui, route| {
             let node = route.current;
-            let Some(mut handler) = ui.events.take_key(node) else {
-                return;
-            };
-            let ev = KeyEvent { route, key: event };
-            ui.events.begin_key(node);
-            handler(ui, ev);
-            ui.events.end_key(node);
-            let handler_removed = ui.events.key_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.events.has_key(node) {
-                ui.events.insert_key_if_absent(node, handler);
+            for lane in HandlerLane::DISPATCH_ORDER {
+                if route.is_handled() || route.is_propagation_stopped() {
+                    break;
+                }
+                let Some(mut handler) = ui.events.take_key(lane, node) else {
+                    continue;
+                };
+                let ev = KeyEvent { route, key: event };
+                ui.events.begin_key(lane, node);
+                handler(ui, ev);
+                ui.events.end_key(lane, node);
+                let handler_removed = ui.events.key_removed(lane, node);
+                if ui.get(node).is_some() && !handler_removed && !ui.events.has_key(lane, node) {
+                    ui.events.insert_key_if_absent(lane, node, handler);
+                }
             }
         });
 
@@ -1044,6 +1056,13 @@ impl Ui {
         self.events.on_click(id, Box::new(handler));
     }
 
+    pub(crate) fn on_control_click<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
+    {
+        self.events.on_control_click(id, Box::new(handler));
+    }
+
     /// Removes a click handler previously registered with
     /// [`Self::on_click`]. No-op if no handler is registered.
     pub fn remove_click_handler(&mut self, id: ElementId) {
@@ -1062,6 +1081,13 @@ impl Ui {
         self.events.on_drag(id, Box::new(handler));
     }
 
+    pub(crate) fn on_control_drag<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
+    {
+        self.events.on_control_drag(id, Box::new(handler));
+    }
+
     /// Removes a drag handler previously registered with
     /// [`Self::on_drag`]. No-op if no handler is registered.
     pub fn remove_drag_handler(&mut self, id: ElementId) {
@@ -1076,6 +1102,13 @@ impl Ui {
         F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
     {
         self.events.on_scroll(id, Box::new(handler));
+    }
+
+    pub(crate) fn on_control_scroll<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
+    {
+        self.events.on_control_scroll(id, Box::new(handler));
     }
 
     /// Removes a scroll handler previously registered with [`Self::on_scroll`].
@@ -1101,21 +1134,26 @@ impl Ui {
 
         self.dispatch_routed(RoutedEventKind::Drag, source, |ui, route| {
             let node = route.current;
-            let Some(mut handler) = ui.events.take_drag(node) else {
-                return;
-            };
-            let event = DragEvent {
-                route,
-                position,
-                press_position,
-                delta,
-            };
-            ui.events.begin_drag(node);
-            handler(ui, event);
-            ui.events.end_drag(node);
-            let handler_removed = ui.events.drag_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.events.has_drag(node) {
-                ui.events.insert_drag_if_absent(node, handler);
+            for lane in HandlerLane::DISPATCH_ORDER {
+                if route.is_handled() || route.is_propagation_stopped() {
+                    break;
+                }
+                let Some(mut handler) = ui.events.take_drag(lane, node) else {
+                    continue;
+                };
+                let event = DragEvent {
+                    route,
+                    position,
+                    press_position,
+                    delta,
+                };
+                ui.events.begin_drag(lane, node);
+                handler(ui, event);
+                ui.events.end_drag(lane, node);
+                let handler_removed = ui.events.drag_removed(lane, node);
+                if ui.get(node).is_some() && !handler_removed && !ui.events.has_drag(lane, node) {
+                    ui.events.insert_drag_if_absent(lane, node, handler);
+                }
             }
         })
     }
@@ -1159,24 +1197,29 @@ impl Ui {
 
         self.dispatch_routed(RoutedEventKind::Click, target, |ui, route| {
             let node = route.current;
-            // Take the handler out so it can call `&mut self`, then
-            // put it back unless the handler removed itself.
-            let Some(mut handler) = ui.events.take_click(node) else {
-                return;
-            };
-            let event = ClickEvent {
-                route,
-                position,
-                modifiers,
-            };
-            ui.events.begin_click(node);
-            handler(ui, event);
-            ui.events.end_click(node);
-            let handler_removed = ui.events.click_removed(node);
-            // Reinstate iff the element is still alive AND the
-            // handler didn't remove or replace itself during the call.
-            if ui.get(node).is_some() && !handler_removed && !ui.events.has_click(node) {
-                ui.events.insert_click_if_absent(node, handler);
+            for lane in HandlerLane::DISPATCH_ORDER {
+                if route.is_handled() || route.is_propagation_stopped() {
+                    break;
+                }
+                // Take the handler out so it can call `&mut self`, then
+                // put it back unless the handler removed itself.
+                let Some(mut handler) = ui.events.take_click(lane, node) else {
+                    continue;
+                };
+                let event = ClickEvent {
+                    route,
+                    position,
+                    modifiers,
+                };
+                ui.events.begin_click(lane, node);
+                handler(ui, event);
+                ui.events.end_click(lane, node);
+                let handler_removed = ui.events.click_removed(lane, node);
+                // Reinstate iff the element is still alive AND the
+                // handler didn't remove or replace itself during the call.
+                if ui.get(node).is_some() && !handler_removed && !ui.events.has_click(lane, node) {
+                    ui.events.insert_click_if_absent(lane, node, handler);
+                }
             }
         })
     }
@@ -1204,21 +1247,26 @@ impl Ui {
 
         self.dispatch_routed(RoutedEventKind::Scroll, target, |ui, route| {
             let node = route.current;
-            let Some(mut handler) = ui.events.take_scroll(node) else {
-                return;
-            };
-            let event = ScrollEvent {
-                route,
-                position,
-                delta,
-                modifiers,
-            };
-            ui.events.begin_scroll(node);
-            handler(ui, event);
-            ui.events.end_scroll(node);
-            let handler_removed = ui.events.scroll_removed(node);
-            if ui.get(node).is_some() && !handler_removed && !ui.events.has_scroll(node) {
-                ui.events.insert_scroll_if_absent(node, handler);
+            for lane in HandlerLane::DISPATCH_ORDER {
+                if route.is_handled() || route.is_propagation_stopped() {
+                    break;
+                }
+                let Some(mut handler) = ui.events.take_scroll(lane, node) else {
+                    continue;
+                };
+                let event = ScrollEvent {
+                    route,
+                    position,
+                    delta,
+                    modifiers,
+                };
+                ui.events.begin_scroll(lane, node);
+                handler(ui, event);
+                ui.events.end_scroll(lane, node);
+                let handler_removed = ui.events.scroll_removed(lane, node);
+                if ui.get(node).is_some() && !handler_removed && !ui.events.has_scroll(lane, node) {
+                    ui.events.insert_scroll_if_absent(lane, node, handler);
+                }
             }
         })
     }
@@ -3366,6 +3414,52 @@ mod tests {
                 .and_then(|el| el.get_local_value(ui.properties().value).copied())
                 .is_some_and(|value| value > 0.4),
             "slider ArrowRight should increase Value"
+        );
+    }
+
+    #[test]
+    fn user_click_handler_does_not_replace_control_default_handler() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        use crate::ToggleSwitch;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let toggle = ui.append(root, ToggleSwitch::new());
+        let fired = Rc::new(Cell::new(false));
+        let fired_for_handler = Rc::clone(&fired);
+        ui.on_click(toggle, move |_ui, _event| fired_for_handler.set(true));
+
+        let result = ui.synthesize_click(toggle, Point::ZERO);
+
+        assert!(result.handled, "control default should handle the click");
+        assert!(fired.get(), "user handler should still run");
+        assert_eq!(
+            ui.get(toggle)
+                .and_then(|el| el.get_local_value(ui.properties().is_checked).copied()),
+            Some(true),
+            "control default handler should still toggle"
+        );
+    }
+
+    #[test]
+    fn user_click_handler_can_prevent_control_default_handler() {
+        use crate::ToggleSwitch;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let toggle = ui.append(root, ToggleSwitch::new());
+        ui.on_click(toggle, |_ui, event| event.mark_handled());
+
+        let result = ui.synthesize_click(toggle, Point::ZERO);
+
+        assert!(result.handled);
+        assert_eq!(
+            ui.get(toggle)
+                .and_then(|el| el.get_local_value(ui.properties().is_checked).copied()),
+            None,
+            "handled user event should skip the control default handler"
         );
     }
 
