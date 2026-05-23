@@ -3,14 +3,14 @@
 
 //! `Splitter`: draggable resize grip for adjacent panes.
 
-use alloc::{boxed::Box, rc::Rc};
-use core::cell::RefCell;
+use alloc::boxed::Box;
 
 use cursor_icon::CursorIcon;
 use understory_style::TypeTag;
 
 use crate::Phase;
 use crate::element::{Element, ElementId};
+use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
@@ -204,25 +204,49 @@ impl Default for Splitter {
 
 impl AppendSpec for Splitter {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget(parent, Box::new(SplitterWidget { axis: self.axis }));
-        ui.set_layout(id, self.layout());
-        ui.set_control_state(id, self.state);
-        install_splitter_behavior(
-            ui,
-            id,
-            self.axis,
-            self.keyboard_step,
-            self.keyboard_large_step,
-            self.on_resize,
+        let layout = self.layout();
+        let id = ui.append_widget(
+            parent,
+            Box::new(SplitterWidget {
+                axis: self.axis,
+                keyboard_step: self.keyboard_step,
+                keyboard_large_step: self.keyboard_large_step,
+                on_resize: self.on_resize,
+            }),
         );
+        ui.set_layout(id, layout);
+        ui.set_control_state(id, self.state);
         id
     }
 }
 
 /// Per-element widget for `Splitter`.
-#[derive(Debug, Default)]
 pub struct SplitterWidget {
     axis: SplitterAxis,
+    keyboard_step: f64,
+    keyboard_large_step: f64,
+    on_resize: Option<SplitterResizeHandler>,
+}
+
+impl core::fmt::Debug for SplitterWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SplitterWidget")
+            .field("axis", &self.axis)
+            .field("keyboard_step", &self.keyboard_step)
+            .field("keyboard_large_step", &self.keyboard_large_step)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for SplitterWidget {
+    fn default() -> Self {
+        Self {
+            axis: SplitterAxis::default(),
+            keyboard_step: DEFAULT_KEYBOARD_STEP,
+            keyboard_large_step: DEFAULT_KEYBOARD_LARGE_STEP,
+            on_resize: None,
+        }
+    }
 }
 
 impl Widget for SplitterWidget {
@@ -237,18 +261,8 @@ impl Widget for SplitterWidget {
             SplitterAxis::Vertical => CursorIcon::ColResize,
         })
     }
-}
 
-fn install_splitter_behavior(
-    ui: &mut Ui,
-    splitter: ElementId,
-    axis: SplitterAxis,
-    keyboard_step: f64,
-    keyboard_large_step: f64,
-    on_resize: Option<SplitterResizeHandler>,
-) {
-    let on_resize = Rc::new(RefCell::new(on_resize));
-    ui.on_control_click(splitter, move |ui, event| {
+    fn handle_click(&mut self, splitter: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -256,19 +270,19 @@ fn install_splitter_behavior(
             return;
         }
         event.mark_handled();
-    });
+    }
 
-    let drag_handler = Rc::clone(&on_resize);
-    ui.on_control_drag(splitter, move |ui, event| {
+    fn handle_drag(&mut self, splitter: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
         if !ui.is_enabled(splitter) {
             return;
         }
+        let axis = self.axis;
         let delta = axis_delta(axis, event.delta);
         if delta != 0.0
-            && let Some(handler) = drag_handler.borrow_mut().as_mut()
+            && let Some(handler) = self.on_resize.as_mut()
         {
             handler(
                 ui,
@@ -283,10 +297,9 @@ fn install_splitter_behavior(
             );
         }
         event.mark_handled();
-    });
+    }
 
-    let key_handler = Rc::clone(&on_resize);
-    ui.on_control_key(splitter, move |ui, event| {
+    fn handle_key(&mut self, splitter: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;
@@ -298,10 +311,11 @@ fn install_splitter_behavior(
             return;
         }
         let step = if event.key.modifiers.shift() {
-            keyboard_large_step
+            self.keyboard_large_step
         } else {
-            keyboard_step
+            self.keyboard_step
         };
+        let axis = self.axis;
         let delta = match (&event.key.key, axis) {
             (Key::Named(NamedKey::ArrowLeft), SplitterAxis::Vertical)
             | (Key::Named(NamedKey::ArrowUp), SplitterAxis::Horizontal) => -step,
@@ -309,7 +323,7 @@ fn install_splitter_behavior(
             | (Key::Named(NamedKey::ArrowDown), SplitterAxis::Horizontal) => step,
             _ => return,
         };
-        if let Some(handler) = key_handler.borrow_mut().as_mut() {
+        if let Some(handler) = self.on_resize.as_mut() {
             let position = ui.effective_bounds(splitter).origin();
             handler(
                 ui,
@@ -324,7 +338,7 @@ fn install_splitter_behavior(
             );
         }
         event.mark_handled();
-    });
+    }
 }
 
 fn axis_delta(axis: SplitterAxis, delta: kurbo::Vec2) -> f64 {

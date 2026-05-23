@@ -15,6 +15,7 @@ use understory_style::{ClassId, PartTag, TypeTag};
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::template::{Template, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -193,8 +194,11 @@ impl Default for Slider {
 impl AppendSpec for Slider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(SliderWidget, template)),
-            None => Box::new(SliderWidget),
+            Some(template) => Box::new(TemplateOverrideWidget::new(
+                SliderWidget::default(),
+                template,
+            )),
+            None => Box::new(SliderWidget::default()),
         };
         let id = ui.append_widget_deferred_template(parent, widget);
         let layout_prop = ui.properties().layout;
@@ -227,7 +231,6 @@ impl AppendSpec for Slider {
         let thumb = ui
             .slot(id, SLOT_SLIDER_THUMB)
             .expect("slider template should create SLOT_SLIDER_THUMB");
-        install_slider_behavior(ui, id, thumb);
         set_value(ui, id, thumb, clamped);
         id
     }
@@ -238,7 +241,9 @@ impl AppendSpec for Slider {
 /// on the property store; the thumb's position is recomputed
 /// imperatively by the template's event handlers.
 #[derive(Debug, Default)]
-pub struct SliderWidget;
+pub struct SliderWidget {
+    drag: SliderDragState,
+}
 
 impl Widget for SliderWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -247,6 +252,92 @@ impl Widget for SliderWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SLIDER_TEMPLATE)
+    }
+
+    fn handle_click(&mut self, slider: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+            return;
+        };
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        if event.source == thumb {
+            return;
+        }
+        set_value_from_position(ui, slider, thumb, event.position);
+    }
+
+    fn handle_drag(&mut self, slider: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+            return;
+        };
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        self.drag.update(
+            ui,
+            slider,
+            thumb,
+            event.press_position,
+            event.position,
+            event.delta,
+        );
+    }
+
+    fn handle_key(&mut self, slider: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+            return;
+        };
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        if !ui.is_enabled(slider) {
+            return;
+        }
+        let min = read_or(ui, slider, ui.properties().minimum, 0.0);
+        let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+        let small = read_change_or(
+            ui,
+            slider,
+            ui.properties().small_change,
+            min,
+            max,
+            DEFAULT_SMALL_CHANGE_FRACTION,
+        );
+        let large = read_change_or(
+            ui,
+            slider,
+            ui.properties().large_change,
+            min,
+            max,
+            DEFAULT_LARGE_CHANGE_FRACTION,
+        );
+        let current = read_or(ui, slider, ui.properties().value, min);
+        let next = match &event.key.key {
+            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
+                current - keyboard_step(event.key.modifiers.shift(), small, large)
+            }
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => {
+                current + keyboard_step(event.key.modifiers.shift(), small, large)
+            }
+            Key::Named(NamedKey::PageDown) => current - large,
+            Key::Named(NamedKey::PageUp) => current + large,
+            Key::Named(NamedKey::Home) => min,
+            Key::Named(NamedKey::End) => max,
+            _ => return,
+        };
+        set_value(ui, slider, thumb, next.clamp(min, max));
+        event.mark_handled();
     }
 }
 
@@ -312,84 +403,6 @@ impl Template for SliderTemplate {
         );
         cx.set_local(thumb, layout_prop, thumb_layout(initial_left, thumb_top));
     }
-}
-
-fn install_slider_behavior(ui: &mut Ui, slider: ElementId, thumb: ElementId) {
-    ui.on_control_click(slider, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(slider) {
-            return;
-        }
-        if event.source == thumb {
-            return;
-        }
-        set_value_from_position(ui, slider, thumb, event.position);
-    });
-    let mut drag = SliderDragState::default();
-    ui.on_control_drag(slider, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(slider) {
-            return;
-        }
-        drag.update(
-            ui,
-            slider,
-            thumb,
-            event.press_position,
-            event.position,
-            event.delta,
-        );
-    });
-    ui.on_control_key(slider, move |ui, event| {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
-        if !matches!(event.phase, Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down {
-            return;
-        }
-        if !ui.is_enabled(slider) {
-            return;
-        }
-        let min = read_or(ui, slider, ui.properties().minimum, 0.0);
-        let max = read_or(ui, slider, ui.properties().maximum, 1.0);
-        let small = read_change_or(
-            ui,
-            slider,
-            ui.properties().small_change,
-            min,
-            max,
-            DEFAULT_SMALL_CHANGE_FRACTION,
-        );
-        let large = read_change_or(
-            ui,
-            slider,
-            ui.properties().large_change,
-            min,
-            max,
-            DEFAULT_LARGE_CHANGE_FRACTION,
-        );
-        let current = read_or(ui, slider, ui.properties().value, min);
-        let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
-                current - keyboard_step(event.key.modifiers.shift(), small, large)
-            }
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => {
-                current + keyboard_step(event.key.modifiers.shift(), small, large)
-            }
-            Key::Named(NamedKey::PageDown) => current - large,
-            Key::Named(NamedKey::PageUp) => current + large,
-            Key::Named(NamedKey::Home) => min,
-            Key::Named(NamedKey::End) => max,
-            _ => return,
-        };
-        set_value(ui, slider, thumb, next.clamp(min, max));
-        event.mark_handled();
-    });
 }
 
 fn read_or<T: Clone + 'static>(
