@@ -45,8 +45,9 @@ use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::{
-    ClickEvent, DragEvent, EventRuntime, HandlerLane, KeyDispatchResult, KeyEvent,
-    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventState, ScrollEvent,
+    ClickEvent, DragEvent, EventRuntime, FocusChangeReason, FocusEvent, HandlerLane,
+    KeyDispatchResult, KeyEvent, PointerDispatchResult, RoutedDispatchResult, RoutedEventContext,
+    RoutedEventKind, RoutedEventState, RoutedHandlerOptions, ScrollEvent,
 };
 use crate::focus_runtime::FocusRuntime;
 use crate::layout_runtime::LayoutRuntime;
@@ -614,6 +615,17 @@ impl Ui {
         self.events.hovered()
     }
 
+    /// Returns the element currently receiving primary-pointer drag events
+    /// after a press, if any.
+    ///
+    /// Pointer capture preserves the original hit element as the routed drag
+    /// source, even when a templated owner carries the `:pressed` visual state.
+    #[must_use]
+    #[inline]
+    pub fn pointer_capture(&self) -> Option<ElementId> {
+        self.events.pointer_capture()
+    }
+
     /// Returns the cursor icon preferred by the active press target
     /// or deepest hovered widget.
     ///
@@ -724,8 +736,9 @@ impl Ui {
 
     /// Enables or disables a control element.
     ///
-    /// Disabling clears focus and the current press target for `id`, removes it
-    /// from focus traversal, and applies `:disabled` for style matching.
+    /// Disabling clears focus, pressed state, and pointer capture for `id`,
+    /// removes it from focus traversal, and applies `:disabled` for style
+    /// matching.
     pub fn set_enabled(&mut self, id: ElementId, enabled: bool) {
         if self.get(id).is_none() {
             return;
@@ -740,8 +753,15 @@ impl Ui {
             if self.focus.focused() == Some(id) {
                 self.set_focus(None);
             }
+            let clear_pointer =
+                self.events.press_target() == Some(id) || self.events.pointer_capture() == Some(id);
             if self.events.press_target() == Some(id) {
                 self.set_press_target(None);
+            }
+            if clear_pointer {
+                self.set_pointer_capture(None);
+                self.events.clear_press();
+                self.events.cancel_click();
             }
         }
     }
@@ -758,14 +778,24 @@ impl Ui {
     /// and `:focus-visible` on the affected elements. Returns `true` if the
     /// focus state changed.
     pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
-        self.set_focus_with_visibility(new, true)
+        self.set_focus_with_visibility(new, true, FocusChangeReason::Programmatic)
     }
 
     pub(crate) fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
-        self.set_focus_with_visibility(new, false)
+        self.set_focus_with_visibility(new, false, FocusChangeReason::Pointer)
     }
 
-    fn set_focus_with_visibility(&mut self, new: Option<ElementId>, focus_visible: bool) -> bool {
+    fn set_keyboard_focus(&mut self, new: Option<ElementId>) -> bool {
+        self.set_focus_with_visibility(new, true, FocusChangeReason::Keyboard)
+    }
+
+    fn set_focus_with_visibility(
+        &mut self,
+        new: Option<ElementId>,
+        focus_visible: bool,
+        reason: FocusChangeReason,
+    ) -> bool {
+        let previous = self.focus.focused();
         let accepted = new.filter(|id| self.is_enabled(*id));
         let mut changed = false;
         if self.focus.focused() == accepted {
@@ -786,6 +816,9 @@ impl Ui {
         } else {
             self.focus.set_focused(None);
             changed = true;
+        }
+        if changed {
+            self.dispatch_focus_change(previous, accepted, focus_visible, reason);
         }
         changed
     }
@@ -817,7 +850,7 @@ impl Ui {
             self.focus
                 .navigate(self.presentation.tree(), root_node, current_node, direction);
         let new_element = new_node.and_then(|n| self.node_to_element(n));
-        self.set_focus(new_element);
+        self.set_keyboard_focus(new_element);
         new_element
     }
 
@@ -833,6 +866,19 @@ impl Ui {
         self.events.on_key(id, Box::new(handler));
     }
 
+    /// Registers a key handler with explicit routed handler options.
+    pub fn on_key_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
+    {
+        self.events
+            .on_key_with_options(id, options, Box::new(handler));
+    }
+
     pub(crate) fn on_control_key<F>(&mut self, id: ElementId, handler: F)
     where
         F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
@@ -846,13 +892,42 @@ impl Ui {
         self.events.remove_key(id);
     }
 
+    /// Registers a focus handler on `id`.
+    ///
+    /// The handler receives both focus gained and focus lost events; inspect
+    /// `event.kind` to distinguish them.
+    pub fn on_focus<F>(&mut self, id: ElementId, handler: F)
+    where
+        F: FnMut(&mut Self, FocusEvent<'_>) + 'static,
+    {
+        self.events.on_focus(id, Box::new(handler));
+    }
+
+    /// Registers a focus handler with explicit routed handler options.
+    pub fn on_focus_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, FocusEvent<'_>) + 'static,
+    {
+        self.events
+            .on_focus_with_options(id, options, Box::new(handler));
+    }
+
+    /// Removes a focus handler previously registered with [`Self::on_focus`].
+    pub fn remove_focus_handler(&mut self, id: ElementId) {
+        self.events.remove_focus(id);
+    }
+
     /// Runs `dispatch_current` across the responder route for `source`.
     ///
     /// Route construction belongs to [`understory_responder::Router`]; this
     /// helper owns only Overstory's execution semantics: temporarily remove a
     /// handler before invoking it, share routed event state across invocations,
-    /// and stop the ordinary route once an event is handled or propagation is
-    /// explicitly stopped.
+    /// skip ordinary handlers once an event is handled, and stop dispatch only
+    /// when propagation is explicitly stopped.
     fn dispatch_routed(
         &mut self,
         kind: RoutedEventKind,
@@ -893,16 +968,16 @@ impl Ui {
         event: &'a KeyboardEvent,
     ) {
         let node = route.current;
-        let Some(mut handler) = self.events.take_key(lane, node) else {
+        let Some(mut registration) = self.events.take_key(lane, node, route.is_handled()) else {
             return;
         };
         let ev = KeyEvent { route, key: event };
         self.events.begin_key(lane, node);
-        handler(self, ev);
+        (registration.handler)(self, ev);
         self.events.end_key(lane, node);
         let handler_removed = self.events.key_removed(lane, node);
         if self.get(node).is_some() && !handler_removed && !self.events.has_key(lane, node) {
-            self.events.insert_key_if_absent(lane, node, handler);
+            self.events.insert_key_if_absent(lane, node, registration);
         }
     }
 
@@ -921,7 +996,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        let Some(mut handler) = self.events.take_click(lane, node) else {
+        let Some(mut registration) = self.events.take_click(lane, node, route.is_handled()) else {
             return;
         };
         let event = ClickEvent {
@@ -930,11 +1005,11 @@ impl Ui {
             modifiers,
         };
         self.events.begin_click(lane, node);
-        handler(self, event);
+        (registration.handler)(self, event);
         self.events.end_click(lane, node);
         let handler_removed = self.events.click_removed(lane, node);
         if self.get(node).is_some() && !handler_removed && !self.events.has_click(lane, node) {
-            self.events.insert_click_if_absent(lane, node, handler);
+            self.events.insert_click_if_absent(lane, node, registration);
         }
     }
 
@@ -967,7 +1042,7 @@ impl Ui {
         delta: Vec2,
     ) {
         let node = route.current;
-        let Some(mut handler) = self.events.take_drag(lane, node) else {
+        let Some(mut registration) = self.events.take_drag(lane, node, route.is_handled()) else {
             return;
         };
         let event = DragEvent {
@@ -977,11 +1052,11 @@ impl Ui {
             delta,
         };
         self.events.begin_drag(lane, node);
-        handler(self, event);
+        (registration.handler)(self, event);
         self.events.end_drag(lane, node);
         let handler_removed = self.events.drag_removed(lane, node);
         if self.get(node).is_some() && !handler_removed && !self.events.has_drag(lane, node) {
-            self.events.insert_drag_if_absent(lane, node, handler);
+            self.events.insert_drag_if_absent(lane, node, registration);
         }
     }
 
@@ -1016,7 +1091,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        let Some(mut handler) = self.events.take_scroll(lane, node) else {
+        let Some(mut registration) = self.events.take_scroll(lane, node, route.is_handled()) else {
             return;
         };
         let event = ScrollEvent {
@@ -1026,11 +1101,12 @@ impl Ui {
             modifiers,
         };
         self.events.begin_scroll(lane, node);
-        handler(self, event);
+        (registration.handler)(self, event);
         self.events.end_scroll(lane, node);
         let handler_removed = self.events.scroll_removed(lane, node);
         if self.get(node).is_some() && !handler_removed && !self.events.has_scroll(lane, node) {
-            self.events.insert_scroll_if_absent(lane, node, handler);
+            self.events
+                .insert_scroll_if_absent(lane, node, registration);
         }
     }
 
@@ -1056,6 +1132,126 @@ impl Ui {
         });
     }
 
+    fn dispatch_focus_handler_lane(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'_>,
+        previous: Option<ElementId>,
+        focused: Option<ElementId>,
+        focus_visible: bool,
+        reason: FocusChangeReason,
+    ) {
+        let node = route.current;
+        let Some(mut registration) = self.events.take_focus(lane, node, route.is_handled()) else {
+            return;
+        };
+        let event = FocusEvent {
+            route,
+            previous,
+            focused,
+            focus_visible,
+            reason,
+        };
+        self.events.begin_focus(lane, node);
+        (registration.handler)(self, event);
+        self.events.end_focus(lane, node);
+        let handler_removed = self.events.focus_removed(lane, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_focus(lane, node) {
+            self.events.insert_focus_if_absent(lane, node, registration);
+        }
+    }
+
+    fn dispatch_widget_focus(
+        &mut self,
+        route: RoutedEventContext<'_>,
+        previous: Option<ElementId>,
+        focused: Option<ElementId>,
+        focus_visible: bool,
+        reason: FocusChangeReason,
+    ) {
+        let node = route.current;
+        self.with_widget_mut(node, |widget, ui| {
+            widget.handle_focus(
+                node,
+                ui,
+                FocusEvent {
+                    route,
+                    previous,
+                    focused,
+                    focus_visible,
+                    reason,
+                },
+            );
+        });
+    }
+
+    fn dispatch_focus_event(
+        &mut self,
+        kind: RoutedEventKind,
+        source: ElementId,
+        previous: Option<ElementId>,
+        focused: Option<ElementId>,
+        focus_visible: bool,
+        reason: FocusChangeReason,
+    ) -> RoutedDispatchResult {
+        self.dispatch_routed(kind, source, |ui, route| {
+            ui.dispatch_focus_handler_lane(
+                HandlerLane::User,
+                route,
+                previous,
+                focused,
+                focus_visible,
+                reason,
+            );
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_focus(route, previous, focused, focus_visible, reason);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_focus_handler_lane(
+                    HandlerLane::Control,
+                    route,
+                    previous,
+                    focused,
+                    focus_visible,
+                    reason,
+                );
+            }
+        })
+    }
+
+    fn dispatch_focus_change(
+        &mut self,
+        previous: Option<ElementId>,
+        focused: Option<ElementId>,
+        focus_visible: bool,
+        reason: FocusChangeReason,
+    ) {
+        if let Some(previous) = previous
+            && self.get(previous).is_some()
+        {
+            self.dispatch_focus_event(
+                RoutedEventKind::FocusLost,
+                previous,
+                Some(previous),
+                focused,
+                focus_visible,
+                reason,
+            );
+        }
+        if let Some(focused_id) = focused
+            && self.get(focused_id).is_some()
+        {
+            self.dispatch_focus_event(
+                RoutedEventKind::FocusGained,
+                focused_id,
+                previous,
+                Some(focused_id),
+                focus_visible,
+                reason,
+            );
+        }
+    }
+
     fn responder_sequence(&self, source: ElementId) -> Vec<(Phase, ElementId)> {
         let lookup = UiWidgetLookup;
         let parent = UiParentLookup { ui: self };
@@ -1075,7 +1271,7 @@ impl Ui {
     /// ordinary key handlers run. Other keys route along the
     /// responder capture → target → bubble path rooted at the
     /// focused element. A handler can call [`KeyEvent::mark_handled`]
-    /// to stop the remaining route.
+    /// to skip ordinary handlers that did not opt into handled events.
     #[must_use]
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> KeyDispatchResult {
         let previous_focus = self.focus.focused();
@@ -1232,6 +1428,19 @@ impl Ui {
         self.events.on_click(id, Box::new(handler));
     }
 
+    /// Registers a click handler with explicit routed handler options.
+    pub fn on_click_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
+    {
+        self.events
+            .on_click_with_options(id, options, Box::new(handler));
+    }
+
     pub(crate) fn on_control_click<F>(&mut self, id: ElementId, handler: F)
     where
         F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
@@ -1257,6 +1466,19 @@ impl Ui {
         self.events.on_drag(id, Box::new(handler));
     }
 
+    /// Registers a drag handler with explicit routed handler options.
+    pub fn on_drag_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
+    {
+        self.events
+            .on_drag_with_options(id, options, Box::new(handler));
+    }
+
     pub(crate) fn on_control_drag<F>(&mut self, id: ElementId, handler: F)
     where
         F: FnMut(&mut Self, DragEvent<'_>) + 'static,
@@ -1280,6 +1502,19 @@ impl Ui {
         self.events.on_scroll(id, Box::new(handler));
     }
 
+    /// Registers a scroll handler with explicit routed handler options.
+    pub fn on_scroll_with_options<F>(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
+    {
+        self.events
+            .on_scroll_with_options(id, options, Box::new(handler));
+    }
+
     /// Removes a scroll handler previously registered with [`Self::on_scroll`].
     /// No-op if no handler is registered.
     pub fn remove_scroll_handler(&mut self, id: ElementId) {
@@ -1291,7 +1526,7 @@ impl Ui {
     /// from `dispatch_pointer_event` on every `Move` while a press
     /// is active.
     fn dispatch_drag(&mut self, position: Point) -> RoutedDispatchResult {
-        let Some(source) = self.events.press_target() else {
+        let Some(source) = self.events.pointer_capture() else {
             return RoutedDispatchResult::default();
         };
         let Some(press_position) = self.events.press_position() else {
@@ -1442,12 +1677,12 @@ impl Ui {
     /// Gesture and non-primary button presses are ignored for now.
     ///
     /// `:pressed` follows WPF semantics: a primary-button press marks the
-    /// hit element pressed and that element stays pressed even if the cursor
-    /// leaves it (no capture API yet, but the visual state survives). The
-    /// matching Up — wherever it lands — clears the press.
+    /// control visual pressed and that visual state survives even if the cursor
+    /// leaves it. The original hit element is pointer-captured for routed drag
+    /// events until the matching Up or Cancel.
     ///
-    /// Returns `true` if the dispatch caused a state change.
-    pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> bool {
+    /// Returns what changed or was handled while dispatching the event.
+    pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> PointerDispatchResult {
         // Update the cached `now` from whichever PointerState the
         // event carries — pointer events all expose a `time` in
         // nanoseconds. Handlers and templates can use `Ui::now()`
@@ -1458,53 +1693,60 @@ impl Ui {
         match event {
             PointerEvent::Move(update) => {
                 let pos = update.current.logical_point();
-                let mut changed = self.update_hover_at(pos);
-                // If a primary press is active, fan the move out to
-                // drag handlers along the press target's responder
-                // path before returning. We can't tell whether any
-                // handler actually changed state, but redrawing on a
-                // hover change is sufficient for drag-induced
-                // updates because the drag handler typically writes
-                // properties that mark COMPOSE.
-                if self.events.press_target().is_some() {
-                    self.dispatch_drag(pos);
-                    changed = true;
+                let hover_changed = self.update_hover_at(pos);
+                let mut result = PointerDispatchResult {
+                    hover_changed,
+                    ..PointerDispatchResult::default()
+                };
+                // If a primary press is captured, fan the move out to drag
+                // handlers along the captured source's responder path before
+                // returning.
+                if self.events.pointer_capture().is_some() {
+                    let routed = self.dispatch_drag(pos);
+                    result.handled = routed.handled;
+                    result.propagation_stopped = routed.propagation_stopped;
                 }
-                changed
+                result
             }
             PointerEvent::Down(button_event) => {
                 if button_event.button != Some(PointerButton::Primary) {
-                    return false;
+                    return PointerDispatchResult::default();
                 }
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 // A Down without a preceding Move can arrive on some
                 // platforms; refresh hover first so any newly-entered
                 // path is set up before we press.
-                let mut changed = self.update_hover_at(pos);
+                let mut result = PointerDispatchResult {
+                    hover_changed: self.update_hover_at(pos),
+                    ..PointerDispatchResult::default()
+                };
                 if let Some(target) = self.hit_test(pos) {
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
                         self.events.cancel_click();
-                        changed |= self.set_press_target(None);
+                        result.press_changed = self.set_press_target(None);
+                        result.capture_changed = self.set_pointer_capture(None);
                         self.events.clear_press();
-                        return changed;
+                        return result;
                     }
                     if self.is_focusable(visual) {
-                        changed |= self.set_pointer_focus(Some(visual));
+                        result.focus_changed = self.set_pointer_focus(Some(visual));
                     }
                     self.events.click_down(target, pos, time_ms);
-                    changed |= self.set_press_target(Some(visual));
+                    result.press_changed = self.set_press_target(Some(visual));
+                    result.capture_changed = self.set_pointer_capture(Some(target));
                     self.events.start_press(pos);
                 } else {
-                    changed |= self.set_press_target(None);
+                    result.press_changed = self.set_press_target(None);
+                    result.capture_changed = self.set_pointer_capture(None);
                     self.events.clear_press();
                 }
-                changed
+                result
             }
             PointerEvent::Up(button_event) => {
                 if button_event.button != Some(PointerButton::Primary) {
-                    return false;
+                    return PointerDispatchResult::default();
                 }
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
@@ -1513,7 +1755,7 @@ impl Ui {
                 // `ClickResult::Click(target)` when the press is
                 // recognized; dispatch handlers along the responder
                 // path for that target.
-                let result = match hit {
+                let click_result = match hit {
                     Some(target) => self.events.click_up(&target, pos, time_ms),
                     None => {
                         // Up off any element — cancel any open press
@@ -1524,16 +1766,28 @@ impl Ui {
                     }
                 };
                 let press_changed = self.set_press_target(None);
+                let capture_changed = self.set_pointer_capture(None);
                 self.events.clear_press();
-                if let ClickResult::Click(target) = result {
-                    self.dispatch_click_with_modifiers(target, pos, button_event.state.modifiers);
+                let mut result = PointerDispatchResult {
+                    press_changed,
+                    capture_changed,
+                    ..PointerDispatchResult::default()
+                };
+                if let ClickResult::Click(target) = click_result {
+                    let routed = self.dispatch_click_with_modifiers(
+                        target,
+                        pos,
+                        button_event.state.modifiers,
+                    );
+                    result.handled = routed.handled;
+                    result.propagation_stopped = routed.propagation_stopped;
                 }
-                press_changed
+                result
             }
             PointerEvent::Scroll(scroll_event) => {
                 let pos = scroll_event.state.logical_point();
-                let changed = self.update_hover_at(pos);
-                let result = self
+                let hover_changed = self.update_hover_at(pos);
+                let routed = self
                     .hit_test(pos)
                     .map(|target| {
                         self.dispatch_scroll_with_modifiers(
@@ -1544,17 +1798,31 @@ impl Ui {
                         )
                     })
                     .unwrap_or_default();
-                changed || result.handled || result.propagation_stopped
+                PointerDispatchResult {
+                    handled: routed.handled,
+                    propagation_stopped: routed.propagation_stopped,
+                    hover_changed,
+                    ..PointerDispatchResult::default()
+                }
             }
-            PointerEvent::Leave(_) => self.clear_hover(),
+            PointerEvent::Leave(_) => PointerDispatchResult {
+                hover_changed: self.clear_hover(),
+                ..PointerDispatchResult::default()
+            },
             PointerEvent::Cancel(_) => {
                 self.events.cancel_click();
                 let h = self.clear_hover();
                 let p = self.set_press_target(None);
+                let c = self.set_pointer_capture(None);
                 self.events.clear_press();
-                h || p
+                PointerDispatchResult {
+                    hover_changed: h,
+                    press_changed: p,
+                    capture_changed: c,
+                    ..PointerDispatchResult::default()
+                }
             }
-            _ => false,
+            _ => PointerDispatchResult::default(),
         }
     }
 
@@ -1659,6 +1927,14 @@ impl Ui {
             self.add_pseudo(new_id, PSEUDO_PRESSED);
         }
         self.events.set_press_target(new);
+        true
+    }
+
+    fn set_pointer_capture(&mut self, new: Option<ElementId>) -> bool {
+        if self.events.pointer_capture() == new {
+            return false;
+        }
+        self.events.set_pointer_capture(new);
         true
     }
 
@@ -3143,20 +3419,19 @@ mod tests {
         let before = ui.effective_bounds(thumb);
         let press = Point::new(before.x0 + 3.0, before.center().y);
 
-        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)));
-        assert!(ui.dispatch_pointer_event(&pointer_up(press, 2)));
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)).changed());
+        assert!(ui.dispatch_pointer_event(&pointer_up(press, 2)).changed());
         assert_eq!(
             slider_value(&ui, slider),
             Some(0.5),
             "clicking the thumb itself should not recenter it under the pointer"
         );
 
-        assert!(ui.dispatch_pointer_event(&pointer_down(press, 3)));
-        assert!(ui.dispatch_pointer_event(&pointer_move(
-            Point::new(press.x + 20.0, press.y),
-            4,
-            true,
-        )));
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 3)).changed());
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(Point::new(press.x + 20.0, press.y), 4, true,))
+                .changed()
+        );
         ui.compute_layout(Size::new(300.0, 80.0));
 
         let after = ui.effective_bounds(thumb);
@@ -3308,9 +3583,12 @@ mod tests {
         ui.compute_layout(Size::new(200.0, 80.0));
 
         let center = ui.effective_bounds(button).center();
-        assert!(ui.dispatch_pointer_event(&pointer_down(center, 1)));
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(center, 1))
+                .changed()
+        );
         assert_eq!(ui.focused(), Some(button));
-        assert!(ui.dispatch_pointer_event(&pointer_up(center, 2)));
+        assert!(ui.dispatch_pointer_event(&pointer_up(center, 2)).changed());
 
         let pseudos = ui.get(button).unwrap().pseudos();
         assert_eq!(ui.focused(), Some(button));
@@ -3358,7 +3636,8 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root);
+        let mid = ui.insert_child(root);
+        let child = ui.insert_child(mid);
         ui.set_focusable(child, true);
         ui.set_focus(Some(child));
 
@@ -3405,7 +3684,8 @@ mod tests {
 
         let mut ui = Ui::new();
         let root = ui.root();
-        let child = ui.insert_child(root);
+        let mid = ui.insert_child(root);
+        let child = ui.insert_child(mid);
         ui.set_focusable(child, true);
         ui.set_focus(Some(child));
 
@@ -3429,6 +3709,51 @@ mod tests {
             !child_fired.get(),
             "handled capture-phase key should stop before target"
         );
+    }
+
+    #[test]
+    fn handled_events_too_key_handler_observes_handled_route() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let mid = ui.insert_child(root);
+        let child = ui.insert_child(mid);
+        ui.set_focusable(child, true);
+        ui.set_focus(Some(child));
+
+        ui.on_key(root, |_ui, event| {
+            if matches!(event.phase, Phase::Capture) {
+                event.mark_handled();
+            }
+        });
+
+        let ordinary_fired = Rc::new(Cell::new(false));
+        let ordinary_fired_for_handler = Rc::clone(&ordinary_fired);
+        ui.on_key(child, move |_ui, _event| {
+            ordinary_fired_for_handler.set(true);
+        });
+
+        let observer_fired = Rc::new(Cell::new(false));
+        let observer_fired_for_handler = Rc::clone(&observer_fired);
+        ui.on_key_with_options(
+            mid,
+            RoutedHandlerOptions::new().handled_events_too(true),
+            move |_ui, event| {
+                if matches!(event.phase, Phase::Bubble) {
+                    observer_fired_for_handler.set(event.is_handled());
+                }
+            },
+        );
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert!(!ordinary_fired.get());
+        assert!(observer_fired.get());
     }
 
     #[test]
@@ -3462,6 +3787,75 @@ mod tests {
         assert!(
             !child_fired.get(),
             "stopped capture-phase key should stop before target"
+        );
+    }
+
+    #[test]
+    fn focus_events_route_lost_and_gained_notifications() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let a = ui.insert_child(root);
+        let b = ui.insert_child(root);
+        ui.set_focusable(a, true);
+        ui.set_focusable(b, true);
+
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let seen_for_a = Rc::clone(&seen);
+        ui.on_focus(a, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                seen_for_a.borrow_mut().push((
+                    event.kind,
+                    event.previous,
+                    event.focused,
+                    event.focus_visible,
+                    event.reason,
+                ));
+            }
+        });
+        let seen_for_b = Rc::clone(&seen);
+        ui.on_focus(b, move |_ui, event| {
+            if matches!(event.phase, Phase::Target) {
+                seen_for_b.borrow_mut().push((
+                    event.kind,
+                    event.previous,
+                    event.focused,
+                    event.focus_visible,
+                    event.reason,
+                ));
+            }
+        });
+
+        assert!(ui.set_focus(Some(a)));
+        assert!(ui.set_focus(Some(b)));
+
+        assert_eq!(
+            seen.borrow().as_slice(),
+            &[
+                (
+                    RoutedEventKind::FocusGained,
+                    None,
+                    Some(a),
+                    true,
+                    FocusChangeReason::Programmatic,
+                ),
+                (
+                    RoutedEventKind::FocusLost,
+                    Some(a),
+                    Some(b),
+                    true,
+                    FocusChangeReason::Programmatic,
+                ),
+                (
+                    RoutedEventKind::FocusGained,
+                    Some(a),
+                    Some(b),
+                    true,
+                    FocusChangeReason::Programmatic,
+                ),
+            ]
         );
     }
 
@@ -3779,7 +4173,7 @@ mod tests {
             123,
             ScrollDelta::LineDelta(0.0, 1.0),
         );
-        assert!(ui.dispatch_pointer_event(&event));
+        assert!(ui.dispatch_pointer_event(&event).handled);
         assert!(fired.get());
         assert_eq!(ui.now(), 123);
     }
@@ -3793,6 +4187,7 @@ mod tests {
         let root = ui.root();
         let child = ui.insert_child(root);
         ui.events.set_press_target(Some(child));
+        ui.events.set_pointer_capture(Some(child));
         ui.events.start_press(Point::ZERO);
 
         let child_fired = Rc::new(Cell::new(false));
@@ -3815,6 +4210,44 @@ mod tests {
             !child_fired.get(),
             "handled capture-phase drag should stop before target"
         );
+    }
+
+    #[test]
+    fn pointer_capture_preserves_template_part_as_drag_source() {
+        use core::cell::Cell;
+        use std::rc::Rc;
+
+        use crate::{Button, SLOT_BUTTON_CONTENT};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Drag"));
+        ui.compute_layout(Size::new(220.0, 80.0));
+
+        let label = ui.slot(button, SLOT_BUTTON_CONTENT).unwrap();
+        let press = ui.effective_bounds(label).center();
+
+        let seen = Rc::new(Cell::new(None::<(ElementId, Phase)>));
+        let seen_for_handler = Rc::clone(&seen);
+        ui.on_drag(button, move |_ui, event| {
+            if matches!(event.phase, Phase::Bubble) {
+                seen_for_handler.set(Some((event.source, event.phase)));
+                event.mark_handled();
+            }
+        });
+
+        let down = ui.dispatch_pointer_event(&pointer_down(press, 1));
+        assert!(down.capture_changed);
+        assert_eq!(ui.pointer_capture(), Some(label));
+
+        let moved =
+            ui.dispatch_pointer_event(&pointer_move(Point::new(press.x + 8.0, press.y), 2, true));
+        assert!(moved.handled);
+        assert_eq!(seen.get(), Some((label, Phase::Bubble)));
+
+        let up = ui.dispatch_pointer_event(&pointer_up(Point::new(press.x + 8.0, press.y), 3));
+        assert!(up.capture_changed);
+        assert_eq!(ui.pointer_capture(), None);
     }
 
     #[test]
@@ -3901,6 +4334,7 @@ mod tests {
         let root = ui.root();
         let child = ui.insert_child(root);
         ui.events.set_press_target(Some(child));
+        ui.events.set_pointer_capture(Some(child));
         ui.events.start_press(Point::ZERO);
 
         let count = Rc::new(Cell::new(0_u32));
@@ -4495,11 +4929,13 @@ mod tests {
 
         assert!(ui.set_focus(Some(button)));
         ui.set_press_target(Some(button));
+        ui.set_pointer_capture(Some(button));
         ui.set_enabled(button, false);
 
         assert!(!ui.is_enabled(button));
         assert_eq!(ui.focused(), None);
         assert_eq!(ui.events.press_target(), None);
+        assert_eq!(ui.pointer_capture(), None);
         let pseudos = ui.get(button).unwrap().pseudos();
         assert!(pseudos.contains(&PSEUDO_DISABLED));
         assert!(!pseudos.contains(&PSEUDO_FOCUSED));

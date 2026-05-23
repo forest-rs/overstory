@@ -35,7 +35,7 @@ use understory_style::TypeTag;
 
 use crate::behavior::{LayoutContext, MeasureConstraints, MeasureContext, PresentContext};
 use crate::element::{Element, ElementId};
-use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent, ScrollEvent};
+use crate::event_runtime::{ClickEvent, DragEvent, FocusEvent, KeyEvent, ScrollEvent};
 use crate::generic::present_surface;
 use crate::template::Template;
 use crate::ui::Ui;
@@ -170,6 +170,12 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
     fn handle_scroll(&mut self, _id: ElementId, _ui: &mut Ui, _event: ScrollEvent<'_>) {}
+
+    /// Handles the widget's built-in focus behavior during routed dispatch.
+    ///
+    /// App handlers run first. If an app handler marks the event handled, this
+    /// method is skipped for the remaining ordinary route.
+    fn handle_focus(&mut self, _id: ElementId, _ui: &mut Ui, _event: FocusEvent<'_>) {}
 }
 
 impl dyn Widget {
@@ -261,6 +267,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn handle_scroll(&mut self, id: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
         self.widget.handle_scroll(id, ui, event);
+    }
+
+    fn handle_focus(&mut self, id: ElementId, ui: &mut Ui, event: FocusEvent<'_>) {
+        self.widget.handle_focus(id, ui, event);
     }
 }
 

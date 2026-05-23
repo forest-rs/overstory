@@ -19,11 +19,39 @@ pub(crate) type ClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>)>;
 pub(crate) type DragHandler = Box<dyn FnMut(&mut Ui, DragEvent<'_>)>;
 pub(crate) type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
+pub(crate) type FocusHandler = Box<dyn FnMut(&mut Ui, FocusEvent<'_>)>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HandlerLane {
     User,
     Control,
+}
+
+/// Options controlling how a routed handler participates in dispatch.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct RoutedHandlerOptions {
+    /// Run this handler even when an earlier handler has already marked the
+    /// event handled.
+    pub handled_events_too: bool,
+}
+
+impl RoutedHandlerOptions {
+    /// Returns default routed handler behavior.
+    ///
+    /// Default handlers do not run after an event has already been handled.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            handled_events_too: false,
+        }
+    }
+
+    /// Sets whether the handler should observe already-handled events.
+    #[must_use]
+    pub const fn handled_events_too(mut self, handled_events_too: bool) -> Self {
+        self.handled_events_too = handled_events_too;
+        self
+    }
 }
 
 /// The routed event family currently being dispatched.
@@ -37,15 +65,30 @@ pub enum RoutedEventKind {
     Drag,
     /// Pointer wheel/scroll routed from the hit element.
     Scroll,
+    /// Focus was gained by the routed source element.
+    FocusGained,
+    /// Focus was lost by the routed source element.
+    FocusLost,
+}
+
+/// Why focus changed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FocusChangeReason {
+    /// Focus changed through a direct [`Ui::set_focus`](crate::Ui::set_focus)
+    /// style request.
+    Programmatic,
+    /// Focus changed because keyboard navigation moved it.
+    Keyboard,
+    /// Focus changed because pointer input targeted a focusable element.
+    Pointer,
 }
 
 /// Shared state carried by one routed event dispatch.
 ///
 /// The state is created for a single responder route and is shared by every
-/// handler invocation for that route. Calling [`Self::mark_handled`] or
-/// [`Self::stop_propagation`] stops the remaining ordinary route; a future
-/// handler registration API can add a "handled events too" opt-in without
-/// changing event payloads.
+/// handler invocation for that route. Calling [`Self::mark_handled`] skips
+/// ordinary handlers that did not opt into handled events. Calling
+/// [`Self::stop_propagation`] ends dispatch entirely.
 #[derive(Debug)]
 pub(crate) struct RoutedEventState {
     handled: core::cell::Cell<bool>,
@@ -91,7 +134,7 @@ impl RoutedEventState {
     }
 
     pub(crate) fn should_stop_route(&self) -> bool {
-        self.is_handled() || self.is_propagation_stopped()
+        self.is_propagation_stopped()
     }
 }
 
@@ -128,7 +171,8 @@ impl<'a> RoutedEventContext<'a> {
 
     /// Marks this event handled.
     ///
-    /// Handled events stop the remaining ordinary route.
+    /// Handled events skip ordinary handlers that did not opt into handled
+    /// events.
     pub fn mark_handled(&self) {
         self.state.mark_handled();
     }
@@ -223,6 +267,85 @@ pub struct KeyDispatchResult {
     pub focused: Option<ElementId>,
 }
 
+/// Result returned by [`Ui::dispatch_pointer_event`](crate::Ui::dispatch_pointer_event).
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PointerDispatchResult {
+    /// Whether a routed pointer-derived event was handled.
+    pub handled: bool,
+    /// Whether a routed pointer-derived event explicitly stopped propagation.
+    pub propagation_stopped: bool,
+    /// Whether the event changed focus.
+    pub focus_changed: bool,
+    /// Whether the event changed hover state.
+    pub hover_changed: bool,
+    /// Whether the event changed pressed visual state.
+    pub press_changed: bool,
+    /// Whether the event changed the current primary pointer capture target.
+    pub capture_changed: bool,
+}
+
+impl PointerDispatchResult {
+    /// Returns whether the event changed UI state or was consumed by a routed
+    /// handler.
+    #[must_use]
+    pub const fn changed(self) -> bool {
+        self.handled
+            || self.propagation_stopped
+            || self.focus_changed
+            || self.hover_changed
+            || self.press_changed
+            || self.capture_changed
+    }
+}
+
+/// Payload delivered to a focus handler.
+#[derive(Copy, Clone, Debug)]
+pub struct FocusEvent<'a> {
+    /// Shared routed-event metadata.
+    pub route: RoutedEventContext<'a>,
+    /// Element that had focus before the change.
+    pub previous: Option<ElementId>,
+    /// Element that has focus after the change.
+    pub focused: Option<ElementId>,
+    /// Whether the new focus should be rendered as keyboard-visible focus.
+    pub focus_visible: bool,
+    /// Why focus changed.
+    pub reason: FocusChangeReason,
+}
+
+impl<'a> core::ops::Deref for FocusEvent<'a> {
+    type Target = RoutedEventContext<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.route
+    }
+}
+
+impl FocusEvent<'_> {
+    /// Marks this focus event handled and stops ordinary handlers for the
+    /// remaining route unless they opted into handled events.
+    pub fn mark_handled(&self) {
+        self.route.mark_handled();
+    }
+
+    /// Returns whether this focus event has been marked handled.
+    #[must_use]
+    pub fn is_handled(&self) -> bool {
+        self.route.is_handled()
+    }
+
+    /// Stops this focus event's remaining route without marking it handled.
+    pub fn stop_propagation(&self) {
+        self.route.stop_propagation();
+    }
+
+    /// Returns whether this focus event's propagation has been stopped.
+    #[must_use]
+    pub fn is_propagation_stopped(&self) -> bool {
+        self.route.is_propagation_stopped()
+    }
+}
+
 /// Payload delivered to a drag handler as the primary pointer moves while
 /// pressed.
 #[derive(Copy, Clone, Debug)]
@@ -246,7 +369,8 @@ impl<'a> core::ops::Deref for DragEvent<'a> {
 }
 
 impl DragEvent<'_> {
-    /// Marks this drag event handled and stops the remaining ordinary route.
+    /// Marks this drag event handled and skips ordinary handlers that did not
+    /// opt into handled events.
     pub fn mark_handled(&self) {
         self.route.mark_handled();
     }
@@ -289,7 +413,8 @@ impl<'a> core::ops::Deref for ClickEvent<'a> {
 }
 
 impl ClickEvent<'_> {
-    /// Marks this click event handled and stops the remaining ordinary route.
+    /// Marks this click event handled and skips ordinary handlers that did not
+    /// opt into handled events.
     pub fn mark_handled(&self) {
         self.route.mark_handled();
     }
@@ -348,7 +473,8 @@ impl ScrollEvent<'_> {
         }
     }
 
-    /// Marks this scroll event handled and stops the remaining ordinary route.
+    /// Marks this scroll event handled and skips ordinary handlers that did not
+    /// opt into handled events.
     pub fn mark_handled(&self) {
         self.route.mark_handled();
     }
@@ -377,9 +503,11 @@ pub(crate) struct EventRuntime {
     drag: HandlerPair<DragHandler>,
     scroll: HandlerPair<ScrollHandler>,
     key: HandlerPair<KeyHandler>,
+    focus: HandlerPair<FocusHandler>,
     hover: HoverState<ElementId>,
     clicks: ClickState<ElementId>,
     press_target: Option<ElementId>,
+    pointer_capture: Option<ElementId>,
     press_position: Option<Point>,
     last_drag_position: Option<Point>,
 }
@@ -391,20 +519,36 @@ impl EventRuntime {
             drag: HandlerPair::new(),
             scroll: HandlerPair::new(),
             key: HandlerPair::new(),
+            focus: HandlerPair::new(),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
+            pointer_capture: None,
             press_position: None,
             last_drag_position: None,
         }
     }
 
     pub(crate) fn on_click(&mut self, id: ElementId, handler: ClickHandler) {
-        self.click.insert(HandlerLane::User, id, handler);
+        self.on_click_with_options(id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_click_with_options(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: ClickHandler,
+    ) {
+        self.click.insert(HandlerLane::User, id, options, handler);
     }
 
     pub(crate) fn on_control_click(&mut self, id: ElementId, handler: ClickHandler) {
-        self.click.insert(HandlerLane::Control, id, handler);
+        self.click.insert(
+            HandlerLane::Control,
+            id,
+            RoutedHandlerOptions::default(),
+            handler,
+        );
     }
 
     pub(crate) fn remove_click(&mut self, id: ElementId) {
@@ -412,11 +556,25 @@ impl EventRuntime {
     }
 
     pub(crate) fn on_drag(&mut self, id: ElementId, handler: DragHandler) {
-        self.drag.insert(HandlerLane::User, id, handler);
+        self.on_drag_with_options(id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_drag_with_options(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: DragHandler,
+    ) {
+        self.drag.insert(HandlerLane::User, id, options, handler);
     }
 
     pub(crate) fn on_control_drag(&mut self, id: ElementId, handler: DragHandler) {
-        self.drag.insert(HandlerLane::Control, id, handler);
+        self.drag.insert(
+            HandlerLane::Control,
+            id,
+            RoutedHandlerOptions::default(),
+            handler,
+        );
     }
 
     pub(crate) fn remove_drag(&mut self, id: ElementId) {
@@ -424,7 +582,16 @@ impl EventRuntime {
     }
 
     pub(crate) fn on_scroll(&mut self, id: ElementId, handler: ScrollHandler) {
-        self.scroll.insert(HandlerLane::User, id, handler);
+        self.on_scroll_with_options(id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_scroll_with_options(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: ScrollHandler,
+    ) {
+        self.scroll.insert(HandlerLane::User, id, options, handler);
     }
 
     pub(crate) fn remove_scroll(&mut self, id: ElementId) {
@@ -432,15 +599,46 @@ impl EventRuntime {
     }
 
     pub(crate) fn on_key(&mut self, id: ElementId, handler: KeyHandler) {
-        self.key.insert(HandlerLane::User, id, handler);
+        self.on_key_with_options(id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_key_with_options(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: KeyHandler,
+    ) {
+        self.key.insert(HandlerLane::User, id, options, handler);
     }
 
     pub(crate) fn on_control_key(&mut self, id: ElementId, handler: KeyHandler) {
-        self.key.insert(HandlerLane::Control, id, handler);
+        self.key.insert(
+            HandlerLane::Control,
+            id,
+            RoutedHandlerOptions::default(),
+            handler,
+        );
     }
 
     pub(crate) fn remove_key(&mut self, id: ElementId) {
         self.key.remove(HandlerLane::User, id);
+    }
+
+    pub(crate) fn on_focus(&mut self, id: ElementId, handler: FocusHandler) {
+        self.on_focus_with_options(id, RoutedHandlerOptions::default(), handler);
+    }
+
+    pub(crate) fn on_focus_with_options(
+        &mut self,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: FocusHandler,
+    ) {
+        self.focus.insert(HandlerLane::User, id, options, handler);
+    }
+
+    pub(crate) fn remove_focus(&mut self, id: ElementId) {
+        self.focus.remove(HandlerLane::User, id);
     }
 
     pub(crate) fn remove_target(&mut self, id: ElementId) {
@@ -448,10 +646,24 @@ impl EventRuntime {
         self.drag.remove_target(id);
         self.scroll.remove_target(id);
         self.key.remove_target(id);
+        self.focus.remove_target(id);
+        if self.press_target == Some(id) {
+            self.press_target = None;
+        }
+        if self.pointer_capture == Some(id) {
+            self.pointer_capture = None;
+            self.clear_press();
+            self.cancel_click();
+        }
     }
 
-    pub(crate) fn take_click(&mut self, lane: HandlerLane, id: ElementId) -> Option<ClickHandler> {
-        self.click.take(lane, id)
+    pub(crate) fn take_click(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<ClickHandler>> {
+        self.click.take(lane, id, handled)
     }
 
     pub(crate) fn begin_click(&mut self, lane: HandlerLane, id: ElementId) {
@@ -470,7 +682,7 @@ impl EventRuntime {
         &mut self,
         lane: HandlerLane,
         id: ElementId,
-        handler: ClickHandler,
+        handler: HandlerRegistration<ClickHandler>,
     ) {
         self.click.insert_if_absent(lane, id, handler);
     }
@@ -479,8 +691,13 @@ impl EventRuntime {
         self.click.has(lane, id)
     }
 
-    pub(crate) fn take_drag(&mut self, lane: HandlerLane, id: ElementId) -> Option<DragHandler> {
-        self.drag.take(lane, id)
+    pub(crate) fn take_drag(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<DragHandler>> {
+        self.drag.take(lane, id, handled)
     }
 
     pub(crate) fn begin_drag(&mut self, lane: HandlerLane, id: ElementId) {
@@ -499,7 +716,7 @@ impl EventRuntime {
         &mut self,
         lane: HandlerLane,
         id: ElementId,
-        handler: DragHandler,
+        handler: HandlerRegistration<DragHandler>,
     ) {
         self.drag.insert_if_absent(lane, id, handler);
     }
@@ -512,8 +729,9 @@ impl EventRuntime {
         &mut self,
         lane: HandlerLane,
         id: ElementId,
-    ) -> Option<ScrollHandler> {
-        self.scroll.take(lane, id)
+        handled: bool,
+    ) -> Option<HandlerRegistration<ScrollHandler>> {
+        self.scroll.take(lane, id, handled)
     }
 
     pub(crate) fn begin_scroll(&mut self, lane: HandlerLane, id: ElementId) {
@@ -532,7 +750,7 @@ impl EventRuntime {
         &mut self,
         lane: HandlerLane,
         id: ElementId,
-        handler: ScrollHandler,
+        handler: HandlerRegistration<ScrollHandler>,
     ) {
         self.scroll.insert_if_absent(lane, id, handler);
     }
@@ -541,8 +759,13 @@ impl EventRuntime {
         self.scroll.has(lane, id)
     }
 
-    pub(crate) fn take_key(&mut self, lane: HandlerLane, id: ElementId) -> Option<KeyHandler> {
-        self.key.take(lane, id)
+    pub(crate) fn take_key(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<KeyHandler>> {
+        self.key.take(lane, id, handled)
     }
 
     pub(crate) fn begin_key(&mut self, lane: HandlerLane, id: ElementId) {
@@ -561,13 +784,47 @@ impl EventRuntime {
         &mut self,
         lane: HandlerLane,
         id: ElementId,
-        handler: KeyHandler,
+        handler: HandlerRegistration<KeyHandler>,
     ) {
         self.key.insert_if_absent(lane, id, handler);
     }
 
     pub(crate) fn has_key(&self, lane: HandlerLane, id: ElementId) -> bool {
         self.key.has(lane, id)
+    }
+
+    pub(crate) fn take_focus(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<FocusHandler>> {
+        self.focus.take(lane, id, handled)
+    }
+
+    pub(crate) fn begin_focus(&mut self, lane: HandlerLane, id: ElementId) {
+        self.focus.begin(lane, id);
+    }
+
+    pub(crate) fn end_focus(&mut self, lane: HandlerLane, id: ElementId) {
+        self.focus.end(lane, id);
+    }
+
+    pub(crate) fn focus_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
+        self.focus.take_removed(lane, id)
+    }
+
+    pub(crate) fn insert_focus_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: HandlerRegistration<FocusHandler>,
+    ) {
+        self.focus.insert_if_absent(lane, id, handler);
+    }
+
+    pub(crate) fn has_focus(&self, lane: HandlerLane, id: ElementId) -> bool {
+        self.focus.has(lane, id)
     }
 
     pub(crate) fn hovered(&self) -> Option<ElementId> {
@@ -611,6 +868,14 @@ impl EventRuntime {
         self.press_target = target;
     }
 
+    pub(crate) fn pointer_capture(&self) -> Option<ElementId> {
+        self.pointer_capture
+    }
+
+    pub(crate) fn set_pointer_capture(&mut self, target: Option<ElementId>) {
+        self.pointer_capture = target;
+    }
+
     pub(crate) fn start_press(&mut self, position: Point) {
         self.press_position = Some(position);
         self.last_drag_position = Some(position);
@@ -647,8 +912,14 @@ impl<H> HandlerPair<H> {
         }
     }
 
-    fn insert(&mut self, lane: HandlerLane, id: ElementId, handler: H) {
-        self.slot_mut(lane).insert(id, handler);
+    fn insert(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        options: RoutedHandlerOptions,
+        handler: H,
+    ) {
+        self.slot_mut(lane).insert(id, options, handler);
     }
 
     fn remove(&mut self, lane: HandlerLane, id: ElementId) {
@@ -660,8 +931,13 @@ impl<H> HandlerPair<H> {
         self.control.remove(id);
     }
 
-    fn take(&mut self, lane: HandlerLane, id: ElementId) -> Option<H> {
-        self.slot_mut(lane).take(id)
+    fn take(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handled: bool,
+    ) -> Option<HandlerRegistration<H>> {
+        self.slot_mut(lane).take(id, handled)
     }
 
     fn begin(&mut self, lane: HandlerLane, id: ElementId) {
@@ -676,7 +952,12 @@ impl<H> HandlerPair<H> {
         self.slot_mut(lane).take_removed(id)
     }
 
-    fn insert_if_absent(&mut self, lane: HandlerLane, id: ElementId, handler: H) {
+    fn insert_if_absent(
+        &mut self,
+        lane: HandlerLane,
+        id: ElementId,
+        handler: HandlerRegistration<H>,
+    ) {
         self.slot_mut(lane).insert_if_absent(id, handler);
     }
 
@@ -700,8 +981,13 @@ impl<H> HandlerPair<H> {
 }
 
 struct HandlerSlot<H> {
-    handlers: HashMap<ElementId, H>,
+    handlers: HashMap<ElementId, HandlerRegistration<H>>,
     dispatch: HandlerDispatchTracker,
+}
+
+pub(crate) struct HandlerRegistration<H> {
+    pub(crate) options: RoutedHandlerOptions,
+    pub(crate) handler: H,
 }
 
 impl<H> HandlerSlot<H> {
@@ -712,8 +998,9 @@ impl<H> HandlerSlot<H> {
         }
     }
 
-    fn insert(&mut self, id: ElementId, handler: H) {
-        self.handlers.insert(id, handler);
+    fn insert(&mut self, id: ElementId, options: RoutedHandlerOptions, handler: H) {
+        self.handlers
+            .insert(id, HandlerRegistration { options, handler });
     }
 
     fn remove(&mut self, id: ElementId) {
@@ -721,7 +1008,15 @@ impl<H> HandlerSlot<H> {
         self.dispatch.note_removal(id);
     }
 
-    fn take(&mut self, id: ElementId) -> Option<H> {
+    fn take(&mut self, id: ElementId, handled: bool) -> Option<HandlerRegistration<H>> {
+        if handled
+            && !self
+                .handlers
+                .get(&id)
+                .is_some_and(|entry| entry.options.handled_events_too)
+        {
+            return None;
+        }
         self.handlers.remove(&id)
     }
 
@@ -737,7 +1032,7 @@ impl<H> HandlerSlot<H> {
         self.dispatch.take_removed(id)
     }
 
-    fn insert_if_absent(&mut self, id: ElementId, handler: H) {
+    fn insert_if_absent(&mut self, id: ElementId, handler: HandlerRegistration<H>) {
         self.handlers.entry(id).or_insert(handler);
     }
 

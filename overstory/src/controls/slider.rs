@@ -268,6 +268,7 @@ impl Widget for SliderWidget {
             return;
         }
         set_value_from_position(ui, slider, thumb, event.position);
+        event.mark_handled();
     }
 
     fn handle_drag(&mut self, slider: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
@@ -288,6 +289,7 @@ impl Widget for SliderWidget {
             event.position,
             event.delta,
         );
+        event.mark_handled();
     }
 
     fn handle_key(&mut self, slider: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {

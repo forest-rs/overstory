@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use imaging::record::Scene;
 use kurbo::{Affine, Size};
-use overstory::{CursorIcon, KeyDispatchResult, TimerInstant, Ui};
+use overstory::{CursorIcon, KeyDispatchResult, PointerDispatchResult, TimerInstant, Ui};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 
@@ -100,12 +100,7 @@ impl UiHost {
 
     /// Dispatches a normalized pointer event into the UI.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> HostDispatchResult {
-        let handled = self.ui.dispatch_pointer_event(event);
-        HostDispatchResult {
-            handled,
-            focus_changed: false,
-            needs_redraw: handled,
-        }
+        self.ui.dispatch_pointer_event(event).into()
     }
 
     /// Dispatches a normalized keyboard event into the UI.
@@ -162,6 +157,16 @@ impl From<KeyDispatchResult> for HostDispatchResult {
             handled: result.handled,
             focus_changed: result.focus_changed,
             needs_redraw: result.handled || result.focus_changed,
+        }
+    }
+}
+
+impl From<PointerDispatchResult> for HostDispatchResult {
+    fn from(result: PointerDispatchResult) -> Self {
+        Self {
+            handled: result.handled,
+            focus_changed: result.focus_changed,
+            needs_redraw: result.changed(),
         }
     }
 }

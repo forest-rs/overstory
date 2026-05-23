@@ -1057,12 +1057,11 @@ mod tests {
 
         ui.compute_layout(kurbo::Size::new(180.0, 80.0));
         let start = ui.effective_bounds(thumb).center();
-        assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)));
-        assert!(ui.dispatch_pointer_event(&pointer_move(
-            Point::new(start.x, start.y + 20.0),
-            2,
-            true,
-        )));
+        assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)).changed());
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(Point::new(start.x, start.y + 20.0), 2, true,))
+                .changed()
+        );
 
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
     }

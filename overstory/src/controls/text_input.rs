@@ -868,9 +868,12 @@ mod tests {
         let bounds = ui.effective_bounds(input);
         let press = Point::new(bounds.x0 + 16.0, bounds.center().y);
         let drag = Point::new(bounds.x0 + 96.0, bounds.center().y);
-        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)));
-        assert!(ui.dispatch_pointer_event(&pointer_move(drag, 2, true)));
-        assert!(ui.dispatch_pointer_event(&pointer_up(drag, 3)));
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)).changed());
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(drag, 2, true))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(drag, 3)).changed());
         ui.compute_layout(Size::new(360.0, 80.0));
 
         assert!(ui.effective_bounds(selection).width() > 0.0);

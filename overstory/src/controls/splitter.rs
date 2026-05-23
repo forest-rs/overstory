@@ -462,12 +462,11 @@ mod tests {
         ui.compute_layout(Size::new(260.0, 80.0));
 
         let press = ui.effective_bounds(splitter).center();
-        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)));
-        assert!(ui.dispatch_pointer_event(&pointer_move(
-            Point::new(press.x + 20.0, press.y),
-            2,
-            true
-        )));
+        assert!(ui.dispatch_pointer_event(&pointer_down(press, 1)).changed());
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(Point::new(press.x + 20.0, press.y), 2, true))
+                .changed()
+        );
         ui.compute_layout(Size::new(260.0, 80.0));
 
         assert_eq!(ui.effective_bounds(before).width(), 140.0);
@@ -538,11 +537,14 @@ mod tests {
         let vertical = ui.append(root, Splitter::vertical().length(160.0));
         ui.compute_layout(Size::new(40.0, 180.0));
 
-        assert!(ui.dispatch_pointer_event(&pointer_move(
-            ui.effective_bounds(vertical).center(),
-            1,
-            false,
-        )));
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(
+                ui.effective_bounds(vertical).center(),
+                1,
+                false,
+            ))
+            .changed()
+        );
         assert_eq!(ui.cursor_icon(), Some(CursorIcon::ColResize));
 
         let mut ui = Ui::new();
@@ -551,11 +553,14 @@ mod tests {
         let horizontal = ui.append(root, Splitter::horizontal().length(160.0));
         ui.compute_layout(Size::new(180.0, 40.0));
 
-        assert!(ui.dispatch_pointer_event(&pointer_move(
-            ui.effective_bounds(horizontal).center(),
-            1,
-            false,
-        )));
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(
+                ui.effective_bounds(horizontal).center(),
+                1,
+                false,
+            ))
+            .changed()
+        );
         assert_eq!(ui.cursor_icon(), Some(CursorIcon::RowResize));
     }
 
@@ -570,8 +575,14 @@ mod tests {
         ui.compute_layout(Size::new(40.0, 180.0));
 
         let center = ui.effective_bounds(splitter).center();
-        assert!(ui.dispatch_pointer_event(&pointer_down(center, 1)));
-        assert!(ui.dispatch_pointer_event(&pointer_move(Point::new(300.0, 300.0), 2, true,)));
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(center, 1))
+                .changed()
+        );
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(Point::new(300.0, 300.0), 2, true,))
+                .changed()
+        );
 
         assert_eq!(ui.hovered(), None);
         assert_eq!(ui.cursor_icon(), Some(CursorIcon::ColResize));
@@ -589,6 +600,7 @@ mod tests {
 
         assert!(
             ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(splitter).center(), 1,))
+                .changed()
         );
 
         let pseudos = ui.get(splitter).unwrap().pseudos();
