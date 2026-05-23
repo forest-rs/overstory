@@ -26,10 +26,6 @@ pub(crate) enum HandlerLane {
     Control,
 }
 
-impl HandlerLane {
-    pub(crate) const DISPATCH_ORDER: [Self; 2] = [Self::User, Self::Control];
-}
-
 /// The routed event family currently being dispatched.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RoutedEventKind {

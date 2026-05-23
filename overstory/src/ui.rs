@@ -870,6 +870,192 @@ impl Ui {
         RoutedDispatchResult::from_state(&state)
     }
 
+    fn with_dispatched_widget(
+        &mut self,
+        id: ElementId,
+        dispatch: impl FnOnce(&mut dyn Widget, &mut Self),
+    ) {
+        let Some(mut widget) = self.elements.get_mut(id).and_then(Element::take_widget) else {
+            return;
+        };
+
+        dispatch(widget.as_mut(), self);
+
+        if let Some(element) = self.elements.get_mut(id) {
+            element.restore_widget(widget);
+        }
+    }
+
+    fn dispatch_key_handler_lane<'a>(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'a>,
+        event: &'a KeyboardEvent,
+    ) {
+        let node = route.current;
+        let Some(mut handler) = self.events.take_key(lane, node) else {
+            return;
+        };
+        let ev = KeyEvent { route, key: event };
+        self.events.begin_key(lane, node);
+        handler(self, ev);
+        self.events.end_key(lane, node);
+        let handler_removed = self.events.key_removed(lane, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_key(lane, node) {
+            self.events.insert_key_if_absent(lane, node, handler);
+        }
+    }
+
+    fn dispatch_widget_key<'a>(&mut self, route: RoutedEventContext<'a>, event: &'a KeyboardEvent) {
+        let node = route.current;
+        self.with_dispatched_widget(node, |widget, ui| {
+            widget.handle_key(node, ui, KeyEvent { route, key: event });
+        });
+    }
+
+    fn dispatch_click_handler_lane(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        modifiers: Modifiers,
+    ) {
+        let node = route.current;
+        let Some(mut handler) = self.events.take_click(lane, node) else {
+            return;
+        };
+        let event = ClickEvent {
+            route,
+            position,
+            modifiers,
+        };
+        self.events.begin_click(lane, node);
+        handler(self, event);
+        self.events.end_click(lane, node);
+        let handler_removed = self.events.click_removed(lane, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_click(lane, node) {
+            self.events.insert_click_if_absent(lane, node, handler);
+        }
+    }
+
+    fn dispatch_widget_click(
+        &mut self,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        modifiers: Modifiers,
+    ) {
+        let node = route.current;
+        self.with_dispatched_widget(node, |widget, ui| {
+            widget.handle_click(
+                node,
+                ui,
+                ClickEvent {
+                    route,
+                    position,
+                    modifiers,
+                },
+            );
+        });
+    }
+
+    fn dispatch_drag_handler_lane(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        press_position: Point,
+        delta: Vec2,
+    ) {
+        let node = route.current;
+        let Some(mut handler) = self.events.take_drag(lane, node) else {
+            return;
+        };
+        let event = DragEvent {
+            route,
+            position,
+            press_position,
+            delta,
+        };
+        self.events.begin_drag(lane, node);
+        handler(self, event);
+        self.events.end_drag(lane, node);
+        let handler_removed = self.events.drag_removed(lane, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_drag(lane, node) {
+            self.events.insert_drag_if_absent(lane, node, handler);
+        }
+    }
+
+    fn dispatch_widget_drag(
+        &mut self,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        press_position: Point,
+        delta: Vec2,
+    ) {
+        let node = route.current;
+        self.with_dispatched_widget(node, |widget, ui| {
+            widget.handle_drag(
+                node,
+                ui,
+                DragEvent {
+                    route,
+                    position,
+                    press_position,
+                    delta,
+                },
+            );
+        });
+    }
+
+    fn dispatch_scroll_handler_lane(
+        &mut self,
+        lane: HandlerLane,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        delta: ScrollDelta,
+        modifiers: Modifiers,
+    ) {
+        let node = route.current;
+        let Some(mut handler) = self.events.take_scroll(lane, node) else {
+            return;
+        };
+        let event = ScrollEvent {
+            route,
+            position,
+            delta,
+            modifiers,
+        };
+        self.events.begin_scroll(lane, node);
+        handler(self, event);
+        self.events.end_scroll(lane, node);
+        let handler_removed = self.events.scroll_removed(lane, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_scroll(lane, node) {
+            self.events.insert_scroll_if_absent(lane, node, handler);
+        }
+    }
+
+    fn dispatch_widget_scroll(
+        &mut self,
+        route: RoutedEventContext<'_>,
+        position: Point,
+        delta: ScrollDelta,
+        modifiers: Modifiers,
+    ) {
+        let node = route.current;
+        self.with_dispatched_widget(node, |widget, ui| {
+            widget.handle_scroll(
+                node,
+                ui,
+                ScrollEvent {
+                    route,
+                    position,
+                    delta,
+                    modifiers,
+                },
+            );
+        });
+    }
+
     fn responder_sequence(&self, source: ElementId) -> Vec<(Phase, ElementId)> {
         let lookup = UiWidgetLookup;
         let parent = UiParentLookup { ui: self };
@@ -907,22 +1093,12 @@ impl Ui {
             return KeyDispatchResult::default();
         };
         let routed = self.dispatch_routed(RoutedEventKind::Key, focused, |ui, route| {
-            let node = route.current;
-            for lane in HandlerLane::DISPATCH_ORDER {
-                if route.is_handled() || route.is_propagation_stopped() {
-                    break;
-                }
-                let Some(mut handler) = ui.events.take_key(lane, node) else {
-                    continue;
-                };
-                let ev = KeyEvent { route, key: event };
-                ui.events.begin_key(lane, node);
-                handler(ui, ev);
-                ui.events.end_key(lane, node);
-                let handler_removed = ui.events.key_removed(lane, node);
-                if ui.get(node).is_some() && !handler_removed && !ui.events.has_key(lane, node) {
-                    ui.events.insert_key_if_absent(lane, node, handler);
-                }
+            ui.dispatch_key_handler_lane(HandlerLane::User, route, event);
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_key(route, event);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_key_handler_lane(HandlerLane::Control, route, event);
             }
         });
 
@@ -1133,27 +1309,24 @@ impl Ui {
         self.events.set_last_drag_position(position);
 
         self.dispatch_routed(RoutedEventKind::Drag, source, |ui, route| {
-            let node = route.current;
-            for lane in HandlerLane::DISPATCH_ORDER {
-                if route.is_handled() || route.is_propagation_stopped() {
-                    break;
-                }
-                let Some(mut handler) = ui.events.take_drag(lane, node) else {
-                    continue;
-                };
-                let event = DragEvent {
+            ui.dispatch_drag_handler_lane(
+                HandlerLane::User,
+                route,
+                position,
+                press_position,
+                delta,
+            );
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_drag(route, position, press_position, delta);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_drag_handler_lane(
+                    HandlerLane::Control,
                     route,
                     position,
                     press_position,
                     delta,
-                };
-                ui.events.begin_drag(lane, node);
-                handler(ui, event);
-                ui.events.end_drag(lane, node);
-                let handler_removed = ui.events.drag_removed(lane, node);
-                if ui.get(node).is_some() && !handler_removed && !ui.events.has_drag(lane, node) {
-                    ui.events.insert_drag_if_absent(lane, node, handler);
-                }
+                );
             }
         })
     }
@@ -1196,30 +1369,12 @@ impl Ui {
         }
 
         self.dispatch_routed(RoutedEventKind::Click, target, |ui, route| {
-            let node = route.current;
-            for lane in HandlerLane::DISPATCH_ORDER {
-                if route.is_handled() || route.is_propagation_stopped() {
-                    break;
-                }
-                // Take the handler out so it can call `&mut self`, then
-                // put it back unless the handler removed itself.
-                let Some(mut handler) = ui.events.take_click(lane, node) else {
-                    continue;
-                };
-                let event = ClickEvent {
-                    route,
-                    position,
-                    modifiers,
-                };
-                ui.events.begin_click(lane, node);
-                handler(ui, event);
-                ui.events.end_click(lane, node);
-                let handler_removed = ui.events.click_removed(lane, node);
-                // Reinstate iff the element is still alive AND the
-                // handler didn't remove or replace itself during the call.
-                if ui.get(node).is_some() && !handler_removed && !ui.events.has_click(lane, node) {
-                    ui.events.insert_click_if_absent(lane, node, handler);
-                }
+            ui.dispatch_click_handler_lane(HandlerLane::User, route, position, modifiers);
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_click(route, position, modifiers);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_click_handler_lane(HandlerLane::Control, route, position, modifiers);
             }
         })
     }
@@ -1246,27 +1401,18 @@ impl Ui {
         }
 
         self.dispatch_routed(RoutedEventKind::Scroll, target, |ui, route| {
-            let node = route.current;
-            for lane in HandlerLane::DISPATCH_ORDER {
-                if route.is_handled() || route.is_propagation_stopped() {
-                    break;
-                }
-                let Some(mut handler) = ui.events.take_scroll(lane, node) else {
-                    continue;
-                };
-                let event = ScrollEvent {
+            ui.dispatch_scroll_handler_lane(HandlerLane::User, route, position, delta, modifiers);
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_scroll(route, position, delta, modifiers);
+            }
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_scroll_handler_lane(
+                    HandlerLane::Control,
                     route,
                     position,
                     delta,
                     modifiers,
-                };
-                ui.events.begin_scroll(lane, node);
-                handler(ui, event);
-                ui.events.end_scroll(lane, node);
-                let handler_removed = ui.events.scroll_removed(lane, node);
-                if ui.get(node).is_some() && !handler_removed && !ui.events.has_scroll(lane, node) {
-                    ui.events.insert_scroll_if_absent(lane, node, handler);
-                }
+                );
             }
         })
     }

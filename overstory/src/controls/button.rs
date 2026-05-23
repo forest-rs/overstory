@@ -150,9 +150,9 @@ impl Button {
         self
     }
 
-    /// Registers a custom key handler. This replaces the default Space /
-    /// Enter-to-click bridge, so custom handlers that still want activation
-    /// should call [`Ui::synthesize_click`] themselves.
+    /// Registers a custom key handler. App handlers run before the built-in
+    /// Space / Enter-to-click bridge; call [`KeyEvent::mark_handled`] to
+    /// suppress the default activation behavior for a given event.
     #[must_use]
     pub fn on_key<F>(mut self, handler: F) -> Self
     where
@@ -186,19 +186,9 @@ impl AppendSpec for Button {
                     handler(ui, event);
                 }
             });
-        } else {
-            // No custom handler — but Space / Enter should still
-            // emit a *click* for handlers that subscribe via
-            // post-construction `Ui::on_click`. We install a
-            // default key-to-click bridge below.
         }
         if let Some(handler) = self.on_key {
             ui.on_key(id, handler);
-        } else {
-            // Default: Space / Enter while focused dispatches a
-            // synthetic click. Apps that registered their own
-            // `on_key` are responsible for activation themselves.
-            install_default_activation_key(ui, id);
         }
         id
     }
@@ -218,6 +208,32 @@ impl Widget for ButtonWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&BUTTON_TEMPLATE)
+    }
+
+    fn handle_key(&mut self, button: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        if !button_enabled(ui, button) {
+            return;
+        }
+        let activate = match &event.key.key {
+            Key::Named(NamedKey::Enter) => true,
+            Key::Character(s) if s == " " => true,
+            _ => false,
+        };
+        if activate {
+            // Synthesize a click. We use the focused element's world-
+            // bounds origin so click handlers that care about position
+            // get a sensible value.
+            let pos = ui.effective_bounds(button).origin();
+            ui.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
+            event.mark_handled();
+        }
     }
 }
 
@@ -246,37 +262,6 @@ const BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
 
 fn button_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
-}
-
-/// Default Space / Enter → click bridge for `Button`. Installed by
-/// `AppendSpec::append_to` when the app didn't supply its own
-/// `on_key`.
-fn install_default_activation_key(ui: &mut Ui, button: ElementId) {
-    ui.on_control_key(button, move |ui, event| {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
-        if !matches!(event.phase, Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down {
-            return;
-        }
-        if !button_enabled(ui, button) {
-            return;
-        }
-        let activate = match &event.key.key {
-            Key::Named(NamedKey::Enter) => true,
-            Key::Character(s) if s == " " => true,
-            _ => false,
-        };
-        if activate {
-            // Synthesize a click. We use the focused element's world-
-            // bounds origin so click handlers that care about position
-            // get a sensible value.
-            let pos = ui.effective_bounds(button).origin();
-            ui.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
-            event.mark_handled();
-        }
-    });
 }
 
 fn button_enabled(ui: &Ui, button: ElementId) -> bool {

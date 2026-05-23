@@ -250,6 +250,17 @@ impl Element {
         self.widget.as_deref_mut()
     }
 
+    pub(crate) fn take_widget(&mut self) -> Option<Box<dyn Widget>> {
+        self.widget.take()
+    }
+
+    pub(crate) fn restore_widget(&mut self, widget: Box<dyn Widget>) {
+        debug_assert!(self.widget.is_none(), "restoring over an existing widget");
+        if self.widget.is_none() {
+            self.widget = Some(widget);
+        }
+    }
+
     pub(crate) fn children_mut(&mut self) -> &mut SmallVec<[ElementId; CHILDREN_INLINE]> {
         &mut self.children
     }

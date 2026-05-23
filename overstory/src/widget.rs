@@ -35,6 +35,7 @@ use understory_style::TypeTag;
 
 use crate::behavior::{LayoutContext, MeasureConstraints, MeasureContext, PresentContext};
 use crate::element::{Element, ElementId};
+use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent, ScrollEvent};
 use crate::generic::present_surface;
 use crate::template::Template;
 use crate::ui::Ui;
@@ -138,6 +139,30 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         let _ = element;
         Vec2::ZERO
     }
+
+    /// Handles the widget's built-in key behavior during routed dispatch.
+    ///
+    /// App handlers run first. If an app handler marks the event handled, this
+    /// method is skipped for the remaining ordinary route.
+    fn handle_key(&mut self, _id: ElementId, _ui: &mut Ui, _event: KeyEvent<'_>) {}
+
+    /// Handles the widget's built-in click behavior during routed dispatch.
+    ///
+    /// App handlers run first. If an app handler marks the event handled, this
+    /// method is skipped for the remaining ordinary route.
+    fn handle_click(&mut self, _id: ElementId, _ui: &mut Ui, _event: ClickEvent<'_>) {}
+
+    /// Handles the widget's built-in drag behavior during routed dispatch.
+    ///
+    /// App handlers run first. If an app handler marks the event handled, this
+    /// method is skipped for the remaining ordinary route.
+    fn handle_drag(&mut self, _id: ElementId, _ui: &mut Ui, _event: DragEvent<'_>) {}
+
+    /// Handles the widget's built-in scroll behavior during routed dispatch.
+    ///
+    /// App handlers run first. If an app handler marks the event handled, this
+    /// method is skipped for the remaining ordinary route.
+    fn handle_scroll(&mut self, _id: ElementId, _ui: &mut Ui, _event: ScrollEvent<'_>) {}
 }
 
 impl dyn Widget {
@@ -209,6 +234,22 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         self.widget.child_layout_offset(element)
+    }
+
+    fn handle_key(&mut self, id: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        self.widget.handle_key(id, ui, event);
+    }
+
+    fn handle_click(&mut self, id: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        self.widget.handle_click(id, ui, event);
+    }
+
+    fn handle_drag(&mut self, id: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+        self.widget.handle_drag(id, ui, event);
+    }
+
+    fn handle_scroll(&mut self, id: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
+        self.widget.handle_scroll(id, ui, event);
     }
 }
 

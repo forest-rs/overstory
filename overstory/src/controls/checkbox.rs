@@ -11,6 +11,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
@@ -127,7 +128,6 @@ impl AppendSpec for CheckBox {
         ui.set_local(id, font_size_prop, self.font_size);
         ui.set_control_state(id, self.state);
         set_check_box_checked(ui, id, self.initial_checked);
-        install_check_box_behavior(ui, id);
         id
     }
 }
@@ -143,6 +143,39 @@ impl Widget for CheckBoxWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&CHECK_BOX_TEMPLATE)
+    }
+
+    fn handle_click(&mut self, checkbox: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+            return;
+        }
+        if !ui.is_enabled(checkbox) {
+            return;
+        }
+        toggle_check_box(ui, checkbox);
+        event.mark_handled();
+    }
+
+    fn handle_key(&mut self, checkbox: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down {
+            return;
+        }
+        if !ui.is_enabled(checkbox) {
+            return;
+        }
+        let activate = match &event.key.key {
+            Key::Named(NamedKey::Enter) => true,
+            Key::Character(s) if s == " " => true,
+            _ => false,
+        };
+        if activate {
+            toggle_check_box(ui, checkbox);
+            event.mark_handled();
+        }
     }
 }
 
@@ -186,41 +219,6 @@ fn check_box_mark_widget() -> Box<dyn Widget> {
 
 fn check_box_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
-}
-
-fn install_check_box_behavior(ui: &mut Ui, checkbox: ElementId) {
-    ui.on_control_click(checkbox, move |ui, event| {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
-            return;
-        }
-        if !ui.is_enabled(checkbox) {
-            return;
-        }
-        toggle_check_box(ui, checkbox);
-        event.mark_handled();
-    });
-
-    ui.on_control_key(checkbox, move |ui, event| {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
-        if !matches!(event.phase, Phase::Target) {
-            return;
-        }
-        if event.key.state != KeyState::Down {
-            return;
-        }
-        if !ui.is_enabled(checkbox) {
-            return;
-        }
-        let activate = match &event.key.key {
-            Key::Named(NamedKey::Enter) => true,
-            Key::Character(s) if s == " " => true,
-            _ => false,
-        };
-        if activate {
-            toggle_check_box(ui, checkbox);
-            event.mark_handled();
-        }
-    });
 }
 
 /// Sets `IsChecked` on `checkbox` and keeps the `:checked` pseudoclass in sync.

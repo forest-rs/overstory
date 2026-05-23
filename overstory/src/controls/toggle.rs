@@ -14,6 +14,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::element::ElementId;
+use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -120,7 +121,6 @@ impl AppendSpec for ToggleSwitch {
             ui.set_local(id, is_checked_prop, true);
             ui.add_pseudo(id, PSEUDO_CHECKED);
         }
-        install_toggle_behavior(ui, id);
         id
     }
 }
@@ -137,22 +137,8 @@ impl Widget for ToggleWidget {
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TOGGLE_TEMPLATE)
     }
-}
 
-static TOGGLE_TEMPLATE: ToggleTemplate = ToggleTemplate;
-
-#[derive(Debug, Default)]
-struct ToggleTemplate;
-
-impl Template for ToggleTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        // Thumb part. Sized + styled by the cascade.
-        let _thumb = cx.slot_widget(SLOT_TOGGLE_THUMB, Box::new(SurfacePartWidget));
-    }
-}
-
-fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
-    ui.on_control_click(toggle, move |ui, event| {
+    fn handle_click(&mut self, toggle: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
@@ -161,9 +147,9 @@ fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
         }
         toggle_checked(ui, toggle);
         event.mark_handled();
-    });
+    }
 
-    ui.on_control_key(toggle, move |ui, event| {
+    fn handle_key(&mut self, toggle: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         if !matches!(event.phase, Phase::Target) {
             return;
@@ -183,7 +169,19 @@ fn install_toggle_behavior(ui: &mut Ui, toggle: ElementId) {
             toggle_checked(ui, toggle);
             event.mark_handled();
         }
-    });
+    }
+}
+
+static TOGGLE_TEMPLATE: ToggleTemplate = ToggleTemplate;
+
+#[derive(Debug, Default)]
+struct ToggleTemplate;
+
+impl Template for ToggleTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        // Thumb part. Sized + styled by the cascade.
+        let _thumb = cx.slot_widget(SLOT_TOGGLE_THUMB, Box::new(SurfacePartWidget));
+    }
 }
 
 /// Flips `IsChecked` on `toggle` and keeps the `:checked`
