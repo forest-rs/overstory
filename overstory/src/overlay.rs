@@ -102,6 +102,7 @@ fn clamp_axis(origin: f64, extent: f64, viewport: f64) -> f64 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OverlayKind {
     Tooltip,
+    Popup,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -147,12 +148,35 @@ impl OverlayRuntime {
         self.active.push(entry);
     }
 
+    pub(crate) fn take_element_kind(
+        &mut self,
+        element: ElementId,
+        kind: OverlayKind,
+    ) -> Option<ActiveOverlay> {
+        let index = self
+            .active
+            .iter()
+            .position(|entry| entry.element == element && entry.kind == kind)?;
+        Some(self.active.remove(index))
+    }
+
     pub(crate) fn take_kind(&mut self, kind: OverlayKind) -> Option<ActiveOverlay> {
         let index = self.active.iter().position(|entry| entry.kind == kind)?;
         Some(self.active.remove(index))
     }
 
-    pub(crate) fn remove_target(&mut self, id: ElementId) -> Vec<ElementId> {
+    pub(crate) fn remove_tooltip(&mut self, target: ElementId) -> Option<ElementId> {
+        self.tooltips.remove(&target);
+        let active = self.active_tooltip()?;
+        if active.target == target {
+            self.take_kind(OverlayKind::Tooltip)
+                .map(|entry| entry.element)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<ElementId> {
         self.tooltips.remove(&id);
         let mut removed = Vec::new();
         self.active.retain(|entry| {

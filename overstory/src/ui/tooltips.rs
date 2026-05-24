@@ -33,10 +33,10 @@ impl Ui {
 
     /// Removes any tooltip attached to `target`.
     pub fn clear_tooltip(&mut self, target: ElementId) {
-        for element in self.overlays.remove_target(target) {
-            if self.get(element).is_some() {
-                self.remove(element);
-            }
+        if let Some(element) = self.overlays.remove_tooltip(target)
+            && self.get(element).is_some()
+        {
+            self.remove(element);
         }
         self.refresh_tooltip_from_focus();
     }
@@ -68,14 +68,6 @@ impl Ui {
             }
             (None, Some(_)) => self.hide_active_tooltip(),
             (None, None) => false,
-        }
-    }
-
-    pub(in crate::ui) fn remove_tooltip_state_for(&mut self, id: ElementId) {
-        for element in self.overlays.remove_target(id) {
-            if element != id && self.get(element).is_some() {
-                self.remove(element);
-            }
         }
     }
 

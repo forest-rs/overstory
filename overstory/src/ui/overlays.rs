@@ -5,9 +5,19 @@
 
 use kurbo::{Point, Size};
 
+use crate::element::ElementId;
+
 use super::Ui;
 
 impl Ui {
+    pub(in crate::ui) fn remove_overlay_state_for(&mut self, id: ElementId) {
+        for element in self.overlays.remove_element(id) {
+            if element != id && self.get(element).is_some() {
+                self.remove(element);
+            }
+        }
+    }
+
     pub(in crate::ui) fn reposition_overlays(&mut self, viewport: Size) -> bool {
         let active = self.overlays.active_entries().collect::<Vec<_>>();
         let mut changed = false;

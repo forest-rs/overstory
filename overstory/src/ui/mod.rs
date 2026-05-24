@@ -40,6 +40,7 @@ mod events;
 mod layout;
 mod overlays;
 mod paint;
+mod popups;
 mod state;
 mod style;
 mod timers;

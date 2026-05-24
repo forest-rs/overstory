@@ -72,6 +72,7 @@ pub use controls::list::{
     selected_list_items, set_list_scroll_offset_y,
 };
 pub use controls::panel::{Panel, PanelWidget};
+pub use controls::popup::{Popup, PopupWidget, TYPE_POPUP};
 pub use controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, ProgressBarWidget,
     SLOT_PROGRESS_BAR_FILL, SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,

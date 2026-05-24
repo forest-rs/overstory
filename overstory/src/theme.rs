@@ -50,6 +50,7 @@ use crate::controls::checkbox::{
 };
 use crate::controls::divider::TYPE_DIVIDER;
 use crate::controls::list::{TYPE_LIST_BOX, TYPE_LIST_ITEM};
+use crate::controls::popup::TYPE_POPUP;
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
 };
@@ -382,6 +383,13 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 6.0_f64)
         .build();
+    let popup_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .build();
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
@@ -672,6 +680,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::type_tag(TYPE_TOOLTIP),
             tooltip_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_POPUP),
+            popup_idle,
         )
         .build()
 }

@@ -2960,6 +2960,82 @@ fn tooltip_can_be_placed_to_the_right_of_target() {
 }
 
 #[test]
+fn popup_opens_as_overlay_container_with_content() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(260.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(80.0, 28.0),
+    );
+    ui.compute_layout(Size::new(260.0, 120.0));
+
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.append(popup, crate::Text::new("Popup content").font_size(12.0));
+        })
+        .expect("live target should open popup");
+    ui.compute_layout(Size::new(260.0, 120.0));
+
+    assert_eq!(ui.get(popup).unwrap().parent(), Some(root));
+    assert_eq!(ui.get(popup).unwrap().children().len(), 1);
+    let target_bounds = ui.effective_bounds(target);
+    let popup_bounds = ui.effective_bounds(popup);
+    assert_eq!(
+        popup_bounds.origin(),
+        Point::new(target_bounds.x0, target_bounds.y1 + 6.0)
+    );
+
+    let overlay_root = ui.composition.overlay_root().unwrap();
+    let popup_layer = ui.composition.layer_for(popup).unwrap();
+    assert_eq!(
+        ui.composition_layers().parent(popup_layer),
+        Some(overlay_root)
+    );
+}
+
+#[test]
+fn popup_repositions_with_target_and_closes_by_root_element() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(260.0, 140.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(70.0, 24.0),
+    );
+    ui.compute_layout(Size::new(260.0, 140.0));
+
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.append(popup, crate::Text::new("Popup").font_size(12.0));
+        })
+        .unwrap();
+    ui.compute_layout(Size::new(260.0, 140.0));
+    let original = ui.effective_bounds(popup).origin();
+
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(120.0, 40.0)
+            .logical_size(70.0, 24.0),
+    );
+    ui.compute_layout(Size::new(260.0, 140.0));
+    let moved = ui.effective_bounds(popup).origin();
+    assert_ne!(moved, original);
+    assert_eq!(moved, Point::new(120.0, 70.0));
+
+    assert!(ui.close_popup(popup));
+    assert!(ui.get(popup).is_none());
+    assert!(!ui.close_popup(popup));
+}
+
+#[test]
 fn scroll_view_clip_applies_to_child_surfaces() {
     use imaging::record::Command;
 

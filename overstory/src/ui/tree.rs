@@ -178,7 +178,7 @@ impl Ui {
         for child in children {
             self.remove_subtree(child);
         }
-        self.remove_tooltip_state_for(id);
+        self.remove_overlay_state_for(id);
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);

@@ -7,8 +7,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use overstory::{
-    Button, CheckBox, Divider, ListBox, ListItem, Panel, ProgressBar, ScrollBar, ScrollState,
-    Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
+    Button, CheckBox, Divider, ListBox, ListItem, Panel, Popup, ProgressBar, ScrollBar,
+    ScrollState, Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
     select_list_item, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
@@ -99,6 +99,29 @@ fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + '
     }
 }
 
+fn popup_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
+    let open_popup = Cell::new(None);
+    move |ui: &mut Ui, event| {
+        if !matches!(
+            event.phase,
+            overstory::Phase::Target | overstory::Phase::Bubble
+        ) {
+            return;
+        }
+        if let Some(popup) = open_popup.get()
+            && ui.close_popup(popup)
+        {
+            open_popup.set(None);
+            return;
+        }
+        let popup = ui.open_popup(event.current, Popup::new(), |ui, popup| {
+            ui.append(popup, Text::new("Review queue").font_size(13.0));
+            ui.append(popup, caption("3 items pending"));
+        });
+        open_popup.set(popup);
+    }
+}
+
 /// Builds the demo tree as a small control gallery. The point is to exercise
 /// normal app code: every visible piece is a built-in control, styled by the
 /// default cascade, and animated through `Ui` timers.
@@ -152,9 +175,9 @@ fn build_ui() -> Ui {
         button_row,
         Button::new("Review")
             .font_size(15.0)
-            .on_click(cycling_click_handler()),
+            .on_click(popup_click_handler()),
     );
-    ui.set_tooltip(review, Tooltip::new("Open the latest review checklist"));
+    ui.set_tooltip(review, Tooltip::new("Toggle an anchored popup"));
 
     ui.append(input_card, Divider::horizontal().length(280.0));
     ui.append(
