@@ -54,7 +54,7 @@ mod widget;
 pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
 };
-pub use composition::{CompositionPolicy, CompositionSurface};
+pub use composition::{CompositionPolicy, CompositionSurface, SurfaceId};
 pub use controls::button::{
     Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };

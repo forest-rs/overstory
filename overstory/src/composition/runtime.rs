@@ -292,13 +292,28 @@ impl CompositionRuntime {
 
     /// Composes all attached software surfaces through the current layer tree.
     pub(crate) fn render_into(&self, output: &mut Scene) {
+        self.render_into_with(output, |surface| self.surfaces.get(&surface));
+    }
+
+    /// Composes attached surfaces through the current layer tree using a
+    /// caller-supplied surface scene lookup.
+    pub(crate) fn render_into_with<'a>(
+        &self,
+        output: &mut Scene,
+        mut scene_for: impl FnMut(SurfaceId) -> Option<&'a Scene>,
+    ) {
         output.clear();
         for root in self.layers.roots() {
-            self.render_layer(root, output);
+            self.render_layer(root, output, &mut scene_for);
         }
     }
 
-    fn render_layer(&self, layer: LayerId, output: &mut Scene) {
+    fn render_layer<'a>(
+        &self,
+        layer: LayerId,
+        output: &mut Scene,
+        scene_for: &mut impl FnMut(SurfaceId) -> Option<&'a Scene>,
+    ) {
         if self.layers.effective_hidden(layer) {
             return;
         }
@@ -311,13 +326,13 @@ impl CompositionRuntime {
         });
 
         if let Some(surface) = self.layers.content(layer)
-            && let Some(scene) = self.surfaces.get(&surface)
+            && let Some(scene) = scene_for(surface)
         {
             output.append_transformed(scene, transform);
         }
 
         for child in self.layers.children(layer) {
-            self.render_layer(child, output);
+            self.render_layer(child, output, scene_for);
         }
 
         if clip_pushed.is_some() {

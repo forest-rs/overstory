@@ -7,6 +7,7 @@ use core::cell::RefCell;
 
 use imaging::record::Scene;
 use kurbo::{Affine, Rect};
+use subduction_core::layer::SurfaceId;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
 
@@ -169,6 +170,21 @@ impl Ui {
         }
         self.composition.render_into(output);
         self.invalidation.clear(COMPOSE);
+    }
+
+    /// Composes the current layer tree into `output` using caller-owned
+    /// surface scenes.
+    ///
+    /// Hosts use this after [`Self::paint`] has refreshed
+    /// [`Self::composition_surface_updates`]. The lookup is called for each
+    /// `SurfaceId` attached to a visible composition layer; returning `None`
+    /// skips that layer's content while preserving descendants.
+    pub fn render_composition_with<'a>(
+        &self,
+        output: &mut Scene,
+        surface_scene: impl FnMut(SurfaceId) -> Option<&'a Scene>,
+    ) {
+        self.composition.render_into_with(output, surface_scene);
     }
 
     /// Runs `behavior.present` for one element, updating its

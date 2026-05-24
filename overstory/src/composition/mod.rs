@@ -11,3 +11,4 @@ mod runtime;
 
 pub(crate) use runtime::CompositionRuntime;
 pub use runtime::{CompositionPolicy, CompositionSurface};
+pub use subduction_core::layer::SurfaceId;

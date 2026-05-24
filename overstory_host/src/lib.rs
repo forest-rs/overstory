@@ -11,12 +11,15 @@
 //! loop ownership, and GPU presentation are intentionally left to backend
 //! crates such as `overstory_host_winit`.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::time::{Duration, Instant};
 
 use imaging::record::Scene;
 use kurbo::{Affine, Size};
-use overstory::{CursorIcon, KeyDispatchResult, PointerDispatchResult, TimerInstant, Ui};
+use overstory::{
+    CursorIcon, KeyDispatchResult, PointerDispatchResult, SurfaceId, TimerInstant, Ui,
+};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 
@@ -25,6 +28,7 @@ pub struct UiHost {
     ui: Ui,
     scene: Scene,
     scaled_scene: Scene,
+    surface_scenes: HashMap<SurfaceId, Scene>,
     start_instant: Instant,
     cursor_icon: CursorIcon,
 }
@@ -45,6 +49,7 @@ impl UiHost {
             ui,
             scene: Scene::new(),
             scaled_scene: Scene::new(),
+            surface_scenes: HashMap::new(),
             start_instant: Instant::now(),
             cursor_icon: CursorIcon::Default,
         }
@@ -128,11 +133,30 @@ impl UiHost {
     pub fn prepare_frame(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
         self.ui.compute_layout(logical_viewport);
         self.ui.paint(&mut self.scene);
+        self.sync_surface_scenes();
+
+        self.scene.clear();
+        self.ui
+            .render_composition_with(&mut self.scene, |surface| self.surface_scenes.get(&surface));
 
         self.scaled_scene.clear();
         self.scaled_scene
             .append_transformed(&self.scene, Affine::scale(scale_factor));
         &self.scaled_scene
+    }
+
+    fn sync_surface_scenes(&mut self) {
+        let live: HashSet<SurfaceId> = self
+            .ui
+            .composition_surfaces()
+            .map(|surface| surface.surface())
+            .collect();
+        self.surface_scenes
+            .retain(|surface, _| live.contains(surface));
+        for update in self.ui.composition_surface_updates() {
+            self.surface_scenes
+                .insert(update.surface(), update.scene().clone());
+        }
     }
 
     fn instant_for_deadline(&self, deadline: TimerInstant) -> Instant {
@@ -186,5 +210,22 @@ mod tests {
     #[test]
     fn logical_viewport_divides_physical_size_by_scale_factor() {
         assert_eq!(logical_viewport(400, 300, 2.0), Size::new(200.0, 150.0));
+    }
+
+    #[test]
+    fn prepare_frame_populates_surface_scene_cache() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(
+            root,
+            overstory::Layout::column(0.0).logical_size(100.0, 50.0),
+        );
+        ui.append(root, overstory::Text::new("Hello"));
+
+        let mut host = UiHost::new(ui);
+        let frame = host.prepare_frame(Size::new(100.0, 50.0), 1.0);
+
+        assert!(!frame.is_empty());
+        assert!(!host.surface_scenes.is_empty());
     }
 }
