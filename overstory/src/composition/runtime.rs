@@ -21,6 +21,31 @@ use subduction_core::transform::Transform3d;
 
 use crate::element::ElementId;
 
+/// How an Overstory element contributes content to its composition layer.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CompositionPolicy {
+    /// Record the element's presentation primitives into an Overstory-owned
+    /// software [`imaging::record::Scene`] keyed by the layer's `SurfaceId`.
+    #[default]
+    Software,
+    /// Keep a layer for geometry, clipping, ordering, and descendants, but do
+    /// not attach content for the element itself.
+    Container,
+    /// Attach a `SurfaceId` for host-owned or native content. Overstory owns
+    /// the identity but does not maintain a software scene for it.
+    External,
+}
+
+impl CompositionPolicy {
+    fn attaches_surface(self) -> bool {
+        matches!(self, Self::Software | Self::External)
+    }
+
+    fn records_software_scene(self) -> bool {
+        matches!(self, Self::Software)
+    }
+}
+
 /// Borrowed scene content associated with a Subduction [`SurfaceId`].
 ///
 /// Overstory owns these software scene recordings until a host replaces them
@@ -57,6 +82,7 @@ pub(crate) struct CompositionRuntime {
     surface_ids: SurfaceIds,
     element_to_layer: HashMap<ElementId, LayerId>,
     layer_to_element: HashMap<LayerId, ElementId>,
+    element_to_policy: HashMap<ElementId, CompositionPolicy>,
     element_to_surface: HashMap<ElementId, SurfaceId>,
     surfaces: HashMap<SurfaceId, Scene>,
     updated_surfaces: Vec<SurfaceId>,
@@ -71,6 +97,7 @@ impl CompositionRuntime {
             surface_ids: SurfaceIds::new(),
             element_to_layer: HashMap::new(),
             layer_to_element: HashMap::new(),
+            element_to_policy: HashMap::new(),
             element_to_surface: HashMap::new(),
             surfaces: HashMap::new(),
             updated_surfaces: Vec::new(),
@@ -78,20 +105,23 @@ impl CompositionRuntime {
         }
     }
 
-    /// Inserts a layer and attached software surface for `id`, optionally
-    /// parented under `parent`.
-    pub(crate) fn insert_element(&mut self, id: ElementId, parent: Option<ElementId>) {
+    /// Inserts a layer for `id`, optionally parented under `parent`, and
+    /// attaches content according to `policy`.
+    pub(crate) fn insert_element(
+        &mut self,
+        id: ElementId,
+        parent: Option<ElementId>,
+        policy: CompositionPolicy,
+    ) {
         let layer = self.layers.create_layer();
         self.layers.set_hit_policy(layer, HitPolicy::Region);
         if let Some(parent_layer) = parent.and_then(|parent| self.element_to_layer.get(&parent)) {
             self.layers.add_child(*parent_layer, layer);
         }
-        let surface = self.surface_ids.create();
-        self.layers.set_content(layer, Some(surface));
         self.element_to_layer.insert(id, layer);
         self.layer_to_element.insert(layer, id);
-        self.element_to_surface.insert(id, surface);
-        self.surfaces.insert(surface, Scene::new());
+        self.element_to_policy.insert(id, policy);
+        self.attach_content_for(id, layer, policy);
     }
 
     /// Removes the layer for `id` and any remaining descendant layers.
@@ -104,6 +134,8 @@ impl CompositionRuntime {
             .retain(|_, candidate| self.layers.is_alive(*candidate));
         self.layer_to_element
             .retain(|candidate, _| self.layers.is_alive(*candidate));
+        self.element_to_policy
+            .retain(|element, _| self.element_to_layer.contains_key(element));
         let removed_surfaces: Vec<SurfaceId> = self
             .element_to_surface
             .iter()
@@ -129,6 +161,17 @@ impl CompositionRuntime {
     /// Returns the software content surface corresponding to `id`.
     pub(crate) fn surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         self.element_to_surface.get(&id).copied()
+    }
+
+    /// Returns the software scene surface corresponding to `id`.
+    pub(crate) fn software_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
+        self.element_to_policy
+            .get(&id)
+            .copied()
+            .unwrap_or_default()
+            .records_software_scene()
+            .then(|| self.surface_for(id))
+            .flatten()
     }
 
     /// Returns the compositor-local bounds size for `id`.
@@ -188,6 +231,20 @@ impl CompositionRuntime {
         self.surfaces.insert(surface, scene);
         if !self.updated_surfaces.contains(&surface) {
             self.updated_surfaces.push(surface);
+        }
+    }
+
+    fn attach_content_for(&mut self, id: ElementId, layer: LayerId, policy: CompositionPolicy) {
+        if !policy.attaches_surface() {
+            self.layers.set_content(layer, None);
+            return;
+        }
+
+        let surface = self.surface_ids.create();
+        self.layers.set_content(layer, Some(surface));
+        self.element_to_surface.insert(id, surface);
+        if policy.records_software_scene() {
+            self.surfaces.insert(surface, Scene::new());
         }
     }
 

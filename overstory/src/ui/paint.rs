@@ -159,7 +159,7 @@ impl Ui {
 
         self.composition.clear_surface_updates();
         for id in dirty {
-            let Some(surface) = self.composition.surface_for(id) else {
+            let Some(surface) = self.composition.software_surface_for(id) else {
                 continue;
             };
             let mut scene = self.composition.take_surface(surface);

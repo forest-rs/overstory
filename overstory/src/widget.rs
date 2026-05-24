@@ -34,6 +34,7 @@ use understory_presentation::PresentationStore;
 use understory_style::TypeTag;
 
 use crate::behavior::{LayoutContext, MeasureConstraints, MeasureContext, PresentContext};
+use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
     ClickEvent, DragEvent, FocusEvent, KeyEvent, PointerRoutedEvent, ScrollEvent,
@@ -149,6 +150,15 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         Vec2::ZERO
     }
 
+    /// Returns how this widget wants its element projected into composition.
+    ///
+    /// The default records the element into an Overstory-owned software
+    /// surface. Container-only or host-backed widgets can override this when
+    /// their layer should not own an ordinary software scene.
+    fn composition_policy(&self) -> CompositionPolicy {
+        CompositionPolicy::Software
+    }
+
     /// Handles the widget's built-in key behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
@@ -259,6 +269,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn child_layout_offset(&self, element: &Element) -> Vec2 {
         self.widget.child_layout_offset(element)
+    }
+
+    fn composition_policy(&self) -> CompositionPolicy {
+        self.widget.composition_policy()
     }
 
     fn handle_key(&mut self, id: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {

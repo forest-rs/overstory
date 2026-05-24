@@ -7,8 +7,9 @@ use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
 use crate::{
-    FocusChangeReason, KeyDispatchResult, Layout, Navigation, Phase, RoutedEventKind,
-    RoutedHandlerOptions, TYPE_GENERIC, TemplateContext, TemplateSlot, UiResolveLookup,
+    CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, Navigation, Phase,
+    RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext, TemplateSlot,
+    UiResolveLookup,
 };
 use imaging::record::Scene;
 use kurbo::{Point, Rect, Size, Vec2};
@@ -2666,6 +2667,40 @@ fn paint_rebuilds_child_composition_surfaces() {
         .map(|surface| surface.surface())
         .collect();
     assert_eq!(updates, vec![child_surface]);
+}
+
+#[test]
+fn composition_policy_can_make_container_only_layer() {
+    use crate::widget::{AppendSpec, Widget};
+
+    #[derive(Debug)]
+    struct ContainerOnlyWidget;
+
+    impl Widget for ContainerOnlyWidget {
+        fn type_tag(&self) -> Option<understory_style::TypeTag> {
+            None
+        }
+
+        fn composition_policy(&self) -> CompositionPolicy {
+            CompositionPolicy::Container
+        }
+    }
+
+    struct ContainerOnly;
+
+    impl AppendSpec for ContainerOnly {
+        fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+            ui.append_widget(parent, Box::new(ContainerOnlyWidget))
+        }
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.append(root, ContainerOnly);
+
+    let layer = ui.composition.layer_for(container).unwrap();
+    assert_eq!(ui.composition_layers().content(layer), None);
+    assert_eq!(ui.composition.surface_for(container), None);
 }
 
 #[test]

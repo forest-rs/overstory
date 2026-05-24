@@ -200,6 +200,10 @@ impl Ui {
         self.layout.insert_element(id, parent);
         let node = self.geometry.insert_element(id, parent);
         self.presentation.insert_node(node, id);
-        self.composition.insert_element(id, parent);
+        let policy = self
+            .get(id)
+            .and_then(|element| element.widget())
+            .map_or_else(Default::default, |widget| widget.composition_policy());
+        self.composition.insert_element(id, parent, policy);
     }
 }

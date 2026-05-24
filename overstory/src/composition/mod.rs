@@ -10,4 +10,4 @@
 mod runtime;
 
 pub(crate) use runtime::CompositionRuntime;
-pub use runtime::CompositionSurface;
+pub use runtime::{CompositionPolicy, CompositionSurface};
