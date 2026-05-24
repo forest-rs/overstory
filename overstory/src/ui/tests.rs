@@ -2766,6 +2766,133 @@ fn overlay_composition_policy_parents_layer_under_overlay_root() {
 }
 
 #[test]
+fn tooltip_shows_as_overlay_for_hovered_target() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(target, Layout::new().logical_size(80.0, 30.0));
+    ui.set_tooltip(target, crate::Tooltip::new("Deploys the service"));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    assert_eq!(ui.tooltips.active(), None);
+
+    let result = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
+    assert!(result.changed());
+    let active = ui
+        .tooltips
+        .active()
+        .expect("hovering a tooltip target should create an overlay tooltip");
+    assert_eq!(active.target, target);
+    assert_eq!(ui.get(active.element).unwrap().parent(), Some(root));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let target_bounds = ui.effective_bounds(target);
+    let tooltip_bounds = ui.effective_bounds(active.element);
+    assert_eq!(
+        tooltip_bounds.origin(),
+        Point::new(target_bounds.x0, target_bounds.y1 + 8.0)
+    );
+    assert!(tooltip_bounds.width() > 0.0);
+    assert!(tooltip_bounds.height() > 0.0);
+
+    let overlay_root = ui
+        .composition
+        .overlay_root()
+        .expect("tooltip should create an overlay composition root");
+    let tooltip_layer = ui.composition.layer_for(active.element).unwrap();
+    assert_eq!(
+        ui.composition_layers().parent(tooltip_layer),
+        Some(overlay_root)
+    );
+    assert_ne!(ui.hit_test(tooltip_bounds.center()), Some(active.element));
+
+    let leave = ui.dispatch_pointer_event(&pointer_move(Point::new(180.0, 100.0), 2, false));
+    assert!(leave.changed());
+    assert_eq!(ui.tooltips.active(), None);
+    assert!(ui.get(active.element).is_none());
+}
+
+#[test]
+fn tooltip_attached_to_owner_activates_from_template_part_hover() {
+    let mut ui = Ui::new();
+    ui.set_cascade(crate::theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let button = ui.append(root, crate::Button::new("Deploy").font_size(12.0));
+    ui.set_layout(button, Layout::new().logical_size(92.0, 36.0));
+    ui.set_tooltip(button, crate::Tooltip::new("Runs the deploy workflow"));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let center = ui.effective_bounds(button).center();
+    let _ = ui.dispatch_pointer_event(&pointer_move(center, 1, false));
+
+    assert_eq!(
+        ui.tooltips.active().map(|active| active.target),
+        Some(button),
+        "tooltip lookup should walk from hovered template parts to the owning control"
+    );
+}
+
+#[test]
+fn tooltip_follows_keyboard_focus_and_clears_with_focus() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(target, Layout::new().logical_size(80.0, 30.0));
+    ui.set_focusable(target, true);
+    ui.set_tooltip(target, crate::Tooltip::new("Focusable helper"));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    assert!(ui.set_focus(Some(target)));
+    let active = ui
+        .tooltips
+        .active()
+        .expect("focused tooltip target should create an overlay tooltip");
+    assert_eq!(active.target, target);
+
+    assert!(ui.set_focus(None));
+    assert_eq!(ui.tooltips.active(), None);
+    assert!(ui.get(active.element).is_none());
+}
+
+#[test]
+fn pointer_leave_does_not_restore_previous_focused_tooltip() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::row(20.0).logical_size(240.0, 120.0));
+    let first = ui.insert_child(root);
+    ui.set_layout(first, Layout::new().logical_size(70.0, 30.0));
+    ui.set_focusable(first, true);
+    ui.set_tooltip(first, crate::Tooltip::new("First"));
+    let second = ui.insert_child(root);
+    ui.set_layout(second, Layout::new().logical_size(70.0, 30.0));
+    ui.set_tooltip(second, crate::Tooltip::new("Second"));
+
+    ui.compute_layout(Size::new(240.0, 120.0));
+    assert!(ui.set_focus(Some(first)));
+    assert_eq!(
+        ui.tooltips.active().map(|active| active.target),
+        Some(first)
+    );
+
+    let second_center = ui.effective_bounds(second).center();
+    let _ = ui.dispatch_pointer_event(&pointer_move(second_center, 1, false));
+    assert_eq!(
+        ui.tooltips.active().map(|active| active.target),
+        Some(second)
+    );
+
+    let _ = ui.dispatch_pointer_event(&pointer_move(Point::new(220.0, 90.0), 2, false));
+    assert_eq!(
+        ui.tooltips.active(),
+        None,
+        "leaving a hover tooltip should hide it instead of restoring a focused target"
+    );
+}
+
+#[test]
 fn scroll_view_clip_applies_to_child_surfaces() {
     use imaging::record::Command;
 

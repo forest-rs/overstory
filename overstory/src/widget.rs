@@ -131,6 +131,16 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
+    /// Returns whether this widget participates in pointer hit testing.
+    ///
+    /// The default is hit-test visible. Passive overlays such as tooltips can
+    /// opt out so they render above controls without becoming routed pointer
+    /// targets.
+    fn is_hit_test_visible(&self, element: &Element) -> bool {
+        let _ = element;
+        true
+    }
+
     /// Returns whether this widget clips its subtree to its arranged bounds.
     ///
     /// The default leaves descendants visible and pickable outside the

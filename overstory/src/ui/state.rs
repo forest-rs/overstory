@@ -269,6 +269,7 @@ impl Ui {
         }
         if changed {
             self.dispatch_focus_change(previous, accepted, focus_visible, reason);
+            self.refresh_tooltip_from_focus();
         }
         changed
     }

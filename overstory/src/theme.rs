@@ -64,6 +64,7 @@ use crate::controls::text_input::{
     PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
 };
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
+use crate::controls::tooltip::TYPE_TOOLTIP;
 use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -374,6 +375,13 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
+    let tooltip_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 6.0_f64)
+        .build();
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
@@ -659,6 +667,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::state(TYPE_LIST_ITEM, PSEUDO_SELECTED),
             list_item_selected,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_TOOLTIP),
+            tooltip_idle,
         )
         .build()
 }

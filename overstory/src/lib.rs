@@ -48,6 +48,7 @@ mod template_runtime;
 mod text;
 pub mod theme;
 mod timer_runtime;
+mod tooltip_runtime;
 mod ui;
 mod widget;
 
@@ -98,6 +99,9 @@ pub use controls::text_input::{
 };
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
+};
+pub use controls::tooltip::{
+    PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip, TooltipWidget,
 };
 pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};

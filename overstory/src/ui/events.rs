@@ -1090,6 +1090,11 @@ impl Ui {
         if let Some(t) = pointer_event_time(event) {
             self.timers.set_now(t);
         }
+        // Pointer dispatch may follow tree mutations that do not require a
+        // full layout pass before they are query-safe (for example hiding a
+        // passive overlay tooltip). Commit pending box-tree structure changes
+        // before any hit test.
+        self.geometry.commit();
         let focused_before = self.focus.focused();
         let capture_before = self.events.pointer_capture();
 
@@ -1262,6 +1267,7 @@ impl Ui {
 
         result.focus_changed |= focused_before != self.focus.focused();
         result.capture_changed |= capture_before != self.events.pointer_capture();
+        result.hover_changed |= self.refresh_tooltip_from_pointer();
         result
     }
 }

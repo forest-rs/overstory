@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use overstory::{
     Button, CheckBox, Divider, ListBox, ListItem, Panel, ProgressBar, ScrollBar, ScrollState,
-    Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Ui, layouts, select_list_item,
-    set_progress_value, theme,
+    Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
+    select_list_item, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -141,18 +141,20 @@ fn build_ui() -> Ui {
     );
 
     let button_row = ui.append(input_card, Panel::row(10.0).align_center());
-    ui.append(
+    let deploy = ui.append(
         button_row,
         Button::new("Deploy")
             .font_size(15.0)
             .on_click(cycling_click_handler()),
     );
-    ui.append(
+    ui.set_tooltip(deploy, Tooltip::new("Run the staged deployment workflow"));
+    let review = ui.append(
         button_row,
         Button::new("Review")
             .font_size(15.0)
             .on_click(cycling_click_handler()),
     );
+    ui.set_tooltip(review, Tooltip::new("Open the latest review checklist"));
 
     ui.append(input_card, Divider::horizontal().length(280.0));
     ui.append(
@@ -174,6 +176,10 @@ fn build_ui() -> Ui {
         systems_card,
         ProgressBar::new().value(0.62).size(280.0, 18.0),
     );
+    ui.set_tooltip(
+        progress,
+        Tooltip::new("Animated by the retained timer queue"),
+    );
     let _ = ui.schedule_timer_repeating(progress, 120_000_000);
     let mut progress_value = 0.62_f64;
     ui.on_timer(progress, move |ui, _event| {
@@ -185,7 +191,11 @@ fn build_ui() -> Ui {
     });
 
     ui.append(systems_card, caption("Volume"));
-    ui.append(systems_card, Slider::new().value(0.42));
+    let volume = ui.append(systems_card, Slider::new().value(0.42));
+    ui.set_tooltip(
+        volume,
+        Tooltip::new("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
+    );
 
     let spinner_row = ui.append(systems_card, Panel::row(12.0).align_center());
     ui.append(spinner_row, Spinner::new());
@@ -217,6 +227,10 @@ fn build_ui() -> Ui {
     ui.append(renderer_list, ListItem::new("Presentation cache"));
     ui.append(renderer_list, ListItem::new("Frame diagnostics"));
     let _ = select_list_item(&mut ui, renderer_list, selected_renderer);
+    ui.set_tooltip(
+        renderer_list,
+        Tooltip::new("Multi-select list with viewport clipping"),
+    );
 
     ui.append(selection_card, Divider::horizontal().length(280.0));
     ui.append(
@@ -241,7 +255,7 @@ fn build_ui() -> Ui {
 
     let right_pane_slot = Rc::new(Cell::new(None));
     let right_pane_for_splitter = Rc::clone(&right_pane_slot);
-    ui.append(
+    let splitter = ui.append(
         split_row,
         Splitter::vertical()
             .length(118.0)
@@ -251,6 +265,7 @@ fn build_ui() -> Ui {
                 }
             }),
     );
+    ui.set_tooltip(splitter, Tooltip::new("Drag or focus and use arrow keys"));
     let right_pane = ui.append(
         split_row,
         Panel::column(8.0).layout(

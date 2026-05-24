@@ -6,6 +6,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use understory_box_tree::NodeFlags;
 use understory_style::PartTag;
 
 use crate::channels::{COMPOSE, LAYOUT};
@@ -177,6 +178,7 @@ impl Ui {
         for child in children {
             self.remove_subtree(child);
         }
+        self.remove_tooltip_state_for(id);
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);
@@ -199,6 +201,14 @@ impl Ui {
     ) {
         self.layout.insert_element(id, parent);
         let node = self.geometry.insert_element(id, parent);
+        if let Some(element) = self.get(id)
+            && let Some(widget) = element.widget()
+            && !widget.is_hit_test_visible(element)
+        {
+            let mut flags = self.geometry.flags(node).unwrap_or_default();
+            flags.remove(NodeFlags::PICKABLE);
+            self.geometry.set_flags(node, flags);
+        }
         self.presentation.insert_node(node, id);
         let policy = self
             .get(id)

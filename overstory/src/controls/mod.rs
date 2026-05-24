@@ -27,3 +27,4 @@ pub(crate) mod splitter;
 pub(crate) mod text;
 pub(crate) mod text_input;
 pub(crate) mod toggle;
+pub(crate) mod tooltip;

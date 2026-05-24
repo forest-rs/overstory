@@ -33,6 +33,7 @@ use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
 use crate::text::TextEngine;
 use crate::timer_runtime::TimerRuntime;
+use crate::tooltip_runtime::TooltipRuntime;
 
 mod bindings;
 mod events;
@@ -41,6 +42,7 @@ mod paint;
 mod state;
 mod style;
 mod timers;
+mod tooltips;
 mod tree;
 
 #[cfg(test)]
@@ -73,6 +75,7 @@ pub struct Ui {
     events: EventRuntime,
     focus: FocusRuntime,
     timers: TimerRuntime,
+    tooltips: TooltipRuntime,
 }
 
 /// Shared construction-time state for interactive controls.
@@ -191,6 +194,7 @@ impl Ui {
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timers: TimerRuntime::new(),
+            tooltips: TooltipRuntime::default(),
         };
         me.mirror_allocated_element(root, None);
         me.style_one(root);
