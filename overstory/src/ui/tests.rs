@@ -2814,6 +2814,68 @@ fn tooltip_shows_as_overlay_for_hovered_target() {
 }
 
 #[test]
+fn default_cascade_styles_tooltip_surface_and_label() {
+    use crate::{SLOT_TOOLTIP_CONTENT, Tooltip, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(target, Layout::new().logical_size(80.0, 30.0));
+    ui.set_tooltip(target, Tooltip::new("Deploys the service"));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let result = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
+    assert!(result.changed());
+    let active = ui
+        .overlays
+        .active_tooltip()
+        .expect("hovering a tooltip target should create an overlay tooltip");
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let tooltip_node = ui
+        .box_for(active.element)
+        .expect("tooltip should have a box node");
+    let surface = ui
+        .presentation
+        .presentation(tooltip_node)
+        .expect("tooltip should have presentation")
+        .surface()
+        .expect("tooltip should present a surface");
+    assert!(
+        !surface.backgrounds.is_empty(),
+        "default cascade should give tooltips an opaque background"
+    );
+    assert!(
+        !surface.border.is_empty(),
+        "default cascade should give tooltips a border"
+    );
+
+    let label = ui
+        .slot(active.element, SLOT_TOOLTIP_CONTENT)
+        .expect("tooltip should create a content label");
+    let label_node = ui.box_for(label).expect("label should have a box node");
+    let foreground = ui
+        .presentation
+        .presentation(label_node)
+        .expect("label should have presentation")
+        .plain_text()
+        .expect("label should present text")
+        .foreground
+        .clone();
+    assert_eq!(
+        foreground,
+        Some(Brush::Solid(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))),
+        "tooltip label should inherit the styled tooltip foreground"
+    );
+}
+
+#[test]
 fn tooltip_attached_to_owner_activates_from_template_part_hover() {
     let mut ui = Ui::new();
     ui.set_cascade(crate::theme::default_cascade(ui.properties()));

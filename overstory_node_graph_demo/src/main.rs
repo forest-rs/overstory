@@ -6,8 +6,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use kurbo::{Point, Rect, Size};
-use overstory::{ClickEvent, ElementId, Layout, Panel, Phase, Text, Tooltip, Ui, theme};
+use kurbo::{Point, Rect, Size, Vec2};
+use overstory::{
+    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase, ScrollEvent, Text,
+    Tooltip, Ui, Widget, theme,
+};
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_node_graph::{
@@ -20,25 +23,29 @@ use understory_view2d::{ClampMode, FitMode};
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
 const GRAPH_VIEW: Rect = Rect::new(0.0, 0.0, 1040.0, 640.0);
 const EDGE_THICKNESS: f64 = 4.0;
+const GRID_LINE_LIMIT: usize = 240;
 const PORT_RADIUS: f64 = 7.0;
+const ZOOM_SENSITIVITY: f64 = 0.0015;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ValueKind {
     Event,
-    Image,
-    Tensor,
-    Scalar,
-    Color,
+    State,
+    Geometry,
+    Primitive,
+    Layer,
+    Frame,
 }
 
 impl ValueKind {
     fn color(self) -> Color {
         match self {
             Self::Event => Color::from_rgba8(0xff, 0xd1, 0x66, 0xff),
-            Self::Image => Color::from_rgba8(0x69, 0xd2, 0xff, 0xff),
-            Self::Tensor => Color::from_rgba8(0x9d, 0x7d, 0xff, 0xff),
-            Self::Scalar => Color::from_rgba8(0x70, 0xe2, 0x9a, 0xff),
-            Self::Color => Color::from_rgba8(0xff, 0x6d, 0xb1, 0xff),
+            Self::State => Color::from_rgba8(0x70, 0xe2, 0x9a, 0xff),
+            Self::Geometry => Color::from_rgba8(0x69, 0xd2, 0xff, 0xff),
+            Self::Primitive => Color::from_rgba8(0x9d, 0x7d, 0xff, 0xff),
+            Self::Layer => Color::from_rgba8(0xff, 0x6d, 0xb1, 0xff),
+            Self::Frame => Color::from_rgba8(0xff, 0xd1, 0x66, 0xff),
         }
     }
 }
@@ -47,11 +54,27 @@ impl core::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Event => f.write_str("event"),
-            Self::Image => f.write_str("image"),
-            Self::Tensor => f.write_str("tensor"),
-            Self::Scalar => f.write_str("scalar"),
-            Self::Color => f.write_str("color"),
+            Self::State => f.write_str("state"),
+            Self::Geometry => f.write_str("geometry"),
+            Self::Primitive => f.write_str("primitive"),
+            Self::Layer => f.write_str("layer"),
+            Self::Frame => f.write_str("frame"),
         }
+    }
+}
+
+#[derive(Debug)]
+struct GraphViewportWidget;
+
+impl Widget for GraphViewportWidget {
+    fn clips_subtree(&self, element: &Element) -> bool {
+        let _ = element;
+        true
+    }
+
+    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
+        let _ = element;
+        Some(CursorIcon::Grab)
     }
 }
 
@@ -74,9 +97,28 @@ type DemoProjection = GraphProjection<(), (), ()>;
 #[derive(Debug)]
 struct DemoGraph {
     doc: DemoDoc,
+    projection: DemoProjection,
     session: GraphSession,
     computed: GraphComputed,
     selected: NodeId,
+}
+
+impl DemoGraph {
+    fn rebuild_computed(&mut self) {
+        let mut invalidation = GraphInvalidation::new();
+        invalidation.mark_viewport();
+        let mut observer = NoopGraphDeriveObserver;
+        self.computed.rebuild(
+            &self.doc,
+            &self.projection,
+            &self.session,
+            &mut invalidation,
+            &OrthogonalEdgeRouter {
+                min_horizontal_run: 44.0,
+            },
+            &mut observer,
+        );
+    }
 }
 
 fn main() -> overstory_host_winit::HostResult<()> {
@@ -120,28 +162,27 @@ fn build_ui() -> Ui {
     );
     ui.append(
         title_panel,
-        Text::new("Vision Pipeline")
+        Text::new("Overstory Frame Graph")
             .font_size(30.0)
             .foreground(Color::from_rgba8(0xf7, 0xf3, 0xff, 0xff)),
     );
     ui.append(
         title_panel,
-        Text::new("Realtime image processing graph")
+        Text::new("Input, layout, presentation, layers, and final frame")
             .font_size(13.0)
             .foreground(Color::from_rgba8(0xb7, 0xb8, 0xc8, 0xff)),
     );
 
-    let graph_host = ui.append(
-        root,
-        Panel::new().layout(
-            Layout::new()
-                .relative()
-                .absolute_at(36.0, 128.0)
-                .logical_size(
-                    f32_coord(GRAPH_VIEW.width()),
-                    f32_coord(GRAPH_VIEW.height()),
-                ),
-        ),
+    let graph_host = ui.append_widget(root, Box::new(GraphViewportWidget));
+    ui.set_layout(
+        graph_host,
+        Layout::new()
+            .relative()
+            .absolute_at(36.0, 128.0)
+            .logical_size(
+                f32_coord(GRAPH_VIEW.width()),
+                f32_coord(GRAPH_VIEW.height()),
+            ),
     );
     style_surface(
         &mut ui,
@@ -151,16 +192,6 @@ fn build_ui() -> Ui {
         1.0,
         18.0,
     );
-
-    append_grid(&mut ui, graph_host, GRAPH_VIEW);
-    append_graph_edges(&mut ui, graph_host, &graph.borrow());
-    append_graph_nodes(
-        &mut ui,
-        graph_host,
-        Rc::clone(&graph),
-        Rc::clone(&selected_element),
-    );
-    append_graph_ports(&mut ui, graph_host, &graph.borrow());
 
     let sidebar = ui.append(
         root,
@@ -179,94 +210,120 @@ fn build_ui() -> Ui {
         1.0,
         14.0,
     );
-    append_inspector(&mut ui, sidebar, &graph.borrow());
+
+    install_viewport_interaction(
+        &mut ui,
+        graph_host,
+        sidebar,
+        Rc::clone(&graph),
+        Rc::clone(&selected_element),
+    );
+    refresh_graph_view(
+        &mut ui,
+        graph_host,
+        sidebar,
+        Rc::clone(&graph),
+        Rc::clone(&selected_element),
+    );
+    ui.set_cascade(theme::default_cascade(ui.properties()));
 
     ui
 }
 
 fn build_demo_graph() -> DemoGraph {
     let mut doc = DemoDoc::new();
-    let camera = add_node(
+    let events = add_node(
         &mut doc,
         NodeMeta {
-            title: "Camera Feed",
-            subtitle: "captures frames",
-            accent: Color::from_rgba8(0x61, 0xd5, 0xff, 0xff),
+            title: "Winit Input",
+            subtitle: "pointer, key, wheel",
+            accent: Color::from_rgba8(0xff, 0xd1, 0x66, 0xff),
         },
     );
-    let denoise = add_node(
+    let ui_state = add_node(
         &mut doc,
         NodeMeta {
-            title: "Temporal Denoise",
-            subtitle: "stabilizes motion",
+            title: "Ui State",
+            subtitle: "tree, focus, timers",
             accent: Color::from_rgba8(0x7a, 0xf1, 0xa8, 0xff),
         },
     );
-    let segment = add_node(
+    let layout = add_node(
         &mut doc,
         NodeMeta {
-            title: "Segment Objects",
-            subtitle: "tensor model",
+            title: "Style + Layout",
+            subtitle: "cascade and boxes",
+            accent: Color::from_rgba8(0x61, 0xd5, 0xff, 0xff),
+        },
+    );
+    let presentation = add_node(
+        &mut doc,
+        NodeMeta {
+            title: "Presentation",
+            subtitle: "surfaces and text",
             accent: Color::from_rgba8(0xa6, 0x7b, 0xff, 0xff),
         },
     );
-    let grade = add_node(
+    let layers = add_node(
         &mut doc,
         NodeMeta {
-            title: "Color Grade",
-            subtitle: "scene look",
+            title: "Layer Plan",
+            subtitle: "root, popups, clips",
             accent: Color::from_rgba8(0xff, 0x70, 0xb8, 0xff),
         },
     );
-    let composite = add_node(
+    let present = add_node(
         &mut doc,
         NodeMeta {
-            title: "Composite Output",
-            subtitle: "final frame",
+            title: "GPU Present",
+            subtitle: "cached scene surfaces",
             accent: Color::from_rgba8(0xff, 0xd5, 0x70, 0xff),
         },
     );
 
-    let _camera_tick = input(&mut doc, camera, "tick", ValueKind::Event);
-    let camera_image = output(&mut doc, camera, "image", ValueKind::Image);
-    let denoise_image = input(&mut doc, denoise, "image", ValueKind::Image);
-    let _denoise_strength = input(&mut doc, denoise, "strength", ValueKind::Scalar);
-    let denoise_clean = output(&mut doc, denoise, "clean", ValueKind::Image);
-    let segment_image = input(&mut doc, segment, "image", ValueKind::Image);
-    let segment_mask = output(&mut doc, segment, "mask", ValueKind::Tensor);
-    let grade_image = input(&mut doc, grade, "image", ValueKind::Image);
-    let _grade_lut = input(&mut doc, grade, "look", ValueKind::Color);
-    let grade_out = output(&mut doc, grade, "graded", ValueKind::Image);
-    let composite_bg = input(&mut doc, composite, "background", ValueKind::Image);
-    let composite_mask = input(&mut doc, composite, "mask", ValueKind::Tensor);
-    let _composite_out = output(&mut doc, composite, "frame", ValueKind::Image);
+    let _platform_events = input(&mut doc, events, "platform", ValueKind::Event);
+    let routed_events = output(&mut doc, events, "routed", ValueKind::Event);
+    let state_events = input(&mut doc, ui_state, "events", ValueKind::Event);
+    let ui_tree = output(&mut doc, ui_state, "tree", ValueKind::State);
+    let layout_tree = input(&mut doc, layout, "tree", ValueKind::State);
+    let boxes = output(&mut doc, layout, "boxes", ValueKind::Geometry);
+    let presentation_boxes = input(&mut doc, presentation, "boxes", ValueKind::Geometry);
+    let primitives = output(&mut doc, presentation, "primitives", ValueKind::Primitive);
+    let layer_primitives = input(&mut doc, layers, "primitives", ValueKind::Primitive);
+    let layer_tree = output(&mut doc, layers, "layers", ValueKind::Layer);
+    let present_layers = input(&mut doc, present, "layers", ValueKind::Layer);
+    let _frame = output(&mut doc, present, "frame", ValueKind::Frame);
 
-    doc.add_edge(camera_image, denoise_image, ()).unwrap();
-    doc.add_edge(denoise_clean, segment_image, ()).unwrap();
-    doc.add_edge(denoise_clean, grade_image, ()).unwrap();
-    doc.add_edge(segment_mask, composite_mask, ()).unwrap();
-    doc.add_edge(grade_out, composite_bg, ()).unwrap();
+    doc.add_edge(routed_events, state_events, ()).unwrap();
+    doc.add_edge(ui_tree, layout_tree, ()).unwrap();
+    doc.add_edge(boxes, presentation_boxes, ()).unwrap();
+    doc.add_edge(primitives, layer_primitives, ()).unwrap();
+    doc.add_edge(layer_tree, present_layers, ()).unwrap();
 
     let mut projection = DemoProjection::new();
     projection.set_node_view(
-        camera,
-        NodeView::new(Point::new(0.0, 150.0), Size::new(190.0, 118.0), ()),
+        events,
+        NodeView::new(Point::new(0.0, 170.0), Size::new(196.0, 118.0), ()),
     );
     projection.set_node_view(
-        denoise,
-        NodeView::new(Point::new(280.0, 88.0), Size::new(220.0, 148.0), ()),
+        ui_state,
+        NodeView::new(Point::new(286.0, 104.0), Size::new(216.0, 136.0), ()),
     );
     projection.set_node_view(
-        segment,
-        NodeView::new(Point::new(620.0, 22.0), Size::new(218.0, 118.0), ()),
+        layout,
+        NodeView::new(Point::new(600.0, 48.0), Size::new(218.0, 132.0), ()),
     );
     projection.set_node_view(
-        grade,
-        NodeView::new(Point::new(620.0, 260.0), Size::new(218.0, 136.0), ()),
+        presentation,
+        NodeView::new(Point::new(600.0, 282.0), Size::new(224.0, 132.0), ()),
     );
     projection.set_node_view(
-        composite,
-        NodeView::new(Point::new(990.0, 156.0), Size::new(236.0, 148.0), ()),
+        layers,
+        NodeView::new(Point::new(930.0, 124.0), Size::new(216.0, 142.0), ()),
+    );
+    projection.set_node_view(
+        present,
+        NodeView::new(Point::new(1236.0, 172.0), Size::new(222.0, 126.0), ()),
     );
     for port in doc.iter_ports().map(|(port, _)| port).collect::<Vec<_>>() {
         let mut view = PortView::new(());
@@ -283,7 +340,7 @@ fn build_demo_graph() -> DemoGraph {
         viewport.fit_rect(world_bounds);
     });
     session.update_selection(|selection| {
-        let _ = selection.select_only(GraphElementId::Node(denoise));
+        let _ = selection.select_only(GraphElementId::Node(presentation));
     });
 
     let mut computed = GraphComputed::new();
@@ -302,9 +359,10 @@ fn build_demo_graph() -> DemoGraph {
 
     DemoGraph {
         doc,
+        projection,
         session,
         computed,
-        selected: denoise,
+        selected: presentation,
     }
 }
 
@@ -322,24 +380,203 @@ fn output(doc: &mut DemoDoc, node: NodeId, label: &'static str, kind: ValueKind)
         .expect("node exists")
 }
 
-fn append_grid(ui: &mut Ui, parent: ElementId, bounds: Rect) {
-    for x in (40..=1000).step_by(80) {
-        append_rect(
+fn install_viewport_interaction(
+    ui: &mut Ui,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+) {
+    let drag_graph = Rc::clone(&graph);
+    let drag_selected = Rc::clone(&selected_element);
+    ui.on_drag(graph_host, move |ui, event| {
+        pan_graph_view(
             ui,
-            parent,
-            Rect::new(f64::from(x), 0.0, f64::from(x) + 1.0, bounds.height()),
-            Color::from_rgba8(0x31, 0x31, 0x3d, 0x80),
-            0.0,
+            event,
+            graph_host,
+            sidebar,
+            Rc::clone(&drag_graph),
+            Rc::clone(&drag_selected),
         );
+    });
+
+    let scroll_graph = Rc::clone(&graph);
+    let scroll_selected = Rc::clone(&selected_element);
+    ui.on_scroll(graph_host, move |ui, event| {
+        zoom_graph_view(
+            ui,
+            event,
+            graph_host,
+            sidebar,
+            Rc::clone(&scroll_graph),
+            Rc::clone(&scroll_selected),
+        );
+    });
+}
+
+fn refresh_graph_view(
+    ui: &mut Ui,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+) {
+    selected_element.set(None);
+    clear_children(ui, graph_host);
+    clear_children(ui, sidebar);
+
+    {
+        let graph = graph.borrow();
+        append_grid(ui, graph_host, &graph);
+        append_graph_edges(ui, graph_host, &graph);
     }
-    for y in (40..=600).step_by(80) {
-        append_rect(
-            ui,
-            parent,
-            Rect::new(0.0, f64::from(y), bounds.width(), f64::from(y) + 1.0),
-            Color::from_rgba8(0x31, 0x31, 0x3d, 0x80),
-            0.0,
-        );
+    append_graph_nodes(
+        ui,
+        graph_host,
+        sidebar,
+        Rc::clone(&graph),
+        Rc::clone(&selected_element),
+    );
+    {
+        let graph = graph.borrow();
+        append_graph_ports(ui, graph_host, &graph);
+        append_inspector(ui, sidebar, &graph);
+    }
+}
+
+fn refresh_inspector(ui: &mut Ui, sidebar: ElementId, graph: &DemoGraph) {
+    clear_children(ui, sidebar);
+    append_inspector(ui, sidebar, graph);
+}
+
+fn clear_children(ui: &mut Ui, parent: ElementId) {
+    let children = ui
+        .get(parent)
+        .map(|element| element.children().to_vec())
+        .unwrap_or_default();
+    for child in children {
+        if ui.get(child).is_some() {
+            ui.remove(child);
+        }
+    }
+}
+
+fn pan_graph_view(
+    ui: &mut Ui,
+    event: DragEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+) {
+    if !matches!(event.phase, Phase::Capture | Phase::Target) {
+        return;
+    }
+    if event.delta.hypot() <= 0.0 {
+        return;
+    }
+
+    let _ = ui.capture_pointer(graph_host);
+    {
+        let mut graph = graph.borrow_mut();
+        graph
+            .session
+            .update_viewport(|viewport| viewport.pan_by_view(event.delta));
+        graph.rebuild_computed();
+    }
+    refresh_graph_view(ui, graph_host, sidebar, graph, selected_element);
+    event.mark_handled();
+    event.stop_propagation();
+}
+
+fn zoom_graph_view(
+    ui: &mut Ui,
+    event: ScrollEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+) {
+    if !matches!(event.phase, Phase::Capture | Phase::Target) {
+        return;
+    }
+    let delta = event.logical_delta(Vec2::new(48.0, 48.0), Vec2::new(260.0, 260.0));
+    let amount = if delta.y.abs() >= delta.x.abs() {
+        delta.y
+    } else {
+        delta.x
+    };
+    if amount.abs() <= 0.01 {
+        return;
+    }
+
+    let anchor = local_point(ui, graph_host, event.position);
+    let factor = (-amount * ZOOM_SENSITIVITY).exp().clamp(0.2, 5.0);
+    {
+        let mut graph = graph.borrow_mut();
+        graph
+            .session
+            .update_viewport(|viewport| viewport.zoom_about_view_point(anchor, factor));
+        graph.rebuild_computed();
+    }
+    refresh_graph_view(ui, graph_host, sidebar, graph, selected_element);
+    event.mark_handled();
+    event.stop_propagation();
+}
+
+fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
+    let bounds = ui.effective_bounds(parent);
+    Point::new(position.x - bounds.x0, position.y - bounds.y0)
+}
+
+fn append_grid(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
+    let viewport = graph.session.viewport();
+    let visible = graph.session.visible_world_rect();
+    let spacing = viewport.suggest_grid_spacing(48.0).max(1.0);
+    append_grid_axis(ui, parent, graph, visible.x0, visible.x1, spacing, true);
+    append_grid_axis(ui, parent, graph, visible.y0, visible.y1, spacing, false);
+}
+
+fn append_grid_axis(
+    ui: &mut Ui,
+    parent: ElementId,
+    graph: &DemoGraph,
+    start: f64,
+    end: f64,
+    spacing: f64,
+    vertical: bool,
+) {
+    let mut world = (start / spacing).floor() * spacing;
+    let mut count = 0;
+    while world <= end && count < GRID_LINE_LIMIT {
+        let index = (world / spacing).round();
+        let major = ((index / 5.0) - (index / 5.0).round()).abs() <= 0.001;
+        let color = if major {
+            Color::from_rgba8(0x46, 0x48, 0x58, 0x92)
+        } else {
+            Color::from_rgba8(0x31, 0x31, 0x3d, 0x72)
+        };
+        let view = if vertical {
+            graph
+                .session
+                .viewport()
+                .world_to_view_point(Point::new(world, 0.0))
+                .x
+        } else {
+            graph
+                .session
+                .viewport()
+                .world_to_view_point(Point::new(0.0, world))
+                .y
+        };
+        let rect = if vertical {
+            Rect::new(view, GRAPH_VIEW.y0, view + 1.0, GRAPH_VIEW.y1)
+        } else {
+            Rect::new(GRAPH_VIEW.x0, view, GRAPH_VIEW.x1, view + 1.0)
+        };
+        append_rect(ui, parent, rect, color, 0.0);
+        world += spacing;
+        count += 1;
     }
 }
 
@@ -362,6 +599,7 @@ fn append_graph_edges(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
 fn append_graph_nodes(
     ui: &mut Ui,
     parent: ElementId,
+    sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
 ) {
@@ -409,6 +647,7 @@ fn append_graph_nodes(
                 event,
                 node,
                 meta.accent,
+                sidebar,
                 Rc::clone(&selected_for_handler),
                 Rc::clone(&graph_for_handler),
             );
@@ -464,7 +703,13 @@ fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
     );
     let visible_world = graph.session.visible_world_rect();
     let zoom = graph.session.viewport().zoom();
+    let selected = graph
+        .doc
+        .node(graph.selected)
+        .map(|node| node.meta.title)
+        .unwrap_or("none");
     for line in [
+        format!("selected: {selected}"),
         format!("nodes: {}", graph.doc.node_count()),
         format!("ports: {}", graph.doc.port_count()),
         format!("edges: {}", graph.doc.edge_count()),
@@ -490,6 +735,7 @@ fn select_node(
     event: ClickEvent<'_>,
     node: NodeId,
     accent: Color,
+    sidebar: ElementId,
     selected_element: Rc<Cell<Option<ElementId>>>,
     graph: Rc<RefCell<DemoGraph>>,
 ) {
@@ -503,10 +749,14 @@ fn select_node(
     {
         style_node(ui, previous, previous_data.meta.accent, false);
     }
-    graph.borrow_mut().selected = node;
-    graph.borrow_mut().session.update_selection(|selection| {
-        let _ = selection.select_only(GraphElementId::Node(node));
-    });
+    {
+        let mut graph = graph.borrow_mut();
+        graph.selected = node;
+        graph.session.update_selection(|selection| {
+            let _ = selection.select_only(GraphElementId::Node(node));
+        });
+        refresh_inspector(ui, sidebar, &graph);
+    }
     style_node(ui, event.current, accent, true);
     event.mark_handled();
 }
