@@ -980,7 +980,7 @@ fn start_node_drag(
     graph: Rc<RefCell<DemoGraph>>,
     active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
-    if !matches!(event.phase, Phase::Target) {
+    if !matches!(event.phase, Phase::Target | Phase::Bubble) {
         return;
     }
     let Some(position) = event.position else {
