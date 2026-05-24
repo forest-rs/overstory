@@ -66,7 +66,9 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// Pure template parts should usually return `None` and rely on
     /// the element's owner-local `PartTag` instead. That keeps parts
     /// from becoming accidental app-wide control types.
-    fn type_tag(&self) -> Option<TypeTag>;
+    fn type_tag(&self) -> Option<TypeTag> {
+        None
+    }
 
     /// Resolves drawing intent into the presentation store. The
     /// default implementation runs [`present_surface`], which reads
