@@ -8,15 +8,15 @@ use std::rc::Rc;
 
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
-    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase, ScrollEvent, Text,
-    Tooltip, Ui, Widget, theme,
+    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase,
+    PointerRoutedEvent, ScrollEvent, Text, Tooltip, Ui, Widget, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_node_graph::{
-    GraphComputed, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection, GraphSession,
-    NodeData, NodeId, NodeView, NoopGraphDeriveObserver, OrthogonalEdgeRouter, PortDirection,
-    PortId, PortView,
+    EdgePreviewTarget, GraphComputed, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
+    GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver,
+    OrthogonalEdgeRouter, PortDirection, PortId, PortView,
 };
 use understory_view2d::{ClampMode, FitMode};
 
@@ -26,6 +26,12 @@ const EDGE_THICKNESS: f64 = 4.0;
 const GRID_LINE_LIMIT: usize = 240;
 const PORT_RADIUS: f64 = 7.0;
 const ZOOM_SENSITIVITY: f64 = 0.0015;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GraphGesture {
+    DragNode(NodeId),
+    CreateEdge(PortId),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ValueKind {
@@ -151,6 +157,7 @@ fn build_ui() -> Ui {
 
     let graph = Rc::new(RefCell::new(build_demo_graph()));
     let selected_element = Rc::new(Cell::new(None));
+    let active_gesture = Rc::new(Cell::new(None));
 
     let title_panel = ui.append(
         root,
@@ -217,6 +224,7 @@ fn build_ui() -> Ui {
         sidebar,
         Rc::clone(&graph),
         Rc::clone(&selected_element),
+        Rc::clone(&active_gesture),
     );
     refresh_graph_view(
         &mut ui,
@@ -224,6 +232,7 @@ fn build_ui() -> Ui {
         sidebar,
         Rc::clone(&graph),
         Rc::clone(&selected_element),
+        Rc::clone(&active_gesture),
     );
     ui.set_cascade(theme::default_cascade(ui.properties()));
 
@@ -386,22 +395,26 @@ fn install_viewport_interaction(
     sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
     let drag_graph = Rc::clone(&graph);
     let drag_selected = Rc::clone(&selected_element);
+    let drag_gesture = Rc::clone(&active_gesture);
     ui.on_drag(graph_host, move |ui, event| {
-        pan_graph_view(
+        drag_graph_view(
             ui,
             event,
             graph_host,
             sidebar,
             Rc::clone(&drag_graph),
             Rc::clone(&drag_selected),
+            Rc::clone(&drag_gesture),
         );
     });
 
     let scroll_graph = Rc::clone(&graph);
     let scroll_selected = Rc::clone(&selected_element);
+    let scroll_gesture = Rc::clone(&active_gesture);
     ui.on_scroll(graph_host, move |ui, event| {
         zoom_graph_view(
             ui,
@@ -410,6 +423,37 @@ fn install_viewport_interaction(
             sidebar,
             Rc::clone(&scroll_graph),
             Rc::clone(&scroll_selected),
+            Rc::clone(&scroll_gesture),
+        );
+    });
+
+    let up_graph = Rc::clone(&graph);
+    let up_selected = Rc::clone(&selected_element);
+    let up_gesture = Rc::clone(&active_gesture);
+    ui.on_pointer_up(graph_host, move |ui, event| {
+        finish_graph_gesture(
+            ui,
+            event,
+            graph_host,
+            sidebar,
+            Rc::clone(&up_graph),
+            Rc::clone(&up_selected),
+            Rc::clone(&up_gesture),
+        );
+    });
+
+    let cancel_graph = Rc::clone(&graph);
+    let cancel_selected = Rc::clone(&selected_element);
+    let cancel_gesture = Rc::clone(&active_gesture);
+    ui.on_pointer_cancel(graph_host, move |ui, event| {
+        cancel_graph_gesture(
+            ui,
+            event,
+            graph_host,
+            sidebar,
+            Rc::clone(&cancel_graph),
+            Rc::clone(&cancel_selected),
+            Rc::clone(&cancel_gesture),
         );
     });
 }
@@ -420,6 +464,7 @@ fn refresh_graph_view(
     sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
     selected_element.set(None);
     clear_children(ui, graph_host);
@@ -429,6 +474,7 @@ fn refresh_graph_view(
         let graph = graph.borrow();
         append_grid(ui, graph_host, &graph);
         append_graph_edges(ui, graph_host, &graph);
+        append_graph_preview(ui, graph_host, &graph);
     }
     append_graph_nodes(
         ui,
@@ -436,10 +482,18 @@ fn refresh_graph_view(
         sidebar,
         Rc::clone(&graph),
         Rc::clone(&selected_element),
+        Rc::clone(&active_gesture),
+    );
+    append_graph_ports(
+        ui,
+        graph_host,
+        sidebar,
+        Rc::clone(&graph),
+        Rc::clone(&selected_element),
+        active_gesture,
     );
     {
         let graph = graph.borrow();
-        append_graph_ports(ui, graph_host, &graph);
         append_inspector(ui, sidebar, &graph);
     }
 }
@@ -461,13 +515,14 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
     }
 }
 
-fn pan_graph_view(
+fn drag_graph_view(
     ui: &mut Ui,
     event: DragEvent<'_>,
     graph_host: ElementId,
     sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
     if !matches!(event.phase, Phase::Capture | Phase::Target) {
         return;
@@ -477,14 +532,44 @@ fn pan_graph_view(
     }
 
     let _ = ui.capture_pointer(graph_host);
-    {
-        let mut graph = graph.borrow_mut();
-        graph
-            .session
-            .update_viewport(|viewport| viewport.pan_by_view(event.delta));
-        graph.rebuild_computed();
+    match active_gesture.get() {
+        Some(GraphGesture::DragNode(node)) => {
+            let mut graph = graph.borrow_mut();
+            move_node_by_view_delta(&mut graph, node, event.delta);
+            graph.rebuild_computed();
+        }
+        Some(GraphGesture::CreateEdge(port)) => {
+            let pointer = local_point(ui, graph_host, event.position);
+            let mut graph = graph.borrow_mut();
+            let hover = graph.computed.hit_test_view(
+                &graph.doc,
+                &graph.projection,
+                &graph.session,
+                pointer,
+            );
+            graph.session.set_hover(hover);
+            graph.session.set_interaction(InteractionState::CreateEdge {
+                from: port,
+                pointer,
+            });
+            graph.rebuild_computed();
+        }
+        None => {
+            let mut graph = graph.borrow_mut();
+            graph
+                .session
+                .update_viewport(|viewport| viewport.pan_by_view(event.delta));
+            graph.rebuild_computed();
+        }
     }
-    refresh_graph_view(ui, graph_host, sidebar, graph, selected_element);
+    refresh_graph_view(
+        ui,
+        graph_host,
+        sidebar,
+        graph,
+        selected_element,
+        active_gesture,
+    );
     event.mark_handled();
     event.stop_propagation();
 }
@@ -496,8 +581,12 @@ fn zoom_graph_view(
     sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
     if !matches!(event.phase, Phase::Capture | Phase::Target) {
+        return;
+    }
+    if active_gesture.get().is_some() {
         return;
     }
     let delta = event.logical_delta(Vec2::new(48.0, 48.0), Vec2::new(260.0, 260.0));
@@ -519,9 +608,120 @@ fn zoom_graph_view(
             .update_viewport(|viewport| viewport.zoom_about_view_point(anchor, factor));
         graph.rebuild_computed();
     }
-    refresh_graph_view(ui, graph_host, sidebar, graph, selected_element);
+    refresh_graph_view(
+        ui,
+        graph_host,
+        sidebar,
+        graph,
+        selected_element,
+        active_gesture,
+    );
     event.mark_handled();
     event.stop_propagation();
+}
+
+fn move_node_by_view_delta(graph: &mut DemoGraph, node: NodeId, delta: Vec2) {
+    let Some(mut view) = graph.projection.node_view(node).cloned() else {
+        return;
+    };
+    let scale = graph.session.viewport().world_units_per_pixel();
+    view.origin += delta * scale;
+    let _ = graph.projection.set_node_view(node, view);
+}
+
+fn finish_graph_gesture(
+    ui: &mut Ui,
+    event: PointerRoutedEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
+) {
+    if !matches!(event.phase, Phase::Target) {
+        return;
+    }
+    let Some(gesture) = active_gesture.replace(None) else {
+        return;
+    };
+
+    match gesture {
+        GraphGesture::CreateEdge(from) => {
+            let mut graph = graph.borrow_mut();
+            if let Some(position) = event.position {
+                let point = local_point(ui, graph_host, position);
+                let target = graph.computed.hit_test_view(
+                    &graph.doc,
+                    &graph.projection,
+                    &graph.session,
+                    point,
+                );
+                if let Some(HitTarget::Port(to)) = target
+                    && from != to
+                    && !edge_exists(&graph.doc, from, to)
+                {
+                    let _ = graph.doc.add_edge(from, to, ());
+                }
+            }
+            graph.session.set_hover(None);
+            graph.session.set_interaction(InteractionState::Idle);
+            graph.rebuild_computed();
+        }
+        GraphGesture::DragNode(_) => {
+            let mut graph = graph.borrow_mut();
+            graph.session.set_hover(None);
+            graph.session.set_interaction(InteractionState::Idle);
+            graph.rebuild_computed();
+        }
+    }
+
+    refresh_graph_view(
+        ui,
+        graph_host,
+        sidebar,
+        graph,
+        selected_element,
+        active_gesture,
+    );
+    event.mark_handled();
+}
+
+fn cancel_graph_gesture(
+    ui: &mut Ui,
+    event: PointerRoutedEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
+) {
+    if !matches!(event.phase, Phase::Target) {
+        return;
+    }
+    if active_gesture.replace(None).is_none() {
+        return;
+    }
+    {
+        let mut graph = graph.borrow_mut();
+        graph.session.set_hover(None);
+        graph.session.set_interaction(InteractionState::Idle);
+        graph.rebuild_computed();
+    }
+    refresh_graph_view(
+        ui,
+        graph_host,
+        sidebar,
+        graph,
+        selected_element,
+        active_gesture,
+    );
+    event.mark_handled();
+}
+
+fn edge_exists(graph: &DemoDoc, output: PortId, input: PortId) -> bool {
+    graph
+        .iter_edges()
+        .any(|(_, edge)| edge.output == output && edge.input == input)
 }
 
 fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
@@ -602,6 +802,7 @@ fn append_graph_nodes(
     sidebar: ElementId,
     graph: Rc<RefCell<DemoGraph>>,
     selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
 ) {
     let nodes = {
         let graph = graph.borrow();
@@ -641,6 +842,22 @@ fn append_graph_nodes(
         );
         let selected_for_handler = Rc::clone(&selected_element);
         let graph_for_handler = Rc::clone(&graph);
+        let gesture_for_handler = Rc::clone(&active_gesture);
+        ui.on_pointer_down(node_element, move |ui, event| {
+            start_node_drag(
+                ui,
+                event,
+                parent,
+                sidebar,
+                node,
+                meta.accent,
+                Rc::clone(&selected_for_handler),
+                Rc::clone(&graph_for_handler),
+                Rc::clone(&gesture_for_handler),
+            );
+        });
+        let selected_for_handler = Rc::clone(&selected_element);
+        let graph_for_handler = Rc::clone(&graph);
         ui.on_click(node_element, move |ui, event| {
             select_node(
                 ui,
@@ -668,13 +885,31 @@ fn append_graph_nodes(
     }
 }
 
-fn append_graph_ports(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
-    for (port, data) in graph.doc.iter_ports() {
-        let Some(anchor) = graph.computed.port_anchor(port) else {
-            continue;
+fn append_graph_ports(
+    ui: &mut Ui,
+    parent: ElementId,
+    sidebar: ElementId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
+) {
+    let ports = {
+        let graph = graph.borrow();
+        graph
+            .doc
+            .iter_ports()
+            .map(|(port, data)| (port, data.direction, data.meta))
+            .collect::<Vec<_>>()
+    };
+    for (port, direction, meta) in ports {
+        let view = {
+            let graph = graph.borrow();
+            let Some(anchor) = graph.computed.port_anchor(port) else {
+                continue;
+            };
+            graph.session.viewport().world_to_view_point(anchor)
         };
-        let view = graph.session.viewport().world_to_view_point(anchor);
-        let color = data.meta.kind.color();
+        let color = meta.kind.color();
         let port_element = append_rect(
             ui,
             parent,
@@ -689,9 +924,127 @@ fn append_graph_ports(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
         );
         ui.set_tooltip(
             port_element,
-            Tooltip::new(format!("{} {}", data.meta.kind, data.meta.label)),
+            Tooltip::new(format!("{} {}", meta.kind, meta.label)),
         );
+        if matches!(direction, PortDirection::Output) {
+            let graph_for_handler = Rc::clone(&graph);
+            let selected_for_handler = Rc::clone(&selected_element);
+            let gesture_for_handler = Rc::clone(&active_gesture);
+            ui.on_pointer_down(port_element, move |ui, event| {
+                start_port_drag(
+                    ui,
+                    event,
+                    parent,
+                    sidebar,
+                    port,
+                    Rc::clone(&graph_for_handler),
+                    Rc::clone(&selected_for_handler),
+                    Rc::clone(&gesture_for_handler),
+                );
+            });
+        }
     }
+}
+
+fn append_graph_preview(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
+    let Some(preview) = graph.computed.preview() else {
+        return;
+    };
+    let color = match preview.target {
+        EdgePreviewTarget::Port {
+            compatible: true, ..
+        } => Color::from_rgba8(0x70, 0xe2, 0x9a, 0xff),
+        EdgePreviewTarget::Port {
+            compatible: false, ..
+        } => Color::from_rgba8(0xff, 0x66, 0x78, 0xff),
+        EdgePreviewTarget::Pointer(_) => Color::from_rgba8(0xf2, 0xf4, 0xff, 0xc8),
+    };
+    for points in preview.route.points.windows(2) {
+        let start = graph.session.viewport().world_to_view_point(points[0]);
+        let end = graph.session.viewport().world_to_view_point(points[1]);
+        if (start - end).hypot() <= 0.5 {
+            continue;
+        }
+        append_edge_segment_with_color(ui, parent, start, end, color);
+    }
+}
+
+fn start_node_drag(
+    ui: &mut Ui,
+    event: PointerRoutedEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    node: NodeId,
+    accent: Color,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+    graph: Rc<RefCell<DemoGraph>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
+) {
+    if !matches!(event.phase, Phase::Target) {
+        return;
+    }
+    let Some(position) = event.position else {
+        return;
+    };
+    active_gesture.set(Some(GraphGesture::DragNode(node)));
+    let _ = ui.capture_pointer(graph_host);
+
+    let previous_node = graph.borrow().selected;
+    if let Some(previous) = selected_element.replace(Some(event.current))
+        && ui.get(previous).is_some()
+        && let Some(previous_data) = graph.borrow().doc.node(previous_node)
+    {
+        style_node(ui, previous, previous_data.meta.accent, false);
+    }
+    {
+        let mut graph = graph.borrow_mut();
+        graph.selected = node;
+        graph.session.update_selection(|selection| {
+            let _ = selection.select_only(GraphElementId::Node(node));
+        });
+        graph.session.set_interaction(InteractionState::DragNode {
+            node,
+            pointer_origin: local_point(ui, graph_host, position),
+        });
+        refresh_inspector(ui, sidebar, &graph);
+    }
+    style_node(ui, event.current, accent, true);
+}
+
+fn start_port_drag(
+    ui: &mut Ui,
+    event: PointerRoutedEvent<'_>,
+    graph_host: ElementId,
+    sidebar: ElementId,
+    port: PortId,
+    graph: Rc<RefCell<DemoGraph>>,
+    selected_element: Rc<Cell<Option<ElementId>>>,
+    active_gesture: Rc<Cell<Option<GraphGesture>>>,
+) {
+    if !matches!(event.phase, Phase::Target) {
+        return;
+    }
+    let Some(position) = event.position else {
+        return;
+    };
+    active_gesture.set(Some(GraphGesture::CreateEdge(port)));
+    let _ = ui.capture_pointer(graph_host);
+    {
+        let mut graph = graph.borrow_mut();
+        graph.session.set_interaction(InteractionState::CreateEdge {
+            from: port,
+            pointer: local_point(ui, graph_host, position),
+        });
+        graph.rebuild_computed();
+    }
+    refresh_graph_view(
+        ui,
+        graph_host,
+        sidebar,
+        graph,
+        selected_element,
+        active_gesture,
+    );
 }
 
 fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
@@ -762,6 +1115,22 @@ fn select_node(
 }
 
 fn append_edge_segment(ui: &mut Ui, parent: ElementId, start: Point, end: Point) {
+    append_edge_segment_with_color(
+        ui,
+        parent,
+        start,
+        end,
+        Color::from_rgba8(0x62, 0xd8, 0xff, 0xff),
+    );
+}
+
+fn append_edge_segment_with_color(
+    ui: &mut Ui,
+    parent: ElementId,
+    start: Point,
+    end: Point,
+    color: Color,
+) {
     let horizontal = (start.x - end.x).abs() >= (start.y - end.y).abs();
     let half = EDGE_THICKNESS * 0.5;
     let rect = if horizontal {
@@ -779,13 +1148,7 @@ fn append_edge_segment(ui: &mut Ui, parent: ElementId, start: Point, end: Point)
             start.y.max(end.y),
         )
     };
-    append_rect(
-        ui,
-        parent,
-        rect,
-        Color::from_rgba8(0x62, 0xd8, 0xff, 0xff),
-        EDGE_THICKNESS * 0.5,
-    );
+    append_rect(ui, parent, rect, color, EDGE_THICKNESS * 0.5);
 }
 
 fn append_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color, radius: f64) -> ElementId {
