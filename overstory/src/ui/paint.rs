@@ -5,7 +5,7 @@
 
 use core::cell::RefCell;
 
-use imaging::record::{Clip, Geometry, Scene};
+use imaging::record::Scene;
 use kurbo::{Affine, Rect};
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
@@ -132,9 +132,9 @@ impl Ui {
     ///    primitives into [`PresentationStore`].
     /// 3. Drain the presentation store's dirty set (callers can hook
     ///    in here later for damage-driven re-lowering).
-    /// 4. Walk the box tree depth-first into the root composition surface; at
-    ///    each node, look up its presentation primitives and lower them — fill
-    ///    surfaces, shape and paint text — using the box tree's world bounds.
+    /// 4. Rebuild each PAINT-dirty element's composition surface in
+    ///    layer-local coordinates, lowering only the element's own
+    ///    presentation primitives.
     /// 5. Traverse the Subduction layer tree, appending attached software
     ///    surfaces into `output` through layer transforms and clips.
     /// 6. Clear COMPOSE.
@@ -150,7 +150,7 @@ impl Ui {
         self.presentation.commit();
         self.flush_composition();
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
-        for id in dirty {
+        for &id in &dirty {
             self.present_element(id);
         }
         // We don't yet drive incremental re-lowering off this, but
@@ -158,17 +158,15 @@ impl Ui {
         let _: Vec<NodeId> = self.presentation.drain_dirty();
 
         self.composition.clear_surface_updates();
-        let Some(root_surface) = self.composition.surface_for(self.root()) else {
-            output.clear();
-            self.invalidation.clear(COMPOSE);
-            return;
-        };
-        let mut root_scene = self.composition.take_surface(root_surface);
-        root_scene.clear();
-        if let Some(root_box) = self.box_for(self.root()) {
-            self.lower_subtree(root_box, &mut root_scene);
+        for id in dirty {
+            let Some(surface) = self.composition.surface_for(id) else {
+                continue;
+            };
+            let mut scene = self.composition.take_surface(surface);
+            scene.clear();
+            self.lower_element_surface(id, &mut scene);
+            self.composition.restore_surface(surface, scene);
         }
-        self.composition.restore_surface(root_surface, root_scene);
         self.composition.render_into(output);
         self.invalidation.clear(COMPOSE);
     }
@@ -216,36 +214,14 @@ impl Ui {
         }
     }
 
-    /// Recursively walks the box tree depth-first, lowering each
-    /// node's presentation primitives into `output` at its world
-    /// bounds.
-    fn lower_subtree(&self, node: NodeId, output: &mut Scene) {
-        let clip = self.presentation.local_clip(node).flatten();
-        let had_clip = clip.is_some();
-        if let Some(clip) = clip {
-            output.push_clip(Clip::Fill {
-                transform: self
-                    .presentation
-                    .world_transform(node)
-                    .unwrap_or(Affine::IDENTITY),
-                shape: Geometry::RoundedRect(clip),
-                fill_rule: peniko::Fill::NonZero,
-            });
-        }
-        self.lower_one(node, output);
-        let children: Vec<NodeId> = self.presentation.children_of(node).to_vec();
-        for child in children {
-            self.lower_subtree(child, output);
-        }
-        if had_clip {
-            output.pop_clip();
-        }
-    }
-
-    fn lower_one(&self, node: NodeId, output: &mut Scene) {
-        let Some(bounds) = self.presentation.world_bounds(node) else {
+    fn lower_element_surface(&self, id: ElementId, output: &mut Scene) {
+        let Some(node) = self.box_for(id) else {
             return;
         };
+        let Some(size) = self.composition.bounds_for(id) else {
+            return;
+        };
+        let bounds = Rect::from_origin_size((0.0, 0.0), size);
         if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
             return;
         }

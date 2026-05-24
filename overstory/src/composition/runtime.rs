@@ -78,21 +78,20 @@ impl CompositionRuntime {
         }
     }
 
-    /// Inserts a layer for `id`, optionally parented under `parent`.
+    /// Inserts a layer and attached software surface for `id`, optionally
+    /// parented under `parent`.
     pub(crate) fn insert_element(&mut self, id: ElementId, parent: Option<ElementId>) {
         let layer = self.layers.create_layer();
         self.layers.set_hit_policy(layer, HitPolicy::Region);
         if let Some(parent_layer) = parent.and_then(|parent| self.element_to_layer.get(&parent)) {
             self.layers.add_child(*parent_layer, layer);
         }
-        if parent.is_none() {
-            let surface = self.surface_ids.create();
-            self.layers.set_content(layer, Some(surface));
-            self.element_to_surface.insert(id, surface);
-            self.surfaces.insert(surface, Scene::new());
-        }
+        let surface = self.surface_ids.create();
+        self.layers.set_content(layer, Some(surface));
         self.element_to_layer.insert(id, layer);
         self.layer_to_element.insert(layer, id);
+        self.element_to_surface.insert(id, surface);
+        self.surfaces.insert(surface, Scene::new());
     }
 
     /// Removes the layer for `id` and any remaining descendant layers.
@@ -130,6 +129,11 @@ impl CompositionRuntime {
     /// Returns the software content surface corresponding to `id`.
     pub(crate) fn surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         self.element_to_surface.get(&id).copied()
+    }
+
+    /// Returns the compositor-local bounds size for `id`.
+    pub(crate) fn bounds_for(&self, id: ElementId) -> Option<Size> {
+        self.layer_for(id).map(|layer| self.layers.bounds(layer))
     }
 
     /// Returns a retained software scene for `surface`.

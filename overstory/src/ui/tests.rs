@@ -2626,6 +2626,84 @@ fn paint_rebuilds_root_composition_surface() {
 }
 
 #[test]
+fn paint_rebuilds_child_composition_surfaces() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(0.0).logical_size(40.0, 40.0));
+    let child = ui.insert_child(root);
+    ui.set_layout(child, Layout::new().logical_size(20.0, 20.0));
+    ui.set_local(
+        child,
+        ui.properties().background,
+        Some(Brush::Solid(Color::from_rgba8(0x00, 0xff, 0x00, 0xff))),
+    );
+    ui.compute_layout(Size::new(40.0, 40.0));
+
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let child_layer = ui.composition.layer_for(child).unwrap();
+    let child_surface = ui.composition.surface_for(child).unwrap();
+    assert_eq!(
+        ui.composition_layers().content(child_layer),
+        Some(child_surface)
+    );
+    assert!(!ui.composition.surface(child_surface).unwrap().is_empty());
+    assert!(
+        ui.composition_surface_updates()
+            .any(|surface| surface.surface() == child_surface)
+    );
+    assert!(!output.is_empty());
+
+    ui.set_local(
+        child,
+        ui.properties().background,
+        Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0x00, 0xff))),
+    );
+    ui.paint(&mut output);
+    let updates: Vec<_> = ui
+        .composition_surface_updates()
+        .map(|surface| surface.surface())
+        .collect();
+    assert_eq!(updates, vec![child_surface]);
+}
+
+#[test]
+fn scroll_view_clip_applies_to_child_surfaces() {
+    use imaging::record::Command;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(0.0).logical_size(120.0, 80.0));
+    let scroll = ui.append(root, crate::ScrollView::new().size(80.0, 32.0));
+    let child = ui.insert_child(scroll);
+    ui.set_layout(
+        child,
+        Layout::new().logical_size(80.0, 64.0).flex_shrink(0.0),
+    );
+    ui.set_local(
+        child,
+        ui.properties().background,
+        Some(Brush::Solid(Color::from_rgba8(0x00, 0x00, 0xff, 0xff))),
+    );
+
+    ui.compute_layout(Size::new(120.0, 80.0));
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let scroll_layer = ui.composition.layer_for(scroll).unwrap();
+    let child_layer = ui.composition.layer_for(child).unwrap();
+    assert!(ui.composition_layers().clip(scroll_layer).is_some());
+    assert!(ui.composition_layers().content(child_layer).is_some());
+    assert!(
+        output
+            .commands()
+            .iter()
+            .any(|command| matches!(command, Command::PushClip(_)))
+    );
+}
+
+#[test]
 fn press_marks_templated_control_not_inner_part() {
     // Pressing on a templated control's part (Button's label
     // `Text`) should put `:pressed` on the Button itself, not

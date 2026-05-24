@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use hashbrown::HashMap;
-use kurbo::{Affine, Point, Rect, RoundedRect};
+use kurbo::{Point, Rect, RoundedRect};
 use smallvec::SmallVec;
 use understory_box_tree::{Hit, LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
 use understory_presentation::{PresentationNode, PresentationStore};
@@ -85,18 +85,7 @@ impl PresentationRuntime {
         self.tree.set_local_clip(node, clip);
     }
 
-    pub(crate) fn local_clip(&self, node: NodeId) -> Option<Option<RoundedRect>> {
-        self.tree.local_clip(node)
-    }
-
-    pub(crate) fn world_transform(&self, node: NodeId) -> Option<Affine> {
-        self.tree.world_transform(node)
-    }
-
-    pub(crate) fn world_bounds(&self, node: NodeId) -> Option<Rect> {
-        self.tree.world_bounds(node)
-    }
-
+    #[cfg(test)]
     pub(crate) fn children_of(&self, node: NodeId) -> &[NodeId] {
         self.tree.children_of(node)
     }
