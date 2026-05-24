@@ -121,8 +121,8 @@ impl Ui {
         self.text.borrow_mut().with_plain_editor(editor, f)
     }
 
-    /// Runs the present pass and lowers the resulting presentation
-    /// primitives into `output`.
+    /// Runs the present pass, rebuilds composition surface contents, and
+    /// composites the layer tree into `output`.
     ///
     /// Steps:
     ///
@@ -132,10 +132,12 @@ impl Ui {
     ///    primitives into [`PresentationStore`].
     /// 3. Drain the presentation store's dirty set (callers can hook
     ///    in here later for damage-driven re-lowering).
-    /// 4. Walk the box tree depth-first; at each node, look up its
-    ///    presentation primitives and lower them — fill surfaces,
-    ///    shape and paint text — using the box tree's world bounds.
-    /// 5. Clear COMPOSE.
+    /// 4. Walk the box tree depth-first into the root composition surface; at
+    ///    each node, look up its presentation primitives and lower them — fill
+    ///    surfaces, shape and paint text — using the box tree's world bounds.
+    /// 5. Traverse the Subduction layer tree, appending attached software
+    ///    surfaces into `output` through layer transforms and clips.
+    /// 6. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
         self.flush_bindings();
         self.flush_style();
@@ -155,10 +157,19 @@ impl Ui {
         // draining keeps the dirty set bounded.
         let _: Vec<NodeId> = self.presentation.drain_dirty();
 
-        output.clear();
+        self.composition.clear_surface_updates();
+        let Some(root_surface) = self.composition.surface_for(self.root()) else {
+            output.clear();
+            self.invalidation.clear(COMPOSE);
+            return;
+        };
+        let mut root_scene = self.composition.take_surface(root_surface);
+        root_scene.clear();
         if let Some(root_box) = self.box_for(self.root()) {
-            self.lower_subtree(root_box, output);
+            self.lower_subtree(root_box, &mut root_scene);
         }
+        self.composition.restore_surface(root_surface, root_scene);
+        self.composition.render_into(output);
         self.invalidation.clear(COMPOSE);
     }
 

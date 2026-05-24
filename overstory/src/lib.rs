@@ -27,7 +27,7 @@ extern crate alloc;
 mod behavior;
 mod binding_runtime;
 pub mod channels;
-mod composition_runtime;
+mod composition;
 mod controls;
 mod element;
 mod element_store;
@@ -53,6 +53,7 @@ mod widget;
 pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
 };
+pub use composition::CompositionSurface;
 pub use controls::button::{
     Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };

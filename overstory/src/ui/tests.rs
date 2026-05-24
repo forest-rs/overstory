@@ -2590,6 +2590,42 @@ fn composition_layer_is_destroyed_with_element() {
 }
 
 #[test]
+fn paint_rebuilds_root_composition_surface() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(40.0, 20.0));
+    ui.set_local(
+        root,
+        ui.properties().background,
+        Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff))),
+    );
+    ui.compute_layout(Size::new(40.0, 20.0));
+
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let root_layer = ui.composition.layer_for(root).unwrap();
+    let root_surface = ui.composition.surface_for(root).unwrap();
+    assert_eq!(
+        ui.composition_layers().content(root_layer),
+        Some(root_surface)
+    );
+    assert!(!ui.composition.surface(root_surface).unwrap().is_empty());
+    assert!(!output.is_empty());
+
+    let updates: Vec<_> = ui
+        .composition_surface_updates()
+        .map(|surface| surface.surface())
+        .collect();
+    assert_eq!(updates, vec![root_surface]);
+
+    assert!(
+        ui.composition_surfaces()
+            .any(|surface| surface.surface() == root_surface && !surface.scene().is_empty())
+    );
+}
+
+#[test]
 fn press_marks_templated_control_not_inner_part() {
     // Pressing on a templated control's part (Button's label
     // `Text`) should put `:pressed` on the Button itself, not

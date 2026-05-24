@@ -19,7 +19,7 @@ use understory_property::PropertyRegistry;
 
 use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
-use crate::composition_runtime::CompositionRuntime;
+use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
@@ -280,6 +280,23 @@ impl Ui {
     #[inline]
     pub fn composition_changes(&self) -> &subduction_core::layer::FrameChanges {
         self.composition.last_changes()
+    }
+
+    /// Returns every software scene currently attached to a composition
+    /// surface.
+    ///
+    /// These scenes are keyed by the [`subduction_core::layer::SurfaceId`]
+    /// attached to layers in [`Self::composition_layers`]. Hosts can use this
+    /// as the software content registry until a backend replaces selected
+    /// surfaces with GPU or platform resources.
+    pub fn composition_surfaces(&self) -> impl Iterator<Item = CompositionSurface<'_>> + '_ {
+        self.composition.surfaces()
+    }
+
+    /// Returns surfaces whose software scenes were rewritten by the most
+    /// recent [`Self::paint`] call.
+    pub fn composition_surface_updates(&self) -> impl Iterator<Item = CompositionSurface<'_>> + '_ {
+        self.composition.surface_updates()
     }
 
     /// Evaluates Subduction layer dirty state and refreshes
