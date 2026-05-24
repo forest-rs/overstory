@@ -25,6 +25,7 @@ use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
 use crate::focus_runtime::FocusRuntime;
+use crate::geometry_runtime::GeometryRuntime;
 use crate::layout_runtime::LayoutRuntime;
 use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
@@ -55,7 +56,9 @@ pub struct Ui {
     registry: PropertyRegistry,
     properties: BuiltInProperties,
     invalidation: InvalidationTracker<ElementId>,
-    /// Box-tree geometry, hit testing, and retained presentation data.
+    /// Box-tree geometry, hit testing, spatial index, and focus flags.
+    geometry: GeometryRuntime,
+    /// Retained presentation primitives keyed by geometry nodes.
     presentation: PresentationRuntime,
     /// Compositor-neutral layer topology and geometry.
     composition: CompositionRuntime,
@@ -177,6 +180,7 @@ impl Ui {
             registry,
             properties,
             invalidation,
+            geometry: GeometryRuntime::new(),
             presentation: PresentationRuntime::new(),
             composition: CompositionRuntime::new(),
             style: StyleRuntime::new(),

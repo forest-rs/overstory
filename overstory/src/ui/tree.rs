@@ -186,7 +186,9 @@ impl Ui {
         self.timers.remove_target(id);
         self.focus.remove_target(id);
         self.layout.remove_element(id);
-        self.presentation.remove_element(id);
+        for node in self.geometry.remove_element(id) {
+            self.presentation.remove_node(node);
+        }
         self.composition.remove_element(id);
     }
 
@@ -196,8 +198,8 @@ impl Ui {
         parent: Option<ElementId>,
     ) {
         self.layout.insert_element(id, parent);
-
-        self.presentation.insert_element(id, parent);
+        let node = self.geometry.insert_element(id, parent);
+        self.presentation.insert_node(node, id);
         self.composition.insert_element(id, parent);
     }
 }

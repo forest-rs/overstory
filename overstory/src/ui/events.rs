@@ -137,14 +137,14 @@ impl Ui {
     /// [`understory_focus::DefaultPolicy`] with `WrapMode::Scope` so
     /// focus cycles within the tree. Returns the new focused element.
     pub fn focus_navigate(&mut self, direction: Navigation) -> Option<ElementId> {
-        self.presentation.commit();
+        self.geometry.commit();
         let root_node = self.box_for(self.root())?;
         // Resolve the current focus's node before we borrow `tree`
         // and `focus_buf` to build the FocusSpace.
         let current_node = self.focus.focused().and_then(|id| self.box_for(id));
         let new_node =
             self.focus
-                .navigate(self.presentation.tree(), root_node, current_node, direction);
+                .navigate(self.geometry.tree(), root_node, current_node, direction);
         let new_element = new_node.and_then(|n| self.node_to_element(n));
         self.set_keyboard_focus(new_element);
         new_element

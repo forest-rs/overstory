@@ -152,7 +152,7 @@ impl Ui {
         let Some(primary) = self.box_for(id) else {
             return false;
         };
-        self.presentation
+        self.geometry
             .flags(primary)
             .map(|flags| flags.contains(NodeFlags::FOCUSABLE))
             .unwrap_or(false)
@@ -167,13 +167,13 @@ impl Ui {
         let Some(primary) = self.box_for(id) else {
             return;
         };
-        let mut flags = self.presentation.flags(primary).unwrap_or_default();
+        let mut flags = self.geometry.flags(primary).unwrap_or_default();
         if focusable {
             flags.insert(NodeFlags::FOCUSABLE);
         } else {
             flags.remove(NodeFlags::FOCUSABLE);
         }
-        self.presentation.set_flags(primary, flags);
+        self.geometry.set_flags(primary, flags);
     }
 
     /// Returns whether `id` is currently enabled.
@@ -292,7 +292,7 @@ impl Ui {
     /// pseudoclass state.
     pub(in crate::ui) fn update_hover_at(&mut self, pos: Point) -> bool {
         let path: Vec<ElementId> = self
-            .presentation
+            .geometry
             .hit_test(pos)
             .map(|hit| {
                 hit.path

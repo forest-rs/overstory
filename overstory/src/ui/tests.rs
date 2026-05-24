@@ -2175,7 +2175,7 @@ fn element_to_tree_node_round_trips() {
     // recovers it.
     for elem in [root, a, b] {
         let nodes = ui
-            .presentation
+            .geometry
             .nodes_for(elem)
             .expect("element should have tree nodes");
         assert!(!nodes.is_empty(), "element should have a tree node");
@@ -2186,12 +2186,12 @@ fn element_to_tree_node_round_trips() {
 
     // Tree structure mirrors element-tree structure: `a` and `b`
     // are children of `root`'s tree node.
-    let root_node = ui.presentation.nodes_for(root).unwrap()[0];
-    let a_node = ui.presentation.nodes_for(a).unwrap()[0];
-    let b_node = ui.presentation.nodes_for(b).unwrap()[0];
-    let children = ui.presentation.children_of(root_node);
+    let root_node = ui.geometry.nodes_for(root).unwrap()[0];
+    let a_node = ui.geometry.nodes_for(a).unwrap()[0];
+    let b_node = ui.geometry.nodes_for(b).unwrap()[0];
+    let children = ui.geometry.children_of(root_node);
     assert_eq!(children, &[a_node, b_node]);
-    assert_eq!(ui.presentation.parent_of(a_node), Some(root_node));
+    assert_eq!(ui.geometry.parent_of(a_node), Some(root_node));
 }
 
 #[test]

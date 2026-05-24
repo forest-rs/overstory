@@ -147,7 +147,7 @@ impl Ui {
         // when paint follows layout this is a cheap no-op; tests
         // that paint without layout (or callers exploring partial
         // pipelines) get a correct commit on demand.
-        self.presentation.commit();
+        self.geometry.commit();
         self.flush_composition();
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
         for &id in &dirty {

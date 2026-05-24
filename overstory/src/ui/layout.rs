@@ -44,7 +44,7 @@ impl Ui {
     /// write nothing first.
     #[must_use]
     pub fn hit_test(&self, point: Point) -> Option<ElementId> {
-        let hit = self.presentation.hit_test(point)?;
+        let hit = self.geometry.hit_test(point)?;
         self.node_to_element(hit.node)
     }
 
@@ -53,14 +53,14 @@ impl Ui {
     /// the element id-space (e.g. responder integration).
     #[must_use]
     pub fn node_to_element(&self, node: NodeId) -> Option<ElementId> {
-        self.presentation.node_to_element(node)
+        self.geometry.node_to_element(node)
     }
 
     /// Returns the primary box-tree node for `id`, or `None` for
     /// stale ids.
     #[must_use]
     pub fn box_for(&self, id: ElementId) -> Option<NodeId> {
-        self.presentation.box_for(id)
+        self.geometry.box_for(id)
     }
 
     /// Resolves the effective `Bounds` for `id` through the cascade.
@@ -183,7 +183,7 @@ impl Ui {
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
         // query) reflects this frame's geometry.
-        self.presentation.commit();
+        self.geometry.commit();
         self.flush_composition();
     }
 
@@ -231,9 +231,9 @@ impl Ui {
         // tree root with IDENTITY transform, `local_bounds == world_bounds`
         // and hit testing matches the old element-bounds walk.
         if let Some(primary) = self.box_for(id) {
-            self.presentation.set_local_bounds(primary, rect);
+            self.geometry.set_local_bounds(primary, rect);
             let clip = clips_subtree.then(|| RoundedRect::from_rect(rect, 0.0));
-            self.presentation.set_local_clip(primary, clip);
+            self.geometry.set_local_clip(primary, clip);
         }
         let local_clip = clips_subtree.then(|| {
             RoundedRect::from_rect(
