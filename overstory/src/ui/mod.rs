@@ -19,6 +19,7 @@ use understory_property::PropertyRegistry;
 
 use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::composition_runtime::CompositionRuntime;
 use crate::controls::panel::PanelWidget;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
@@ -56,6 +57,8 @@ pub struct Ui {
     invalidation: InvalidationTracker<ElementId>,
     /// Box-tree geometry, hit testing, and retained presentation data.
     presentation: PresentationRuntime,
+    /// Compositor-neutral layer topology and geometry.
+    composition: CompositionRuntime,
     style: StyleRuntime,
     layout: LayoutRuntime,
     /// Retained default-template expansion data for each templated owner.
@@ -175,6 +178,7 @@ impl Ui {
             properties,
             invalidation,
             presentation: PresentationRuntime::new(),
+            composition: CompositionRuntime::new(),
             style: StyleRuntime::new(),
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
@@ -254,6 +258,34 @@ impl Ui {
     #[inline]
     pub fn invalidation(&self) -> &InvalidationTracker<ElementId> {
         &self.invalidation
+    }
+
+    /// Returns the retained Subduction layer store derived from this UI tree.
+    ///
+    /// Layer state is updated by [`Self::compute_layout`]. Hosts that realize
+    /// compositor-backed presentation can read this store after layout and pass
+    /// it to a Subduction presenter along with the evaluated frame changes.
+    #[must_use]
+    #[inline]
+    pub fn composition_layers(&self) -> &subduction_core::layer::LayerStore {
+        self.composition.layers()
+    }
+
+    /// Returns the most recent evaluated Subduction layer changes.
+    ///
+    /// This is refreshed by [`Self::flush_composition`]. Layout calls flush
+    /// composition after synchronizing geometry, and hosts can explicitly flush
+    /// before applying a Subduction presenter.
+    #[must_use]
+    #[inline]
+    pub fn composition_changes(&self) -> &subduction_core::layer::FrameChanges {
+        self.composition.last_changes()
+    }
+
+    /// Evaluates Subduction layer dirty state and refreshes
+    /// [`Self::composition_changes`].
+    pub fn flush_composition(&mut self) {
+        self.composition.evaluate();
     }
 }
 

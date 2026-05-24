@@ -256,6 +256,9 @@ name = "color"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ec7c5eb7a16992b1904d76c517d170ab353b0e0b3d5a0c81a8a0cd1037893cf"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "combine"
@@ -1548,6 +1551,7 @@ dependencies = [
  "parley",
  "peniko",
  "smallvec",
+ "subduction_core",
  "taffy",
  "ui-events",
  "understory_axis",
@@ -2173,6 +2177,16 @@ name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
+
+[[package]]
+name = "subduction_core"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/subduction.git?rev=fd26c7acb332ff0668a040010093f0c3318233c0#fd26c7acb332ff0668a040010093f0c3318233c0"
+dependencies = [
+ "color",
+ "invalidation",
+ "kurbo",
+]
 
 [[package]]
 name = "svg_fmt"

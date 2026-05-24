@@ -2546,6 +2546,50 @@ fn compute_layout_writes_bounds() {
 }
 
 #[test]
+fn composition_layers_track_layout_geometry() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(
+        root,
+        Layout::flex().logical_size(200.0, 100.0).padding_all(10.0),
+    );
+    let child = ui.insert_child(root);
+    ui.set_layout(child, Layout::new().logical_size(30.0, 20.0));
+
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    let root_layer = ui.composition.layer_for(root).unwrap();
+    let child_layer = ui.composition.layer_for(child).unwrap();
+    let layers = ui.composition_layers();
+
+    assert_eq!(layers.parent(child_layer), Some(root_layer));
+    assert_eq!(layers.bounds(root_layer), Size::new(200.0, 100.0));
+    assert_eq!(layers.bounds(child_layer), Size::new(30.0, 20.0));
+    assert_eq!(
+        layers
+            .world_transform(child_layer)
+            .transform_point(Point::ZERO),
+        Some(Point::new(10.0, 10.0))
+    );
+    assert_eq!(ui.composition.element_for_layer(child_layer), Some(child));
+}
+
+#[test]
+fn composition_layer_is_destroyed_with_element() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let child = ui.insert_child(root);
+    let layer = ui.composition.layer_for(child).unwrap();
+
+    ui.remove(child);
+    ui.flush_composition();
+
+    assert!(ui.composition.layer_for(child).is_none());
+    assert!(!ui.composition_layers().is_alive(layer));
+    assert!(ui.composition_changes().removed.contains(&layer.index()));
+}
+
+#[test]
 fn press_marks_templated_control_not_inner_part() {
     // Pressing on a templated control's part (Button's label
     // `Text`) should put `:pressed` on the Button itself, not

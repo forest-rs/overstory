@@ -179,20 +179,28 @@ impl Ui {
         }
 
         // Walk the tree and write absolute bounds for every element.
-        self.write_bounds_recursive(self.root(), Point::ZERO);
+        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
         // query) reflects this frame's geometry.
         self.presentation.commit();
+        self.flush_composition();
     }
 
-    fn write_bounds_recursive(&mut self, id: ElementId, parent_origin: Point) {
+    fn write_bounds_recursive(
+        &mut self,
+        id: ElementId,
+        parent_origin: Point,
+        parent_child_offset: Vec2,
+    ) {
         let Some(taffy_node) = self.layout.node_for(id) else {
             return;
         };
         let Some(layout) = self.layout.layout(taffy_node) else {
             return;
         };
+        let local_offset = parent_child_offset
+            + Vec2::new(f64::from(layout.location.x), f64::from(layout.location.y));
         let origin = Point::new(
             parent_origin.x + f64::from(layout.location.x),
             parent_origin.y + f64::from(layout.location.y),
@@ -227,6 +235,14 @@ impl Ui {
             let clip = clips_subtree.then(|| RoundedRect::from_rect(rect, 0.0));
             self.presentation.set_local_clip(primary, clip);
         }
+        let local_clip = clips_subtree.then(|| {
+            RoundedRect::from_rect(
+                Rect::from_origin_size((0.0, 0.0), Size::new(rect.width(), rect.height())),
+                0.0,
+            )
+        });
+        self.composition
+            .set_geometry(id, local_offset, rect.size(), local_clip);
 
         let children: Vec<ElementId> = self
             .get(id)
@@ -234,7 +250,7 @@ impl Ui {
             .unwrap_or_default();
         let child_origin = origin + child_offset;
         for child in children {
-            self.write_bounds_recursive(child, child_origin);
+            self.write_bounds_recursive(child, child_origin, child_offset);
         }
 
         if let Some(element) = self.get(id)

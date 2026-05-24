@@ -31,6 +31,7 @@ invalidation = { default-features = false, version = "0.2.0" }
 smallvec = { default-features = false, version = "1.13.2" }
 kurbo = { default-features = true, version = "0.13.1" }
 peniko = { default-features = true, version = "0.6.1" }
+subduction_core = { default-features = false, features = ["std"], git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
 
 # Understory primitives (path deps — closely coupled).
 understory_axis = { default-features = false, path = "../understory/understory_axis" }

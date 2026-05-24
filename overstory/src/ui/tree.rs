@@ -187,6 +187,7 @@ impl Ui {
         self.focus.remove_target(id);
         self.layout.remove_element(id);
         self.presentation.remove_element(id);
+        self.composition.remove_element(id);
     }
 
     pub(in crate::ui) fn mirror_allocated_element(
@@ -197,5 +198,6 @@ impl Ui {
         self.layout.insert_element(id, parent);
 
         self.presentation.insert_element(id, parent);
+        self.composition.insert_element(id, parent);
     }
 }
