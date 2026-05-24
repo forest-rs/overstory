@@ -5,6 +5,7 @@ members = [
     "overstory_demo",
     "overstory_host",
     "overstory_host_winit",
+    "overstory_node_graph_demo",
 ]
 
 [workspace.package]
@@ -39,12 +40,14 @@ understory_box_tree = { default-features = false, features = ["std"], path = "..
 understory_event_state = { default-features = false, features = ["std", "click", "drag"], path = "../understory/understory_event_state" }
 understory_focus = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_focus" }
 understory_presentation = { default-features = false, features = ["std"], path = "../understory/understory_presentation" }
+understory_node_graph = { default-features = false, features = ["std"], path = "../understory/understory_node_graph" }
 understory_property = { default-features = false, path = "../understory/understory_property" }
 understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
 understory_responder = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_responder" }
 understory_selection = { default-features = false, path = "../understory/understory_selection" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
 understory_timing = { default-features = false, path = "../understory/understory_timing" }
+understory_view2d = { default-features = false, features = ["std"], path = "../understory/understory_view2d" }
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["std"], version = "0.0.1" }

@@ -1,0 +1,20 @@
+[package]
+name = "overstory_node_graph_demo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Node graph showcase demo for Overstory and Understory."
+publish = false
+
+[dependencies]
+kurbo.workspace = true
+overstory.workspace = true
+overstory_host_winit.workspace = true
+peniko.workspace = true
+understory_node_graph.workspace = true
+understory_view2d.workspace = true
+
+[lints]
+workspace = true
