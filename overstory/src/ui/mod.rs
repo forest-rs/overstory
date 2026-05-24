@@ -27,17 +27,18 @@ use crate::event_runtime::EventRuntime;
 use crate::focus_runtime::FocusRuntime;
 use crate::geometry_runtime::GeometryRuntime;
 use crate::layout_runtime::LayoutRuntime;
+use crate::overlay::OverlayRuntime;
 use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
 use crate::text::TextEngine;
 use crate::timer_runtime::TimerRuntime;
-use crate::tooltip_runtime::TooltipRuntime;
 
 mod bindings;
 mod events;
 mod layout;
+mod overlays;
 mod paint;
 mod state;
 mod style;
@@ -75,7 +76,8 @@ pub struct Ui {
     events: EventRuntime,
     focus: FocusRuntime,
     timers: TimerRuntime,
-    tooltips: TooltipRuntime,
+    overlays: OverlayRuntime,
+    last_viewport: kurbo::Size,
 }
 
 /// Shared construction-time state for interactive controls.
@@ -194,7 +196,8 @@ impl Ui {
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timers: TimerRuntime::new(),
-            tooltips: TooltipRuntime::default(),
+            overlays: OverlayRuntime::default(),
+            last_viewport: kurbo::Size::ZERO,
         };
         me.mirror_allocated_element(root, None);
         me.style_one(root);

@@ -2775,13 +2775,13 @@ fn tooltip_shows_as_overlay_for_hovered_target() {
     ui.set_tooltip(target, crate::Tooltip::new("Deploys the service"));
 
     ui.compute_layout(Size::new(220.0, 120.0));
-    assert_eq!(ui.tooltips.active(), None);
+    assert_eq!(ui.overlays.active_tooltip(), None);
 
     let result = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
     assert!(result.changed());
     let active = ui
-        .tooltips
-        .active()
+        .overlays
+        .active_tooltip()
         .expect("hovering a tooltip target should create an overlay tooltip");
     assert_eq!(active.target, target);
     assert_eq!(ui.get(active.element).unwrap().parent(), Some(root));
@@ -2809,7 +2809,7 @@ fn tooltip_shows_as_overlay_for_hovered_target() {
 
     let leave = ui.dispatch_pointer_event(&pointer_move(Point::new(180.0, 100.0), 2, false));
     assert!(leave.changed());
-    assert_eq!(ui.tooltips.active(), None);
+    assert_eq!(ui.overlays.active_tooltip(), None);
     assert!(ui.get(active.element).is_none());
 }
 
@@ -2828,7 +2828,7 @@ fn tooltip_attached_to_owner_activates_from_template_part_hover() {
     let _ = ui.dispatch_pointer_event(&pointer_move(center, 1, false));
 
     assert_eq!(
-        ui.tooltips.active().map(|active| active.target),
+        ui.overlays.active_tooltip().map(|active| active.target),
         Some(button),
         "tooltip lookup should walk from hovered template parts to the owning control"
     );
@@ -2847,13 +2847,13 @@ fn tooltip_follows_keyboard_focus_and_clears_with_focus() {
     ui.compute_layout(Size::new(220.0, 120.0));
     assert!(ui.set_focus(Some(target)));
     let active = ui
-        .tooltips
-        .active()
+        .overlays
+        .active_tooltip()
         .expect("focused tooltip target should create an overlay tooltip");
     assert_eq!(active.target, target);
 
     assert!(ui.set_focus(None));
-    assert_eq!(ui.tooltips.active(), None);
+    assert_eq!(ui.overlays.active_tooltip(), None);
     assert!(ui.get(active.element).is_none());
 }
 
@@ -2873,22 +2873,89 @@ fn pointer_leave_does_not_restore_previous_focused_tooltip() {
     ui.compute_layout(Size::new(240.0, 120.0));
     assert!(ui.set_focus(Some(first)));
     assert_eq!(
-        ui.tooltips.active().map(|active| active.target),
+        ui.overlays.active_tooltip().map(|active| active.target),
         Some(first)
     );
 
     let second_center = ui.effective_bounds(second).center();
     let _ = ui.dispatch_pointer_event(&pointer_move(second_center, 1, false));
     assert_eq!(
-        ui.tooltips.active().map(|active| active.target),
+        ui.overlays.active_tooltip().map(|active| active.target),
         Some(second)
     );
 
     let _ = ui.dispatch_pointer_event(&pointer_move(Point::new(220.0, 90.0), 2, false));
     assert_eq!(
-        ui.tooltips.active(),
+        ui.overlays.active_tooltip(),
         None,
         "leaving a hover tooltip should hide it instead of restoring a focused target"
+    );
+}
+
+#[test]
+fn tooltip_placement_flips_when_bottom_would_overflow() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(220.0, 90.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(10.0, 50.0)
+            .logical_size(70.0, 30.0),
+    );
+    ui.set_tooltip(target, crate::Tooltip::new("Near the bottom edge"));
+
+    ui.compute_layout(Size::new(220.0, 90.0));
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(target).center(),
+        1,
+        false,
+    ));
+    ui.compute_layout(Size::new(220.0, 90.0));
+
+    let active = ui.overlays.active_tooltip().unwrap();
+    let target_bounds = ui.effective_bounds(target);
+    let tooltip_bounds = ui.effective_bounds(active.element);
+    assert!(
+        tooltip_bounds.y1 <= target_bounds.y0,
+        "bottom placement should flip above the target when it would overflow"
+    );
+}
+
+#[test]
+fn tooltip_can_be_placed_to_the_right_of_target() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(260.0, 100.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(60.0, 24.0),
+    );
+    ui.set_tooltip(
+        target,
+        crate::Tooltip::new("Side")
+            .placement(crate::Placement::Right)
+            .offset(6.0, 0.0),
+    );
+
+    ui.compute_layout(Size::new(260.0, 100.0));
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(target).center(),
+        1,
+        false,
+    ));
+    ui.compute_layout(Size::new(260.0, 100.0));
+
+    let active = ui.overlays.active_tooltip().unwrap();
+    let target_bounds = ui.effective_bounds(target);
+    let tooltip_bounds = ui.effective_bounds(active.element);
+    assert_eq!(
+        tooltip_bounds.origin(),
+        Point::new(target_bounds.x1 + 6.0, target_bounds.y0)
     );
 }
 

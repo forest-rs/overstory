@@ -38,6 +38,7 @@ mod geometry_runtime;
 mod layout_runtime;
 pub mod layouts;
 mod lookup;
+mod overlay;
 mod presentation_runtime;
 mod properties;
 pub mod pseudos;
@@ -48,7 +49,6 @@ mod template_runtime;
 mod text;
 pub mod theme;
 mod timer_runtime;
-mod tooltip_runtime;
 mod ui;
 mod widget;
 
@@ -113,6 +113,7 @@ pub use event_runtime::{
 pub use generic::present_surface;
 pub use layouts::Layout;
 pub use lookup::{UiResolveLookup, UiStoreLookup};
+pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,

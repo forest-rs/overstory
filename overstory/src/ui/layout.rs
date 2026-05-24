@@ -91,6 +91,19 @@ impl Ui {
     /// `set_local_notifying` path so PAINT cascades naturally for elements
     /// whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
+        self.last_viewport = viewport;
+        self.compute_layout_pass(viewport);
+        if self.reposition_overlays(viewport) {
+            self.compute_layout_pass(viewport);
+        }
+        // Finalize the box tree: refresh world-space data and the
+        // spatial index so the next `hit_test` (or any other tree
+        // query) reflects this frame's geometry.
+        self.geometry.commit();
+        self.flush_composition();
+    }
+
+    fn compute_layout_pass(&mut self, viewport: Size) {
         // Bindings first — they may dirty LAYOUT/PAINT for their targets.
         self.flush_bindings();
         // Push any pending Layout changes into the layout engine. We collect
@@ -180,11 +193,6 @@ impl Ui {
 
         // Walk the tree and write absolute bounds for every element.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
-        // Finalize the box tree: refresh world-space data and the
-        // spatial index so the next `hit_test` (or any other tree
-        // query) reflects this frame's geometry.
-        self.geometry.commit();
-        self.flush_composition();
     }
 
     fn write_bounds_recursive(

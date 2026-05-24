@@ -11,7 +11,7 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 
-use kurbo::{Rect, Size};
+use kurbo::{Point, Size, Vec2};
 use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, TextContent};
@@ -21,6 +21,7 @@ use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
+use crate::overlay::Placement;
 use crate::template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
@@ -41,8 +42,8 @@ pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
 pub struct Tooltip {
     content: String,
     font_size: f64,
-    offset_x: f32,
-    offset_y: f32,
+    placement: Placement,
+    offset: Vec2,
     padding_x: f32,
     padding_y: f32,
 }
@@ -54,8 +55,8 @@ impl Tooltip {
         Self {
             content: content.into(),
             font_size: 13.0,
-            offset_x: 0.0,
-            offset_y: 8.0,
+            placement: Placement::Bottom,
+            offset: Vec2::new(0.0, 8.0),
             padding_x: 10.0,
             padding_y: 6.0,
         }
@@ -68,11 +69,17 @@ impl Tooltip {
         self
     }
 
-    /// Offsets the tooltip from the target element's lower-left corner.
+    /// Sets the tooltip's preferred placement around its target.
+    #[must_use]
+    pub fn placement(mut self, placement: Placement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    /// Offsets the tooltip from the placed edge of the target element.
     #[must_use]
     pub fn offset(mut self, x: f32, y: f32) -> Self {
-        self.offset_x = x;
-        self.offset_y = y;
+        self.offset = Vec2::new(f64::from(x), f64::from(y));
         self
     }
 
@@ -90,17 +97,25 @@ impl Tooltip {
         target
     }
 
-    fn layout_for(&self, target_bounds: Rect) -> Layout {
+    pub(crate) fn placement_value(&self) -> Placement {
+        self.placement
+    }
+
+    pub(crate) fn offset_value(&self) -> Vec2 {
+        self.offset
+    }
+
+    pub(crate) fn layout_for(&self, origin: Point) -> Layout {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "tooltip coordinates fit the layout engine"
         )]
-        let left = target_bounds.x0 as f32 + self.offset_x;
+        let left = origin.x as f32;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "tooltip coordinates fit the layout engine"
         )]
-        let top = target_bounds.y1 as f32 + self.offset_y;
+        let top = origin.y as f32;
         Layout::row(0.0)
             .align_center()
             .absolute_at(left, top)
@@ -110,7 +125,7 @@ impl Tooltip {
 
 impl AppendSpec for Tooltip {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        append_tooltip(ui, parent, &self, Rect::ZERO)
+        append_tooltip(ui, parent, &self, Point::ZERO)
     }
 }
 
@@ -193,25 +208,16 @@ impl Widget for TooltipLabelWidget {
     }
 }
 
-pub(crate) fn append_overlay_tooltip(
-    ui: &mut Ui,
-    tooltip: &Tooltip,
-    target_bounds: Rect,
-) -> ElementId {
-    append_tooltip(ui, ui.root(), tooltip, target_bounds)
+pub(crate) fn append_overlay_tooltip(ui: &mut Ui, tooltip: &Tooltip, origin: Point) -> ElementId {
+    append_tooltip(ui, ui.root(), tooltip, origin)
 }
 
-fn append_tooltip(
-    ui: &mut Ui,
-    parent: ElementId,
-    tooltip: &Tooltip,
-    target_bounds: Rect,
-) -> ElementId {
+fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Point) -> ElementId {
     let id = ui.append_widget(parent, Box::new(TooltipWidget));
     let properties = *ui.properties();
     ui.set_local(id, properties.content, tooltip.content.clone());
     ui.set_local(id, properties.font_size, tooltip.font_size);
-    ui.set_local(id, properties.layout, tooltip.layout_for(target_bounds));
+    ui.set_local(id, properties.layout, tooltip.layout_for(origin));
     id
 }
 

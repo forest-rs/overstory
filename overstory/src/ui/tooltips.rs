@@ -5,6 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
+use crate::overlay::{ActiveOverlay, OverlayKind};
 
 use super::Ui;
 
@@ -18,10 +19,10 @@ impl Ui {
             return;
         }
         let replace_active = self
-            .tooltips
-            .active()
+            .overlays
+            .active_tooltip()
             .is_some_and(|active| active.target == target);
-        self.tooltips.set(target, tooltip);
+        self.overlays.set_tooltip(target, tooltip);
         if replace_active {
             self.hide_active_tooltip();
             self.show_tooltip_for(target);
@@ -32,10 +33,10 @@ impl Ui {
 
     /// Removes any tooltip attached to `target`.
     pub fn clear_tooltip(&mut self, target: ElementId) {
-        if let Some(active) = self.tooltips.remove_target(target)
-            && self.get(active).is_some()
-        {
-            self.remove(active);
+        for element in self.overlays.remove_target(target) {
+            if self.get(element).is_some() {
+                self.remove(element);
+            }
         }
         self.refresh_tooltip_from_focus();
     }
@@ -59,7 +60,7 @@ impl Ui {
     }
 
     fn sync_tooltip(&mut self, requested: Option<ElementId>) -> bool {
-        match (requested, self.tooltips.active()) {
+        match (requested, self.overlays.active_tooltip()) {
             (Some(target), Some(active)) if active.target == target => false,
             (Some(target), _) => {
                 let changed = self.hide_active_tooltip();
@@ -71,18 +72,17 @@ impl Ui {
     }
 
     pub(in crate::ui) fn remove_tooltip_state_for(&mut self, id: ElementId) {
-        let Some(active) = self.tooltips.remove_target(id) else {
-            return;
-        };
-        if active != id && self.get(active).is_some() {
-            self.remove(active);
+        for element in self.overlays.remove_target(id) {
+            if element != id && self.get(element).is_some() {
+                self.remove(element);
+            }
         }
     }
 
     fn tooltip_target_for(&self, start: ElementId) -> Option<ElementId> {
         let mut next = Some(start);
         while let Some(id) = next {
-            if self.tooltips.has_tooltip(id) {
+            if self.overlays.has_tooltip(id) {
                 return Some(id);
             }
             next = self.get(id).and_then(|element| element.parent());
@@ -91,17 +91,26 @@ impl Ui {
     }
 
     fn show_tooltip_for(&mut self, target: ElementId) -> bool {
-        let Some(tooltip) = self.tooltips.tooltip_for(target).cloned() else {
+        let Some(tooltip) = self.overlays.tooltip_for(target).cloned() else {
             return false;
         };
         let bounds = self.effective_bounds(target);
-        let tooltip_element = append_overlay_tooltip(self, &tooltip, bounds);
-        self.tooltips.set_active(target, tooltip_element);
+        let placement = tooltip.placement_value();
+        let offset = tooltip.offset_value();
+        let origin = placement.resolve(bounds, kurbo::Size::ZERO, self.last_viewport, offset);
+        let tooltip_element = append_overlay_tooltip(self, &tooltip, origin);
+        self.overlays.open(ActiveOverlay {
+            kind: OverlayKind::Tooltip,
+            target,
+            element: tooltip_element,
+            placement,
+            offset,
+        });
         true
     }
 
     fn hide_active_tooltip(&mut self) -> bool {
-        let Some(active) = self.tooltips.take_active() else {
+        let Some(active) = self.overlays.take_kind(OverlayKind::Tooltip) else {
             return false;
         };
         if self.get(active.element).is_some() {
