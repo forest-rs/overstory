@@ -2704,6 +2704,68 @@ fn composition_policy_can_make_container_only_layer() {
 }
 
 #[test]
+fn overlay_composition_policy_parents_layer_under_overlay_root() {
+    use crate::widget::{AppendSpec, Widget};
+
+    #[derive(Debug)]
+    struct OverlayWidget;
+
+    impl Widget for OverlayWidget {
+        fn type_tag(&self) -> Option<understory_style::TypeTag> {
+            None
+        }
+
+        fn composition_policy(&self) -> CompositionPolicy {
+            CompositionPolicy::Overlay
+        }
+    }
+
+    struct OverlayOnly;
+
+    impl AppendSpec for OverlayOnly {
+        fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+            ui.append_widget(parent, Box::new(OverlayWidget))
+        }
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(
+        root,
+        Layout::column(0.0)
+            .logical_size(100.0, 100.0)
+            .padding_all(10.0),
+    );
+    let parent = ui.insert_child(root);
+    ui.set_layout(
+        parent,
+        Layout::column(0.0)
+            .logical_size(50.0, 50.0)
+            .padding_all(7.0),
+    );
+    let overlay = ui.append(parent, OverlayOnly);
+    ui.set_layout(overlay, Layout::new().logical_size(10.0, 10.0));
+
+    ui.compute_layout(Size::new(100.0, 100.0));
+
+    let overlay_root = ui
+        .composition
+        .overlay_root()
+        .expect("composition should create an overlay root");
+    let overlay_layer = ui.composition.layer_for(overlay).unwrap();
+    let layers = ui.composition_layers();
+    assert_eq!(layers.parent(overlay_layer), Some(overlay_root));
+    assert_eq!(layers.content(overlay_root), None);
+    assert_eq!(layers.roots().last(), Some(&overlay_root));
+    assert_eq!(
+        layers
+            .world_transform(overlay_layer)
+            .transform_point(Point::ZERO),
+        Some(ui.effective_bounds(overlay).origin())
+    );
+}
+
+#[test]
 fn scroll_view_clip_applies_to_child_surfaces() {
     use imaging::record::Command;
 

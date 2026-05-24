@@ -241,8 +241,13 @@ impl Ui {
                 0.0,
             )
         });
-        self.composition
-            .set_geometry(id, local_offset, rect.size(), local_clip);
+        self.composition.set_geometry(
+            id,
+            local_offset,
+            Vec2::new(rect.x0, rect.y0),
+            rect.size(),
+            local_clip,
+        );
 
         let children: Vec<ElementId> = self
             .get(id)

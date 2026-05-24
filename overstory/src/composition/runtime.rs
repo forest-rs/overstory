@@ -28,6 +28,9 @@ pub enum CompositionPolicy {
     /// software [`imaging::record::Scene`] keyed by the layer's `SurfaceId`.
     #[default]
     Software,
+    /// Record the element into a software scene parented under the overlay
+    /// composition root instead of its element parent's layer.
+    Overlay,
     /// Keep a layer for geometry, clipping, ordering, and descendants, but do
     /// not attach content for the element itself.
     Container,
@@ -38,11 +41,15 @@ pub enum CompositionPolicy {
 
 impl CompositionPolicy {
     fn attaches_surface(self) -> bool {
-        matches!(self, Self::Software | Self::External)
+        matches!(self, Self::Software | Self::Overlay | Self::External)
     }
 
     fn records_software_scene(self) -> bool {
-        matches!(self, Self::Software)
+        matches!(self, Self::Software | Self::Overlay)
+    }
+
+    fn uses_overlay_root(self) -> bool {
+        matches!(self, Self::Overlay)
     }
 }
 
@@ -80,6 +87,8 @@ impl<'a> CompositionSurface<'a> {
 pub(crate) struct CompositionRuntime {
     layers: LayerStore,
     surface_ids: SurfaceIds,
+    main_root: Option<LayerId>,
+    overlay_root: Option<LayerId>,
     element_to_layer: HashMap<ElementId, LayerId>,
     layer_to_element: HashMap<LayerId, ElementId>,
     element_to_policy: HashMap<ElementId, CompositionPolicy>,
@@ -95,6 +104,8 @@ impl CompositionRuntime {
         Self {
             layers: LayerStore::new(),
             surface_ids: SurfaceIds::new(),
+            main_root: None,
+            overlay_root: None,
             element_to_layer: HashMap::new(),
             layer_to_element: HashMap::new(),
             element_to_policy: HashMap::new(),
@@ -115,8 +126,18 @@ impl CompositionRuntime {
     ) {
         let layer = self.layers.create_layer();
         self.layers.set_hit_policy(layer, HitPolicy::Region);
-        if let Some(parent_layer) = parent.and_then(|parent| self.element_to_layer.get(&parent)) {
-            self.layers.add_child(*parent_layer, layer);
+        if parent.is_none() {
+            self.main_root = Some(layer);
+            self.ensure_overlay_root();
+        }
+
+        let composition_parent = if policy.uses_overlay_root() {
+            self.ensure_overlay_root()
+        } else {
+            parent.and_then(|parent| self.element_to_layer.get(&parent).copied())
+        };
+        if let Some(parent_layer) = composition_parent {
+            self.layers.add_child(parent_layer, layer);
         }
         self.element_to_layer.insert(id, layer);
         self.layer_to_element.insert(layer, id);
@@ -129,6 +150,9 @@ impl CompositionRuntime {
         let Some(layer) = self.element_to_layer.remove(&id) else {
             return;
         };
+        if self.main_root == Some(layer) {
+            self.main_root = None;
+        }
         self.layers.destroy_subtree(layer);
         self.element_to_layer
             .retain(|_, candidate| self.layers.is_alive(*candidate));
@@ -136,6 +160,12 @@ impl CompositionRuntime {
             .retain(|candidate, _| self.layers.is_alive(*candidate));
         self.element_to_policy
             .retain(|element, _| self.element_to_layer.contains_key(element));
+        if self
+            .overlay_root
+            .is_some_and(|layer| !self.layers.is_alive(layer))
+        {
+            self.overlay_root = None;
+        }
         let removed_surfaces: Vec<SurfaceId> = self
             .element_to_surface
             .iter()
@@ -177,6 +207,12 @@ impl CompositionRuntime {
     /// Returns the compositor-local bounds size for `id`.
     pub(crate) fn bounds_for(&self, id: ElementId) -> Option<Size> {
         self.layer_for(id).map(|layer| self.layers.bounds(layer))
+    }
+
+    /// Returns the overlay root layer.
+    #[cfg(test)]
+    pub(crate) fn overlay_root(&self) -> Option<LayerId> {
+        self.overlay_root
     }
 
     /// Returns a retained software scene for `surface`.
@@ -248,20 +284,40 @@ impl CompositionRuntime {
         }
     }
 
+    fn ensure_overlay_root(&mut self) -> Option<LayerId> {
+        if let Some(layer) = self.overlay_root
+            && self.layers.is_alive(layer)
+        {
+            return Some(layer);
+        }
+
+        let layer = self.layers.create_layer();
+        self.layers.set_hit_policy(layer, HitPolicy::Disabled);
+        self.overlay_root = Some(layer);
+        Some(layer)
+    }
+
     /// Updates compositor-local geometry for an element layer.
     pub(crate) fn set_geometry(
         &mut self,
         id: ElementId,
         local_offset: Vec2,
+        world_offset: Vec2,
         size: Size,
         clip: Option<RoundedRect>,
     ) {
         let Some(layer) = self.layer_for(id) else {
             return;
         };
+        let policy = self.element_to_policy.get(&id).copied().unwrap_or_default();
+        let layer_offset = if policy.uses_overlay_root() {
+            world_offset
+        } else {
+            local_offset
+        };
         self.layers.set_transform(
             layer,
-            Transform3d::from(Affine::translate((local_offset.x, local_offset.y))),
+            Transform3d::from(Affine::translate((layer_offset.x, layer_offset.y))),
         );
         self.layers.set_bounds(layer, size);
         self.layers.set_hit_region(
@@ -278,6 +334,18 @@ impl CompositionRuntime {
                 ClipShape::RoundedRect(local)
             }),
         );
+        if Some(layer) == self.main_root
+            && let Some(overlay_root) = self.overlay_root
+        {
+            self.layers
+                .set_transform(overlay_root, Transform3d::IDENTITY);
+            self.layers.set_bounds(overlay_root, size);
+            self.layers.set_hit_region(
+                overlay_root,
+                Some(HitRegion::Rect(Rect::from_origin_size((0.0, 0.0), size))),
+            );
+            self.layers.set_clip(overlay_root, None);
+        }
     }
 
     /// Evaluates layer dirty state and stores the latest frame changes.
