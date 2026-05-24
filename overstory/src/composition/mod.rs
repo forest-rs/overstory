@@ -5,7 +5,7 @@
 //!
 //! This module owns the adapter state that turns Overstory's element tree into
 //! a compositor-neutral [`subduction_core::layer::LayerStore`] plus
-//! `SurfaceId`-keyed software scene contents.
+//! `SurfaceId`-keyed scene contents.
 
 mod runtime;
 

@@ -136,7 +136,7 @@ impl Ui {
     /// 4. Rebuild each PAINT-dirty element's composition surface in
     ///    layer-local coordinates, lowering only the element's own
     ///    presentation primitives.
-    /// 5. Traverse the Subduction layer tree, appending attached software
+    /// 5. Traverse the Subduction layer tree, appending attached scene
     ///    surfaces into `output` through layer transforms and clips.
     /// 6. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
@@ -160,7 +160,7 @@ impl Ui {
 
         self.composition.clear_surface_updates();
         for id in dirty {
-            let Some(surface) = self.composition.software_surface_for(id) else {
+            let Some(surface) = self.composition.owned_scene_surface_for(id) else {
                 continue;
             };
             let mut scene = self.composition.take_surface(surface);

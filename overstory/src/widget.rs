@@ -152,11 +152,11 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
 
     /// Returns how this widget wants its element projected into composition.
     ///
-    /// The default records the element into an Overstory-owned software
-    /// surface. Container-only or host-backed widgets can override this when
-    /// their layer should not own an ordinary software scene.
+    /// The default records the element into an Overstory-owned scene surface.
+    /// Container-only or host-backed widgets can override this when their
+    /// layer should not own an ordinary scene recording.
     fn composition_policy(&self) -> CompositionPolicy {
-        CompositionPolicy::Software
+        CompositionPolicy::InlineScene
     }
 
     /// Handles the widget's built-in key behavior during routed dispatch.

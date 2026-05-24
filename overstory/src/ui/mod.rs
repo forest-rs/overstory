@@ -286,19 +286,19 @@ impl Ui {
         self.composition.last_changes()
     }
 
-    /// Returns every software scene currently attached to a composition
+    /// Returns every Overstory-owned scene currently attached to a composition
     /// surface.
     ///
     /// These scenes are keyed by the [`subduction_core::layer::SurfaceId`]
     /// attached to layers in [`Self::composition_layers`]. Hosts can use this
-    /// as the software content registry until a backend replaces selected
+    /// as the scene content registry until a backend replaces selected
     /// surfaces with GPU or platform resources.
     pub fn composition_surfaces(&self) -> impl Iterator<Item = CompositionSurface<'_>> + '_ {
         self.composition.surfaces()
     }
 
-    /// Returns surfaces whose software scenes were rewritten by the most
-    /// recent [`Self::paint`] call.
+    /// Returns surfaces whose Overstory-owned scenes were rewritten by the
+    /// most recent [`Self::paint`] call.
     pub fn composition_surface_updates(&self) -> impl Iterator<Item = CompositionSurface<'_>> + '_ {
         self.composition.surface_updates()
     }

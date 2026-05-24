@@ -4,8 +4,8 @@
 //! Integration with `subduction_core`'s retained layer tree.
 //!
 //! This runtime maps Overstory elements onto compositor-neutral Subduction
-//! layers and `SurfaceId`-keyed software scenes. It owns the UI-to-layer
-//! mapping and software content registry; `subduction_core::layer::LayerStore`
+//! layers and `SurfaceId`-keyed scene recordings. It owns the UI-to-layer
+//! mapping and scene content registry; `subduction_core::layer::LayerStore`
 //! owns layer topology, dirty evaluation, transforms, clips, and
 //! backend-facing frame changes.
 
@@ -25,37 +25,40 @@ use crate::element::ElementId;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CompositionPolicy {
     /// Record the element's presentation primitives into an Overstory-owned
-    /// software [`imaging::record::Scene`] keyed by the layer's `SurfaceId`.
+    /// [`imaging::record::Scene`] keyed by the layer's `SurfaceId`.
     #[default]
-    Software,
-    /// Record the element into a software scene parented under the overlay
+    InlineScene,
+    /// Record the element into an Overstory-owned scene parented under the overlay
     /// composition root instead of its element parent's layer.
-    Overlay,
+    OverlayScene,
     /// Keep a layer for geometry, clipping, ordering, and descendants, but do
     /// not attach content for the element itself.
     Container,
     /// Attach a `SurfaceId` for host-owned or native content. Overstory owns
-    /// the identity but does not maintain a software scene for it.
+    /// the identity but does not maintain a scene recording for it.
     External,
 }
 
 impl CompositionPolicy {
     fn attaches_surface(self) -> bool {
-        matches!(self, Self::Software | Self::Overlay | Self::External)
+        matches!(
+            self,
+            Self::InlineScene | Self::OverlayScene | Self::External
+        )
     }
 
-    fn records_software_scene(self) -> bool {
-        matches!(self, Self::Software | Self::Overlay)
+    fn records_owned_scene(self) -> bool {
+        matches!(self, Self::InlineScene | Self::OverlayScene)
     }
 
     fn uses_overlay_root(self) -> bool {
-        matches!(self, Self::Overlay)
+        matches!(self, Self::OverlayScene)
     }
 }
 
 /// Borrowed scene content associated with a Subduction [`SurfaceId`].
 ///
-/// Overstory owns these software scene recordings until a host replaces them
+/// Overstory owns these scene recordings until a host replaces them
 /// with compositor-backed or GPU-backed resources keyed by the same surface ID.
 #[derive(Clone, Copy, Debug)]
 pub struct CompositionSurface<'a> {
@@ -188,18 +191,18 @@ impl CompositionRuntime {
         self.element_to_layer.get(&id).copied()
     }
 
-    /// Returns the software content surface corresponding to `id`.
+    /// Returns the content surface corresponding to `id`.
     pub(crate) fn surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         self.element_to_surface.get(&id).copied()
     }
 
-    /// Returns the software scene surface corresponding to `id`.
-    pub(crate) fn software_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
+    /// Returns the Overstory-owned scene surface corresponding to `id`.
+    pub(crate) fn owned_scene_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         self.element_to_policy
             .get(&id)
             .copied()
             .unwrap_or_default()
-            .records_software_scene()
+            .records_owned_scene()
             .then(|| self.surface_for(id))
             .flatten()
     }
@@ -215,7 +218,7 @@ impl CompositionRuntime {
         self.overlay_root
     }
 
-    /// Returns a retained software scene for `surface`.
+    /// Returns a retained scene for `surface`.
     #[cfg(test)]
     pub(crate) fn surface(&self, surface: SurfaceId) -> Option<&Scene> {
         self.surfaces.get(&surface)
@@ -232,7 +235,7 @@ impl CompositionRuntime {
         &self.layers
     }
 
-    /// Returns every retained software surface scene.
+    /// Returns every retained surface scene.
     pub(crate) fn surfaces(&self) -> impl Iterator<Item = CompositionSurface<'_>> + '_ {
         self.surfaces
             .iter()
@@ -279,7 +282,7 @@ impl CompositionRuntime {
         let surface = self.surface_ids.create();
         self.layers.set_content(layer, Some(surface));
         self.element_to_surface.insert(id, surface);
-        if policy.records_software_scene() {
+        if policy.records_owned_scene() {
             self.surfaces.insert(surface, Scene::new());
         }
     }
@@ -358,7 +361,7 @@ impl CompositionRuntime {
         &self.changes
     }
 
-    /// Composes all attached software surfaces through the current layer tree.
+    /// Composes all attached surfaces through the current layer tree.
     pub(crate) fn render_into(&self, output: &mut Scene) {
         self.render_into_with(output, |surface| self.surfaces.get(&surface));
     }

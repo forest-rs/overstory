@@ -2716,7 +2716,7 @@ fn overlay_composition_policy_parents_layer_under_overlay_root() {
         }
 
         fn composition_policy(&self) -> CompositionPolicy {
-            CompositionPolicy::Overlay
+            CompositionPolicy::OverlayScene
         }
     }
 
