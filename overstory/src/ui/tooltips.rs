@@ -5,7 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
-use crate::overlay::{ActiveOverlay, OverlayKind};
+use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind};
 
 use super::Ui;
 
@@ -97,6 +97,7 @@ impl Ui {
             element: tooltip_element,
             placement,
             offset,
+            dismissal: OverlayDismissal::none(),
         });
         true
     }

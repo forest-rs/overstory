@@ -3036,6 +3036,94 @@ fn popup_repositions_with_target_and_closes_by_root_element() {
 }
 
 #[test]
+fn escape_closes_topmost_popup_and_restores_focus() {
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(260.0, 140.0));
+    let target = ui.append(root, crate::Button::new("Open"));
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(70.0, 28.0),
+    );
+    ui.compute_layout(Size::new(260.0, 140.0));
+    assert!(ui.set_focus(Some(target)));
+
+    let mut focused_inside = None;
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            let child = ui.insert_child(popup);
+            ui.set_layout(child, Layout::new().logical_size(80.0, 24.0));
+            ui.set_focusable(child, true);
+            focused_inside = Some(child);
+        })
+        .unwrap();
+    ui.compute_layout(Size::new(260.0, 140.0));
+    assert!(ui.set_focus(focused_inside));
+
+    let escape = KeyboardEvent::key_down(Key::Named(NamedKey::Escape), Code::Escape);
+    let result = ui.dispatch_key(&escape);
+
+    assert!(result.handled);
+    assert!(result.focus_changed);
+    assert_eq!(result.focused, Some(target));
+    assert!(ui.get(popup).is_none());
+}
+
+#[test]
+fn outside_pointer_down_closes_popup_without_consuming_click() {
+    use core::cell::Cell;
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(320.0, 120.0));
+    let target = ui.append(root, crate::Button::new("Open"));
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(70.0, 28.0),
+    );
+    let outside = ui.append(root, crate::Button::new("Other"));
+    ui.set_layout(
+        outside,
+        Layout::new()
+            .absolute_at(210.0, 20.0)
+            .logical_size(80.0, 28.0),
+    );
+    let clicked = Rc::new(Cell::new(false));
+    let clicked_for_handler = Rc::clone(&clicked);
+    ui.on_click(outside, move |_ui, _event| {
+        clicked_for_handler.set(true);
+    });
+    ui.compute_layout(Size::new(320.0, 120.0));
+
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.append(popup, crate::Text::new("Popup").font_size(12.0));
+        })
+        .unwrap();
+    ui.compute_layout(Size::new(320.0, 120.0));
+    assert!(ui.get(popup).is_some());
+
+    let outside_center = ui.effective_bounds(outside).center();
+    let down = ui.dispatch_pointer_event(&pointer_down(outside_center, 1));
+    assert!(down.changed());
+    assert!(ui.get(popup).is_none());
+
+    let up = ui.dispatch_pointer_event(&pointer_up(outside_center, 2));
+    assert!(up.changed());
+    assert!(
+        clicked.get(),
+        "outside click should continue after dismissal"
+    );
+}
+
+#[test]
 fn scroll_view_clip_applies_to_child_surfaces() {
     use imaging::record::Command;
 

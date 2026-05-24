@@ -194,6 +194,21 @@ impl Ui {
         self.composition.remove_element(id);
     }
 
+    pub(in crate::ui) fn is_descendant_or_self(
+        &self,
+        descendant: ElementId,
+        ancestor: ElementId,
+    ) -> bool {
+        let mut current = Some(descendant);
+        while let Some(id) = current {
+            if id == ancestor {
+                return true;
+            }
+            current = self.get(id).and_then(|element| element.parent());
+        }
+        false
+    }
+
     pub(in crate::ui) fn mirror_allocated_element(
         &mut self,
         id: ElementId,

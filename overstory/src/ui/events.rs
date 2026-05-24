@@ -805,6 +805,14 @@ impl Ui {
     #[must_use]
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> KeyDispatchResult {
         let previous_focus = self.focus.focused();
+        if self.dismiss_popup_for_escape(event) {
+            return KeyDispatchResult {
+                handled: true,
+                propagation_stopped: false,
+                focus_changed: previous_focus != self.focus.focused(),
+                focused: self.focus.focused(),
+            };
+        }
         if let Some(direction) = focus_navigation_for_key(event) {
             let focused = self.focus_navigate(direction);
             return KeyDispatchResult {
@@ -1132,6 +1140,14 @@ impl Ui {
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
+                if button_event.button == Some(PointerButton::Primary) {
+                    let hit_before_dismissal = self.hit_test(pos);
+                    result.overlay_changed |=
+                        self.dismiss_popups_for_pointer_down(hit_before_dismissal);
+                    if result.overlay_changed {
+                        self.geometry.commit();
+                    }
+                }
                 // A Down without a preceding Move can arrive on some
                 // platforms; refresh hover first so any newly-entered
                 // path is set up before we press.

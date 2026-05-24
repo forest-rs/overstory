@@ -112,6 +112,20 @@ pub(crate) struct ActiveOverlay {
     pub(crate) element: ElementId,
     pub(crate) placement: Placement,
     pub(crate) offset: Vec2,
+    pub(crate) dismissal: OverlayDismissal,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct OverlayDismissal {
+    pub(crate) outside_pointer: bool,
+    pub(crate) escape: bool,
+    pub(crate) restore_focus: Option<ElementId>,
+}
+
+impl OverlayDismissal {
+    pub(crate) fn none() -> Self {
+        Self::default()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -137,6 +151,22 @@ impl OverlayRuntime {
         self.active
             .iter()
             .find(|entry| entry.kind == OverlayKind::Tooltip)
+            .copied()
+    }
+
+    pub(crate) fn active_popup(&self) -> Option<ActiveOverlay> {
+        self.active
+            .iter()
+            .rev()
+            .find(|entry| entry.kind == OverlayKind::Popup)
+            .copied()
+    }
+
+    pub(crate) fn active_popups_top_to_bottom(&self) -> impl Iterator<Item = ActiveOverlay> + '_ {
+        self.active
+            .iter()
+            .rev()
+            .filter(|entry| entry.kind == OverlayKind::Popup)
             .copied()
     }
 

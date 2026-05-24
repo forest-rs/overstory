@@ -35,6 +35,9 @@ pub struct Popup {
     offset: Vec2,
     padding_x: f32,
     padding_y: f32,
+    dismiss_on_outside_pointer: bool,
+    dismiss_on_escape: bool,
+    restore_focus_on_close: bool,
 }
 
 impl Popup {
@@ -46,6 +49,9 @@ impl Popup {
             offset: Vec2::new(0.0, 6.0),
             padding_x: 10.0,
             padding_y: 8.0,
+            dismiss_on_outside_pointer: true,
+            dismiss_on_escape: true,
+            restore_focus_on_close: true,
         }
     }
 
@@ -71,12 +77,45 @@ impl Popup {
         self
     }
 
+    /// Sets whether a primary pointer press outside this popup closes it.
+    #[must_use]
+    pub fn dismiss_on_outside_pointer(mut self, dismiss: bool) -> Self {
+        self.dismiss_on_outside_pointer = dismiss;
+        self
+    }
+
+    /// Sets whether pressing Escape closes this popup.
+    #[must_use]
+    pub fn dismiss_on_escape(mut self, dismiss: bool) -> Self {
+        self.dismiss_on_escape = dismiss;
+        self
+    }
+
+    /// Sets whether closing the popup restores focus to the opening focus.
+    #[must_use]
+    pub fn restore_focus_on_close(mut self, restore: bool) -> Self {
+        self.restore_focus_on_close = restore;
+        self
+    }
+
     pub(crate) fn placement_value(&self) -> Placement {
         self.placement
     }
 
     pub(crate) fn offset_value(&self) -> Vec2 {
         self.offset
+    }
+
+    pub(crate) fn dismiss_on_outside_pointer_value(&self) -> bool {
+        self.dismiss_on_outside_pointer
+    }
+
+    pub(crate) fn dismiss_on_escape_value(&self) -> bool {
+        self.dismiss_on_escape
+    }
+
+    pub(crate) fn restore_focus_on_close_value(&self) -> bool {
+        self.restore_focus_on_close
     }
 
     pub(crate) fn layout_for(&self, origin: Point) -> Layout {

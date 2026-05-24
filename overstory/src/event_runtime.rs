@@ -290,6 +290,8 @@ pub struct PointerDispatchResult {
     pub handled: bool,
     /// Whether a routed pointer-derived event explicitly stopped propagation.
     pub propagation_stopped: bool,
+    /// Whether pointer dispatch opened or closed transient overlay UI.
+    pub overlay_changed: bool,
     /// Whether the event changed focus.
     pub focus_changed: bool,
     /// Whether the event changed hover state.
@@ -307,6 +309,7 @@ impl PointerDispatchResult {
     pub const fn changed(self) -> bool {
         self.handled
             || self.propagation_stopped
+            || self.overlay_changed
             || self.focus_changed
             || self.hover_changed
             || self.press_changed
