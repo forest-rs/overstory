@@ -116,6 +116,8 @@ pub enum PointerEventKind {
 }
 
 impl PointerEventKind {
+    pub(crate) const COUNT: usize = 6;
+
     /// Returns the corresponding routed event kind.
     #[must_use]
     pub const fn routed(self) -> RoutedEventKind {
@@ -138,6 +140,17 @@ impl PointerEventKind {
             RoutedEventKind::PointerLeave => Some(Self::Leave),
             RoutedEventKind::PointerCancel => Some(Self::Cancel),
             _ => None,
+        }
+    }
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Down => 0,
+            Self::Move => 1,
+            Self::Up => 2,
+            Self::Enter => 3,
+            Self::Leave => 4,
+            Self::Cancel => 5,
         }
     }
 }
@@ -641,18 +654,8 @@ pub(crate) struct EventRuntime {
     key: HandlerPair<KeyHandler>,
     /// Focus gained/lost handlers keyed by current route element.
     focus: HandlerPair<FocusHandler>,
-    /// Pointer down handlers keyed by current route element.
-    pointer_down: HandlerPair<PointerHandler>,
-    /// Pointer move handlers keyed by current route element.
-    pointer_move: HandlerPair<PointerHandler>,
-    /// Pointer up handlers keyed by current route element.
-    pointer_up: HandlerPair<PointerHandler>,
-    /// Pointer enter handlers keyed by current route element.
-    pointer_enter: HandlerPair<PointerHandler>,
-    /// Pointer leave handlers keyed by current route element.
-    pointer_leave: HandlerPair<PointerHandler>,
-    /// Pointer cancel handlers keyed by current route element.
-    pointer_cancel: HandlerPair<PointerHandler>,
+    /// Pointer handlers keyed first by routed pointer event kind, then route element.
+    pointer: [HandlerPair<PointerHandler>; PointerEventKind::COUNT],
     /// Last hover path, used to synthesize pointer enter/leave routes.
     hover: HoverState<ElementId>,
     /// Click recognizer state derived from pointer press/move/up events.
@@ -675,12 +678,7 @@ impl EventRuntime {
             scroll: HandlerPair::new(),
             key: HandlerPair::new(),
             focus: HandlerPair::new(),
-            pointer_down: HandlerPair::new(),
-            pointer_move: HandlerPair::new(),
-            pointer_up: HandlerPair::new(),
-            pointer_enter: HandlerPair::new(),
-            pointer_leave: HandlerPair::new(),
-            pointer_cancel: HandlerPair::new(),
+            pointer: core::array::from_fn(|_| HandlerPair::new()),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
@@ -832,12 +830,9 @@ impl EventRuntime {
         self.scroll.remove_target(id);
         self.key.remove_target(id);
         self.focus.remove_target(id);
-        self.pointer_down.remove_target(id);
-        self.pointer_move.remove_target(id);
-        self.pointer_up.remove_target(id);
-        self.pointer_enter.remove_target(id);
-        self.pointer_leave.remove_target(id);
-        self.pointer_cancel.remove_target(id);
+        for pointer in &mut self.pointer {
+            pointer.remove_target(id);
+        }
         if self.press_target == Some(id) {
             self.press_target = None;
         }
@@ -1142,25 +1137,11 @@ impl EventRuntime {
     }
 
     fn pointer_pair(&self, kind: PointerEventKind) -> &HandlerPair<PointerHandler> {
-        match kind {
-            PointerEventKind::Down => &self.pointer_down,
-            PointerEventKind::Move => &self.pointer_move,
-            PointerEventKind::Up => &self.pointer_up,
-            PointerEventKind::Enter => &self.pointer_enter,
-            PointerEventKind::Leave => &self.pointer_leave,
-            PointerEventKind::Cancel => &self.pointer_cancel,
-        }
+        &self.pointer[kind.index()]
     }
 
     fn pointer_pair_mut(&mut self, kind: PointerEventKind) -> &mut HandlerPair<PointerHandler> {
-        match kind {
-            PointerEventKind::Down => &mut self.pointer_down,
-            PointerEventKind::Move => &mut self.pointer_move,
-            PointerEventKind::Up => &mut self.pointer_up,
-            PointerEventKind::Enter => &mut self.pointer_enter,
-            PointerEventKind::Leave => &mut self.pointer_leave,
-            PointerEventKind::Cancel => &mut self.pointer_cancel,
-        }
+        &mut self.pointer[kind.index()]
     }
 }
 
