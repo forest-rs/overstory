@@ -20,10 +20,11 @@ use understory_timing::TimerInstant;
 
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
-    ClickEvent, DragEvent, EventRuntime, FocusChangeReason, FocusEvent, HandlerLane,
-    HandlerRegistration, KeyDispatchResult, KeyEvent, PointerDispatchResult, PointerEventKind,
-    PointerRoutedEvent, RoutedDispatchResult, RoutedEventContext, RoutedEventKind,
-    RoutedEventState, RoutedHandlerOptions, ScrollEvent,
+    ClickEvent, ClickHandlers, DragEvent, DragHandlers, FocusChangeReason, FocusEvent,
+    FocusHandlers, HandlerFamily, HandlerLane, KeyDispatchResult, KeyEvent, KeyHandlers,
+    PointerDispatchResult, PointerEventKind, PointerHandlers, PointerRoutedEvent,
+    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventState,
+    RoutedHandlerOptions, ScrollEvent, ScrollHandlers,
 };
 use crate::widget::Widget;
 
@@ -289,26 +290,32 @@ impl Ui {
         }
     }
 
-    fn dispatch_handler_registration<E, H>(
+    fn dispatch_handler_registration<E, F>(
         &mut self,
         node: ElementId,
-        mut registration: HandlerRegistration<H>,
-        begin: impl FnOnce(&mut EventRuntime),
-        end: impl FnOnce(&mut EventRuntime),
-        was_removed: impl FnOnce(&mut EventRuntime) -> bool,
-        has_registered: impl FnOnce(&EventRuntime) -> bool,
-        restore: impl FnOnce(&mut EventRuntime, HandlerRegistration<H>),
+        lane: HandlerLane,
+        family: F,
+        handled: bool,
         event: E,
     ) where
-        H: FnMut(&mut Self, E),
+        F: HandlerFamily,
+        F::Handler: FnMut(&mut Self, E),
     {
-        begin(&mut self.events);
-        (registration.handler)(self, event);
-        end(&mut self.events);
+        let Some(mut registration) = self.events.take_handler(family, lane, node, handled) else {
+            return;
+        };
 
-        let handler_removed = was_removed(&mut self.events);
-        if self.get(node).is_some() && !handler_removed && !has_registered(&self.events) {
-            restore(&mut self.events, registration);
+        self.events.begin_handler(family, lane, node);
+        (registration.handler)(self, event);
+        self.events.end_handler(family, lane, node);
+
+        let handler_removed = self.events.handler_removed(family, lane, node);
+        if self.get(node).is_some()
+            && !handler_removed
+            && !self.events.has_handler(family, lane, node)
+        {
+            self.events
+                .insert_handler_if_absent(family, lane, node, registration);
         }
     }
 
@@ -318,18 +325,11 @@ impl Ui {
         route: RoutedEventContext<'a>,
         event: &'a KeyboardEvent,
     ) {
-        let node = route.current;
-        let Some(registration) = self.events.take_key(lane, node, route.is_handled()) else {
-            return;
-        };
         self.dispatch_handler_registration(
-            node,
-            registration,
-            |events| events.begin_key(lane, node),
-            |events| events.end_key(lane, node),
-            |events| events.key_removed(lane, node),
-            |events| events.has_key(lane, node),
-            |events, registration| events.insert_key_if_absent(lane, node, registration),
+            route.current,
+            lane,
+            KeyHandlers,
+            route.is_handled(),
             KeyEvent { route, key: event },
         );
     }
@@ -348,23 +348,16 @@ impl Ui {
         position: Point,
         modifiers: Modifiers,
     ) {
-        let node = route.current;
-        let Some(registration) = self.events.take_click(lane, node, route.is_handled()) else {
-            return;
-        };
         let event = ClickEvent {
             route,
             position,
             modifiers,
         };
         self.dispatch_handler_registration(
-            node,
-            registration,
-            |events| events.begin_click(lane, node),
-            |events| events.end_click(lane, node),
-            |events| events.click_removed(lane, node),
-            |events| events.has_click(lane, node),
-            |events, registration| events.insert_click_if_absent(lane, node, registration),
+            route.current,
+            lane,
+            ClickHandlers,
+            route.is_handled(),
             event,
         );
     }
@@ -397,10 +390,6 @@ impl Ui {
         press_position: Point,
         delta: Vec2,
     ) {
-        let node = route.current;
-        let Some(registration) = self.events.take_drag(lane, node, route.is_handled()) else {
-            return;
-        };
         let event = DragEvent {
             route,
             position,
@@ -408,13 +397,10 @@ impl Ui {
             delta,
         };
         self.dispatch_handler_registration(
-            node,
-            registration,
-            |events| events.begin_drag(lane, node),
-            |events| events.end_drag(lane, node),
-            |events| events.drag_removed(lane, node),
-            |events| events.has_drag(lane, node),
-            |events, registration| events.insert_drag_if_absent(lane, node, registration),
+            route.current,
+            lane,
+            DragHandlers,
+            route.is_handled(),
             event,
         );
     }
@@ -449,10 +435,6 @@ impl Ui {
         delta: ScrollDelta,
         modifiers: Modifiers,
     ) {
-        let node = route.current;
-        let Some(registration) = self.events.take_scroll(lane, node, route.is_handled()) else {
-            return;
-        };
         let event = ScrollEvent {
             route,
             position,
@@ -460,13 +442,10 @@ impl Ui {
             modifiers,
         };
         self.dispatch_handler_registration(
-            node,
-            registration,
-            |events| events.begin_scroll(lane, node),
-            |events| events.end_scroll(lane, node),
-            |events| events.scroll_removed(lane, node),
-            |events| events.has_scroll(lane, node),
-            |events, registration| events.insert_scroll_if_absent(lane, node, registration),
+            route.current,
+            lane,
+            ScrollHandlers,
+            route.is_handled(),
             event,
         );
     }
@@ -502,10 +481,6 @@ impl Ui {
         focus_visible: bool,
         reason: FocusChangeReason,
     ) {
-        let node = route.current;
-        let Some(registration) = self.events.take_focus(lane, node, route.is_handled()) else {
-            return;
-        };
         let event = FocusEvent {
             route,
             previous,
@@ -514,13 +489,10 @@ impl Ui {
             reason,
         };
         self.dispatch_handler_registration(
-            node,
-            registration,
-            |events| events.begin_focus(lane, node),
-            |events| events.end_focus(lane, node),
-            |events| events.focus_removed(lane, node),
-            |events| events.has_focus(lane, node),
-            |events, registration| events.insert_focus_if_absent(lane, node, registration),
+            route.current,
+            lane,
+            FocusHandlers,
+            route.is_handled(),
             event,
         );
     }
@@ -558,21 +530,12 @@ impl Ui {
         let node = route.current;
         let kind = PointerEventKind::from_routed(route.kind)
             .expect("pointer dispatch route must use a pointer event kind");
-        let Some(registration) = self
-            .events
-            .take_pointer(lane, kind, node, route.is_handled())
-        else {
-            return;
-        };
         let event = data.event(route);
         self.dispatch_handler_registration(
             node,
-            registration,
-            |events| events.begin_pointer(lane, kind, node),
-            |events| events.end_pointer(lane, kind, node),
-            |events| events.pointer_removed(lane, kind, node),
-            |events| events.has_pointer(lane, kind, node),
-            |events, registration| events.insert_pointer_if_absent(lane, kind, node, registration),
+            lane,
+            PointerHandlers::new(kind),
+            route.is_handled(),
             event,
         );
     }

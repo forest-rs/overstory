@@ -25,6 +25,86 @@ pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 pub(crate) type FocusHandler = Box<dyn FnMut(&mut Ui, FocusEvent<'_>)>;
 pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>;
 
+pub(crate) trait HandlerFamily: Copy {
+    type Handler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler>;
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ClickHandlers;
+
+impl HandlerFamily for ClickHandlers {
+    type Handler = ClickHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        &mut runtime.click
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct DragHandlers;
+
+impl HandlerFamily for DragHandlers {
+    type Handler = DragHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        &mut runtime.drag
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ScrollHandlers;
+
+impl HandlerFamily for ScrollHandlers {
+    type Handler = ScrollHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        &mut runtime.scroll
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct KeyHandlers;
+
+impl HandlerFamily for KeyHandlers {
+    type Handler = KeyHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        &mut runtime.key
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct FocusHandlers;
+
+impl HandlerFamily for FocusHandlers {
+    type Handler = FocusHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        &mut runtime.focus
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct PointerHandlers {
+    kind: PointerEventKind,
+}
+
+impl PointerHandlers {
+    pub(crate) const fn new(kind: PointerEventKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HandlerFamily for PointerHandlers {
+    type Handler = PointerHandler;
+
+    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+        runtime.pointer_pair_mut(self.kind)
+    }
+}
+
 /// Handler ownership lane.
 ///
 /// Control handlers implement built-in widget behavior; user handlers are
@@ -843,226 +923,57 @@ impl EventRuntime {
         }
     }
 
-    pub(crate) fn take_click(
+    pub(crate) fn take_handler<F>(
         &mut self,
+        family: F,
         lane: HandlerLane,
         id: ElementId,
         handled: bool,
-    ) -> Option<HandlerRegistration<ClickHandler>> {
-        self.click.take(lane, id, handled)
+    ) -> Option<HandlerRegistration<F::Handler>>
+    where
+        F: HandlerFamily,
+    {
+        family.pair(self).take(lane, id, handled)
     }
 
-    pub(crate) fn begin_click(&mut self, lane: HandlerLane, id: ElementId) {
-        self.click.begin(lane, id);
+    pub(crate) fn begin_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId)
+    where
+        F: HandlerFamily,
+    {
+        family.pair(self).begin(lane, id);
     }
 
-    pub(crate) fn end_click(&mut self, lane: HandlerLane, id: ElementId) {
-        self.click.end(lane, id);
+    pub(crate) fn end_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId)
+    where
+        F: HandlerFamily,
+    {
+        family.pair(self).end(lane, id);
     }
 
-    pub(crate) fn click_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.click.take_removed(lane, id)
+    pub(crate) fn handler_removed<F>(&mut self, family: F, lane: HandlerLane, id: ElementId) -> bool
+    where
+        F: HandlerFamily,
+    {
+        family.pair(self).take_removed(lane, id)
     }
 
-    pub(crate) fn insert_click_if_absent(
+    pub(crate) fn insert_handler_if_absent<F>(
         &mut self,
+        family: F,
         lane: HandlerLane,
         id: ElementId,
-        handler: HandlerRegistration<ClickHandler>,
-    ) {
-        self.click.insert_if_absent(lane, id, handler);
+        handler: HandlerRegistration<F::Handler>,
+    ) where
+        F: HandlerFamily,
+    {
+        family.pair(self).insert_if_absent(lane, id, handler);
     }
 
-    pub(crate) fn has_click(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.click.has(lane, id)
-    }
-
-    pub(crate) fn take_drag(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<DragHandler>> {
-        self.drag.take(lane, id, handled)
-    }
-
-    pub(crate) fn begin_drag(&mut self, lane: HandlerLane, id: ElementId) {
-        self.drag.begin(lane, id);
-    }
-
-    pub(crate) fn end_drag(&mut self, lane: HandlerLane, id: ElementId) {
-        self.drag.end(lane, id);
-    }
-
-    pub(crate) fn drag_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.drag.take_removed(lane, id)
-    }
-
-    pub(crate) fn insert_drag_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handler: HandlerRegistration<DragHandler>,
-    ) {
-        self.drag.insert_if_absent(lane, id, handler);
-    }
-
-    pub(crate) fn has_drag(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.drag.has(lane, id)
-    }
-
-    pub(crate) fn take_scroll(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<ScrollHandler>> {
-        self.scroll.take(lane, id, handled)
-    }
-
-    pub(crate) fn begin_scroll(&mut self, lane: HandlerLane, id: ElementId) {
-        self.scroll.begin(lane, id);
-    }
-
-    pub(crate) fn end_scroll(&mut self, lane: HandlerLane, id: ElementId) {
-        self.scroll.end(lane, id);
-    }
-
-    pub(crate) fn scroll_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.scroll.take_removed(lane, id)
-    }
-
-    pub(crate) fn insert_scroll_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handler: HandlerRegistration<ScrollHandler>,
-    ) {
-        self.scroll.insert_if_absent(lane, id, handler);
-    }
-
-    pub(crate) fn has_scroll(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.scroll.has(lane, id)
-    }
-
-    pub(crate) fn take_key(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<KeyHandler>> {
-        self.key.take(lane, id, handled)
-    }
-
-    pub(crate) fn begin_key(&mut self, lane: HandlerLane, id: ElementId) {
-        self.key.begin(lane, id);
-    }
-
-    pub(crate) fn end_key(&mut self, lane: HandlerLane, id: ElementId) {
-        self.key.end(lane, id);
-    }
-
-    pub(crate) fn key_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.key.take_removed(lane, id)
-    }
-
-    pub(crate) fn insert_key_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handler: HandlerRegistration<KeyHandler>,
-    ) {
-        self.key.insert_if_absent(lane, id, handler);
-    }
-
-    pub(crate) fn has_key(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.key.has(lane, id)
-    }
-
-    pub(crate) fn take_focus(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<FocusHandler>> {
-        self.focus.take(lane, id, handled)
-    }
-
-    pub(crate) fn begin_focus(&mut self, lane: HandlerLane, id: ElementId) {
-        self.focus.begin(lane, id);
-    }
-
-    pub(crate) fn end_focus(&mut self, lane: HandlerLane, id: ElementId) {
-        self.focus.end(lane, id);
-    }
-
-    pub(crate) fn focus_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.focus.take_removed(lane, id)
-    }
-
-    pub(crate) fn insert_focus_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handler: HandlerRegistration<FocusHandler>,
-    ) {
-        self.focus.insert_if_absent(lane, id, handler);
-    }
-
-    pub(crate) fn has_focus(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.focus.has(lane, id)
-    }
-
-    pub(crate) fn take_pointer(
-        &mut self,
-        lane: HandlerLane,
-        kind: PointerEventKind,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<PointerHandler>> {
-        self.pointer_pair_mut(kind).take(lane, id, handled)
-    }
-
-    pub(crate) fn begin_pointer(
-        &mut self,
-        lane: HandlerLane,
-        kind: PointerEventKind,
-        id: ElementId,
-    ) {
-        self.pointer_pair_mut(kind).begin(lane, id);
-    }
-
-    pub(crate) fn end_pointer(&mut self, lane: HandlerLane, kind: PointerEventKind, id: ElementId) {
-        self.pointer_pair_mut(kind).end(lane, id);
-    }
-
-    pub(crate) fn pointer_removed(
-        &mut self,
-        lane: HandlerLane,
-        kind: PointerEventKind,
-        id: ElementId,
-    ) -> bool {
-        self.pointer_pair_mut(kind).take_removed(lane, id)
-    }
-
-    pub(crate) fn insert_pointer_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        kind: PointerEventKind,
-        id: ElementId,
-        handler: HandlerRegistration<PointerHandler>,
-    ) {
-        self.pointer_pair_mut(kind)
-            .insert_if_absent(lane, id, handler);
-    }
-
-    pub(crate) fn has_pointer(
-        &self,
-        lane: HandlerLane,
-        kind: PointerEventKind,
-        id: ElementId,
-    ) -> bool {
-        self.pointer_pair(kind).has(lane, id)
+    pub(crate) fn has_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId) -> bool
+    where
+        F: HandlerFamily,
+    {
+        family.pair(self).has(lane, id)
     }
 
     pub(crate) fn hovered(&self) -> Option<ElementId> {
@@ -1136,16 +1047,12 @@ impl EventRuntime {
         self.last_drag_position = Some(position);
     }
 
-    fn pointer_pair(&self, kind: PointerEventKind) -> &HandlerPair<PointerHandler> {
-        &self.pointer[kind.index()]
-    }
-
     fn pointer_pair_mut(&mut self, kind: PointerEventKind) -> &mut HandlerPair<PointerHandler> {
         &mut self.pointer[kind.index()]
     }
 }
 
-struct HandlerPair<H> {
+pub(crate) struct HandlerPair<H> {
     /// Host-registered application handler slot.
     user: HandlerSlot<H>,
     /// Built-in control behavior handler slot.
