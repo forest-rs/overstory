@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Lookup adapters that let Understory crates walk an Overstory [`crate::Ui`] tree.
+//!
+//! Roadmap:
+//! - Keep parent-walking adapters thin so property inheritance and style-aware
+//!   resolution remain Understory responsibilities.
+//! - Add lookup variants only for real integration boundaries, such as
+//!   accessibility, diagnostics, or future style queries.
+//! - Avoid reimplementing cascade precedence in Overstory; if a resolver needs
+//!   ancestor style state, pass it through an adapter like `UiResolveLookup`.
 
 use understory_property::{DependencyObject, ParentLookup, PropertyStore};
 use understory_style::{ResolveParent, ResolveParentLookup};

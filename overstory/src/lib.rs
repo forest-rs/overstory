@@ -23,6 +23,21 @@
 //! building their own parts. `set_local` remains public for power
 //! users (bindings, dynamic theming, custom controls), but isn't
 //! the typical app-level entry point.
+//!
+//! Roadmap:
+//! - Keep `overstory` itself as the no-std core toolkit: retained UI tree,
+//!   controls, styling, layout intent, routed events, presentation lowering,
+//!   and compositor-neutral composition data.
+//! - Keep platform integration in host crates. Windowing, GPU setup, clipboard,
+//!   IME, accessibility bridges, frame pacing, and native compositor surfaces
+//!   should not leak into core controls.
+//! - Grow public APIs from repeated control needs, not from mirroring `WPF`,
+//!   `WinUI`, `Taffy`, `Subduction`, `Parley`, or any host backend wholesale.
+//! - Make diagnostics first-class: invalidation, layout, text shaping,
+//!   composition, timers, and event dispatch should all become measurable.
+//! - Preserve one obvious path for app authors: construct controls, bind or
+//!   style properties, handle routed events, and let the frame pipeline do the
+//!   rest.
 
 #[cfg(any(feature = "std", test))]
 extern crate std;

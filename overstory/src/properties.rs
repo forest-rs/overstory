@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Built-in dependency properties that every Overstory element understands.
+//!
+//! Roadmap:
+//! - Keep built-in properties small and broadly semantic. Control-specific
+//!   state should become built-in only when multiple controls need the same
+//!   property, invalidation, and styling behavior.
+//! - Pair semantic state with pseudoclasses deliberately: property values are
+//!   data, pseudoclasses are selector state, and controls must keep them in
+//!   sync.
+//! - Add richer text, accessibility, automation, range, and content properties
+//!   only with clear invalidation metadata and host integration expectations.
+//! - Avoid turning this into a mirror of WPF dependency properties; Overstory
+//!   should expose calm primitives backed by Understory registries.
 
 use alloc::string::String;
 

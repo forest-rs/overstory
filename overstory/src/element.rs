@@ -9,6 +9,16 @@
 //! layout panels) have `widget = None`; control elements (`Button`,
 //! `ToggleSwitch`, `Spinner`, `Slider`, `Text`, …) have a boxed
 //! widget.
+//!
+//! Roadmap:
+//! - Keep `Element` as retained identity plus state, not a behavior kitchen
+//!   sink; behavior lives in widgets and runtimes.
+//! - Preserve generational `ElementId` handles so stale ids remain harmless as
+//!   controls start realizing and recycling more child elements.
+//! - Grow template ownership, part identity, classes, and pseudoclasses into a
+//!   coherent styling contract before adding pseudo-elements or richer parts.
+//! - Support multiple boxes or fragments per element through side runtimes
+//!   rather than bloating the core element node.
 
 use alloc::boxed::Box;
 use core::fmt;

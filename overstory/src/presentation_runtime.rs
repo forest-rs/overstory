@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Retained presentation primitives keyed by geometry nodes.
+//!
+//! Roadmap:
+//! - Keep presentation as renderer-neutral drawing intent, not a scene renderer
+//!   and not a widget tree.
+//! - Add keyed prepared resources for shaped text, picture primitives, images,
+//!   and borrowed scenes so layout and paint can share expensive work.
+//! - Explore a fuller presentation tree when sharing vectors, unboxed primitive
+//!   storage, or cross-node reuse would make lowering cheaper and clearer.
+//! - Preserve dirty-node tracking so composition and hosts can update only the
+//!   surfaces whose presentation changed.
+
 use alloc::vec::Vec;
 
 use understory_box_tree::NodeId;

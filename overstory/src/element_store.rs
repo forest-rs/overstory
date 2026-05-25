@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Retained element arena and parent/child storage.
+//!
+//! Roadmap:
+//! - Keep element lifetime centralized here so every side runtime can trust
+//!   generational `ElementId` validity.
+//! - Support more efficient subtree mutation, keyed child reconciliation, and
+//!   recycling as templates, lists, and graph examples realize more elements.
+//! - Keep behavior out of the arena; this module should know about parentage
+//!   and slots, not styling, events, layout, or rendering policy.
+//! - Add storage diagnostics and benchmarks before arena changes become
+//!   performance-sensitive.
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 

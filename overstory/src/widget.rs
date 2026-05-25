@@ -24,6 +24,18 @@
 //! template for any visual parts. Most controls expand during insertion;
 //! controls whose template structure depends on initial builder state can use
 //! Overstory's crate-internal deferred expansion path.
+//!
+//! Roadmap:
+//! - Keep `Widget` small: identity, presentation, optional measure/layout hooks,
+//!   template discovery, cursor policy, hit testing, and input callbacks.
+//! - Prefer routed events, properties, templates, and runtimes over adding a
+//!   hook for every new behavior.
+//! - Keep visual output going through presentation primitives rather than
+//!   direct renderer paint callbacks.
+//! - Make the content-control and item-control patterns obvious without forcing
+//!   every custom widget to subclass a large framework base type.
+//! - Add diagnostics around slow hooks and re-entrant mutations before widget
+//!   behavior becomes hard to reason about.
 
 use core::any::Any;
 

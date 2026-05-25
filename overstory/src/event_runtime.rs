@@ -1,6 +1,22 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Routed input event state and handler storage.
+//!
+//! Roadmap:
+//! - Make routed events the first-class event system for controls: pointer,
+//!   keyboard, focus, scroll, text input, composition, and command-style events
+//!   should share routing, handled state, and handler options.
+//! - Keep raw host event translation outside this runtime. This module should
+//!   work with normalized `ui-events` payloads and Overstory element ids.
+//! - Use `understory_responder` for route shape and phase semantics while
+//!   Overstory owns handler lanes, pointer capture, hover, click, and drag
+//!   state.
+//! - Add capture/release diagnostics, event tracing, and input-modality state
+//!   so focus-visible, tooltips, menus, and gestures remain explainable.
+//! - Push reusable low-level helpers down to `ui-events` or `understory_*`
+//!   crates when several controls need the same construction code.
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 

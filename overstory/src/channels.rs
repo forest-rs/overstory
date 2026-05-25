@@ -16,6 +16,16 @@
 //! enumerate every channel a change touches. Per-property
 //! [`affects_channels`](understory_property::PropertyMetadataBuilder)
 //! contributes the initial mark; the tracker's cascade does the rest.
+//!
+//! Roadmap:
+//! - Keep the frame pipeline explicit: property metadata marks the earliest
+//!   affected channel and the channel cascade propagates downstream work.
+//! - Add instrumentation per channel so examples and wind-tunnel scenarios can
+//!   explain where a frame spent time and what caused invalidation.
+//! - Refine granularity only when measurement shows it matters; avoid hidden
+//!   scheduling or magic background work.
+//! - Keep binding invalidation separate from frame invalidation until there is
+//!   a clear reason to merge those lifecycles.
 
 use invalidation::Channel;
 

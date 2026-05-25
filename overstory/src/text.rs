@@ -6,6 +6,18 @@
 //! This module owns the parley `FontContext` + `LayoutContext` that Ui
 //! holds, caches shaped text layouts, and provides a helper that walks a
 //! built parley `Layout` and emits glyph runs through imaging's `Painter`.
+//!
+//! Roadmap:
+//! - Keep Parley as the shaping and editing core while Overstory owns layout
+//!   cache policy, style-key construction, and presentation lowering.
+//! - Let repeated labels share shaped layouts across controls when text, style,
+//!   and compatible width inputs match.
+//! - Add prepared editable-text rendering so `TextInput` and future `TextArea`
+//!   can use `PlainEditor` layout state without bypassing presentation.
+//! - Grow toward richer text through spans, locale, bidi, font fallback,
+//!   wrapping, overflow, and accessibility without making simple labels slow.
+//! - Keep font discovery host-explicit where possible so no-std and browser
+//!   targets can choose their own font story.
 
 use alloc::collections::VecDeque;
 use alloc::rc::Rc;

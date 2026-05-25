@@ -15,6 +15,19 @@
 //! identities (see [`crate::Element::part_tag`]) so style rules can target
 //! `Button > label` or `Slider > thumb` without treating parts as globally
 //! unique widget types.
+//!
+//! Roadmap:
+//! - Keep templates as the boundary between control behavior and visual
+//!   structure: controls own state and semantics, templates own parts, slots,
+//!   and layout of the visual subtree.
+//! - Support both compact data-driven templates and custom code templates
+//!   without requiring every visual variation to become a new widget type.
+//! - Grow content slots, repeated keyed parts, optional parts, and eventual
+//!   pseudo-elements into one predictable contract.
+//! - Add diagnostics for required slots, duplicate keys, binding mismatches,
+//!   and template churn so custom templates fail loudly.
+//! - Keep template bindings using the same property-binding runtime as app
+//!   bindings instead of creating a parallel synchronization path.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

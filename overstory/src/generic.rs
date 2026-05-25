@@ -10,6 +10,15 @@
 //! cascade and writes the result as a `SurfacePrimitive` on the
 //! element's presentation node. The default `Widget::present`
 //! implementation delegates here.
+//!
+//! Roadmap:
+//! - Keep the default surface path boring and shared: most box-like widgets
+//!   should not need custom presentation code.
+//! - Expand surface primitives through `understory_presentation` when common
+//!   visual needs emerge, such as shadows, layered backgrounds, outlines, or
+//!   focus rings.
+//! - Keep theme/state styling resolved before this helper writes presentation
+//!   so surface painting does not learn about selectors.
 
 use peniko::Brush;
 use understory_box_tree::NodeId;

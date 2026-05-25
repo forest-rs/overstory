@@ -2,6 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Shared overlay placement and lifecycle state.
+//!
+//! Roadmap:
+//! - Keep placement and lifecycle shared by tooltips, popups, menus, combo
+//!   boxes, flyouts, and future teaching UI.
+//! - Expand placement beyond simple flipping: fallback chains, alignment,
+//!   viewport padding, transforms, nested overlays, and anchor movement should
+//!   be handled in one service.
+//! - Integrate dismiss routing, focus scopes, pointer capture, Escape handling,
+//!   and restore-focus semantics with routed events and focus runtime.
+//! - Use composition overlay layers for ordering and host handoff without
+//!   making individual overlay controls manage layer stacks.
 
 use alloc::vec::Vec;
 

@@ -20,6 +20,17 @@
 //!     ),
 //! );
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Layout` as Overstory intent, with Taffy as an implementation detail
+//!   hidden behind conversion during layout.
+//! - Add builder methods only for concepts the toolkit wants to support long
+//!   term: min/max constraints, margins, flex basis, grid, overflow, and
+//!   alignment should be deliberate API choices.
+//! - Preserve escape-hatch pressure by improving Overstory types instead of
+//!   exposing raw layout-engine types in public control APIs.
+//! - Coordinate layout vocabulary with `kurbo::Axis`, scrolling, splitters, and
+//!   viewport controls so axis-specific code stays small.
 
 /// Layout contribution for an element.
 ///

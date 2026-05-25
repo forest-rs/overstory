@@ -9,6 +9,22 @@
 //! added template substrate, text rendering, `:pressed`, the Button
 //! control, and property bindings via `understory_property_binding`. Later
 //! phases bring the full responder routing, more controls, and animations.
+//!
+//! Roadmap:
+//! - Keep `Ui` as the app-facing facade while pushing owned subsystems into
+//!   focused runtimes. Public convenience lives here; subsystem policy should
+//!   not collapse back into one large file.
+//! - Make the frame pipeline explicit: flush bindings, restyle, expand
+//!   templates, compute layout, update presentation, update composition, and
+//!   expose host-consumable changes.
+//! - Add diagnostics APIs for invalidation, layout, text cache, event routing,
+//!   focus, timers, overlays, presentation, and composition.
+//! - Keep platform and renderer work in host crates while `Ui` exposes enough
+//!   normalized hooks for hosts to drive input, timers, accessibility, and
+//!   frame presentation.
+//! - Continue splitting implementation modules by system as the facade grows,
+//!   and promote repeated patterns down into Understory crates when they stop
+//!   being Overstory-specific.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

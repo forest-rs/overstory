@@ -1,6 +1,19 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Focus state and keyboard focus navigation.
+//!
+//! Roadmap:
+//! - Keep focus ownership in `Ui`, not in demos or platform hosts.
+//! - Grow from one global focused element toward focus scopes for popups,
+//!   menus, dialogs, and nested controls.
+//! - Keep navigation policy backed by `understory_focus`, with Overstory
+//!   providing element/geometry adapters and control-state integration.
+//! - Make focus-visible, restore-focus, disabled state, capture, and routed
+//!   focus events part of one predictable system.
+//! - Add accessibility focus and keyboard navigation diagnostics before complex
+//!   controls depend on implicit behavior.
+
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;

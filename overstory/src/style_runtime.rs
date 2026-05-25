@@ -1,6 +1,19 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Active style cascade, theme, and per-element selector state.
+//!
+//! Roadmap:
+//! - Keep cascade logic in `understory_style`; Overstory should provide element
+//!   inputs, match-state caching, and style-aware parent lookup.
+//! - Mature the selector contract for type tags, owner-local parts, classes,
+//!   pseudoclasses, and eventual pseudo-elements without special-casing
+//!   individual controls.
+//! - Add restyle diagnostics that explain which selector/state change dirtied
+//!   which invalidation channels.
+//! - Keep theming resource resolution separate from control construction so
+//!   themes can swap without rebuilding the element tree.
+
 use invalidation::ChannelSet;
 use smallvec::SmallVec;
 use understory_property::PropertyRegistry;

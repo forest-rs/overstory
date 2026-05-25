@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Retained property-binding graph for one UI tree.
+//!
+//! Roadmap:
+//! - Keep bindings type-safe and property-oriented; templates and controls
+//!   should not need an expression language to synchronize simple state.
+//! - Make template bindings, app bindings, and future two-way bindings share
+//!   one graph and one diagnostic story.
+//! - Add cycle, stale endpoint, and binding-cost diagnostics before bindings
+//!   become hard to debug in larger examples.
+//! - Keep binding evaluation inside Overstory while leaving the dependency
+//!   property substrate in `understory_property_binding`.
+
 use understory_property_binding::{
     BindingError, BindingId, BindingSet, EndpointKey, PropertyEndpoint,
 };

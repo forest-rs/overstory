@@ -1,6 +1,16 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Dense side storage keyed by live element ids.
+//!
+//! Roadmap:
+//! - Keep side data close to the runtime that owns it while sharing one stale-id
+//!   safe dense map implementation.
+//! - Add capacity and memory diagnostics for large trees, virtualized controls,
+//!   and benchmark scenarios.
+//! - Consider arena-owned side storage only if repeated runtime maps become a
+//!   measured cost or make lifetime invariants harder to see.
+
 use alloc::vec::Vec;
 
 use crate::element::ElementId;

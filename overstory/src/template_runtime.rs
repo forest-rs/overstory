@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Retained default-template expansion metadata for controls.
+//!
+//! Roadmap:
+//! - Keep template children as normal elements while retaining enough slot,
+//!   part, and key metadata for controls to find and synchronize their parts.
+//! - Add keyed incremental template updates before controls with many repeated
+//!   parts need to rebuild whole subtrees.
+//! - Make missing required slots and stale parts diagnosable; template failures
+//!   should point at the owning control contract.
+//! - Keep binding cleanup tied to template lifetime so generated parts do not
+//!   leave property graph edges behind.
+
 use understory_style::PartTag;
 
 use crate::element::ElementId;

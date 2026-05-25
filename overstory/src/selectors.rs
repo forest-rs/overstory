@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Small selector helpers for Overstory's control and part style contract.
+//!
+//! Roadmap:
+//! - Keep helpers small and readable; selectors should reveal control, state,
+//!   part, and class intent without hiding the underlying style model.
+//! - Add helpers for pseudo-elements, descendant depth, or stateful owner/part
+//!   combinations only when themes repeat those patterns.
+//! - Keep this module as convenience over `understory_style`, not a second
+//!   selector language.
 
 use understory_style::{ClassId, PartTag, PseudoClassId, Selector, SelectorStep, TypeTag};
 

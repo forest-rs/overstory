@@ -36,6 +36,16 @@
 //! properties; foreground tokens carry a `Brush` to match
 //! `Foreground`. Apps with richer palettes should layer additional
 //! tokens on top.
+//!
+//! Roadmap:
+//! - Keep the built-in theme small: it should demonstrate token roles and
+//!   control states, not become a full design system.
+//! - Add tokens only when multiple controls need the same semantic color,
+//!   spacing, radius, or typography role.
+//! - Make light/dark/high-contrast and branded variants expressible as theme
+//!   swaps rather than control rebuilds.
+//! - Keep accessibility contrast and disabled/focus/selection states visible in
+//!   the default theme so examples expose styling gaps early.
 
 use peniko::{Brush, Color};
 use understory_style::{

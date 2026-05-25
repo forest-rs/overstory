@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Retained timer queue and per-element timer handlers.
+//!
+//! Roadmap:
+//! - Keep clocks host-supplied and monotonic so core stays portable across
+//!   native, browser, tests, and future frame-pacing integrations.
+//! - Share queue semantics with `understory_timing`; Overstory should own
+//!   element targeting, handler dispatch, and re-entrancy bookkeeping.
+//! - Unify timers, animation ticks, cursor blink, tooltip delays, and reduced
+//!   motion policy around one scheduler story.
+//! - Add diagnostics for pending timers, late timers, coalesced repeats, and
+//!   handlers that reschedule too aggressively.
+
 use alloc::boxed::Box;
 
 use hashbrown::{HashMap, HashSet};

@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Box-tree geometry and spatial queries for retained elements.
+//!
+//! Roadmap:
+//! - Keep `understory_box_tree` as the geometry, clip, spatial index, hit-test,
+//!   and focus-flag substrate; Overstory maps that back to `ElementId`.
+//! - Support multiple boxes or fragments per element through the side map when
+//!   text, inline content, or complex widgets need it.
+//! - Coordinate transforms, clipping, and hit regions with composition so
+//!   compositor-backed layers and software presentation agree.
+//! - Add query and invalidation diagnostics for hit testing, overlay placement,
+//!   focus navigation, and virtualized controls.
+
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;

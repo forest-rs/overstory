@@ -7,6 +7,17 @@
 //! pieces that get passed to its `present` and `measure` hooks —
 //! the resolve / cascade plumbing for property reads + the text
 //! engine for measure-time shaping.
+//!
+//! Roadmap:
+//! - Keep context types capability-scoped: measurement reads measurement inputs,
+//!   presentation reads resolved properties, and layout-update hooks read final
+//!   geometry without mutating the tree.
+//! - Make style-aware property resolution live here and in `understory_style`,
+//!   not as duplicated cascade logic inside controls.
+//! - Add new capabilities only when several widgets need them; prefer explicit
+//!   narrow contexts over handing every hook broad access to `Ui`.
+//! - Prepare a clean path for reusable prepared resources, such as shaped text
+//!   and keyed picture primitives, without adding renderer-specific paint APIs.
 
 use core::cell::RefCell;
 use core::fmt;

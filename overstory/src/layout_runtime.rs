@@ -1,6 +1,18 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Internal layout-engine state for one retained UI tree.
+//!
+//! Roadmap:
+//! - Keep Taffy internal. Public controls and examples should use Overstory
+//!   layout intent rather than storing or passing Taffy node ids.
+//! - Add incremental layout and layout diagnostics before examples become large
+//!   enough that whole-tree recomputation hides performance problems.
+//! - Support custom measurement, viewport constraints, and bring-into-view
+//!   requests without leaking engine-specific types.
+//! - Preserve replaceability: if a future layout engine fits better, this
+//!   runtime should be the narrow adapter boundary.
+
 use crate::element::ElementId;
 use crate::element_side_map::ElementSideMap;
 
