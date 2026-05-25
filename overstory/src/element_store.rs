@@ -49,22 +49,20 @@ impl ElementStore {
     }
 
     pub(crate) fn get(&self, id: ElementId) -> Option<&Element> {
-        match self.slots.get(id.slot() as usize)? {
-            Slot::Live {
-                generation,
-                element,
-            } if *generation == id.generation() => Some(element.as_ref()),
-            _ => None,
+        let slot = self.slots.get(id.slot() as usize)?;
+        if slot.generation == id.generation() {
+            slot.element.as_ref()
+        } else {
+            None
         }
     }
 
     pub(crate) fn get_mut(&mut self, id: ElementId) -> Option<&mut Element> {
-        match self.slots.get_mut(id.slot() as usize)? {
-            Slot::Live {
-                generation,
-                element,
-            } if *generation == id.generation() => Some(element.as_mut()),
-            _ => None,
+        let slot = self.slots.get_mut(id.slot() as usize)?;
+        if slot.generation == id.generation() {
+            slot.element.as_mut()
+        } else {
+            None
         }
     }
 
@@ -96,16 +94,16 @@ impl ElementStore {
     }
 
     pub(crate) fn remove_slot(&mut self, id: ElementId) -> bool {
-        if let Some(Slot::Live { generation, .. }) = self.slots.get(id.slot() as usize) {
-            let next_generation = generation.wrapping_add(1);
-            self.slots[id.slot() as usize] = Slot::Vacant {
-                generation: next_generation,
-            };
-            self.free.push(id.slot());
-            true
-        } else {
-            false
+        let Some(slot) = self.slots.get_mut(id.slot() as usize) else {
+            return false;
+        };
+        if slot.generation != id.generation() || slot.element.is_none() {
+            return false;
         }
+        slot.element = None;
+        slot.generation = slot.generation.wrapping_add(1);
+        self.free.push(id.slot());
+        true
     }
 
     fn alloc_element(
@@ -117,38 +115,25 @@ impl ElementStore {
     ) -> ElementId {
         if let Some(slot_index) = self.free.pop() {
             let slot = &mut self.slots[slot_index as usize];
-            let generation = match slot {
-                Slot::Vacant { generation } => *generation,
-                Slot::Live { .. } => {
-                    unreachable!("free list invariant: free slots are Vacant")
-                }
-            };
-            let id = ElementId::new(slot_index, generation);
-            *slot = Slot::Live {
-                generation,
-                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
-            };
+            debug_assert!(slot.element.is_none(), "free slots are vacant");
+            let id = ElementId::new(slot_index, slot.generation);
+            slot.element = Some(Element::new(id, parent, templated_parent, part_tag, widget));
             id
         } else {
             let slot_index = u32::try_from(self.slots.len()).expect("Ui slot index overflowed u32");
             let id = ElementId::new(slot_index, 0);
-            self.slots.push(Slot::Live {
+            self.slots.push(Slot {
                 generation: 0,
-                element: Box::new(Element::new(id, parent, templated_parent, part_tag, widget)),
+                element: Some(Element::new(id, parent, templated_parent, part_tag, widget)),
             });
             id
         }
     }
 }
 
-enum Slot {
-    /// `Element` is heap-allocated so that `Vacant` slots stay tiny in the
-    /// presence of element churn.
-    Live {
-        generation: u32,
-        element: Box<Element>,
-    },
-    /// A previously-live slot that has been removed. `generation` is the
-    /// generation of the next element to occupy this slot.
-    Vacant { generation: u32 },
+struct Slot {
+    /// Generation for the current live element, or the next element to occupy
+    /// this slot when vacant.
+    generation: u32,
+    element: Option<Element>,
 }
