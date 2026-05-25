@@ -16,7 +16,7 @@ use peniko::{Brush, Color};
 use understory_node_graph::{
     EdgePreviewTarget, GraphComputed, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
     GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver,
-    OrthogonalEdgeRouter, PortDirection, PortId, PortView,
+    OrthogonalEdgeRouter, PortDirection, PortId, PortView, RejectDuplicateConnections,
 };
 use understory_view2d::{ClampMode, FitMode};
 
@@ -114,7 +114,7 @@ impl DemoGraph {
         let mut invalidation = GraphInvalidation::new();
         invalidation.mark_viewport();
         let mut observer = NoopGraphDeriveObserver;
-        self.computed.rebuild(
+        self.computed.rebuild_with_compatibility(
             &self.doc,
             &self.projection,
             &self.session,
@@ -122,6 +122,7 @@ impl DemoGraph {
             &OrthogonalEdgeRouter {
                 min_horizontal_run: 44.0,
             },
+            &RejectDuplicateConnections,
             &mut observer,
         );
     }
@@ -355,7 +356,7 @@ fn build_demo_graph() -> DemoGraph {
     let mut computed = GraphComputed::new();
     let mut invalidation = GraphInvalidation::new();
     let mut observer = NoopGraphDeriveObserver;
-    computed.rebuild(
+    computed.rebuild_with_compatibility(
         &doc,
         &projection,
         &session,
@@ -363,6 +364,7 @@ fn build_demo_graph() -> DemoGraph {
         &OrthogonalEdgeRouter {
             min_horizontal_run: 44.0,
         },
+        &RejectDuplicateConnections,
         &mut observer,
     );
 
@@ -621,12 +623,8 @@ fn zoom_graph_view(
 }
 
 fn move_node_by_view_delta(graph: &mut DemoGraph, node: NodeId, delta: Vec2) {
-    let Some(mut view) = graph.projection.node_view(node).cloned() else {
-        return;
-    };
     let scale = graph.session.viewport().world_units_per_pixel();
-    view.origin += delta * scale;
-    let _ = graph.projection.set_node_view(node, view);
+    graph.projection.translate_node(node, delta * scale);
 }
 
 fn finish_graph_gesture(
@@ -658,9 +656,10 @@ fn finish_graph_gesture(
                 );
                 if let Some(HitTarget::Port(to)) = target
                     && from != to
-                    && !edge_exists(&graph.doc, from, to)
                 {
-                    let _ = graph.doc.add_edge(from, to, ());
+                    let _ = graph
+                        .doc
+                        .add_edge_with(from, to, (), &RejectDuplicateConnections);
                 }
             }
             graph.session.set_hover(None);
@@ -716,12 +715,6 @@ fn cancel_graph_gesture(
         active_gesture,
     );
     event.mark_handled();
-}
-
-fn edge_exists(graph: &DemoDoc, output: PortId, input: PortId) -> bool {
-    graph
-        .iter_edges()
-        .any(|(_, edge)| edge.output == output && edge.input == input)
 }
 
 fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
@@ -785,9 +778,9 @@ fn append_graph_edges(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
         let Some(route) = graph.computed.edge_route(*edge) else {
             continue;
         };
-        for points in route.points.windows(2) {
-            let start = graph.session.viewport().world_to_view_point(points[0]);
-            let end = graph.session.viewport().world_to_view_point(points[1]);
+        for (start, end) in route.segments() {
+            let start = graph.session.viewport().world_to_view_point(start);
+            let end = graph.session.viewport().world_to_view_point(end);
             if (start - end).hypot() <= 0.5 {
                 continue;
             }
@@ -959,9 +952,9 @@ fn append_graph_preview(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
         } => Color::from_rgba8(0xff, 0x66, 0x78, 0xff),
         EdgePreviewTarget::Pointer(_) => Color::from_rgba8(0xf2, 0xf4, 0xff, 0xc8),
     };
-    for points in preview.route.points.windows(2) {
-        let start = graph.session.viewport().world_to_view_point(points[0]);
-        let end = graph.session.viewport().world_to_view_point(points[1]);
+    for (start, end) in preview.route.segments() {
+        let start = graph.session.viewport().world_to_view_point(start);
+        let end = graph.session.viewport().world_to_view_point(end);
         if (start - end).hypot() <= 0.5 {
             continue;
         }
