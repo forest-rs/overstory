@@ -32,7 +32,7 @@ use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
-use crate::text::TextEngine;
+use crate::text::{TextEngine, TextResources};
 use crate::timer_runtime::TimerRuntime;
 
 mod bindings;
@@ -163,10 +163,28 @@ impl Ui {
     /// properties registered, the generic behavior installed, and an empty
     /// cascade and theme.
     ///
+    /// This constructs platform text resources for this UI. Use
+    /// [`Self::with_text_resources`] when constructing many UIs that should
+    /// share font discovery and source-cache state.
+    ///
     /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
     /// application-supplied styling.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_text_resources(&TextResources::system_fonts())
+    }
+
+    /// Creates a new [`Ui`] with explicit shared text resources.
+    ///
+    /// Use this when a host or benchmark constructs multiple UIs and wants
+    /// font discovery and source-cache ownership to stay outside the UI
+    /// instance. Each UI still receives its own mutable text layout context.
+    #[must_use]
+    pub fn with_text_resources(text_resources: &TextResources) -> Self {
+        Self::with_text_engine(TextEngine::from_resources(text_resources))
+    }
+
+    fn with_text_engine(text_engine: TextEngine) -> Self {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
         // Channel-to-channel cascade in the invalidation tracker:
@@ -203,7 +221,7 @@ impl Ui {
             style: StyleRuntime::new(),
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
-            text: RefCell::new(TextEngine::new()),
+            text: RefCell::new(text_engine),
             bindings: BindingRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),

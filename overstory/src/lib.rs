@@ -120,7 +120,7 @@ pub use template::{
     TemplateInstance, TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
 };
-pub use text::TextEngine;
+pub use text::{TextEngine, TextResources};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ControlState, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};

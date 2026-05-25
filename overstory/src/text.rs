@@ -15,6 +15,42 @@ use parley::{
 };
 use peniko::{Brush, Fill, Style};
 
+/// Shared font discovery and source-cache state for text engines.
+///
+/// Hosts that create many [`crate::Ui`] instances should keep one
+/// `TextResources` and pass it to [`crate::Ui::with_text_resources`]. Each
+/// UI still gets its own mutable layout context, while font discovery and
+/// source data are shared by cloning Parley's shared font context internals.
+pub struct TextResources {
+    font_context: FontContext,
+}
+
+impl TextResources {
+    /// Constructs reusable text resources from an existing Parley font context.
+    ///
+    /// The context is converted to Parley's shared backing stores before being
+    /// retained so that cloned [`TextEngine`] instances can share discovered
+    /// font collection and source-cache data.
+    #[must_use]
+    pub fn from_font_context(mut font_context: FontContext) -> Self {
+        font_context.collection.make_shared();
+        font_context.source_cache.make_shared();
+        Self { font_context }
+    }
+
+    /// Constructs text resources backed by Parley's platform font discovery.
+    #[must_use]
+    pub fn system_fonts() -> Self {
+        Self::from_font_context(FontContext::default())
+    }
+}
+
+impl core::fmt::Debug for TextResources {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextResources").finish_non_exhaustive()
+    }
+}
+
 /// Owns parley's font and layout context state. One per [`crate::Ui`].
 pub struct TextEngine {
     /// Font discovery + source cache.
@@ -24,11 +60,24 @@ pub struct TextEngine {
 }
 
 impl TextEngine {
-    /// Constructs a new text engine with default system font discovery.
+    /// Constructs a new text engine backed by platform font discovery.
+    ///
+    /// Prefer [`Self::from_resources`] when constructing many UIs; that keeps
+    /// platform font discovery explicit and reusable.
     #[must_use]
     pub fn new() -> Self {
+        Self::from_resources(&TextResources::system_fonts())
+    }
+
+    /// Constructs a text engine by cloning shared font resources.
+    ///
+    /// The returned engine owns an independent Parley layout context while
+    /// sharing font collection and source-cache backing stores with
+    /// `resources`.
+    #[must_use]
+    pub fn from_resources(resources: &TextResources) -> Self {
         Self {
-            font_context: FontContext::default(),
+            font_context: resources.font_context.clone(),
             layout_context: LayoutContext::new(),
         }
     }
