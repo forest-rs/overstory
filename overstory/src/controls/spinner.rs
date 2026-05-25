@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Spinner`: animated 8-dot busy indicator.
+//!
+//! Roadmap:
+//! - Keep `Spinner` an indeterminate busy indicator; determinate progress
+//!   belongs in `ProgressBar`.
+//! - Move size, color, timing, and reduced-motion policy into style / timing
+//!   hooks instead of baking them into the current default.
+//! - Consider lowering to a single presentation primitive or keyed scene when
+//!   the cost of many child panels matters.
+//! - Coordinate with host frame pacing and accessibility so busy state is
+//!   visible to assistive technologies without producing noisy announcements.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `ProgressBar`: determinate value indicator with a templated fill.
+//!
+//! Roadmap:
+//! - Keep `ProgressBar` a non-interactive status control; focus and pointer
+//!   behavior belong elsewhere unless a future variant explicitly changes that.
+//! - Model determinate, indeterminate, paused, and error states deliberately
+//!   instead of overloading the current value range.
+//! - Let templates own track, fill, and label shape while the control owns value
+//!   normalization, formatting hooks, and state synchronization.
+//! - Add accessibility metadata for range value, busy / indeterminate state, and
+//!   label association.
+//! - Share animation and reduced-motion policy with `Spinner` and the timing
+//!   runtime rather than embedding one-off animation loops.
 
 use alloc::{boxed::Box, format, string::String};
 

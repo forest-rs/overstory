@@ -2,6 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `ScrollView`: reusable clipped viewport state and behavior.
+//!
+//! Roadmap:
+//! - Make `ScrollView` the reusable basis for lists, text fields, graph
+//!   viewports, and any control that needs clipped, offset content.
+//! - Support both axes consistently: horizontal and vertical bars, overlay vs
+//!   reserved gutters, keyboard paging, wheel / touchpad deltas, and
+//!   bring-into-view requests.
+//! - Keep scroll metrics, clamping, thumb math, and shared scroll state here so
+//!   controls do not each invent their own scrolling model.
+//! - Integrate with virtualization and compositor-backed scrolling as separate
+//!   policy layers instead of baking renderer decisions into the control.
+//! - Add accessibility range metadata and platform scroll actions through the
+//!   host layer.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -234,7 +247,7 @@ impl ScrollView {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
@@ -379,7 +392,7 @@ impl ScrollBar {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

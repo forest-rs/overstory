@@ -45,7 +45,7 @@ impl Ui {
     /// The binding will fire on the next `flush_bindings` if its source
     /// endpoint has been written since the last drain (or has not yet
     /// drained at all). Bindings are typically registered during template
-    /// expansion via [`Template::instantiate`].
+    /// expansion via [`Template::instantiate`](crate::Template::instantiate).
     pub fn bind<T>(
         &mut self,
         source: PropertyEndpoint<ElementId, T>,

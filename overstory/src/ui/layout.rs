@@ -26,9 +26,9 @@ impl Ui {
     /// Sets an element's layout contribution.
     ///
     /// This is the app-facing shortcut for writing
-    /// [`BuiltInProperties::layout`]; custom controls may still use
-    /// [`Self::set_local`] when they are working generically with
-    /// dependency properties.
+    /// [`BuiltInProperties::layout`](crate::BuiltInProperties::layout);
+    /// custom controls may still use [`Self::set_local`] when they are
+    /// working generically with dependency properties.
     pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
         let layout_prop = self.properties.layout;
         self.set_local(id, layout_prop, layout.into());

@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Viewport`: clipped container for canvas-like and scrollable regions.
+//!
+//! Roadmap:
+//! - Keep `Viewport` a small clipping and cursor primitive; scrolling, zooming,
+//!   selection, and graph editing should be layered as controls or behaviors.
+//! - Add shared coordinate conversion, transforms, hit-testing helpers, and
+//!   damage hooks as canvas-like examples expose real needs.
+//! - Make it a natural host for compositor-backed layers without forcing every
+//!   viewport to allocate platform layers.
+//! - Keep renderer and windowing specifics in host / composition modules so
+//!   viewport-based controls stay portable.
 
 use alloc::boxed::Box;
 

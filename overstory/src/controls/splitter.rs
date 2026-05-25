@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Splitter`: draggable resize grip for adjacent panes.
+//!
+//! Roadmap:
+//! - Keep `Splitter` responsible for input, focus, cursor, keyboard deltas, and
+//!   resize events; keep pane sizing policy in callers or a future split-view
+//!   container.
+//! - Add a higher-level split container only when it can model constraints,
+//!   collapse behavior, proportional sizes, persistence, and nested panes
+//!   cleanly.
+//! - Preserve keyboard accessibility with small / large steps, min / max
+//!   limits, orientation-aware cursor icons, and separator range metadata.
+//! - Use pointer capture and routed events so drag behavior does not depend on
+//!   demo or host glue.
 
 use alloc::boxed::Box;
 
@@ -185,7 +197,7 @@ impl Splitter {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

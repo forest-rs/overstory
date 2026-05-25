@@ -13,6 +13,24 @@
 //! Apps write `use overstory::Button` etc. — the modules
 //! themselves are private; everything app-facing is re-exported
 //! at the crate root via `lib.rs`.
+//!
+//! Roadmap:
+//! - Add `RadioButton` / `RadioGroup` soon to prove shared checked-state,
+//!   selection, focus, and form semantics across mutually exclusive choices.
+//! - Add `Select` / `ComboBox` as a composition of `Button`, `Popup`,
+//!   `ListBox`, `ScrollView`, and `understory_selection`.
+//! - Add menu-family controls (`Menu`, `MenuItem`, `ContextMenu`, `Flyout`) to
+//!   exercise popup placement, focus scopes, dismiss routing, keyboard
+//!   navigation, and command-style activation.
+//! - Add `TabView` / `TabControl` to cover keyed selection, header templates,
+//!   selected content panels, and overflow behavior.
+//! - Add multiline text editing (`TextArea`) once `TextInput`, `ScrollView`,
+//!   and prepared editable-text rendering have a stable shared shape.
+//! - Add `TreeView` or hierarchical `ListView` after list virtualization and
+//!   item templates can handle keyed, expandable data without one-off glue.
+//! - Keep specialist controls behind reusable primitives: new controls should
+//!   strengthen templates, routed events, focus, selection, scrolling,
+//!   accessibility, or composition instead of bypassing them.
 
 pub(crate) mod button;
 pub(crate) mod checkbox;

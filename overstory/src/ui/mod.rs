@@ -53,8 +53,8 @@ mod tests;
 /// Public facade for an Overstory UI instance.
 ///
 /// `Ui` keeps the app-facing API concentrated in one object while delegating
-/// narrow responsibilities to internal runtimes such as [`ElementStore`] and
-/// [`TemplateRuntime`].
+/// narrow responsibilities to internal runtimes such as `ElementStore` and
+/// `TemplateRuntime`.
 pub struct Ui {
     /// Retained element tree and per-element widget/property storage.
     elements: ElementStore,

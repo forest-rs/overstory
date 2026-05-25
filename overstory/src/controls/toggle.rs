@@ -6,6 +6,16 @@
 //! ```ignore
 //! ui.append(parent, ToggleSwitch::new().checked(true));
 //! ```
+//!
+//! Roadmap:
+//! - Keep `ToggleSwitch` as an immediate on/off setting control, not a generic
+//!   checkbox skin.
+//! - Share checked state infrastructure with `CheckBox` while allowing switch
+//!   specific visuals, animation, drag affordances, and accessibility role.
+//! - Add optional on/off labels or content only through slots / templates so the
+//!   control does not become layout-specific.
+//! - Route state changes, focus, disabled behavior, and host accessibility
+//!   actions through the same control-state and event systems used elsewhere.
 
 use alloc::boxed::Box;
 
@@ -78,7 +88,7 @@ impl ToggleSwitch {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

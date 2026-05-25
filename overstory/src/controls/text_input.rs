@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `TextInput`: single-line editable text field.
+//!
+//! Roadmap:
+//! - Keep Parley's [`PlainEditor`] as the editing, cursor, selection, and IME
+//!   layout core for plain text.
+//! - Make the control feel complete through Overstory-owned behavior: platform
+//!   keybindings, single-line policy, caret reveal / horizontal scrolling,
+//!   selection gestures, focus states, and read-only / disabled semantics.
+//! - Integrate host-backed capabilities in `overstory_host` / platform hosts:
+//!   clipboard, IME event bridging, accessibility, cursor blink, and platform
+//!   modifier conventions.
+//! - Revisit rendering so editable text can use the editor's cached layout via
+//!   the presentation model instead of reshaping through a `TextWidget` part.
 
 use alloc::{boxed::Box, string::String};
 
@@ -133,7 +145,7 @@ impl TextInput {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

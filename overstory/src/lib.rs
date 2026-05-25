@@ -13,7 +13,7 @@
 //! tree:
 //!
 //! ```ignore
-//! ui.append(parent, Button::new("Click me").on_click(|ui, _| { … }));
+//! ui.append(parent, Button::new("Click me").on_click(|_, _| {}));
 //! ui.append(parent, ToggleSwitch::new().checked(true));
 //! ui.append(parent, Slider::new().value(0.4));
 //! ```

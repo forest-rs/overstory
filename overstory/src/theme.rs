@@ -24,7 +24,7 @@
 //! ```
 //!
 //! The cascade resolves the resource through whatever
-//! [`Theme`](understory_style::Theme) the `Ui` currently holds, so
+//! [`Theme`] the `Ui` currently holds, so
 //! swapping `ui.set_theme(...)` changes every button on the page at
 //! once.
 //!

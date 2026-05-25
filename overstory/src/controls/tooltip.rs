@@ -7,6 +7,16 @@
 //! let button = ui.append(parent, Button::new("Deploy"));
 //! ui.set_tooltip(button, Tooltip::new("Runs the deploy workflow"));
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Tooltip` transient, non-focusable, and non-interactive; interactive
+//!   overlays should use popup / flyout controls.
+//! - Move show / hide delay, hover intent, focus-triggered display, and pointer
+//!   tracking into one tooltip service so targets do not manage stacks by hand.
+//! - Share placement, collision, transforms, and overlay layering with `Popup`
+//!   instead of maintaining a separate positioning model.
+//! - Let templates style callouts, shadows, arrows, and text while the control
+//!   owns accessibility description semantics and lifetime.
 
 use alloc::boxed::Box;
 use alloc::string::String;

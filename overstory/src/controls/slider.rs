@@ -2,6 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Slider`: continuous value control with a draggable thumb.
+//!
+//! Roadmap:
+//! - Keep range math, keyboard increments, drag capture, and value clamping in
+//!   the control; keep track, thumb, tick, and label visuals in templates.
+//! - Use `understory_axis` for tick generation and label placement so sliders,
+//!   rulers, and graph axes share the same scale vocabulary.
+//! - Add orientation, reversed direction, snapping, value formatting, major /
+//!   minor tick styling, and live-vs-committed drag values without hard-coding a
+//!   single visual layout.
+//! - Make pointer, touch, wheel, and keyboard behavior line up with native
+//!   slider expectations, including Shift-based larger steps.
+//! - Add range accessibility metadata and host actions for increment, decrement,
+//!   and set-value operations.
 
 use alloc::{boxed::Box, format, string::String};
 
@@ -159,7 +172,7 @@ impl Slider {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

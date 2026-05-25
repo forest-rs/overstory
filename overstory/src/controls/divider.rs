@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `Divider`: decorative separator for rows and columns.
+//!
+//! Roadmap:
+//! - Keep `Divider` decorative and non-interactive; resizing behavior belongs
+//!   in `Splitter`.
+//! - Let style control thickness, color, insets, and stretching rather than
+//!   growing a broad builder API.
+//! - Add semantic separator metadata only when callers ask for it; many
+//!   dividers should stay hidden from accessibility trees.
+//! - Use the same axis vocabulary as scrollbars, splitters, and future layout
+//!   helpers so horizontal and vertical behavior remains predictable.
 
 use alloc::boxed::Box;
 

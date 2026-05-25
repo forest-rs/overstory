@@ -11,6 +11,16 @@
 //! ui.append(parent, Panel::row(24.0).padding(50.0));
 //! ui.append(parent, Panel::column(6.0));
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Panel` boring: anonymous grouping, layout, surface styling, and
+//!   classes, with no hidden behavior or semantic role.
+//! - Add only high-leverage layout shorthands instead of mirroring every layout
+//!   engine type in the public API.
+//! - Make it a reliable host for templates, examples, overlays, and composed
+//!   controls while preserving a tiny dependency and behavior surface.
+//! - Push specialized behavior into real controls or lower crates rather than
+//!   letting `Panel` become a catch-all widget.
 
 use alloc::boxed::Box;
 use smallvec::SmallVec;

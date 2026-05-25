@@ -12,6 +12,17 @@
 //!     ui.close_popup(popup);
 //! }
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Popup` as explicit anchored overlay infrastructure, not as a menu,
+//!   tooltip, combo box, or flyout policy bundle.
+//! - Make placement robust: collision handling, fallback placements, viewport
+//!   constraints, transforms, and nested overlay coordinates should be handled
+//!   in one overlay system.
+//! - Route input, focus scopes, dismiss reasons, and focus restoration through
+//!   first-class event / focus systems instead of ad hoc host code.
+//! - Prepare for compositor-backed overlay layers while keeping the builder API
+//!   independent of a specific renderer or windowing backend.
 
 use alloc::boxed::Box;
 

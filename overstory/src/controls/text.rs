@@ -6,6 +6,17 @@
 //! ```ignore
 //! ui.append(parent, Text::new("Loading…").font_size(13.0));
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Text` as the simple label / run-of-text primitive, distinct from
+//!   editable text and future rich document controls.
+//! - Grow style coverage deliberately: spans, weight, style, line height,
+//!   alignment, locale, bidi, overflow, ellipsis, and max-lines all need a
+//!   coherent layout-style key.
+//! - Keep shaping and prepared-layout reuse centralized in the text engine /
+//!   presentation path so repeated labels share work across controls.
+//! - Add richer content only when the presentation model can represent it
+//!   without bypassing templates, layout, or accessibility.
 
 use alloc::boxed::Box;
 use alloc::string::String;

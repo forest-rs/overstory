@@ -10,9 +10,23 @@
 //!     parent,
 //!     Button::new("Click me")
 //!         .font_size(22.0)
-//!         .on_click(|ui, event| { … }),
+//!         .on_click(|_, _| {}),
 //! );
 //! ```
+//!
+//! Roadmap:
+//! - Keep `Button` as an activatable content control: the widget owns input,
+//!   command-like activation, focus, and enabled semantics; templates own the
+//!   visual tree.
+//! - Move from string-only labels toward arbitrary content while preserving the
+//!   simple `Button::new("Label")` path for common cases.
+//! - Add mature activation affordances: default / cancel buttons, access keys,
+//!   press-and-hold or repeat variants where those belong, and routed command
+//!   integration.
+//! - Make state styling complete across hover, press, focus-visible, disabled,
+//!   and template-part states without special-casing the default template.
+//! - Surface accessibility and automation metadata through the host layer while
+//!   keeping renderer-specific behavior out of the control.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -112,7 +126,7 @@ impl Button {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)

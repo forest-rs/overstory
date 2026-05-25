@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `ListBox` and realized list item containers.
+//!
+//! Roadmap:
+//! - Keep lists virtualized by default, with `understory_virtual_list` owning
+//!   viewport math and Overstory owning realized elements and interaction.
+//! - Replace string-only items with keyed item data and item templates so the
+//!   control can grow toward `ItemsControl` / `ListView` patterns.
+//! - Keep selection backed by `understory_selection`: focus, current item,
+//!   anchor, primary selection, and realized containers must not drift apart.
+//! - Add mature keyboard behavior: typeahead, Home / End / Page movement,
+//!   platform multi-select conventions, and clear focus-vs-selection semantics.
+//! - Integrate reusable scrolling, scrollbars, accessibility, and eventually
+//!   composition-backed virtualization without making apps assemble that by hand.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -179,7 +191,7 @@ impl ListBox {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
@@ -192,7 +204,8 @@ impl ListBox {
         self
     }
 
-    /// Convenience for [`Self::selection_mode(ListSelectionMode::Multiple)`].
+    /// Convenience for [`Self::selection_mode`] with
+    /// [`ListSelectionMode::Multiple`].
     #[must_use]
     pub fn multiple_selection(self) -> Self {
         self.selection_mode(ListSelectionMode::Multiple)

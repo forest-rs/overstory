@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! `CheckBox`: labeled two-state check control.
+//!
+//! Roadmap:
+//! - Keep `CheckBox` as a form-style checked state control, separate from
+//!   `ToggleSwitch` even though both share the same checked property and pseudo.
+//! - Add tri-state support only when the property model and templates can
+//!   represent indeterminate state cleanly.
+//! - Move from string-only labels toward content slots so labels can contain
+//!   richer text or small inline elements.
+//! - Tighten selection, validation, form binding, and change notification so
+//!   checked state works as data, not just as a visual toggle.
+//! - Add accessibility metadata for role, checked / mixed state, label
+//!   association, focus, disabled state, and keyboard activation.
 
 use alloc::{boxed::Box, string::String};
 
@@ -99,7 +111,7 @@ impl CheckBox {
         self
     }
 
-    /// Convenience for [`Self::enabled(false)`].
+    /// Convenience for [`Self::enabled`] with `false`.
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
