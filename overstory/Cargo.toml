@@ -30,6 +30,7 @@ understory_responder = { workspace = true, default-features = false, features = 
 understory_selection = { workspace = true, default-features = false }
 understory_style = { workspace = true, default-features = false }
 understory_timing = { workspace = true, default-features = false }
+understory_virtual_list = { workspace = true, default-features = false }
 
 ui-events.workspace = true
 taffy.workspace = true

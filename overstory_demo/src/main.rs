@@ -7,9 +7,9 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use overstory::{
-    Button, CheckBox, Divider, ListBox, ListItem, Panel, Popup, ProgressBar, ScrollBar,
-    ScrollState, Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
-    select_list_item, set_progress_value, theme,
+    Button, CheckBox, Divider, ListBox, Panel, Popup, ProgressBar, ScrollBar, ScrollState, Slider,
+    Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value,
+    theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -231,8 +231,18 @@ fn build_ui() -> Ui {
     let renderer_list = ui.append(
         renderer_row,
         ListBox::new()
+            .items([
+                "Vello scene graph",
+                "CPU fallback raster",
+                "Text shaping pass",
+                "Accessibility tree",
+                "Hit testing index",
+                "Presentation cache",
+                "Frame diagnostics",
+            ])
             .size(260.0, 146.0)
             .multiple_selection()
+            .selected_index(2)
             .scroll_state(renderer_scroll.clone()),
     );
     ui.append(
@@ -242,14 +252,6 @@ fn build_ui() -> Ui {
             .thickness(10.0)
             .thumb_extent(34.0),
     );
-    ui.append(renderer_list, ListItem::new("Vello scene graph"));
-    ui.append(renderer_list, ListItem::new("CPU fallback raster"));
-    let selected_renderer = ui.append(renderer_list, ListItem::new("Text shaping pass"));
-    ui.append(renderer_list, ListItem::new("Accessibility tree"));
-    ui.append(renderer_list, ListItem::new("Hit testing index"));
-    ui.append(renderer_list, ListItem::new("Presentation cache"));
-    ui.append(renderer_list, ListItem::new("Frame diagnostics"));
-    let _ = select_list_item(&mut ui, renderer_list, selected_renderer);
     ui.set_tooltip(
         renderer_list,
         Tooltip::new("Multi-select list with viewport clipping"),

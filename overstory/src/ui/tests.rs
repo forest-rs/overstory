@@ -310,10 +310,10 @@ fn styled_button_foreground_reaches_template_label() {
 
 #[test]
 fn default_cascade_supplies_control_font_sizes() {
+    use crate::controls::list::realized_list_item;
     use crate::{
-        Button, CheckBox, ListItem, PART_BUTTON_LABEL, PART_CHECK_BOX_LABEL,
-        SLOT_LIST_ITEM_CONTENT, SLOT_TEXT_INPUT_TEXT, SLOT_TOOLTIP_CONTENT, TextInput, Tooltip,
-        theme,
+        Button, CheckBox, ListBox, PART_BUTTON_LABEL, PART_CHECK_BOX_LABEL, SLOT_LIST_ITEM_CONTENT,
+        SLOT_TEXT_INPUT_TEXT, SLOT_TOOLTIP_CONTENT, TextInput, Tooltip, theme,
     };
 
     let mut ui = Ui::new();
@@ -326,14 +326,16 @@ fn default_cascade_supplies_control_font_sizes() {
     let button_label = ui.part(button, PART_BUTTON_LABEL).unwrap();
     let checkbox = ui.append(root, CheckBox::new("Enabled"));
     let checkbox_label = ui.part(checkbox, PART_CHECK_BOX_LABEL).unwrap();
-    let list_item = ui.append(root, ListItem::new("Row"));
+    let listbox = ui.append(root, ListBox::new().item("Row").size(120.0, 40.0));
+    ui.compute_layout(Size::new(400.0, 200.0));
+    let list_item = realized_list_item(&ui, listbox, 0).unwrap();
     let list_item_label = ui.slot(list_item, SLOT_LIST_ITEM_CONTENT).unwrap();
     let text_input = ui.append(root, TextInput::new());
     let text_input_label = ui.slot(text_input, SLOT_TEXT_INPUT_TEXT).unwrap();
     let tooltip = ui.append(root, Tooltip::new("Tip"));
     let tooltip_label = ui.slot(tooltip, SLOT_TOOLTIP_CONTENT).unwrap();
 
-    for id in [button, checkbox, list_item, text_input, tooltip] {
+    for id in [button, checkbox, listbox, list_item, text_input, tooltip] {
         assert!(
             ui.get(id).unwrap().get_local_value(font_size).is_none(),
             "default builder should leave font size to styling"

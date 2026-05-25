@@ -65,10 +65,10 @@ pub use controls::checkbox::{
 };
 pub use controls::divider::{Divider, DividerAxis, TYPE_DIVIDER};
 pub use controls::list::{
-    ListBox, ListItem, ListSelectionChangedEvent, ListSelectionMode, PART_LIST_ITEM_LABEL,
+    ListBox, ListSelectionChangedEvent, ListSelectionMode, PART_LIST_ITEM_LABEL,
     SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, list_scroll_offset_y,
-    scroll_list_item_into_view, select_list_item, selected_list_item, selected_list_items,
-    set_list_scroll_offset_y,
+    realized_list_item_index, scroll_list_index_into_view, select_list_index, selected_list_index,
+    selected_list_indices, set_list_scroll_offset_y,
 };
 pub use controls::panel::Panel;
 pub use controls::popup::{Popup, TYPE_POPUP};

@@ -32,7 +32,7 @@ pub const PART_SCROLL_BAR_THUMB: PartTag = PartTag(1);
 pub const SLOT_SCROLL_BAR_THUMB: TemplateSlot =
     TemplateSlot::new("scrollbar-thumb").with_part_tag(PART_SCROLL_BAR_THUMB);
 
-const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
+pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
 const DEFAULT_SCROLL_BAR_LENGTH: f32 = 146.0;
 const DEFAULT_SCROLL_BAR_THICKNESS: f32 = 10.0;
 const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
@@ -164,7 +164,7 @@ impl ScrollState {
         self.set_offset_raw(Vec2::new(self.inner.offset_x.get(), offset_y))
     }
 
-    fn set_metrics(&self, viewport: kurbo::Size, content: kurbo::Size) {
+    pub(crate) fn set_metrics(&self, viewport: kurbo::Size, content: kurbo::Size) {
         self.inner
             .viewport_width
             .set(normalize_scroll_axis(viewport.width));
@@ -585,45 +585,8 @@ pub(crate) fn set_scroll_offset_y(
     set_scroll_offset(ui, viewport, state, Vec2::new(state.offset().x, offset))
 }
 
-pub(crate) fn scroll_child_into_view(
-    ui: &mut Ui,
-    viewport: ElementId,
-    state: &ScrollState,
-    child: ElementId,
-) -> bool {
-    if !is_direct_child(ui, viewport, child) {
-        return false;
-    }
-    let current = state.offset_y();
-    let viewport_bounds = ui.effective_bounds(viewport);
-    let child_bounds = ui.effective_bounds(child);
-    if viewport_bounds.width() <= 0.0
-        || viewport_bounds.height() <= 0.0
-        || child_bounds.height() <= 0.0
-    {
-        return false;
-    }
-
-    let next = if child_bounds.y0 < viewport_bounds.y0 {
-        current - (viewport_bounds.y0 - child_bounds.y0)
-    } else if child_bounds.y1 > viewport_bounds.y1 {
-        current + (child_bounds.y1 - viewport_bounds.y1)
-    } else {
-        current
-    };
-    set_scroll_offset_y(ui, viewport, state, next)
-}
-
 pub(crate) fn scroll_offset_y(state: &ScrollState) -> f64 {
     state.offset_y()
-}
-
-pub(crate) fn update_viewport_metrics_from_layout(
-    element: &Element,
-    ctx: &LayoutContext<'_>,
-    state: &ScrollState,
-) {
-    update_scroll_metrics_from_layout(element, ctx, state);
 }
 
 #[derive(Clone, Debug)]
@@ -892,11 +855,6 @@ fn axis_point(axis: ScrollAxis, point: Point) -> f64 {
         ScrollAxis::Horizontal => point.x,
         ScrollAxis::Vertical => point.y,
     }
-}
-
-fn is_direct_child(ui: &Ui, parent: ElementId, child: ElementId) -> bool {
-    ui.get(child)
-        .is_some_and(|element| element.parent() == Some(parent))
 }
 
 fn normalize_scroll_axis(value: f64) -> f64 {

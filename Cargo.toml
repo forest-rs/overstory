@@ -47,6 +47,7 @@ understory_responder = { default-features = false, features = ["std", "box_tree_
 understory_selection = { default-features = false, path = "../understory/understory_selection" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
 understory_timing = { default-features = false, path = "../understory/understory_timing" }
+understory_virtual_list = { default-features = false, path = "../understory/understory_virtual_list" }
 understory_view2d = { default-features = false, features = ["std"], path = "../understory/understory_view2d" }
 
 # Imaging — rendering backend.
