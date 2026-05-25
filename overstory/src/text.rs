@@ -19,6 +19,7 @@ use parley::{
 use peniko::{Brush, Fill, Style};
 
 const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
+const MAX_ADVANCE_COMPATIBILITY_EPSILON: f32 = 0.01;
 
 /// Shared font discovery and source-cache state for text engines.
 ///
@@ -265,9 +266,14 @@ impl TextLayoutCache {
     }
 
     fn get(&mut self, key: &TextLayoutLookupKey<'_>) -> Option<TextLayout> {
-        let layout = self.entries.get(key)?;
+        let layout = self.entries.get(key).cloned().or_else(|| {
+            self.entries
+                .iter()
+                .find(|(candidate, layout)| key.is_satisfied_by(candidate, layout))
+                .map(|(_, layout)| Rc::clone(layout))
+        })?;
         self.stats.hits += 1;
-        Some(TextLayout::new(Rc::clone(layout)))
+        Some(TextLayout::new(layout))
     }
 
     fn insert(&mut self, key: TextLayoutKey, layout: Layout<Brush>) -> TextLayout {
@@ -345,6 +351,28 @@ impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
     }
 }
 
+impl TextLayoutLookupKey<'_> {
+    fn is_satisfied_by(&self, key: &TextLayoutKey, layout: &Layout<Brush>) -> bool {
+        self.text == key.text.as_ref()
+            && self.font_size == key.font_size
+            && max_advance_satisfies(self.max_advance, key.max_advance, layout.width())
+    }
+}
+
+fn max_advance_satisfies(
+    requested: Option<ScalarKey>,
+    cached: Option<ScalarKey>,
+    layout_width: f32,
+) -> bool {
+    cached.is_none_or(|cached| {
+        requested.is_some_and(|requested| {
+            cached.value() - requested.value() + MAX_ADVANCE_COMPATIBILITY_EPSILON >= 0.0
+        })
+    }) && requested.is_none_or(|requested| {
+        requested.value() - layout_width + MAX_ADVANCE_COMPATIBILITY_EPSILON >= 0.0
+    })
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ScalarKey(u32);
 
@@ -355,6 +383,10 @@ impl ScalarKey {
         } else {
             Self(value.to_bits())
         }
+    }
+
+    fn value(self) -> f32 {
+        f32::from_bits(self.0)
     }
 }
 
@@ -439,6 +471,33 @@ mod tests {
 
         let _ = engine.shape("Shared label", 14.0, Some(80.0));
         let _ = engine.shape("Shared label", 14.0, Some(120.0));
+
+        assert_eq!(engine.layout_cache_len(), 2);
+        assert_eq!(engine.layout_cache_stats().misses, 2);
+        assert_eq!(engine.layout_cache_stats().hits, 0);
+    }
+
+    #[test]
+    fn shape_reuses_layout_for_compatible_narrower_wrap_width() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+
+        let wide = engine.shape("Label", 14.0, Some(120.0));
+        let narrower = engine.shape("Label", 14.0, Some(80.0));
+
+        assert_eq!(wide.width(), narrower.width());
+        assert_eq!(engine.layout_cache_len(), 1);
+        assert_eq!(engine.layout_cache_stats().misses, 1);
+        assert_eq!(engine.layout_cache_stats().hits, 1);
+    }
+
+    #[test]
+    fn shape_does_not_use_constrained_layout_for_unbounded_width() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+
+        let _ = engine.shape("Shared label", 14.0, Some(120.0));
+        let _ = engine.shape("Shared label", 14.0, None);
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
