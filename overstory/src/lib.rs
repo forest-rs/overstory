@@ -30,6 +30,7 @@ pub mod channels;
 mod composition;
 mod controls;
 mod element;
+mod element_side_map;
 mod element_store;
 mod event_runtime;
 mod focus_runtime;

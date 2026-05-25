@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use understory_box_tree::{Hit, LocalNode, NodeFlags, NodeId, QueryFilter, Tree};
 
 use crate::element::ElementId;
+use crate::element_side_map::ElementSideMap;
 
 /// Box-tree geometry, spatial indexing, hit testing, and focus flags.
 pub(crate) struct GeometryRuntime {
@@ -18,7 +19,7 @@ pub(crate) struct GeometryRuntime {
     ///
     /// Stored as a small vector so future widgets can own multiple boxes
     /// without changing the external lookup shape.
-    element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
+    element_to_nodes: ElementSideMap<SmallVec<[NodeId; 1]>>,
     /// Reverse lookup used to turn spatial hits and focus results back into
     /// retained element ids.
     node_to_element: HashMap<NodeId, ElementId>,
@@ -28,7 +29,7 @@ impl GeometryRuntime {
     pub(crate) fn new() -> Self {
         Self {
             tree: Tree::new(),
-            element_to_nodes: HashMap::new(),
+            element_to_nodes: ElementSideMap::new(),
             node_to_element: HashMap::new(),
         }
     }
@@ -36,7 +37,7 @@ impl GeometryRuntime {
     pub(crate) fn insert_element(&mut self, id: ElementId, parent: Option<ElementId>) -> NodeId {
         // The first node is the element's primary layout/hit/focus box.
         let parent_node = parent
-            .and_then(|p| self.element_to_nodes.get(&p))
+            .and_then(|p| self.element_to_nodes.get(p))
             .and_then(|nodes| nodes.first())
             .copied();
         let tree_node = self.tree.insert(parent_node, LocalNode::default());
@@ -48,7 +49,7 @@ impl GeometryRuntime {
     }
 
     pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<NodeId> {
-        let Some(nodes) = self.element_to_nodes.remove(&id) else {
+        let Some(nodes) = self.element_to_nodes.remove(id) else {
             return Vec::new();
         };
         let mut removed = Vec::with_capacity(nodes.len());
@@ -62,7 +63,7 @@ impl GeometryRuntime {
 
     pub(crate) fn box_for(&self, id: ElementId) -> Option<NodeId> {
         self.element_to_nodes
-            .get(&id)
+            .get(id)
             .and_then(|nodes| nodes.first())
             .copied()
     }
@@ -111,6 +112,6 @@ impl GeometryRuntime {
 
     #[cfg(test)]
     pub(crate) fn nodes_for(&self, id: ElementId) -> Option<&[NodeId]> {
-        self.element_to_nodes.get(&id).map(SmallVec::as_slice)
+        self.element_to_nodes.get(id).map(SmallVec::as_slice)
     }
 }

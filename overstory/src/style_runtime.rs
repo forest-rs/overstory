@@ -1,13 +1,13 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use hashbrown::HashMap;
 use invalidation::ChannelSet;
 use smallvec::SmallVec;
 use understory_property::PropertyRegistry;
 use understory_style::{MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme};
 
 use crate::element::{Element, ElementId};
+use crate::element_side_map::ElementSideMap;
 use crate::widget::TYPE_GENERIC;
 
 /// Active style cascade, theme resources, and per-element match states.
@@ -21,7 +21,7 @@ pub(crate) struct StyleRuntime {
     /// The state is derived from the parent state and this element's current
     /// type, part, classes, and pseudo-classes. It is cleared when the cascade
     /// is replaced because state ids are cascade-local.
-    match_states: HashMap<ElementId, MatchState>,
+    match_states: ElementSideMap<MatchState>,
 }
 
 impl StyleRuntime {
@@ -29,7 +29,7 @@ impl StyleRuntime {
         Self {
             cascade: StyleCascadeBuilder::new().build(),
             theme: Theme::default(),
-            match_states: HashMap::new(),
+            match_states: ElementSideMap::new(),
         }
     }
 
@@ -52,13 +52,13 @@ impl StyleRuntime {
 
     pub(crate) fn match_state(&self, id: ElementId) -> MatchState {
         self.match_states
-            .get(&id)
+            .get(id)
             .copied()
             .unwrap_or_else(|| self.cascade.root_state())
     }
 
     pub(crate) fn remove(&mut self, id: ElementId) {
-        self.match_states.remove(&id);
+        self.match_states.remove(id);
     }
 
     pub(crate) fn style_one(
@@ -82,11 +82,11 @@ impl StyleRuntime {
 
         let parent_state = element
             .parent()
-            .and_then(|parent| self.match_states.get(&parent).copied())
+            .and_then(|parent| self.match_states.get(parent).copied())
             .unwrap_or_else(|| self.cascade.root_state());
 
         let inputs = SelectorInputs::with_part(type_tag, element.part_tag(), &classes, &pseudos);
-        let old_state = self.match_states.get(&id).copied();
+        let old_state = self.match_states.get(id).copied();
         let new_state = self.cascade.enter_subject(parent_state, &inputs);
         self.match_states.insert(id, new_state);
 

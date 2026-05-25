@@ -20,6 +20,7 @@ use subduction_core::layer::{
 use subduction_core::transform::Transform3d;
 
 use crate::element::ElementId;
+use crate::element_side_map::ElementSideMap;
 
 /// How an Overstory element contributes content to its composition layer.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -96,20 +97,23 @@ pub(crate) struct CompositionRuntime {
     main_root: Option<LayerId>,
     /// Dedicated layer parent for popup/tooltip/overlay surfaces.
     overlay_root: Option<LayerId>,
-    /// Mapping from retained elements to Subduction layers.
-    element_to_layer: HashMap<ElementId, LayerId>,
+    /// Per-element composition metadata.
+    elements: ElementSideMap<ElementComposition>,
     /// Reverse lookup for diagnostics and tests.
     layer_to_element: HashMap<LayerId, ElementId>,
-    /// Per-element content policy used when creating or rebuilding surfaces.
-    element_to_policy: HashMap<ElementId, CompositionPolicy>,
-    /// Per-element surface identity for policies that attach content.
-    element_to_surface: HashMap<ElementId, SurfaceId>,
     /// Overstory-owned scene recordings keyed by surface identity.
     surfaces: HashMap<SurfaceId, Scene>,
     /// Surface ids whose scene was rewritten by the most recent paint.
     updated_surfaces: Vec<SurfaceId>,
     /// Accumulated layer-tree changes ready for the host frame bridge.
     changes: FrameChanges,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ElementComposition {
+    layer: LayerId,
+    policy: CompositionPolicy,
+    surface: Option<SurfaceId>,
 }
 
 impl CompositionRuntime {
@@ -120,10 +124,8 @@ impl CompositionRuntime {
             surface_ids: SurfaceIds::new(),
             main_root: None,
             overlay_root: None,
-            element_to_layer: HashMap::new(),
+            elements: ElementSideMap::new(),
             layer_to_element: HashMap::new(),
-            element_to_policy: HashMap::new(),
-            element_to_surface: HashMap::new(),
             surfaces: HashMap::new(),
             updated_surfaces: Vec::new(),
             changes: FrameChanges::default(),
@@ -148,47 +150,52 @@ impl CompositionRuntime {
         let composition_parent = if policy.uses_overlay_root() {
             self.ensure_overlay_root()
         } else {
-            parent.and_then(|parent| self.element_to_layer.get(&parent).copied())
+            parent.and_then(|parent| self.elements.get(parent).map(|entry| entry.layer))
         };
         if let Some(parent_layer) = composition_parent {
             self.layers.add_child(parent_layer, layer);
         }
-        self.element_to_layer.insert(id, layer);
+        let surface = self.attach_content_for(layer, policy);
+        self.elements.insert(
+            id,
+            ElementComposition {
+                layer,
+                policy,
+                surface,
+            },
+        );
         self.layer_to_element.insert(layer, id);
-        self.element_to_policy.insert(id, policy);
-        self.attach_content_for(id, layer, policy);
     }
 
     /// Removes the layer for `id` and any remaining descendant layers.
     pub(crate) fn remove_element(&mut self, id: ElementId) {
-        let Some(layer) = self.element_to_layer.remove(&id) else {
+        let Some(entry) = self.elements.remove(id) else {
             return;
         };
+        let layer = entry.layer;
         if self.main_root == Some(layer) {
             self.main_root = None;
         }
         self.layers.destroy_subtree(layer);
-        self.element_to_layer
-            .retain(|_, candidate| self.layers.is_alive(*candidate));
+        let mut removed_surfaces = Vec::new();
+        if let Some(surface) = entry.surface {
+            removed_surfaces.push(surface);
+        }
+        self.elements.retain(|_, candidate| {
+            let alive = self.layers.is_alive(candidate.layer);
+            if !alive && let Some(surface) = candidate.surface {
+                removed_surfaces.push(surface);
+            }
+            alive
+        });
         self.layer_to_element
             .retain(|candidate, _| self.layers.is_alive(*candidate));
-        self.element_to_policy
-            .retain(|element, _| self.element_to_layer.contains_key(element));
         if self
             .overlay_root
             .is_some_and(|layer| !self.layers.is_alive(layer))
         {
             self.overlay_root = None;
         }
-        let removed_surfaces: Vec<SurfaceId> = self
-            .element_to_surface
-            .iter()
-            .filter_map(|(element, surface)| {
-                (!self.element_to_layer.contains_key(element)).then_some(*surface)
-            })
-            .collect();
-        self.element_to_surface
-            .retain(|element, _| self.element_to_layer.contains_key(element));
         for surface in removed_surfaces {
             let _ = self.surface_ids.release(surface);
             self.surfaces.remove(&surface);
@@ -199,23 +206,21 @@ impl CompositionRuntime {
 
     /// Returns the layer corresponding to `id`.
     pub(crate) fn layer_for(&self, id: ElementId) -> Option<LayerId> {
-        self.element_to_layer.get(&id).copied()
+        self.elements.get(id).map(|entry| entry.layer)
     }
 
     /// Returns the content surface corresponding to `id`.
     pub(crate) fn surface_for(&self, id: ElementId) -> Option<SurfaceId> {
-        self.element_to_surface.get(&id).copied()
+        self.elements.get(id).and_then(|entry| entry.surface)
     }
 
     /// Returns the Overstory-owned scene surface corresponding to `id`.
     pub(crate) fn owned_scene_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
-        self.element_to_policy
-            .get(&id)
-            .copied()
-            .unwrap_or_default()
+        let entry = self.elements.get(id)?;
+        entry
+            .policy
             .records_owned_scene()
-            .then(|| self.surface_for(id))
-            .flatten()
+            .then(|| self.surface_for(id))?
     }
 
     /// Returns the compositor-local bounds size for `id`.
@@ -284,18 +289,22 @@ impl CompositionRuntime {
         }
     }
 
-    fn attach_content_for(&mut self, id: ElementId, layer: LayerId, policy: CompositionPolicy) {
+    fn attach_content_for(
+        &mut self,
+        layer: LayerId,
+        policy: CompositionPolicy,
+    ) -> Option<SurfaceId> {
         if !policy.attaches_surface() {
             self.layers.set_content(layer, None);
-            return;
+            return None;
         }
 
         let surface = self.surface_ids.create();
         self.layers.set_content(layer, Some(surface));
-        self.element_to_surface.insert(id, surface);
         if policy.records_owned_scene() {
             self.surfaces.insert(surface, Scene::new());
         }
+        Some(surface)
     }
 
     fn ensure_overlay_root(&mut self) -> Option<LayerId> {
@@ -320,10 +329,11 @@ impl CompositionRuntime {
         size: Size,
         clip: Option<RoundedRect>,
     ) {
-        let Some(layer) = self.layer_for(id) else {
+        let Some(entry) = self.elements.get(id).copied() else {
             return;
         };
-        let policy = self.element_to_policy.get(&id).copied().unwrap_or_default();
+        let layer = entry.layer;
+        let policy = entry.policy;
         let layer_offset = if policy.uses_overlay_root() {
             world_offset
         } else {

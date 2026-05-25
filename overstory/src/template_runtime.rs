@@ -1,10 +1,10 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use hashbrown::HashMap;
 use understory_style::PartTag;
 
 use crate::element::ElementId;
+use crate::element_side_map::ElementSideMap;
 use crate::template::{TemplateInstance, TemplateSlot};
 
 /// Retained default-template expansion metadata for controls.
@@ -13,13 +13,13 @@ pub(crate) struct TemplateRuntime {
     ///
     /// The instance records the realized part/slot element ids created when a
     /// default template expands. Template children remain normal elements.
-    instances: HashMap<ElementId, TemplateInstance>,
+    instances: ElementSideMap<TemplateInstance>,
 }
 
 impl TemplateRuntime {
     pub(crate) fn new() -> Self {
         Self {
-            instances: HashMap::new(),
+            instances: ElementSideMap::new(),
         }
     }
 
@@ -28,7 +28,7 @@ impl TemplateRuntime {
     }
 
     pub(crate) fn get(&self, owner: ElementId) -> Option<&TemplateInstance> {
-        self.instances.get(&owner)
+        self.instances.get(owner)
     }
 
     pub(crate) fn part(&self, owner: ElementId, tag: PartTag) -> Option<ElementId> {
@@ -45,7 +45,7 @@ impl TemplateRuntime {
         tag: PartTag,
     ) -> impl Iterator<Item = ElementId> + '_ {
         self.instances
-            .get(&owner)
+            .get(owner)
             .into_iter()
             .flat_map(move |instance| instance.parts(tag))
     }
@@ -56,13 +56,13 @@ impl TemplateRuntime {
         slot: TemplateSlot,
     ) -> impl Iterator<Item = ElementId> + '_ {
         self.instances
-            .get(&owner)
+            .get(owner)
             .into_iter()
             .flat_map(move |instance| instance.slots(slot))
     }
 
     pub(crate) fn remove_element(&mut self, id: ElementId) {
-        self.instances.remove(&id);
+        self.instances.remove(id);
         // A removed element may be a realized part inside some other owner's
         // template instance, so prune it from every remaining instance too.
         for instance in self.instances.values_mut() {

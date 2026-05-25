@@ -1,9 +1,8 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use hashbrown::HashMap;
-
 use crate::element::ElementId;
+use crate::element_side_map::ElementSideMap;
 
 /// Taffy layout tree plus the element-to-layout-node map.
 pub(crate) struct LayoutRuntime {
@@ -11,14 +10,14 @@ pub(crate) struct LayoutRuntime {
     /// callers deal in `ElementId` rather than layout-node ids.
     taffy: taffy::TaffyTree<ElementId>,
     /// Mapping from retained elements to their Taffy layout nodes.
-    element_to_taffy: HashMap<ElementId, taffy::NodeId>,
+    element_to_taffy: ElementSideMap<taffy::NodeId>,
 }
 
 impl LayoutRuntime {
     pub(crate) fn new() -> Self {
         Self {
             taffy: taffy::TaffyTree::new(),
-            element_to_taffy: HashMap::new(),
+            element_to_taffy: ElementSideMap::new(),
         }
     }
 
@@ -29,7 +28,7 @@ impl LayoutRuntime {
             .expect("taffy leaf allocation should succeed");
         self.element_to_taffy.insert(id, taffy_node);
         if let Some(parent_id) = parent
-            && let Some(parent_node) = self.element_to_taffy.get(&parent_id).copied()
+            && let Some(parent_node) = self.element_to_taffy.get(parent_id).copied()
         {
             self.taffy
                 .add_child(parent_node, taffy_node)
@@ -38,13 +37,13 @@ impl LayoutRuntime {
     }
 
     pub(crate) fn remove_element(&mut self, id: ElementId) {
-        if let Some(taffy_node) = self.element_to_taffy.remove(&id) {
+        if let Some(taffy_node) = self.element_to_taffy.remove(id) {
             let _ = self.taffy.remove(taffy_node);
         }
     }
 
     pub(crate) fn node_for(&self, id: ElementId) -> Option<taffy::NodeId> {
-        self.element_to_taffy.get(&id).copied()
+        self.element_to_taffy.get(id).copied()
     }
 
     pub(crate) fn set_style(&mut self, node: taffy::NodeId, style: taffy::Style) {
