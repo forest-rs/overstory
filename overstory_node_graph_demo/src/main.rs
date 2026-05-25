@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
-    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase,
+    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase, PointerEventKind,
     PointerRoutedEvent, ScrollEvent, Text, Tooltip, Ui, Widget, theme,
 };
 use overstory_host_winit::WindowOptions;
@@ -432,7 +432,7 @@ fn install_viewport_interaction(
     let up_graph = Rc::clone(&graph);
     let up_selected = Rc::clone(&selected_element);
     let up_gesture = Rc::clone(&active_gesture);
-    ui.on_pointer_up(graph_host, move |ui, event| {
+    ui.on_pointer(graph_host, PointerEventKind::Up, move |ui, event| {
         finish_graph_gesture(
             ui,
             event,
@@ -447,7 +447,7 @@ fn install_viewport_interaction(
     let cancel_graph = Rc::clone(&graph);
     let cancel_selected = Rc::clone(&selected_element);
     let cancel_gesture = Rc::clone(&active_gesture);
-    ui.on_pointer_cancel(graph_host, move |ui, event| {
+    ui.on_pointer(graph_host, PointerEventKind::Cancel, move |ui, event| {
         cancel_graph_gesture(
             ui,
             event,
@@ -836,7 +836,7 @@ fn append_graph_nodes(
         let selected_for_handler = Rc::clone(&selected_element);
         let graph_for_handler = Rc::clone(&graph);
         let gesture_for_handler = Rc::clone(&active_gesture);
-        ui.on_pointer_down(node_element, move |ui, event| {
+        ui.on_pointer(node_element, PointerEventKind::Down, move |ui, event| {
             start_node_drag(
                 ui,
                 event,
@@ -923,7 +923,7 @@ fn append_graph_ports(
             let graph_for_handler = Rc::clone(&graph);
             let selected_for_handler = Rc::clone(&selected_element);
             let gesture_for_handler = Rc::clone(&active_gesture);
-            ui.on_pointer_down(port_element, move |ui, event| {
+            ui.on_pointer(port_element, PointerEventKind::Down, move |ui, event| {
                 start_port_drag(
                     ui,
                     event,

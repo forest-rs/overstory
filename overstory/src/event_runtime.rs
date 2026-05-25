@@ -94,6 +94,54 @@ pub enum RoutedEventKind {
     FocusLost,
 }
 
+/// Routed pointer event family accepted by pointer handler registration APIs.
+///
+/// This is intentionally narrower than [`ui_events::pointer::PointerEvent`]:
+/// scroll is routed through [`ScrollEvent`], and gesture events are not yet a
+/// first-class Overstory routed event family.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PointerEventKind {
+    /// Pointer button press routed from the hit element.
+    Down,
+    /// Pointer movement routed from the captured or hit element.
+    Move,
+    /// Pointer button release routed from the captured or hit element.
+    Up,
+    /// Pointer entered a hit-tested element.
+    Enter,
+    /// Pointer left a hit-tested element.
+    Leave,
+    /// Pointer interaction was canceled.
+    Cancel,
+}
+
+impl PointerEventKind {
+    /// Returns the corresponding routed event kind.
+    #[must_use]
+    pub const fn routed(self) -> RoutedEventKind {
+        match self {
+            Self::Down => RoutedEventKind::PointerDown,
+            Self::Move => RoutedEventKind::PointerMove,
+            Self::Up => RoutedEventKind::PointerUp,
+            Self::Enter => RoutedEventKind::PointerEnter,
+            Self::Leave => RoutedEventKind::PointerLeave,
+            Self::Cancel => RoutedEventKind::PointerCancel,
+        }
+    }
+
+    pub(crate) const fn from_routed(kind: RoutedEventKind) -> Option<Self> {
+        match kind {
+            RoutedEventKind::PointerDown => Some(Self::Down),
+            RoutedEventKind::PointerMove => Some(Self::Move),
+            RoutedEventKind::PointerUp => Some(Self::Up),
+            RoutedEventKind::PointerEnter => Some(Self::Enter),
+            RoutedEventKind::PointerLeave => Some(Self::Leave),
+            RoutedEventKind::PointerCancel => Some(Self::Cancel),
+            _ => None,
+        }
+    }
+}
+
 /// Why focus changed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FocusChangeReason {
@@ -756,7 +804,7 @@ impl EventRuntime {
 
     pub(crate) fn on_pointer(
         &mut self,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
         handler: PointerHandler,
     ) {
@@ -765,7 +813,7 @@ impl EventRuntime {
 
     pub(crate) fn on_pointer_with_options(
         &mut self,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
         options: RoutedHandlerOptions,
         handler: PointerHandler,
@@ -774,7 +822,7 @@ impl EventRuntime {
             .insert(HandlerLane::User, id, options, handler);
     }
 
-    pub(crate) fn remove_pointer(&mut self, kind: RoutedEventKind, id: ElementId) {
+    pub(crate) fn remove_pointer(&mut self, kind: PointerEventKind, id: ElementId) {
         self.pointer_pair_mut(kind).remove(HandlerLane::User, id);
     }
 
@@ -973,7 +1021,7 @@ impl EventRuntime {
     pub(crate) fn take_pointer(
         &mut self,
         lane: HandlerLane,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
         handled: bool,
     ) -> Option<HandlerRegistration<PointerHandler>> {
@@ -983,20 +1031,20 @@ impl EventRuntime {
     pub(crate) fn begin_pointer(
         &mut self,
         lane: HandlerLane,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
     ) {
         self.pointer_pair_mut(kind).begin(lane, id);
     }
 
-    pub(crate) fn end_pointer(&mut self, lane: HandlerLane, kind: RoutedEventKind, id: ElementId) {
+    pub(crate) fn end_pointer(&mut self, lane: HandlerLane, kind: PointerEventKind, id: ElementId) {
         self.pointer_pair_mut(kind).end(lane, id);
     }
 
     pub(crate) fn pointer_removed(
         &mut self,
         lane: HandlerLane,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
     ) -> bool {
         self.pointer_pair_mut(kind).take_removed(lane, id)
@@ -1005,7 +1053,7 @@ impl EventRuntime {
     pub(crate) fn insert_pointer_if_absent(
         &mut self,
         lane: HandlerLane,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
         handler: HandlerRegistration<PointerHandler>,
     ) {
@@ -1016,7 +1064,7 @@ impl EventRuntime {
     pub(crate) fn has_pointer(
         &self,
         lane: HandlerLane,
-        kind: RoutedEventKind,
+        kind: PointerEventKind,
         id: ElementId,
     ) -> bool {
         self.pointer_pair(kind).has(lane, id)
@@ -1093,27 +1141,25 @@ impl EventRuntime {
         self.last_drag_position = Some(position);
     }
 
-    fn pointer_pair(&self, kind: RoutedEventKind) -> &HandlerPair<PointerHandler> {
+    fn pointer_pair(&self, kind: PointerEventKind) -> &HandlerPair<PointerHandler> {
         match kind {
-            RoutedEventKind::PointerDown => &self.pointer_down,
-            RoutedEventKind::PointerMove => &self.pointer_move,
-            RoutedEventKind::PointerUp => &self.pointer_up,
-            RoutedEventKind::PointerEnter => &self.pointer_enter,
-            RoutedEventKind::PointerLeave => &self.pointer_leave,
-            RoutedEventKind::PointerCancel => &self.pointer_cancel,
-            _ => panic!("pointer handler requested for non-pointer event kind"),
+            PointerEventKind::Down => &self.pointer_down,
+            PointerEventKind::Move => &self.pointer_move,
+            PointerEventKind::Up => &self.pointer_up,
+            PointerEventKind::Enter => &self.pointer_enter,
+            PointerEventKind::Leave => &self.pointer_leave,
+            PointerEventKind::Cancel => &self.pointer_cancel,
         }
     }
 
-    fn pointer_pair_mut(&mut self, kind: RoutedEventKind) -> &mut HandlerPair<PointerHandler> {
+    fn pointer_pair_mut(&mut self, kind: PointerEventKind) -> &mut HandlerPair<PointerHandler> {
         match kind {
-            RoutedEventKind::PointerDown => &mut self.pointer_down,
-            RoutedEventKind::PointerMove => &mut self.pointer_move,
-            RoutedEventKind::PointerUp => &mut self.pointer_up,
-            RoutedEventKind::PointerEnter => &mut self.pointer_enter,
-            RoutedEventKind::PointerLeave => &mut self.pointer_leave,
-            RoutedEventKind::PointerCancel => &mut self.pointer_cancel,
-            _ => panic!("pointer handler requested for non-pointer event kind"),
+            PointerEventKind::Down => &mut self.pointer_down,
+            PointerEventKind::Move => &mut self.pointer_move,
+            PointerEventKind::Up => &mut self.pointer_up,
+            PointerEventKind::Enter => &mut self.pointer_enter,
+            PointerEventKind::Leave => &mut self.pointer_leave,
+            PointerEventKind::Cancel => &mut self.pointer_cancel,
         }
     }
 }

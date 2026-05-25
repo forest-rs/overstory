@@ -8,8 +8,8 @@ use crate::pseudos::{
 };
 use crate::{
     CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, Navigation, Phase,
-    RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext, TemplateSlot,
-    UiResolveLookup,
+    PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
+    TemplateSlot, UiResolveLookup,
 };
 use imaging::record::Scene;
 use kurbo::{Point, Rect, Size, Vec2};
@@ -1686,7 +1686,7 @@ fn pointer_down_walks_capture_target_bubble() {
     let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
     for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
         let log = Rc::clone(&log);
-        ui.on_pointer_down(id, move |_ui, event| {
+        ui.on_pointer(id, PointerEventKind::Down, move |_ui, event| {
             let phase = match event.phase {
                 Phase::Capture => "capture",
                 Phase::Target => "target",
@@ -1725,7 +1725,7 @@ fn handled_pointer_down_suppresses_derived_click() {
     ui.set_layout(child, Layout::new().logical_size(100.0, 60.0));
     ui.compute_layout(Size::new(200.0, 80.0));
 
-    ui.on_pointer_down(child, |_ui, event| {
+    ui.on_pointer(child, PointerEventKind::Down, |_ui, event| {
         if matches!(event.phase, Phase::Target) {
             event.mark_handled();
         }
@@ -1759,7 +1759,7 @@ fn explicit_pointer_capture_routes_move_outside_hit_target() {
     ui.set_layout(child, Layout::new().logical_size(40.0, 40.0));
     ui.compute_layout(Size::new(100.0, 100.0));
 
-    ui.on_pointer_down(root, move |ui, event| {
+    ui.on_pointer(root, PointerEventKind::Down, move |ui, event| {
         if matches!(event.phase, Phase::Capture) {
             assert!(ui.capture_pointer(root));
             event.mark_handled();
@@ -1768,7 +1768,7 @@ fn explicit_pointer_capture_routes_move_outside_hit_target() {
 
     let move_seen = Rc::new(Cell::new(None::<(ElementId, Phase)>));
     let move_seen_for_handler = Rc::clone(&move_seen);
-    ui.on_pointer_move(root, move |_ui, event| {
+    ui.on_pointer(root, PointerEventKind::Move, move |_ui, event| {
         if matches!(event.phase, Phase::Target) {
             move_seen_for_handler.set(Some((event.source, event.phase)));
             event.mark_handled();
@@ -1822,7 +1822,7 @@ fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
     let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
     for (name, id) in [("root", root), ("child", child)] {
         let enter_log = Rc::clone(&log);
-        ui.on_pointer_enter(id, move |_ui, event| {
+        ui.on_pointer(id, PointerEventKind::Enter, move |_ui, event| {
             if matches!(event.phase, Phase::Target | Phase::Bubble) {
                 enter_log
                     .borrow_mut()
@@ -1830,7 +1830,7 @@ fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
             }
         });
         let leave_log = Rc::clone(&log);
-        ui.on_pointer_leave(id, move |_ui, event| {
+        ui.on_pointer(id, PointerEventKind::Leave, move |_ui, event| {
             if matches!(event.phase, Phase::Target | Phase::Bubble) {
                 leave_log
                     .borrow_mut()

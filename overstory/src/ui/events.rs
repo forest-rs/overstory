@@ -20,9 +20,10 @@ use understory_timing::TimerInstant;
 
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
-    ClickEvent, DragEvent, FocusChangeReason, FocusEvent, HandlerLane, KeyDispatchResult, KeyEvent,
-    PointerDispatchResult, PointerRoutedEvent, RoutedDispatchResult, RoutedEventContext,
-    RoutedEventKind, RoutedEventState, RoutedHandlerOptions, ScrollEvent,
+    ClickEvent, DragEvent, EventRuntime, FocusChangeReason, FocusEvent, HandlerLane,
+    HandlerRegistration, KeyDispatchResult, KeyEvent, PointerDispatchResult, PointerEventKind,
+    PointerRoutedEvent, RoutedDispatchResult, RoutedEventContext, RoutedEventKind,
+    RoutedEventState, RoutedHandlerOptions, ScrollEvent,
 };
 use crate::widget::Widget;
 
@@ -217,17 +218,23 @@ impl Ui {
         self.events.remove_focus(id);
     }
 
-    fn on_pointer_kind<F>(&mut self, kind: RoutedEventKind, id: ElementId, handler: F)
+    /// Registers a pointer handler on `id`.
+    ///
+    /// Pointer handlers are keyed by [`PointerEventKind`] rather than separate
+    /// method names so shared setup code can register multiple pointer phases
+    /// without duplicating wrapper logic.
+    pub fn on_pointer<F>(&mut self, id: ElementId, kind: PointerEventKind, handler: F)
     where
         F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
     {
         self.events.on_pointer(kind, id, Box::new(handler));
     }
 
-    fn on_pointer_kind_with_options<F>(
+    /// Registers a pointer handler with explicit routed handler options.
+    pub fn on_pointer_with_options<F>(
         &mut self,
-        kind: RoutedEventKind,
         id: ElementId,
+        kind: PointerEventKind,
         options: RoutedHandlerOptions,
         handler: F,
     ) where
@@ -237,163 +244,9 @@ impl Ui {
             .on_pointer_with_options(kind, id, options, Box::new(handler));
     }
 
-    /// Registers a pointer-down handler on `id`.
-    pub fn on_pointer_down<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerDown, id, handler);
-    }
-
-    /// Registers a pointer-down handler with explicit routed handler options.
-    pub fn on_pointer_down_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerDown, id, options, handler);
-    }
-
-    /// Removes a pointer-down handler previously registered with
-    /// [`Self::on_pointer_down`].
-    pub fn remove_pointer_down_handler(&mut self, id: ElementId) {
-        self.events.remove_pointer(RoutedEventKind::PointerDown, id);
-    }
-
-    /// Registers a pointer-move handler on `id`.
-    pub fn on_pointer_move<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerMove, id, handler);
-    }
-
-    /// Registers a pointer-move handler with explicit routed handler options.
-    pub fn on_pointer_move_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerMove, id, options, handler);
-    }
-
-    /// Removes a pointer-move handler previously registered with
-    /// [`Self::on_pointer_move`].
-    pub fn remove_pointer_move_handler(&mut self, id: ElementId) {
-        self.events.remove_pointer(RoutedEventKind::PointerMove, id);
-    }
-
-    /// Registers a pointer-up handler on `id`.
-    pub fn on_pointer_up<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerUp, id, handler);
-    }
-
-    /// Registers a pointer-up handler with explicit routed handler options.
-    pub fn on_pointer_up_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerUp, id, options, handler);
-    }
-
-    /// Removes a pointer-up handler previously registered with
-    /// [`Self::on_pointer_up`].
-    pub fn remove_pointer_up_handler(&mut self, id: ElementId) {
-        self.events.remove_pointer(RoutedEventKind::PointerUp, id);
-    }
-
-    /// Registers a pointer-enter handler on `id`.
-    pub fn on_pointer_enter<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerEnter, id, handler);
-    }
-
-    /// Registers a pointer-enter handler with explicit routed handler options.
-    pub fn on_pointer_enter_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerEnter, id, options, handler);
-    }
-
-    /// Removes a pointer-enter handler previously registered with
-    /// [`Self::on_pointer_enter`].
-    pub fn remove_pointer_enter_handler(&mut self, id: ElementId) {
-        self.events
-            .remove_pointer(RoutedEventKind::PointerEnter, id);
-    }
-
-    /// Registers a pointer-leave handler on `id`.
-    pub fn on_pointer_leave<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerLeave, id, handler);
-    }
-
-    /// Registers a pointer-leave handler with explicit routed handler options.
-    pub fn on_pointer_leave_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerLeave, id, options, handler);
-    }
-
-    /// Removes a pointer-leave handler previously registered with
-    /// [`Self::on_pointer_leave`].
-    pub fn remove_pointer_leave_handler(&mut self, id: ElementId) {
-        self.events
-            .remove_pointer(RoutedEventKind::PointerLeave, id);
-    }
-
-    /// Registers a pointer-cancel handler on `id`.
-    pub fn on_pointer_cancel<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind(RoutedEventKind::PointerCancel, id, handler);
-    }
-
-    /// Registers a pointer-cancel handler with explicit routed handler options.
-    pub fn on_pointer_cancel_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.on_pointer_kind_with_options(RoutedEventKind::PointerCancel, id, options, handler);
-    }
-
-    /// Removes a pointer-cancel handler previously registered with
-    /// [`Self::on_pointer_cancel`].
-    pub fn remove_pointer_cancel_handler(&mut self, id: ElementId) {
-        self.events
-            .remove_pointer(RoutedEventKind::PointerCancel, id);
+    /// Removes a pointer handler previously registered with [`Self::on_pointer`].
+    pub fn remove_pointer_handler(&mut self, id: ElementId, kind: PointerEventKind) {
+        self.events.remove_pointer(kind, id);
     }
 
     /// Runs `dispatch_current` across the responder route for `source`.
@@ -436,6 +289,29 @@ impl Ui {
         }
     }
 
+    fn dispatch_handler_registration<E, H>(
+        &mut self,
+        node: ElementId,
+        mut registration: HandlerRegistration<H>,
+        begin: impl FnOnce(&mut EventRuntime),
+        end: impl FnOnce(&mut EventRuntime),
+        was_removed: impl FnOnce(&mut EventRuntime) -> bool,
+        has_registered: impl FnOnce(&EventRuntime) -> bool,
+        restore: impl FnOnce(&mut EventRuntime, HandlerRegistration<H>),
+        event: E,
+    ) where
+        H: FnMut(&mut Self, E),
+    {
+        begin(&mut self.events);
+        (registration.handler)(self, event);
+        end(&mut self.events);
+
+        let handler_removed = was_removed(&mut self.events);
+        if self.get(node).is_some() && !handler_removed && !has_registered(&self.events) {
+            restore(&mut self.events, registration);
+        }
+    }
+
     fn dispatch_key_handler_lane<'a>(
         &mut self,
         lane: HandlerLane,
@@ -443,17 +319,19 @@ impl Ui {
         event: &'a KeyboardEvent,
     ) {
         let node = route.current;
-        let Some(mut registration) = self.events.take_key(lane, node, route.is_handled()) else {
+        let Some(registration) = self.events.take_key(lane, node, route.is_handled()) else {
             return;
         };
-        let ev = KeyEvent { route, key: event };
-        self.events.begin_key(lane, node);
-        (registration.handler)(self, ev);
-        self.events.end_key(lane, node);
-        let handler_removed = self.events.key_removed(lane, node);
-        if self.get(node).is_some() && !handler_removed && !self.events.has_key(lane, node) {
-            self.events.insert_key_if_absent(lane, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_key(lane, node),
+            |events| events.end_key(lane, node),
+            |events| events.key_removed(lane, node),
+            |events| events.has_key(lane, node),
+            |events, registration| events.insert_key_if_absent(lane, node, registration),
+            KeyEvent { route, key: event },
+        );
     }
 
     fn dispatch_widget_key<'a>(&mut self, route: RoutedEventContext<'a>, event: &'a KeyboardEvent) {
@@ -471,7 +349,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        let Some(mut registration) = self.events.take_click(lane, node, route.is_handled()) else {
+        let Some(registration) = self.events.take_click(lane, node, route.is_handled()) else {
             return;
         };
         let event = ClickEvent {
@@ -479,13 +357,16 @@ impl Ui {
             position,
             modifiers,
         };
-        self.events.begin_click(lane, node);
-        (registration.handler)(self, event);
-        self.events.end_click(lane, node);
-        let handler_removed = self.events.click_removed(lane, node);
-        if self.get(node).is_some() && !handler_removed && !self.events.has_click(lane, node) {
-            self.events.insert_click_if_absent(lane, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_click(lane, node),
+            |events| events.end_click(lane, node),
+            |events| events.click_removed(lane, node),
+            |events| events.has_click(lane, node),
+            |events, registration| events.insert_click_if_absent(lane, node, registration),
+            event,
+        );
     }
 
     fn dispatch_widget_click(
@@ -517,7 +398,7 @@ impl Ui {
         delta: Vec2,
     ) {
         let node = route.current;
-        let Some(mut registration) = self.events.take_drag(lane, node, route.is_handled()) else {
+        let Some(registration) = self.events.take_drag(lane, node, route.is_handled()) else {
             return;
         };
         let event = DragEvent {
@@ -526,13 +407,16 @@ impl Ui {
             press_position,
             delta,
         };
-        self.events.begin_drag(lane, node);
-        (registration.handler)(self, event);
-        self.events.end_drag(lane, node);
-        let handler_removed = self.events.drag_removed(lane, node);
-        if self.get(node).is_some() && !handler_removed && !self.events.has_drag(lane, node) {
-            self.events.insert_drag_if_absent(lane, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_drag(lane, node),
+            |events| events.end_drag(lane, node),
+            |events| events.drag_removed(lane, node),
+            |events| events.has_drag(lane, node),
+            |events, registration| events.insert_drag_if_absent(lane, node, registration),
+            event,
+        );
     }
 
     fn dispatch_widget_drag(
@@ -566,7 +450,7 @@ impl Ui {
         modifiers: Modifiers,
     ) {
         let node = route.current;
-        let Some(mut registration) = self.events.take_scroll(lane, node, route.is_handled()) else {
+        let Some(registration) = self.events.take_scroll(lane, node, route.is_handled()) else {
             return;
         };
         let event = ScrollEvent {
@@ -575,14 +459,16 @@ impl Ui {
             delta,
             modifiers,
         };
-        self.events.begin_scroll(lane, node);
-        (registration.handler)(self, event);
-        self.events.end_scroll(lane, node);
-        let handler_removed = self.events.scroll_removed(lane, node);
-        if self.get(node).is_some() && !handler_removed && !self.events.has_scroll(lane, node) {
-            self.events
-                .insert_scroll_if_absent(lane, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_scroll(lane, node),
+            |events| events.end_scroll(lane, node),
+            |events| events.scroll_removed(lane, node),
+            |events| events.has_scroll(lane, node),
+            |events, registration| events.insert_scroll_if_absent(lane, node, registration),
+            event,
+        );
     }
 
     fn dispatch_widget_scroll(
@@ -617,7 +503,7 @@ impl Ui {
         reason: FocusChangeReason,
     ) {
         let node = route.current;
-        let Some(mut registration) = self.events.take_focus(lane, node, route.is_handled()) else {
+        let Some(registration) = self.events.take_focus(lane, node, route.is_handled()) else {
             return;
         };
         let event = FocusEvent {
@@ -627,13 +513,16 @@ impl Ui {
             focus_visible,
             reason,
         };
-        self.events.begin_focus(lane, node);
-        (registration.handler)(self, event);
-        self.events.end_focus(lane, node);
-        let handler_removed = self.events.focus_removed(lane, node);
-        if self.get(node).is_some() && !handler_removed && !self.events.has_focus(lane, node) {
-            self.events.insert_focus_if_absent(lane, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_focus(lane, node),
+            |events| events.end_focus(lane, node),
+            |events| events.focus_removed(lane, node),
+            |events| events.has_focus(lane, node),
+            |events, registration| events.insert_focus_if_absent(lane, node, registration),
+            event,
+        );
     }
 
     fn dispatch_widget_focus(
@@ -667,24 +556,25 @@ impl Ui {
         data: PointerRouteData<'_>,
     ) {
         let node = route.current;
-        let Some(mut registration) =
-            self.events
-                .take_pointer(lane, route.kind, node, route.is_handled())
+        let kind = PointerEventKind::from_routed(route.kind)
+            .expect("pointer dispatch route must use a pointer event kind");
+        let Some(registration) = self
+            .events
+            .take_pointer(lane, kind, node, route.is_handled())
         else {
             return;
         };
         let event = data.event(route);
-        self.events.begin_pointer(lane, event.kind, node);
-        (registration.handler)(self, event);
-        self.events.end_pointer(lane, route.kind, node);
-        let handler_removed = self.events.pointer_removed(lane, route.kind, node);
-        if self.get(node).is_some()
-            && !handler_removed
-            && !self.events.has_pointer(lane, route.kind, node)
-        {
-            self.events
-                .insert_pointer_if_absent(lane, route.kind, node, registration);
-        }
+        self.dispatch_handler_registration(
+            node,
+            registration,
+            |events| events.begin_pointer(lane, kind, node),
+            |events| events.end_pointer(lane, kind, node),
+            |events| events.pointer_removed(lane, kind, node),
+            |events| events.has_pointer(lane, kind, node),
+            |events, registration| events.insert_pointer_if_absent(lane, kind, node, registration),
+            event,
+        );
     }
 
     fn dispatch_widget_pointer(
