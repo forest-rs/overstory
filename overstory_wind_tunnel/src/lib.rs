@@ -9,3 +9,5 @@
 //! ```sh
 //! cargo bench -p overstory_wind_tunnel
 //! ```
+
+pub mod scenarios;
