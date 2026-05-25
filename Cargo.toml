@@ -10,19 +10,19 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
-# Keep in sync with RUST_MIN_VER in .github/workflows/ci.yml, with the relevant README.md files
-# and with the MSRV in the `Unreleased` section of CHANGELOG.md.
+# Keep in sync with the relevant README.md files and with the MSRV in the
+# `Unreleased` section of CHANGELOG.md.
 rust-version = "1.92"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/forest-rs/layerstack"
+repository = "https://github.com/forest-rs/overstory"
 
 [workspace.dependencies]
 # Overstory workspace crates.
-overstory = { path = "overstory" }
-overstory_host = { path = "overstory_host" }
-overstory_host_winit = { path = "overstory_host_winit" }
+overstory = { path = "overstory", version = "0.0.1" }
+overstory_host = { path = "overstory_host", version = "0.0.1" }
+overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 
 # Core data deps
 hashbrown = { default-features = false, features = [
@@ -30,9 +30,9 @@ hashbrown = { default-features = false, features = [
     "default-hasher",
 ], version = "0.17.0" }
 invalidation = { default-features = false, version = "0.2.0" }
-smallvec = { default-features = false, version = "1.13.2" }
 kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
 peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
+smallvec = { default-features = false, version = "1.13.2" }
 subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
 
 # Understory primitives (path deps — closely coupled).
@@ -40,16 +40,16 @@ understory_axis = { default-features = false, path = "../understory/understory_a
 understory_box_tree = { default-features = false, path = "../understory/understory_box_tree" }
 understory_event_state = { default-features = false, path = "../understory/understory_event_state" }
 understory_focus = { default-features = false, path = "../understory/understory_focus" }
-understory_presentation = { default-features = false, path = "../understory/understory_presentation" }
 understory_node_graph = { default-features = false, path = "../understory/understory_node_graph" }
+understory_presentation = { default-features = false, path = "../understory/understory_presentation" }
 understory_property = { default-features = false, path = "../understory/understory_property" }
 understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
 understory_responder = { default-features = false, path = "../understory/understory_responder" }
 understory_selection = { default-features = false, path = "../understory/understory_selection" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
 understory_timing = { default-features = false, path = "../understory/understory_timing" }
-understory_virtual_list = { default-features = false, path = "../understory/understory_virtual_list" }
 understory_view2d = { default-features = false, path = "../understory/understory_view2d" }
+understory_virtual_list = { default-features = false, path = "../understory/understory_virtual_list" }
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["libm"], version = "0.0.1" }
@@ -64,22 +64,22 @@ web-time = { version = "1.1.0" }
 
 # Layout engine.
 taffy = { default-features = false, features = [
-    "taffy_tree",
-    "flexbox",
-    "grid",
     "block_layout",
-    "float_layout",
     "calc",
     "content_size",
+    "flexbox",
+    "float_layout",
+    "grid",
+    "taffy_tree",
 ], version = "0.10" }
 
 # Text shaping and layout.
 parley = { default-features = false, features = ["libm"], version = "0.9" }
 
 # Host runtime for the demo binary.
-winit = { default-features = true, version = "0.30" }
-wgpu = { default-features = false, features = ["std"], version = "28.0.0" }
 pollster = { version = "0.4.0" }
+wgpu = { default-features = false, features = ["std"], version = "28.0.0" }
+winit = { default-features = true, version = "0.30" }
 
 [workspace.lints]
 # LINEBENDER LINT SET - Cargo.toml - v7

@@ -30,30 +30,30 @@ system-fonts = ["std", "parley/system"]
 [dependencies]
 hashbrown.workspace = true
 invalidation.workspace = true
-smallvec.workspace = true
 kurbo.workspace = true
 peniko.workspace = true
+smallvec.workspace = true
 subduction_core.workspace = true
 
 cursor-icon.workspace = true
 imaging.workspace = true
 
-understory_axis = { workspace = true, default-features = false }
-understory_box_tree = { workspace = true, default-features = false, features = ["libm"] }
-understory_event_state = { workspace = true, default-features = false, features = ["libm", "click", "drag"] }
-understory_focus = { workspace = true, default-features = false, features = ["libm", "box_tree_adapter"] }
-understory_presentation = { workspace = true, default-features = false, features = ["libm"] }
-understory_property = { workspace = true, default-features = false }
-understory_property_binding = { workspace = true, default-features = false }
-understory_responder = { workspace = true, default-features = false, features = ["box_tree_adapter"] }
-understory_selection = { workspace = true, default-features = false }
-understory_style = { workspace = true, default-features = false }
-understory_timing = { workspace = true, default-features = false }
-understory_virtual_list = { workspace = true, default-features = false }
+understory_axis = { default-features = false, workspace = true }
+understory_box_tree = { default-features = false, features = ["libm"], workspace = true }
+understory_event_state = { default-features = false, features = ["click", "drag", "libm"], workspace = true }
+understory_focus = { default-features = false, features = ["box_tree_adapter", "libm"], workspace = true }
+understory_presentation = { default-features = false, features = ["libm"], workspace = true }
+understory_property = { default-features = false, workspace = true }
+understory_property_binding = { default-features = false, workspace = true }
+understory_responder = { default-features = false, features = ["box_tree_adapter"], workspace = true }
+understory_selection = { default-features = false, workspace = true }
+understory_style = { default-features = false, workspace = true }
+understory_timing = { default-features = false, workspace = true }
+understory_virtual_list = { default-features = false, workspace = true }
 
-ui-events.workspace = true
-taffy.workspace = true
 parley.workspace = true
+taffy.workspace = true
+ui-events.workspace = true
 
 [lints]
 workspace = true

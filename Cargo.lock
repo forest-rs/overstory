@@ -1710,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "overstory"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "cursor-icon",
  "hashbrown 0.17.1",
@@ -1739,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "overstory_demo"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "overstory",
  "overstory_host_winit",
@@ -1748,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "overstory_host"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "hashbrown 0.17.1",
  "imaging",
@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "overstory_host_winit"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "imaging_vello",
  "imaging_wgpu",
@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "overstory_node_graph_demo"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "kurbo",
  "overstory",
@@ -1787,7 +1787,7 @@ dependencies = [
 
 [[package]]
 name = "overstory_wind_tunnel"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "criterion",
  "imaging",
