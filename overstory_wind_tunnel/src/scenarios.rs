@@ -3,10 +3,12 @@
 
 //! Shared benchmark and profiling scenarios.
 
+use imaging::record::Scene;
 use kurbo::Size;
 use overstory::{
     Button, Layout, ListBox, Panel, ProgressBar, Slider, TextInput, TextResources, ToggleSwitch, Ui,
 };
+use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
 use std::sync::OnceLock;
 
 /// Default number of rows in the rich dashboard scenario.
@@ -80,4 +82,33 @@ pub fn build_virtual_list(items: usize) -> (Ui, overstory::ElementId) {
             .overscan(84.0),
     );
     (ui, listbox)
+}
+
+/// Builds the rich dashboard, computes layout, and returns the live element count.
+pub fn layout_dashboard(rows: usize) -> usize {
+    let mut ui = build_dashboard(rows);
+    ui.compute_layout(VIEWPORT);
+    ui.len()
+}
+
+/// Builds and lays out the rich dashboard, paints it, and returns whether the
+/// resulting scene is empty.
+pub fn paint_dashboard(rows: usize) -> bool {
+    let mut ui = build_dashboard(rows);
+    ui.compute_layout(VIEWPORT);
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+    scene.is_empty()
+}
+
+/// Builds the virtual list, performs the same scroll loop as the Criterion
+/// benchmark, and returns the final vertical scroll offset.
+pub fn scroll_virtual_list(items: usize) -> f64 {
+    let (mut ui, listbox) = build_virtual_list(items);
+    for step in 0..16 {
+        let offset = f64::from(step) * 192.0;
+        let _ = set_list_scroll_offset_y(&mut ui, listbox, offset);
+        ui.compute_layout(VIEWPORT);
+    }
+    list_scroll_offset_y(&ui, listbox).expect("listbox scroll offset should be present")
 }
