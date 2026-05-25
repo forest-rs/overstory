@@ -7,11 +7,11 @@ use alloc::string::String;
 
 use kurbo::Rect;
 use peniko::Brush;
+use understory_presentation::TextWrapMode;
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{LAYOUT, PAINT};
 use crate::layouts::Layout;
-use crate::text::TextWrapping;
 
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
@@ -48,10 +48,10 @@ pub struct BuiltInProperties {
     /// Font size in pixels per em. Default `14.0`.
     pub font_size: Property<f64>,
 
-    /// Text line wrapping policy. Default [`TextWrapping::NoWrap`].
+    /// Text line wrapping policy. Default [`TextWrapMode::NoWrap`].
     /// Writes mark `LAYOUT`, which cascades through paint because wrapping
     /// can change both measured size and final glyph placement.
-    pub text_wrapping: Property<TextWrapping>,
+    pub text_wrap_mode: Property<TextWrapMode>,
 
     /// Border brush. `None` (the default) means the element has no
     /// border. Stroked at [`Self::border_width`] around the same
@@ -160,9 +160,9 @@ impl BuiltInProperties {
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
-            text_wrapping: registry.register(
-                "TextWrapping",
-                PropertyMetadataBuilder::new(TextWrapping::NoWrap)
+            text_wrap_mode: registry.register(
+                "TextWrapMode",
+                PropertyMetadataBuilder::new(TextWrapMode::NoWrap)
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

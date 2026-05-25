@@ -13,12 +13,11 @@ use alloc::string::String;
 use kurbo::Size;
 use peniko::Brush;
 use understory_box_tree::NodeId;
-use understory_presentation::{PresentationStore, TextContent};
+use understory_presentation::{PresentationStore, TextContent, TextWrapMode};
 use understory_style::TypeTag;
 
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
 use crate::element::{Element, ElementId};
-use crate::text::TextWrapping;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
 
@@ -33,7 +32,7 @@ pub struct Text {
     content: String,
     font_size: Option<f64>,
     foreground: Option<Brush>,
-    wrapping: Option<TextWrapping>,
+    wrap_mode: Option<TextWrapMode>,
 }
 
 impl core::fmt::Debug for Text {
@@ -52,7 +51,7 @@ impl Text {
             content: content.into(),
             font_size: None,
             foreground: None,
-            wrapping: None,
+            wrap_mode: None,
         }
     }
 
@@ -72,19 +71,19 @@ impl Text {
 
     /// Sets the text wrapping policy.
     ///
-    /// Text defaults to [`TextWrapping::NoWrap`]. Use [`Self::wrap`] as a
+    /// Text defaults to [`TextWrapMode::NoWrap`]. Use [`Self::wrap`] as a
     /// shorthand for ordinary body text that should flow inside its chosen
     /// width.
     #[must_use]
-    pub fn wrapping(mut self, wrapping: TextWrapping) -> Self {
-        self.wrapping = Some(wrapping);
+    pub fn wrap_mode(mut self, wrap_mode: TextWrapMode) -> Self {
+        self.wrap_mode = Some(wrap_mode);
         self
     }
 
     /// Enables soft line wrapping for this text element.
     #[must_use]
     pub fn wrap(self) -> Self {
-        self.wrapping(TextWrapping::Wrap)
+        self.wrap_mode(TextWrapMode::Wrap)
     }
 }
 
@@ -94,7 +93,7 @@ impl AppendSpec for Text {
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
-        let wrapping_prop = ui.properties().text_wrapping;
+        let wrap_mode_prop = ui.properties().text_wrap_mode;
         // Skip writing `Local` for empty content so a parent's
         // binding (Button's template binds owner.content →
         // label.content) isn't shadowed by `Local`-precedence over
@@ -108,8 +107,8 @@ impl AppendSpec for Text {
         if let Some(brush) = self.foreground {
             ui.set_local(id, fg_prop, brush);
         }
-        if let Some(wrapping) = self.wrapping {
-            ui.set_local(id, wrapping_prop, wrapping);
+        if let Some(wrap_mode) = self.wrap_mode {
+            ui.set_local(id, wrap_mode_prop, wrap_mode);
         }
         id
     }
@@ -136,7 +135,7 @@ impl Widget for TextWidget {
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let wrapping: TextWrapping = ctx.get_value(element, ctx.properties.text_wrapping);
+        let wrap_mode: TextWrapMode = ctx.get_value(element, ctx.properties.text_wrap_mode);
 
         let Some(text) = store.plain_text_mut(node) else {
             return;
@@ -144,19 +143,7 @@ impl Widget for TextWidget {
         text.content = TextContent::plain(content);
         text.foreground = Some(foreground);
         text.style.font_size = font_size;
-        text.style.text_wrap_mode = match wrapping {
-            TextWrapping::NoWrap => understory_presentation::TextStyle::default().text_wrap_mode,
-            // `TextWrapMode`'s own default is `Wrap`; `TextStyle` overrides
-            // that to `NoWrap`, so this avoids a direct `parlance` dependency.
-            TextWrapping::Wrap => {
-                #[expect(
-                    clippy::default_trait_access,
-                    reason = "avoid a direct parlance dependency for a presentation field type"
-                )]
-                let wrap = Default::default();
-                wrap
-            }
-        };
+        text.style.text_wrap_mode = wrap_mode;
     }
 
     fn measure(
@@ -171,25 +158,17 @@ impl Widget for TextWidget {
         }
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let wrapping: TextWrapping = ctx.get_value(element, ctx.properties.text_wrapping);
-        let max_advance = text_wrap_width(wrapping, constraints);
-        let layout =
-            ctx.text
-                .borrow_mut()
-                .shape(&content, font_size, Brush::default(), max_advance);
+        let wrap_mode: TextWrapMode = ctx.get_value(element, ctx.properties.text_wrap_mode);
+        let wrap_width = match wrap_mode {
+            TextWrapMode::NoWrap => None,
+            TextWrapMode::Wrap => constraints.known.width,
+        };
+        let layout = ctx
+            .text
+            .borrow_mut()
+            .shape(&content, font_size, Brush::default(), wrap_width);
         let width = f64::from(layout.width());
         let height = f64::from(layout.height());
         Some(Size::new(width, height))
-    }
-}
-
-fn text_wrap_width(wrapping: TextWrapping, constraints: MeasureConstraints) -> Option<f32> {
-    match wrapping {
-        TextWrapping::NoWrap => None,
-        TextWrapping::Wrap => constraints
-            .known
-            .width
-            .filter(|width| width.is_finite() && *width > 0.0)
-            .and_then(crate::text::max_advance_for_logical_width),
     }
 }

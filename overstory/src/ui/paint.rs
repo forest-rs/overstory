@@ -19,19 +19,6 @@ use crate::text::TextEngine;
 
 use super::Ui;
 
-/// Translates taffy's `AvailableSpace` into kurbo's `f64`. `Definite(v)`
-/// becomes `v` as `f64`. Both `MinContent` and `MaxContent` become
-/// `f64::INFINITY` for now — behaviors receiving infinity report their
-/// "natural" unwrapped size, which taffy uses as both min and max content.
-/// That's a conservative answer that prevents over-aggressive wrapping
-/// (e.g. text breaking on every word) at the cost of tight min-content
-/// packing. A later refinement can distinguish the two and let behaviors
-/// report a tighter min-content (e.g. the longest unbreakable word width
-/// for text).
-fn text_max_advance_for_bounds(bounds: Rect) -> Option<f32> {
-    crate::text::max_advance_for_logical_width(bounds.width())
-}
-
 fn plain_text_wraps(plain: &understory_presentation::PlainTextPrimitive) -> bool {
     plain.style.text_wrap_mode != understory_presentation::TextStyle::default().text_wrap_mode
 }
@@ -94,7 +81,7 @@ fn lower_presentation(
                         plain.style.font_size,
                         fg.clone(),
                         if plain_text_wraps(plain) {
-                            text_max_advance_for_bounds(bounds)
+                            Some(bounds.width())
                         } else {
                             None
                         },

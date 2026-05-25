@@ -120,7 +120,7 @@ pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,
     TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
-pub use text::{TextEngine, TextWrapping};
+pub use text::TextEngine;
 pub use timer_runtime::TimerEvent;
 pub use ui::{ControlState, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
@@ -129,5 +129,6 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
 pub use understory_focus::Navigation;
+pub use understory_presentation::TextWrapMode;
 pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
