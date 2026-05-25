@@ -6,7 +6,8 @@
 //! Roadmap:
 //! - Make routed events the first-class event system for controls: pointer,
 //!   keyboard, focus, scroll, text input, composition, and command-style events
-//!   should share routing, handled state, and handler options.
+//!   should share routing, handled state, and handler options. See ticket
+//!   `ove-b3av`.
 //! - Keep raw host event translation outside this runtime. This module should
 //!   work with normalized `ui-events` payloads and Overstory element ids.
 //! - Use `understory_responder` for route shape and phase semantics while

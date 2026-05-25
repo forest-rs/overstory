@@ -19,7 +19,7 @@
 //! Roadmap:
 //! - Keep templates as the boundary between control behavior and visual
 //!   structure: controls own state and semantics, templates own parts, slots,
-//!   and layout of the visual subtree.
+//!   and layout of the visual subtree. See ticket `ove-733r`.
 //! - Support both compact data-driven templates and custom code templates
 //!   without requiring every visual variation to become a new widget type.
 //! - Grow content slots, repeated keyed parts, optional parts, and eventual

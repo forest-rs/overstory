@@ -7,7 +7,8 @@
 //! - Keep presentation as renderer-neutral drawing intent, not a scene renderer
 //!   and not a widget tree.
 //! - Add keyed prepared resources for shaped text, picture primitives, images,
-//!   and borrowed scenes so layout and paint can share expensive work.
+//!   and borrowed scenes so layout and paint can share expensive work. See
+//!   ticket `ove-6cp5`.
 //! - Explore a fuller presentation tree when sharing vectors, unboxed primitive
 //!   storage, or cross-node reuse would make lowering cheaper and clearer.
 //! - Preserve dirty-node tracking so composition and hosts can update only the

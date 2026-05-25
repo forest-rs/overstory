@@ -6,7 +6,7 @@
 //! Roadmap:
 //! - Keep built-in properties small and broadly semantic. Control-specific
 //!   state should become built-in only when multiple controls need the same
-//!   property, invalidation, and styling behavior.
+//!   property, invalidation, and styling behavior. See ticket `ove-x5ci`.
 //! - Pair semantic state with pseudoclasses deliberately: property values are
 //!   data, pseudoclasses are selector state, and controls must keep them in
 //!   sync.

@@ -18,7 +18,7 @@
 //! - Grow template ownership, part identity, classes, and pseudoclasses into a
 //!   coherent styling contract before adding pseudo-elements or richer parts.
 //! - Support multiple boxes or fragments per element through side runtimes
-//!   rather than bloating the core element node.
+//!   rather than bloating the core element node. See ticket `ove-aph6`.
 
 use alloc::boxed::Box;
 use core::fmt;

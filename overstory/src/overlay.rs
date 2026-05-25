@@ -5,7 +5,7 @@
 //!
 //! Roadmap:
 //! - Keep placement and lifecycle shared by tooltips, popups, menus, combo
-//!   boxes, flyouts, and future teaching UI.
+//!   boxes, flyouts, and future teaching UI. See ticket `ove-hfm1`.
 //! - Expand placement beyond simple flipping: fallback chains, alignment,
 //!   viewport padding, transforms, nested overlays, and anchor movement should
 //!   be handled in one service.

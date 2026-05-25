@@ -19,7 +19,8 @@
 //!
 //! Roadmap:
 //! - Keep the frame pipeline explicit: property metadata marks the earliest
-//!   affected channel and the channel cascade propagates downstream work.
+//!   affected channel and the channel cascade propagates downstream work. See
+//!   ticket `ove-jeb7`.
 //! - Add instrumentation per channel so examples and wind-tunnel scenarios can
 //!   explain where a frame spent time and what caused invalidation.
 //! - Refine granularity only when measurement shows it matters; avoid hidden

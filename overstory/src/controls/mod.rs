@@ -31,6 +31,8 @@
 //! - Keep specialist controls behind reusable primitives: new controls should
 //!   strengthen templates, routed events, focus, selection, scrolling,
 //!   accessibility, or composition instead of bypassing them.
+//!
+//! Detailed control-family ticket: `ove-pgfg`.
 
 pub(crate) mod button;
 pub(crate) mod checkbox;

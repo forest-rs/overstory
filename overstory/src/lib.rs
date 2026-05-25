@@ -3,7 +3,7 @@
 
 #![no_std]
 
-//! Overstory: a WPF / `WinUI` 3-inspired UI toolkit built on
+//! Overstory: a WPF / WinUI 3-inspired UI toolkit built on
 //! `understory` and `imaging`.
 //!
 //! Each control is a struct that implements [`AppendSpec`] (the
@@ -31,13 +31,15 @@
 //! - Keep platform integration in host crates. Windowing, GPU setup, clipboard,
 //!   IME, accessibility bridges, frame pacing, and native compositor surfaces
 //!   should not leak into core controls.
-//! - Grow public APIs from repeated control needs, not from mirroring `WPF`,
-//!   `WinUI`, `Taffy`, `Subduction`, `Parley`, or any host backend wholesale.
+//! - Grow public APIs from repeated control needs, not from mirroring WPF,
+//!   WinUI, Taffy, Subduction, Parley, or any host backend wholesale.
 //! - Make diagnostics first-class: invalidation, layout, text shaping,
 //!   composition, timers, and event dispatch should all become measurable.
 //! - Preserve one obvious path for app authors: construct controls, bind or
 //!   style properties, handle routed events, and let the frame pipeline do the
 //!   rest.
+//!
+//! Detailed roadmap tickets live under `.tickets/`; see epic `ove-p3tl`.
 
 #[cfg(any(feature = "std", test))]
 extern crate std;

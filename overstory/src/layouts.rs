@@ -23,7 +23,7 @@
 //!
 //! Roadmap:
 //! - Keep `Layout` as Overstory intent, with Taffy as an implementation detail
-//!   hidden behind conversion during layout.
+//!   hidden behind conversion during layout. See ticket `ove-9tcf`.
 //! - Add builder methods only for concepts the toolkit wants to support long
 //!   term: min/max constraints, margins, flex basis, grid, overflow, and
 //!   alignment should be deliberate API choices.
