@@ -10,7 +10,7 @@ use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::Phase;
-use crate::controls::support::{axis_point, axis_rect_size, axis_vec, f32_from_logical};
+use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt, f32_from_logical};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
@@ -27,7 +27,7 @@ const DEFAULT_KEYBOARD_LARGE_STEP: f64 = 24.0;
 
 /// Orientation for a splitter grip.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum SplitterAxis {
+pub enum SplitterOrientation {
     /// Horizontal rule between top/bottom panes. Dragging changes pane heights.
     Horizontal,
     /// Vertical rule between left/right panes. Dragging changes pane widths.
@@ -35,7 +35,7 @@ pub enum SplitterAxis {
     Vertical,
 }
 
-impl SplitterAxis {
+impl SplitterOrientation {
     fn movement_axis(self) -> Axis {
         match self {
             Self::Horizontal => Axis::Vertical,
@@ -50,7 +50,7 @@ pub struct SplitterResizeEvent {
     /// Splitter element that produced this resize request.
     pub splitter: ElementId,
     /// Splitter orientation.
-    pub axis: SplitterAxis,
+    pub orientation: SplitterOrientation,
     /// Incremental resize delta in logical pixels.
     pub delta: f64,
     /// Distance from the original press position for pointer drags.
@@ -76,7 +76,13 @@ impl SplitterResizeEvent {
         min_after: f64,
     ) -> bool {
         resize_split_pair(
-            ui, before, after, self.axis, self.delta, min_before, min_after,
+            ui,
+            before,
+            after,
+            self.orientation,
+            self.delta,
+            min_before,
+            min_after,
         )
     }
 }
@@ -85,7 +91,7 @@ type SplitterResizeHandler = Box<dyn FnMut(&mut Ui, SplitterResizeEvent)>;
 
 /// Builder + spec for a draggable splitter.
 pub struct Splitter {
-    axis: SplitterAxis,
+    orientation: SplitterOrientation,
     thickness: f32,
     length: f32,
     keyboard_step: f64,
@@ -97,7 +103,7 @@ pub struct Splitter {
 impl core::fmt::Debug for Splitter {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Splitter")
-            .field("axis", &self.axis)
+            .field("orientation", &self.orientation)
             .field("thickness", &self.thickness)
             .field("length", &self.length)
             .field("keyboard_step", &self.keyboard_step)
@@ -110,20 +116,20 @@ impl Splitter {
     /// Creates a vertical splitter between left/right panes.
     #[must_use]
     pub fn vertical() -> Self {
-        Self::new(SplitterAxis::Vertical)
+        Self::new(SplitterOrientation::Vertical)
     }
 
     /// Creates a horizontal splitter between top/bottom panes.
     #[must_use]
     pub fn horizontal() -> Self {
-        Self::new(SplitterAxis::Horizontal)
+        Self::new(SplitterOrientation::Horizontal)
     }
 
     /// Creates a splitter with the supplied orientation.
     #[must_use]
-    pub fn new(axis: SplitterAxis) -> Self {
+    pub fn new(orientation: SplitterOrientation) -> Self {
         Self {
-            axis,
+            orientation,
             thickness: DEFAULT_THICKNESS,
             length: DEFAULT_LENGTH,
             keyboard_step: DEFAULT_KEYBOARD_STEP,
@@ -200,9 +206,13 @@ impl Splitter {
     }
 
     fn layout(&self) -> Layout {
-        match self.axis {
-            SplitterAxis::Horizontal => Layout::new().logical_size(self.length, self.thickness),
-            SplitterAxis::Vertical => Layout::new().logical_size(self.thickness, self.length),
+        match self.orientation {
+            SplitterOrientation::Horizontal => {
+                Layout::new().logical_size(self.length, self.thickness)
+            }
+            SplitterOrientation::Vertical => {
+                Layout::new().logical_size(self.thickness, self.length)
+            }
         }
     }
 }
@@ -219,7 +229,7 @@ impl AppendSpec for Splitter {
         let id = ui.append_widget(
             parent,
             Box::new(SplitterWidget {
-                axis: self.axis,
+                orientation: self.orientation,
                 keyboard_step: self.keyboard_step,
                 keyboard_large_step: self.keyboard_large_step,
                 on_resize: self.on_resize,
@@ -233,7 +243,7 @@ impl AppendSpec for Splitter {
 
 /// Per-element widget for `Splitter`.
 pub(crate) struct SplitterWidget {
-    axis: SplitterAxis,
+    orientation: SplitterOrientation,
     keyboard_step: f64,
     keyboard_large_step: f64,
     on_resize: Option<SplitterResizeHandler>,
@@ -242,7 +252,7 @@ pub(crate) struct SplitterWidget {
 impl core::fmt::Debug for SplitterWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SplitterWidget")
-            .field("axis", &self.axis)
+            .field("orientation", &self.orientation)
             .field("keyboard_step", &self.keyboard_step)
             .field("keyboard_large_step", &self.keyboard_large_step)
             .finish_non_exhaustive()
@@ -252,7 +262,7 @@ impl core::fmt::Debug for SplitterWidget {
 impl Default for SplitterWidget {
     fn default() -> Self {
         Self {
-            axis: SplitterAxis::default(),
+            orientation: SplitterOrientation::default(),
             keyboard_step: DEFAULT_KEYBOARD_STEP,
             keyboard_large_step: DEFAULT_KEYBOARD_LARGE_STEP,
             on_resize: None,
@@ -267,9 +277,9 @@ impl Widget for SplitterWidget {
 
     fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
         let _ = element;
-        Some(match self.axis {
-            SplitterAxis::Horizontal => CursorIcon::RowResize,
-            SplitterAxis::Vertical => CursorIcon::ColResize,
+        Some(match self.orientation {
+            SplitterOrientation::Horizontal => CursorIcon::RowResize,
+            SplitterOrientation::Vertical => CursorIcon::ColResize,
         })
     }
 
@@ -290,8 +300,8 @@ impl Widget for SplitterWidget {
         if !ui.is_enabled(splitter) {
             return;
         }
-        let axis = self.axis;
-        let delta = axis_delta(axis, event.delta);
+        let orientation = self.orientation;
+        let delta = movement_delta(orientation, event.delta);
         if delta != 0.0
             && let Some(handler) = self.on_resize.as_mut()
         {
@@ -299,9 +309,13 @@ impl Widget for SplitterWidget {
                 ui,
                 SplitterResizeEvent {
                     splitter,
-                    axis,
+                    orientation,
                     delta,
-                    total_delta: point_axis_delta(axis, event.position, event.press_position),
+                    total_delta: point_movement_delta(
+                        orientation,
+                        event.position,
+                        event.press_position,
+                    ),
                     position: event.position,
                     press_position: event.press_position,
                 },
@@ -326,12 +340,12 @@ impl Widget for SplitterWidget {
         } else {
             self.keyboard_step
         };
-        let axis = self.axis;
-        let delta = match (&event.key.key, axis) {
-            (Key::Named(NamedKey::ArrowLeft), SplitterAxis::Vertical)
-            | (Key::Named(NamedKey::ArrowUp), SplitterAxis::Horizontal) => -step,
-            (Key::Named(NamedKey::ArrowRight), SplitterAxis::Vertical)
-            | (Key::Named(NamedKey::ArrowDown), SplitterAxis::Horizontal) => step,
+        let orientation = self.orientation;
+        let delta = match (&event.key.key, orientation) {
+            (Key::Named(NamedKey::ArrowLeft), SplitterOrientation::Vertical)
+            | (Key::Named(NamedKey::ArrowUp), SplitterOrientation::Horizontal) => -step,
+            (Key::Named(NamedKey::ArrowRight), SplitterOrientation::Vertical)
+            | (Key::Named(NamedKey::ArrowDown), SplitterOrientation::Horizontal) => step,
             _ => return,
         };
         if let Some(handler) = self.on_resize.as_mut() {
@@ -340,7 +354,7 @@ impl Widget for SplitterWidget {
                 ui,
                 SplitterResizeEvent {
                     splitter,
-                    axis,
+                    orientation,
                     delta,
                     total_delta: delta,
                     position,
@@ -352,13 +366,17 @@ impl Widget for SplitterWidget {
     }
 }
 
-fn axis_delta(axis: SplitterAxis, delta: kurbo::Vec2) -> f64 {
-    axis_vec(axis.movement_axis(), delta)
+fn movement_delta(orientation: SplitterOrientation, delta: kurbo::Vec2) -> f64 {
+    delta.along(orientation.movement_axis())
 }
 
-fn point_axis_delta(axis: SplitterAxis, position: kurbo::Point, origin: kurbo::Point) -> f64 {
-    let movement_axis = axis.movement_axis();
-    axis_point(movement_axis, position) - axis_point(movement_axis, origin)
+fn point_movement_delta(
+    orientation: SplitterOrientation,
+    position: kurbo::Point,
+    origin: kurbo::Point,
+) -> f64 {
+    let movement_axis = orientation.movement_axis();
+    position.along(movement_axis) - origin.along(movement_axis)
 }
 
 /// Resizes two fixed-size panes as if a splitter between them moved by `delta`.
@@ -370,15 +388,15 @@ pub fn resize_split_pair(
     ui: &mut Ui,
     before: ElementId,
     after: ElementId,
-    axis: SplitterAxis,
+    orientation: SplitterOrientation,
     delta: f64,
     min_before: f64,
     min_after: f64,
 ) -> bool {
     let before_bounds = ui.effective_bounds(before);
     let after_bounds = ui.effective_bounds(after);
-    let before_size = axis_size(axis, before_bounds);
-    let after_size = axis_size(axis, after_bounds);
+    let before_size = movement_size(orientation, before_bounds);
+    let after_size = movement_size(orientation, after_bounds);
     if before_size <= 0.0 || after_size <= 0.0 {
         return false;
     }
@@ -400,32 +418,32 @@ pub fn resize_split_pair(
     let after_layout = ui.effective_layout(after);
     ui.set_layout(
         before,
-        resized_layout(axis, before_bounds, next_before, before_layout),
+        resized_layout(orientation, before_bounds, next_before, before_layout),
     );
     ui.set_layout(
         after,
-        resized_layout(axis, after_bounds, next_after, after_layout),
+        resized_layout(orientation, after_bounds, next_after, after_layout),
     );
     true
 }
 
-fn axis_size(axis: SplitterAxis, bounds: kurbo::Rect) -> f64 {
-    axis_rect_size(axis.movement_axis(), bounds)
+fn movement_size(orientation: SplitterOrientation, bounds: kurbo::Rect) -> f64 {
+    bounds.size_along(orientation.movement_axis())
 }
 
 fn resized_layout(
-    axis: SplitterAxis,
+    orientation: SplitterOrientation,
     bounds: kurbo::Rect,
-    axis_size: f64,
+    movement_size: f64,
     layout: Layout,
 ) -> Layout {
-    match axis {
-        SplitterAxis::Horizontal => layout.logical_size(
+    match orientation {
+        SplitterOrientation::Horizontal => layout.logical_size(
             f32_from_logical(bounds.width()),
-            f32_from_logical(axis_size),
+            f32_from_logical(movement_size),
         ),
-        SplitterAxis::Vertical => layout.logical_size(
-            f32_from_logical(axis_size),
+        SplitterOrientation::Vertical => layout.logical_size(
+            f32_from_logical(movement_size),
             f32_from_logical(bounds.height()),
         ),
     }

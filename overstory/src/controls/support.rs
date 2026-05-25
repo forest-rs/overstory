@@ -3,7 +3,7 @@
 
 //! Small shared helpers for built-in controls.
 
-use kurbo::{Axis, Point, Rect, Vec2};
+use kurbo::{Axis, Point, Rect, Size, Vec2};
 use understory_property::{DependencyObjectExt, Property};
 
 use crate::element::ElementId;
@@ -32,23 +32,75 @@ pub(crate) fn is_initial_drag_move(press_position: Point, position: Point, delta
     delta == position - press_position
 }
 
-pub(crate) fn axis_point(axis: Axis, point: Point) -> f64 {
-    match axis {
-        Axis::Horizontal => point.x,
-        Axis::Vertical => point.y,
+// These receiver-style axis helpers are local stand-ins for methods we may want
+// to upstream to kurbo once the usage settles. In particular, calls like
+// `rect.min_along(axis)` read better than free functions at the call site.
+pub(crate) trait PointAxisExt {
+    fn along(self, axis: Axis) -> f64;
+}
+
+impl PointAxisExt for Point {
+    fn along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.x,
+            Axis::Vertical => self.y,
+        }
     }
 }
 
-pub(crate) fn axis_vec(axis: Axis, vec: Vec2) -> f64 {
-    match axis {
-        Axis::Horizontal => vec.x,
-        Axis::Vertical => vec.y,
+pub(crate) trait Vec2AxisExt {
+    fn along(self, axis: Axis) -> f64;
+}
+
+impl Vec2AxisExt for Vec2 {
+    fn along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.x,
+            Axis::Vertical => self.y,
+        }
     }
 }
 
-pub(crate) fn axis_rect_size(axis: Axis, rect: Rect) -> f64 {
-    match axis {
-        Axis::Horizontal => rect.width(),
-        Axis::Vertical => rect.height(),
+pub(crate) trait SizeAxisExt {
+    fn along(self, axis: Axis) -> f64;
+}
+
+impl SizeAxisExt for Size {
+    fn along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
+        }
+    }
+}
+
+pub(crate) trait RectAxisExt {
+    fn min_along(self, axis: Axis) -> f64;
+
+    fn max_along(self, axis: Axis) -> f64;
+
+    fn size_along(self, axis: Axis) -> f64;
+}
+
+impl RectAxisExt for Rect {
+    fn min_along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.x0,
+            Axis::Vertical => self.y0,
+        }
+    }
+
+    fn max_along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.x1,
+            Axis::Vertical => self.y1,
+        }
+    }
+
+    fn size_along(self, axis: Axis) -> f64 {
+        match axis {
+            Axis::Horizontal => self.width(),
+            Axis::Vertical => self.height(),
+        }
     }
 }

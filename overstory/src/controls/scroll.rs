@@ -14,7 +14,9 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::LayoutContext;
 use crate::channels::LAYOUT;
-use crate::controls::support::{axis_point, axis_vec, is_initial_drag_move};
+use crate::controls::support::{
+    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, is_initial_drag_move,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::Layout;
@@ -36,25 +38,6 @@ pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
 const DEFAULT_SCROLL_BAR_LENGTH: f32 = 146.0;
 const DEFAULT_SCROLL_BAR_THICKNESS: f32 = 10.0;
 const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
-
-/// Axis a scroll bar manipulates.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ScrollAxis {
-    /// Horizontal scrolling.
-    Horizontal,
-    /// Vertical scrolling.
-    #[default]
-    Vertical,
-}
-
-impl ScrollAxis {
-    fn axis(self) -> Axis {
-        match self {
-            Self::Horizontal => Axis::Horizontal,
-            Self::Vertical => Axis::Vertical,
-        }
-    }
-}
 
 /// Shared scroll offset state for viewport-like controls.
 #[derive(Clone)]
@@ -317,7 +300,7 @@ impl Widget for ScrollViewWidget {
 /// Builder + spec for a scrollbar that controls a viewport's shared
 /// [`ScrollState`].
 pub struct ScrollBar {
-    axis: ScrollAxis,
+    axis: Axis,
     viewport: ElementId,
     state: ScrollState,
     length: f32,
@@ -345,18 +328,18 @@ impl ScrollBar {
     /// Starts a vertical scrollbar bound to `viewport` and `state`.
     #[must_use]
     pub fn vertical(viewport: ElementId, state: ScrollState) -> Self {
-        Self::new(ScrollAxis::Vertical, viewport, state)
+        Self::new(Axis::Vertical, viewport, state)
     }
 
     /// Starts a horizontal scrollbar bound to `viewport` and `state`.
     #[must_use]
     pub fn horizontal(viewport: ElementId, state: ScrollState) -> Self {
-        Self::new(ScrollAxis::Horizontal, viewport, state)
+        Self::new(Axis::Horizontal, viewport, state)
     }
 
     /// Starts a scrollbar on `axis` bound to `viewport` and `state`.
     #[must_use]
-    pub fn new(axis: ScrollAxis, viewport: ElementId, state: ScrollState) -> Self {
+    pub fn new(axis: Axis, viewport: ElementId, state: ScrollState) -> Self {
         Self {
             axis,
             viewport,
@@ -445,7 +428,7 @@ impl AppendSpec for ScrollBar {
 /// Per-element widget for `ScrollBar`.
 #[derive(Clone, Debug)]
 pub(crate) struct ScrollBarWidget {
-    axis: ScrollAxis,
+    axis: Axis,
     viewport: ElementId,
     state: ScrollState,
     length: f32,
@@ -495,7 +478,7 @@ impl Widget for ScrollBarWidget {
             self.length,
             self.thumb_extent,
         );
-        let pointer = axis_point(self.axis.axis(), event.position);
+        let pointer = event.position.along(self.axis);
         let next = if pointer < thumb_start {
             current - page
         } else {
@@ -535,7 +518,7 @@ impl Template for ScrollBarTemplate {
             thumb,
             cx.properties().layout,
             scroll_bar_thumb_layout(
-                ScrollAxis::Vertical,
+                Axis::Vertical,
                 DEFAULT_SCROLL_BAR_THICKNESS,
                 DEFAULT_SCROLL_BAR_THUMB_EXTENT,
             ),
@@ -615,7 +598,7 @@ pub(crate) fn scroll_offset_y(state: &ScrollState) -> f64 {
 
 #[derive(Clone, Debug)]
 struct ScrollBarSnapshot {
-    axis: ScrollAxis,
+    axis: Axis,
     viewport: ElementId,
     state: ScrollState,
     length: f32,
@@ -663,16 +646,14 @@ impl ScrollBarDragState {
                 widget.thumb_extent,
             );
             if is_scroll_bar_thumb(ui, scroll_bar, source) {
-                self.offset_from_thumb_start =
-                    axis_point(widget.axis.axis(), press_position) - thumb_start;
+                self.offset_from_thumb_start = press_position.along(widget.axis) - thumb_start;
             } else {
                 self.offset_from_thumb_start = f64::from(widget.thumb_extent) / 2.0;
             }
         }
-        let axis = widget.axis.axis();
-        let track_start = axis_point(axis, bar_origin);
+        let track_start = bar_origin.along(widget.axis);
         let thumb_position =
-            axis_point(axis, position) - track_start - self.offset_from_thumb_start;
+            position.along(widget.axis) - track_start - self.offset_from_thumb_start;
         let travel = f64::from((widget.length - widget.thumb_extent).max(0.0));
         if travel <= f64::EPSILON {
             return;
@@ -743,8 +724,14 @@ fn update_scroll_metrics_from_bounds(
     let mut content_right = 0.0_f64;
     let mut content_bottom = 0.0_f64;
     for child_bounds in child_bounds {
-        content_right = content_right.max(child_bounds.x1 + offset.x - viewport_bounds.x0);
-        content_bottom = content_bottom.max(child_bounds.y1 + offset.y - viewport_bounds.y0);
+        content_right = content_right.max(
+            child_bounds.max_along(Axis::Horizontal) + offset.x
+                - viewport_bounds.min_along(Axis::Horizontal),
+        );
+        content_bottom = content_bottom.max(
+            child_bounds.max_along(Axis::Vertical) + offset.y
+                - viewport_bounds.min_along(Axis::Vertical),
+        );
     }
     state.set_metrics(
         Size::new(viewport_bounds.width(), viewport_bounds.height()),
@@ -759,19 +746,19 @@ fn scroll_bar_widget(ui: &Ui, scroll_bar: ElementId) -> Option<ScrollBarSnapshot
         .map(ScrollBarSnapshot::from)
 }
 
-fn scroll_bar_layout(axis: ScrollAxis, length: f32, thickness: f32) -> Layout {
+fn scroll_bar_layout(axis: Axis, length: f32, thickness: f32) -> Layout {
     match axis {
-        ScrollAxis::Horizontal => Layout::new().relative().logical_size(length, thickness),
-        ScrollAxis::Vertical => Layout::new().relative().logical_size(thickness, length),
+        Axis::Horizontal => Layout::new().relative().logical_size(length, thickness),
+        Axis::Vertical => Layout::new().relative().logical_size(thickness, length),
     }
 }
 
-fn scroll_bar_thumb_layout(axis: ScrollAxis, thickness: f32, extent: f32) -> Layout {
+fn scroll_bar_thumb_layout(axis: Axis, thickness: f32, extent: f32) -> Layout {
     match axis {
-        ScrollAxis::Horizontal => Layout::new()
+        Axis::Horizontal => Layout::new()
             .absolute_at(0.0, 0.0)
             .logical_size(extent, thickness),
-        ScrollAxis::Vertical => Layout::new()
+        Axis::Vertical => Layout::new()
             .absolute_at(0.0, 0.0)
             .logical_size(thickness, extent),
     }
@@ -792,7 +779,7 @@ fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) {
 }
 
 fn scroll_bar_thumb_offset(
-    axis: ScrollAxis,
+    axis: Axis,
     state: &ScrollState,
     length: f32,
     thumb_extent: f32,
@@ -803,53 +790,46 @@ fn scroll_bar_thumb_offset(
     }
     let travel = f64::from((length - thumb_extent).max(0.0));
     let offset = (state_axis_scroll_offset(state, axis) / max).clamp(0.0, 1.0) * travel;
-    axis.axis().pack_vec2(offset, 0.0)
+    axis.pack_vec2(offset, 0.0)
 }
 
 fn is_scroll_bar_thumb(ui: &Ui, scroll_bar: ElementId, source: ElementId) -> bool {
     ui.slot(scroll_bar, SLOT_SCROLL_BAR_THUMB) == Some(source)
 }
 
-fn scroll_bar_page(state: &ScrollState, axis: ScrollAxis) -> f64 {
-    let viewport = state.viewport_size();
-    match axis {
-        ScrollAxis::Horizontal => viewport.width,
-        ScrollAxis::Vertical => viewport.height,
-    }
-    .max(DEFAULT_SCROLL_LINE_Y)
+fn scroll_bar_page(state: &ScrollState, axis: Axis) -> f64 {
+    state.viewport_size().along(axis).max(DEFAULT_SCROLL_LINE_Y)
 }
 
 fn set_axis_scroll_offset(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
-    axis: ScrollAxis,
+    axis: Axis,
     offset: f64,
 ) -> bool {
-    let axis = axis.axis();
-    let next = axis.pack_vec2(offset, axis_vec(axis.cross(), state.offset()));
+    let next = axis.pack_vec2(offset, state.offset().along(axis.cross()));
     set_scroll_offset(ui, viewport, state, next)
 }
 
-fn state_axis_scroll_offset(state: &ScrollState, axis: ScrollAxis) -> f64 {
+fn state_axis_scroll_offset(state: &ScrollState, axis: Axis) -> f64 {
     axis_scroll_offset(state.offset(), axis)
 }
 
-fn axis_scroll_offset(offset: Vec2, axis: ScrollAxis) -> f64 {
-    axis_vec(axis.axis(), offset)
+fn axis_scroll_offset(offset: Vec2, axis: Axis) -> f64 {
+    offset.along(axis)
 }
 
 fn axis_thumb_start(
-    axis: ScrollAxis,
+    axis: Axis,
     track_origin: Point,
     offset: Vec2,
     max: Vec2,
     length: f32,
     thumb_extent: f32,
 ) -> f64 {
-    let axis = axis.axis();
-    axis_point(axis, track_origin)
-        + axis_scroll_fraction(axis_vec(axis, offset), axis_vec(axis, max))
+    track_origin.along(axis)
+        + axis_scroll_fraction(offset.along(axis), max.along(axis))
             * f64::from((length - thumb_extent).max(0.0))
 }
 
