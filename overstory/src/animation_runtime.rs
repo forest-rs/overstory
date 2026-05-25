@@ -254,9 +254,9 @@ impl PresentationTrackKey {
 /// Active clip carried by one presentation track.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum MotionClip {
-    ScalarTransition(ScalarTransition),
-    ColorTransition(ColorTransition),
-    OffsetTransition(OffsetTransition),
+    Scalar(ScalarTransition),
+    Color(ColorTransition),
+    Offset(OffsetTransition),
 }
 
 impl MotionClip {
@@ -268,13 +268,13 @@ impl MotionClip {
     ) -> Self {
         match (from, to) {
             (PresentationValue::Scalar(from), PresentationValue::Scalar(to)) => {
-                Self::ScalarTransition(ScalarTransition::new(from, to, started_at, spec))
+                Self::Scalar(ScalarTransition::new(from, to, started_at, spec))
             }
             (PresentationValue::Color(from), PresentationValue::Color(to)) => {
-                Self::ColorTransition(ColorTransition::new(from, to, started_at, spec))
+                Self::Color(ColorTransition::new(from, to, started_at, spec))
             }
             (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
-                Self::OffsetTransition(OffsetTransition::new(from, to, started_at, spec))
+                Self::Offset(OffsetTransition::new(from, to, started_at, spec))
             }
             _ => unreachable!("presentation target kinds should match property metadata"),
         }
@@ -282,27 +282,25 @@ impl MotionClip {
 
     fn sample(self, now: TimerInstant) -> PresentationValue {
         match self {
-            Self::ScalarTransition(transition) => PresentationValue::Scalar(transition.sample(now)),
-            Self::ColorTransition(transition) => PresentationValue::Color(transition.sample(now)),
-            Self::OffsetTransition(transition) => {
-                PresentationValue::Offset2d(transition.sample(now))
-            }
+            Self::Scalar(transition) => PresentationValue::Scalar(transition.sample(now)),
+            Self::Color(transition) => PresentationValue::Color(transition.sample(now)),
+            Self::Offset(transition) => PresentationValue::Offset2d(transition.sample(now)),
         }
     }
 
     fn is_complete(self, now: TimerInstant) -> bool {
         match self {
-            Self::ScalarTransition(transition) => transition.is_complete(now),
-            Self::ColorTransition(transition) => transition.is_complete(now),
-            Self::OffsetTransition(transition) => transition.is_complete(now),
+            Self::Scalar(transition) => transition.is_complete(now),
+            Self::Color(transition) => transition.is_complete(now),
+            Self::Offset(transition) => transition.is_complete(now),
         }
     }
 
     fn end_time(self) -> TimerInstant {
         match self {
-            Self::ScalarTransition(transition) => transition.end_time(),
-            Self::ColorTransition(transition) => transition.end_time(),
-            Self::OffsetTransition(transition) => transition.end_time(),
+            Self::Scalar(transition) => transition.end_time(),
+            Self::Color(transition) => transition.end_time(),
+            Self::Offset(transition) => transition.end_time(),
         }
     }
 }
@@ -492,12 +490,19 @@ impl AnimationRuntime {
         cause: ChangeCause,
     ) -> bool {
         let metadata = key.property().metadata();
-        debug_assert_eq!(metadata.value_kind(), target.kind());
+        debug_assert_eq!(
+            metadata.value_kind(),
+            target.kind(),
+            "presentation target kind must match property metadata"
+        );
         debug_assert_ne!(
             metadata.evaluation_domain(),
-            AnimationEvaluationDomain::Layout
+            AnimationEvaluationDomain::Layout,
+            "layout-domain animation must not be sampled by the generic target setter"
         );
-        let previous_target = self.targets.insert(key, target);
+        let previous_target = self.targets.get(&key).copied();
+        let current_presented = self.sample(key, previous_target.unwrap_or(target), now);
+        self.targets.insert(key, target);
         let target_changed = previous_target.is_none_or(|previous| !same_value(previous, target));
         if !target_changed {
             if cause == ChangeCause::Interaction {
@@ -516,8 +521,7 @@ impl AnimationRuntime {
             return had_track;
         };
 
-        let previous_target = previous_target.unwrap_or(target);
-        let from = self.sample(key, previous_target, now);
+        let from = current_presented;
         if same_value(from, target) || spec.duration == 0 {
             self.tracks.remove(&key);
             return had_track;
@@ -618,9 +622,10 @@ impl AnimationRuntime {
         target: PresentationValue,
         now: TimerInstant,
     ) -> PresentationValue {
-        self.tracks
-            .get(&key)
-            .map_or(target, |track| track.clip.sample(now))
+        self.tracks.get(&key).map_or_else(
+            || self.targets.get(&key).copied().unwrap_or(target),
+            |track| track.clip.sample(now),
+        )
     }
 
     /// Advances active tracks, removing completed clips and returning affected

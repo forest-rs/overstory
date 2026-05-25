@@ -39,10 +39,6 @@ impl Ui {
             .has_pending_transition(PresentationTrackKey::new(element, property))
     }
 
-    #[expect(
-        dead_code,
-        reason = "controls use scalar presentation targets in the next slice"
-    )]
     pub(crate) fn set_scalar_presentation_target(
         &mut self,
         element: ElementId,
@@ -62,7 +58,6 @@ impl Ui {
         needs_sample
     }
 
-    #[expect(dead_code, reason = "controls use color targets in the next slice")]
     pub(crate) fn set_color_presentation_target(
         &mut self,
         element: ElementId,

@@ -8,16 +8,25 @@ use alloc::vec::Vec;
 
 use cursor_icon::CursorIcon;
 use kurbo::Point;
+use peniko::{Brush, Color};
 use understory_box_tree::NodeFlags;
 use understory_event_state::hover::HoverEvent;
 
+use crate::animation_runtime::{
+    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
+};
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
 use crate::pseudos::{
-    PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
+    PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
 
 use super::{ControlState, Ui};
+
+const INTERACTION_BACKGROUND_TRANSITION: TransitionSpec = TransitionSpec::linear(90_000_000);
+const INTERACTION_OPACITY_TRANSITION: TransitionSpec = TransitionSpec::linear(70_000_000);
+const PRESSED_OPACITY: f32 = 0.92;
 
 impl Ui {
     /// Adds `class` to `id` and re-styles the affected subtree.
@@ -44,23 +53,111 @@ impl Ui {
 
     /// Adds `pseudo` to `id` and re-styles the affected subtree.
     pub fn add_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let background_before = self.interaction_background_before(id, pseudo);
+        let pressed_before = self.pressed_opacity_target(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.add_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            self.sync_interaction_visual_transition(id, pseudo, background_before, pressed_before);
         }
     }
 
     /// Removes `pseudo` from `id` and re-styles the affected subtree.
     pub fn remove_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let background_before = self.interaction_background_before(id, pseudo);
+        let pressed_before = self.pressed_opacity_target(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            self.sync_interaction_visual_transition(id, pseudo, background_before, pressed_before);
+        }
+    }
+
+    fn interaction_background_before(
+        &self,
+        id: ElementId,
+        pseudo: understory_style::PseudoClassId,
+    ) -> Option<Color> {
+        interaction_pseudo_animates_background(pseudo)
+            .then(|| self.solid_background_color(id))
+            .flatten()
+    }
+
+    fn solid_background_color(&self, id: ElementId) -> Option<Color> {
+        let element = self.get(id)?;
+        match self.effective_value_for(element, self.properties.background) {
+            Some(Brush::Solid(color)) => Some(color),
+            _ => None,
+        }
+    }
+
+    fn pressed_opacity_target(&self, id: ElementId) -> Option<f32> {
+        self.get(id).map(|element| {
+            if element.pseudos().contains(&PSEUDO_PRESSED) {
+                PRESSED_OPACITY
+            } else {
+                1.0
+            }
+        })
+    }
+
+    fn sync_interaction_visual_transition(
+        &mut self,
+        id: ElementId,
+        pseudo: understory_style::PseudoClassId,
+        background_before: Option<Color>,
+        pressed_before: Option<f32>,
+    ) {
+        if let Some(before) = background_before {
+            self.set_color_presentation_target(
+                id,
+                PresentationProperty::BackgroundColor,
+                before,
+                ChangeCause::Other,
+            );
+        }
+        if interaction_pseudo_animates_background(pseudo)
+            && let Some(after) = self.solid_background_color(id)
+        {
+            self.request_presentation_transition(
+                id,
+                PresentationProperty::BackgroundColor,
+                TransitionPolicy::interaction(INTERACTION_BACKGROUND_TRANSITION),
+            );
+            self.set_color_presentation_target(
+                id,
+                PresentationProperty::BackgroundColor,
+                after,
+                ChangeCause::Interaction,
+            );
+        }
+        if pseudo == PSEUDO_PRESSED
+            && let Some(before) = pressed_before
+            && let Some(after) = self.pressed_opacity_target(id)
+        {
+            self.set_scalar_presentation_target(
+                id,
+                PresentationProperty::LayerOpacity,
+                before,
+                ChangeCause::Other,
+            );
+            self.request_presentation_transition(
+                id,
+                PresentationProperty::LayerOpacity,
+                TransitionPolicy::interaction(INTERACTION_OPACITY_TRANSITION),
+            );
+            self.set_scalar_presentation_target(
+                id,
+                PresentationProperty::LayerOpacity,
+                after,
+                ChangeCause::Interaction,
+            );
         }
     }
 
@@ -450,4 +547,16 @@ impl Ui {
         self.events.set_pointer_capture(new);
         true
     }
+}
+
+fn interaction_pseudo_animates_background(pseudo: understory_style::PseudoClassId) -> bool {
+    matches!(
+        pseudo,
+        PSEUDO_HOVER
+            | PSEUDO_PRESSED
+            | PSEUDO_FOCUSED
+            | PSEUDO_FOCUS_VISIBLE
+            | PSEUDO_CHECKED
+            | PSEUDO_SELECTED
+    )
 }

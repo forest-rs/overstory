@@ -763,7 +763,7 @@ fn toggle_thumb_transition_samples_composition_offset() {
     use crate::SLOT_TOGGLE_THUMB;
 
     let (mut ui, toggle, thumb) = animated_toggle_fixture();
-    let start_x = toggle_thumb_layer_x(&ui, thumb);
+    let start_x = layer_x(&ui, thumb);
 
     ui.set_now(0);
     ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
@@ -774,15 +774,15 @@ fn toggle_thumb_transition_samples_composition_offset() {
         target_x > start_x,
         "checked layout target should move thumb to the right"
     );
-    assert_close(toggle_thumb_layer_x(&ui, thumb), start_x);
+    assert_close(layer_x(&ui, thumb), start_x);
 
     ui.set_now(60_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(toggle_thumb_layer_x(&ui, thumb), (start_x + target_x) * 0.5);
+    assert_close(layer_x(&ui, thumb), (start_x + target_x) * 0.5);
 
     ui.set_now(120_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(toggle_thumb_layer_x(&ui, thumb), target_x);
+    assert_close(layer_x(&ui, thumb), target_x);
 
     assert_eq!(ui.slot(toggle, SLOT_TOGGLE_THUMB), Some(thumb));
 }
@@ -790,7 +790,7 @@ fn toggle_thumb_transition_samples_composition_offset() {
 #[test]
 fn toggle_thumb_transition_retargets_from_sampled_offset() {
     let (mut ui, toggle, thumb) = animated_toggle_fixture();
-    let start_x = toggle_thumb_layer_x(&ui, thumb);
+    let start_x = layer_x(&ui, thumb);
 
     ui.set_now(0);
     ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
@@ -799,20 +799,119 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
 
     ui.set_now(60_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    let midpoint = toggle_thumb_layer_x(&ui, thumb);
+    let midpoint = layer_x(&ui, thumb);
     assert_close(midpoint, (start_x + checked_target) * 0.5);
 
     ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(toggle_thumb_layer_x(&ui, thumb), midpoint);
+    assert_close(layer_x(&ui, thumb), midpoint);
 
     ui.set_now(120_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(toggle_thumb_layer_x(&ui, thumb), (midpoint + start_x) * 0.5);
+    assert_close(layer_x(&ui, thumb), (midpoint + start_x) * 0.5);
 
     ui.set_now(180_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(toggle_thumb_layer_x(&ui, thumb), start_x);
+    assert_close(layer_x(&ui, thumb), start_x);
+}
+
+#[test]
+fn button_hover_transitions_background_color() {
+    use crate::{Button, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+    let button = ui.append(root, Button::new("Hover"));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    let idle = Color::from_rgba8(0x3a, 0x69, 0xd6, 0xff);
+    let hover = Color::from_rgba8(0x4d, 0x81, 0xf2, 0xff);
+    ui.set_now(0);
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(button).center(),
+        0,
+        false,
+    ));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+    assert_eq!(element_background_color(&ui, button), Some(idle));
+
+    ui.set_now(45_000_000);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    ui.paint(&mut scene);
+    assert_eq!(
+        element_background_color(&ui, button),
+        Some(idle.lerp_rect(hover, 0.5))
+    );
+
+    ui.set_now(90_000_000);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    ui.paint(&mut scene);
+    assert_eq!(element_background_color(&ui, button), Some(hover));
+}
+
+#[test]
+fn button_press_transitions_layer_opacity() {
+    use crate::{Button, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+    let button = ui.append(root, Button::new("Press"));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    let _ = ui.dispatch_pointer_event(&pointer_down(center, 0));
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_close(layer_opacity(&ui, button), 1.0);
+
+    ui.set_now(35_000_000);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_close(layer_opacity(&ui, button), 0.96);
+
+    ui.set_now(70_000_000);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_close(layer_opacity(&ui, button), 0.92);
+}
+
+#[test]
+fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
+    use crate::{SLOT_SLIDER_THUMB, Slider};
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
+    let slider = ui.append(root, Slider::new().value(0.0).small_change(0.5));
+    assert!(ui.set_focus(Some(slider)));
+    ui.compute_layout(Size::new(300.0, 80.0));
+    let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+    let start_x = layer_x(&ui, thumb);
+
+    ui.set_now(0);
+    let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+    assert!(ui.dispatch_key(&right).handled);
+    ui.compute_layout(Size::new(300.0, 80.0));
+    let target_x = ui.effective_bounds(thumb).x0;
+    assert!(target_x > start_x);
+    assert_close(layer_x(&ui, thumb), start_x);
+
+    ui.set_now(45_000_000);
+    ui.compute_layout(Size::new(300.0, 80.0));
+    assert_close(layer_x(&ui, thumb), (start_x + target_x) * 0.5);
+
+    let drag_target = Point::new(target_x + 30.0, ui.effective_bounds(thumb).center().y);
+    let _ = ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(thumb).center(), 100));
+    let _ = ui.dispatch_pointer_event(&pointer_move(drag_target, 101, true));
+    ui.compute_layout(Size::new(300.0, 80.0));
+    assert_close(layer_x(&ui, thumb), ui.effective_bounds(thumb).x0);
 }
 
 fn animated_toggle_fixture() -> (Ui, ElementId, ElementId) {
@@ -831,7 +930,7 @@ fn animated_toggle_fixture() -> (Ui, ElementId, ElementId) {
     (ui, toggle, thumb)
 }
 
-fn toggle_thumb_layer_x(ui: &Ui, thumb: ElementId) -> f64 {
+fn layer_x(ui: &Ui, thumb: ElementId) -> f64 {
     let layer = ui
         .composition
         .layer_for(thumb)
@@ -841,6 +940,24 @@ fn toggle_thumb_layer_x(ui: &Ui, thumb: ElementId) -> f64 {
         .transform_point(Point::ZERO)
         .expect("thumb layer transform should be affine")
         .x
+}
+
+fn layer_opacity(ui: &Ui, id: ElementId) -> f64 {
+    let layer = ui
+        .composition
+        .layer_for(id)
+        .expect("element should have a composition layer");
+    f64::from(ui.composition_layers().local_opacity(layer))
+}
+
+fn element_background_color(ui: &Ui, id: ElementId) -> Option<Color> {
+    let node = ui.box_for(id)?;
+    let surface = ui.presentation.presentation(node)?.surface()?;
+    let brush = &surface.backgrounds.first()?.brush;
+    match brush {
+        Brush::Solid(color) => Some(*color),
+        _ => None,
+    }
 }
 
 fn assert_close(actual: f64, expected: f64) {

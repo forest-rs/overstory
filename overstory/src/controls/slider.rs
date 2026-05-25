@@ -25,6 +25,9 @@ use understory_axis::{
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
+use crate::animation_runtime::{
+    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
+};
 use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
@@ -79,6 +82,7 @@ const LABEL_CHAR_WIDTH: f32 = 6.0;
 const LABEL_MIN_WIDTH: f32 = 6.0;
 const DEFAULT_SMALL_CHANGE_FRACTION: f64 = 0.05;
 const DEFAULT_LARGE_CHANGE_FRACTION: f64 = 0.20;
+const THUMB_TRANSITION: TransitionSpec = TransitionSpec::linear(90_000_000);
 
 /// Builder + spec for a `Slider`.
 pub struct Slider {
@@ -244,7 +248,7 @@ impl AppendSpec for Slider {
         let thumb = ui
             .slot(id, SLOT_SLIDER_THUMB)
             .expect("slider template should create SLOT_SLIDER_THUMB");
-        set_value(ui, id, thumb, clamped);
+        set_value(ui, id, thumb, clamped, ThumbMotion::Snap);
         id
     }
 }
@@ -280,7 +284,7 @@ impl Widget for SliderWidget {
         if event.source == thumb {
             return;
         }
-        set_value_from_position(ui, slider, thumb, event.position);
+        set_value_from_position(ui, slider, thumb, event.position, ThumbMotion::Animate);
         event.mark_handled();
     }
 
@@ -351,8 +355,18 @@ impl Widget for SliderWidget {
             Key::Named(NamedKey::End) => max,
             _ => return,
         };
-        set_value(ui, slider, thumb, next.clamp(min, max));
+        set_value(
+            ui,
+            slider,
+            thumb,
+            next.clamp(min, max),
+            ThumbMotion::Animate,
+        );
         event.mark_handled();
+    }
+
+    fn post_layout(&mut self, slider: ElementId, ui: &mut Ui) -> bool {
+        sync_slider_thumb_offset_target(ui, slider)
     }
 }
 
@@ -438,6 +452,12 @@ struct SliderDragState {
     offset_from_thumb_center: f64,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum ThumbMotion {
+    Snap,
+    Animate,
+}
+
 impl SliderDragState {
     fn update(
         &mut self,
@@ -461,6 +481,7 @@ impl SliderDragState {
             slider,
             thumb,
             position.x - self.offset_from_thumb_center,
+            ThumbMotion::Snap,
         );
     }
 }
@@ -619,13 +640,20 @@ fn tick_key(index: usize) -> TemplateItemKey {
     TemplateItemKey::new(value)
 }
 
-fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64) {
+fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motion: ThumbMotion) {
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let clamped = value.clamp(min, max);
     let value_prop = ui.properties().value;
     let layout_prop = ui.properties().layout;
     ui.set_local(slider, value_prop, clamped);
+    if motion == ThumbMotion::Animate {
+        ui.request_presentation_transition(
+            thumb,
+            PresentationProperty::LayerOffset,
+            TransitionPolicy::interaction(THUMB_TRANSITION),
+        );
+    }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
     ui.set_local(thumb, layout_prop, thumb_layout(left, top));
@@ -636,11 +664,18 @@ fn set_value_from_position(
     slider: ElementId,
     thumb: ElementId,
     pointer: kurbo::Point,
+    motion: ThumbMotion,
 ) {
-    set_value_from_center_position(ui, slider, thumb, pointer.x);
+    set_value_from_center_position(ui, slider, thumb, pointer.x, motion);
 }
 
-fn set_value_from_center_position(ui: &mut Ui, slider: ElementId, thumb: ElementId, center_x: f64) {
+fn set_value_from_center_position(
+    ui: &mut Ui,
+    slider: ElementId,
+    thumb: ElementId,
+    center_x: f64,
+    motion: ThumbMotion,
+) {
     let bounds = ui.effective_bounds(slider);
     if bounds.width() <= 0.0 {
         return;
@@ -651,7 +686,23 @@ fn set_value_from_center_position(ui: &mut Ui, slider: ElementId, thumb: Element
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let value = min + t * (max - min);
-    set_value(ui, slider, thumb, value);
+    set_value(ui, slider, thumb, value, motion);
+}
+
+fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
+    let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+        return false;
+    };
+    let slider_bounds = ui.effective_bounds(slider);
+    let thumb_bounds = ui.effective_bounds(thumb);
+    let target = kurbo::Vec2::new(thumb_bounds.x0 - slider_bounds.x0, 0.0);
+    let property = PresentationProperty::LayerOffset;
+    let cause = if ui.has_pending_presentation_transition(thumb, property) {
+        ChangeCause::Interaction
+    } else {
+        ChangeCause::Other
+    };
+    ui.set_offset_presentation_target(thumb, property, target, cause)
 }
 
 /// Programmatically set a slider's value (and move its thumb).
@@ -663,5 +714,5 @@ pub fn set_slider_value(ui: &mut Ui, slider: ElementId, value: f64) {
     let thumb = ui
         .slot(slider, SLOT_SLIDER_THUMB)
         .expect("slider must have SLOT_SLIDER_THUMB");
-    set_value(ui, slider, thumb, value);
+    set_value(ui, slider, thumb, value, ThumbMotion::Snap);
 }
