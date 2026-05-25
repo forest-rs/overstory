@@ -764,6 +764,7 @@ fn toggle_thumb_transition_samples_composition_offset() {
 
     let (mut ui, toggle, thumb) = animated_toggle_fixture();
     let start_x = layer_x(&ui, thumb);
+    let start_y = layer_y(&ui, thumb);
 
     ui.set_now(0);
     ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
@@ -775,14 +776,17 @@ fn toggle_thumb_transition_samples_composition_offset() {
         "checked layout target should move thumb to the right"
     );
     assert_close(layer_x(&ui, thumb), start_x);
+    assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(60_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), (start_x + target_x) * 0.5);
+    assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(120_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), target_x);
+    assert_close(layer_y(&ui, thumb), start_y);
 
     assert_eq!(ui.slot(toggle, SLOT_TOGGLE_THUMB), Some(thumb));
 }
@@ -894,6 +898,7 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
     ui.compute_layout(Size::new(300.0, 80.0));
     let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
     let start_x = layer_x(&ui, thumb);
+    let start_y = layer_y(&ui, thumb);
 
     ui.set_now(0);
     let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
@@ -902,16 +907,19 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
     let target_x = ui.effective_bounds(thumb).x0;
     assert!(target_x > start_x);
     assert_close(layer_x(&ui, thumb), start_x);
+    assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(45_000_000);
     ui.compute_layout(Size::new(300.0, 80.0));
     assert_close(layer_x(&ui, thumb), (start_x + target_x) * 0.5);
+    assert_close(layer_y(&ui, thumb), start_y);
 
     let drag_target = Point::new(target_x + 30.0, ui.effective_bounds(thumb).center().y);
     let _ = ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(thumb).center(), 100));
     let _ = ui.dispatch_pointer_event(&pointer_move(drag_target, 101, true));
     ui.compute_layout(Size::new(300.0, 80.0));
     assert_close(layer_x(&ui, thumb), ui.effective_bounds(thumb).x0);
+    assert_close(layer_y(&ui, thumb), start_y);
 }
 
 fn animated_toggle_fixture() -> (Ui, ElementId, ElementId) {
@@ -931,6 +939,14 @@ fn animated_toggle_fixture() -> (Ui, ElementId, ElementId) {
 }
 
 fn layer_x(ui: &Ui, thumb: ElementId) -> f64 {
+    layer_origin(ui, thumb).x
+}
+
+fn layer_y(ui: &Ui, thumb: ElementId) -> f64 {
+    layer_origin(ui, thumb).y
+}
+
+fn layer_origin(ui: &Ui, thumb: ElementId) -> Point {
     let layer = ui
         .composition
         .layer_for(thumb)
@@ -939,7 +955,6 @@ fn layer_x(ui: &Ui, thumb: ElementId) -> f64 {
         .world_transform(layer)
         .transform_point(Point::ZERO)
         .expect("thumb layer transform should be affine")
-        .x
 }
 
 fn layer_opacity(ui: &Ui, id: ElementId) -> f64 {

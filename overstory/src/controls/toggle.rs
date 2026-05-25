@@ -236,7 +236,10 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
     };
     let toggle_bounds = ui.effective_bounds(toggle);
     let thumb_bounds = ui.effective_bounds(thumb);
-    let target = kurbo::Vec2::new(thumb_bounds.x0 - toggle_bounds.x0, 0.0);
+    let target = kurbo::Vec2::new(
+        thumb_bounds.x0 - toggle_bounds.x0,
+        thumb_bounds.y0 - toggle_bounds.y0,
+    );
     let property = PresentationProperty::LayerOffset;
     let cause = if ui.has_pending_presentation_transition(thumb, property) {
         ChangeCause::Interaction

@@ -695,7 +695,10 @@ fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
     };
     let slider_bounds = ui.effective_bounds(slider);
     let thumb_bounds = ui.effective_bounds(thumb);
-    let target = kurbo::Vec2::new(thumb_bounds.x0 - slider_bounds.x0, 0.0);
+    let target = kurbo::Vec2::new(
+        thumb_bounds.x0 - slider_bounds.x0,
+        thumb_bounds.y0 - slider_bounds.y0,
+    );
     let property = PresentationProperty::LayerOffset;
     let cause = if ui.has_pending_presentation_transition(thumb, property) {
         ChangeCause::Interaction
