@@ -286,6 +286,8 @@ impl Ui {
                 0.0,
             )
         });
+        // Composition can use a sampled presentation value while layout and hit
+        // testing keep the resolved target geometry.
         let composition_offset = self.presented_composition_offset(id, local_offset);
         self.composition.set_geometry(
             id,

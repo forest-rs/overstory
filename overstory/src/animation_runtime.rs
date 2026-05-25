@@ -6,6 +6,20 @@
 //! This is intentionally tiny: one implicit track per element/property and one
 //! scalar transition clip kind. The shape leaves room for a future shared
 //! timeline scheduler without making built-in controls own local timers.
+//!
+//! Vocabulary for this slice:
+//!
+//! - A *target value* is the resolved semantic value produced by control state,
+//!   local properties, templates, and style.
+//! - A *presented value* is the sampled value used for the current frame.
+//! - A transition is a temporary presentation opinion over a target value; it
+//!   never replaces the target itself.
+//!
+//! Deliberate non-goals for the first slice: public animation APIs, springs,
+//! keyframes, color interpolation, layout animation, reduced-motion policy, and
+//! compositor delegation. Layout may snap to the target while composition or
+//! paint samples a presented value, which keeps ordinary interaction motion
+//! cheap and avoids making animated layout the default.
 
 use alloc::vec::Vec;
 
@@ -170,6 +184,10 @@ struct PresentationTrack {
 }
 
 /// Internal animation runtime for sampled presentation values.
+///
+/// This is the degenerate form of a future global timeline: each active entry
+/// is an anonymous presentation track keyed by element/property. Retargeting
+/// starts from the current sampled value, not the previous target value.
 #[derive(Debug, Default)]
 pub(crate) struct AnimationRuntime {
     targets: HashMap<PresentationTrackKey, f32>,

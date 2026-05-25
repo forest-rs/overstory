@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Presentation timeline integration for [`Ui`].
+//!
+//! `Ui` advances the timeline from host-supplied monotonic time, converts
+//! sampled tracks into ordinary invalidation, and exposes wakeup deadlines to
+//! host crates. Controls can request transitions, but the runtime remains the
+//! owner of active tracks.
 
 use invalidation::ChannelSet;
 use understory_timing::TimerInstant;
