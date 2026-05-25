@@ -715,7 +715,7 @@ pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec::Vec;
+    use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
@@ -881,68 +881,5 @@ mod tests {
         ui.compute_layout(Size::new(360.0, 80.0));
 
         assert!(ui.effective_bounds(selection).width() > 0.0);
-    }
-
-    fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
-        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
-        PointerEvent::Down(PointerButtonEvent {
-            pointer: pointer_info(),
-            button: Some(PointerButton::Primary),
-            state: pointer_state(point, time, true),
-        })
-    }
-
-    fn pointer_up(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
-        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
-        PointerEvent::Up(PointerButtonEvent {
-            pointer: pointer_info(),
-            button: Some(PointerButton::Primary),
-            state: pointer_state(point, time, false),
-        })
-    }
-
-    fn pointer_move(
-        point: Point,
-        time: u64,
-        primary_down: bool,
-    ) -> ui_events::pointer::PointerEvent {
-        use ui_events::pointer::{PointerEvent, PointerUpdate};
-        PointerEvent::Move(PointerUpdate {
-            pointer: pointer_info(),
-            current: pointer_state(point, time, primary_down),
-            coalesced: Vec::new(),
-            predicted: Vec::new(),
-        })
-    }
-
-    fn pointer_info() -> ui_events::pointer::PointerInfo {
-        use ui_events::pointer::{PointerId, PointerInfo, PointerType};
-        PointerInfo {
-            pointer_id: Some(PointerId::PRIMARY),
-            persistent_device_id: None,
-            pointer_type: PointerType::Mouse,
-        }
-    }
-
-    fn pointer_state(
-        point: Point,
-        time: u64,
-        primary_down: bool,
-    ) -> ui_events::pointer::PointerState {
-        use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
-        let mut buttons = PointerButtons::new();
-        if primary_down {
-            buttons.insert(PointerButton::Primary);
-        }
-        let mut state = PointerState {
-            time,
-            buttons,
-            count: 1,
-            pressure: if primary_down { 0.5 } else { 0.0 },
-            ..PointerState::default()
-        };
-        state.position.x = point.x;
-        state.position.y = point.y;
-        state
     }
 }

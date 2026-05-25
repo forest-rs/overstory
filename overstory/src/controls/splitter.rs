@@ -438,6 +438,7 @@ fn f32_from_f64(value: f64) -> f32 {
 mod tests {
     use super::*;
     use crate::controls::panel::PanelWidget;
+    use crate::test_support::{pointer_down, pointer_move};
     use alloc::rc::Rc;
     use alloc::vec::Vec;
     use core::cell::Cell;
@@ -608,59 +609,5 @@ mod tests {
         assert_eq!(ui.focused(), Some(splitter));
         assert!(pseudos.contains(&PSEUDO_FOCUSED));
         assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
-    }
-
-    fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
-        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
-        PointerEvent::Down(PointerButtonEvent {
-            pointer: pointer_info(),
-            button: Some(PointerButton::Primary),
-            state: pointer_state(point, time, true),
-        })
-    }
-
-    fn pointer_move(
-        point: Point,
-        time: u64,
-        primary_down: bool,
-    ) -> ui_events::pointer::PointerEvent {
-        use ui_events::pointer::{PointerEvent, PointerUpdate};
-        PointerEvent::Move(PointerUpdate {
-            pointer: pointer_info(),
-            current: pointer_state(point, time, primary_down),
-            coalesced: Vec::new(),
-            predicted: Vec::new(),
-        })
-    }
-
-    fn pointer_info() -> ui_events::pointer::PointerInfo {
-        use ui_events::pointer::{PointerId, PointerInfo, PointerType};
-        PointerInfo {
-            pointer_id: Some(PointerId::PRIMARY),
-            persistent_device_id: None,
-            pointer_type: PointerType::Mouse,
-        }
-    }
-
-    fn pointer_state(
-        point: Point,
-        time: u64,
-        primary_down: bool,
-    ) -> ui_events::pointer::PointerState {
-        use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
-        let mut buttons = PointerButtons::new();
-        if primary_down {
-            buttons.insert(PointerButton::Primary);
-        }
-        let mut state = PointerState {
-            time,
-            buttons,
-            count: 1,
-            pressure: if primary_down { 0.5 } else { 0.0 },
-            ..PointerState::default()
-        };
-        state.position.x = point.x;
-        state.position.y = point.y;
-        state
     }
 }

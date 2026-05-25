@@ -6,6 +6,7 @@ use crate::channels::{COMPOSE, PAINT};
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
+use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
     CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, Navigation, Phase,
     PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
@@ -14,8 +15,6 @@ use crate::{
 use imaging::record::Scene;
 use kurbo::{Point, Rect, Size, Vec2};
 use peniko::{Brush, Color};
-use ui_events::ScrollDelta;
-use ui_events::pointer::{PointerEvent, PointerInfo, PointerState};
 use understory_property::{DependencyObject, DependencyObjectExt};
 use understory_style::{
     ClassId, PartTag, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder,
@@ -3435,7 +3434,6 @@ fn pointer_leave_clears_hover() {
     // position types; we exercise that end-to-end via the demo. Here we
     // verify the dispatch shape: a Leave event clears whatever was
     // currently hovered.
-    use ui_events::pointer::{PointerEvent, PointerInfo, PointerType};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -3445,14 +3443,9 @@ fn pointer_leave_clears_hover() {
     // Match the internal state. (Phase 1d's dispatch is the only writer
     // of `hovered` in real code, so this is a deliberate test-only nudge.)
     // We test the Leave path which clears via the public API.
-    let leave = PointerEvent::Leave(PointerInfo {
-        pointer_id: None,
-        persistent_device_id: None,
-        pointer_type: PointerType::Mouse,
-    });
     // Even if hovered is None (we never set it via dispatch), Leave
     // should be a no-op rather than panic.
-    let _ = ui.dispatch_pointer_event(&leave);
+    let _ = ui.dispatch_pointer_event(&pointer_leave());
     assert_eq!(ui.hovered(), None);
 }
 
@@ -3471,74 +3464,4 @@ fn add_class_restyles_subtree() {
 fn slider_value(ui: &Ui, slider: ElementId) -> Option<f64> {
     ui.get(slider)
         .and_then(|el| el.get_local_value(ui.properties().value).copied())
-}
-
-fn pointer_down(point: Point, time: u64) -> PointerEvent {
-    use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
-
-    PointerEvent::Down(PointerButtonEvent {
-        button: Some(PointerButton::Primary),
-        pointer: pointer_info(),
-        state: pointer_state(point, time, true),
-    })
-}
-
-fn pointer_up(point: Point, time: u64) -> PointerEvent {
-    use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
-
-    PointerEvent::Up(PointerButtonEvent {
-        button: Some(PointerButton::Primary),
-        pointer: pointer_info(),
-        state: pointer_state(point, time, false),
-    })
-}
-
-fn pointer_move(point: Point, time: u64, primary_down: bool) -> PointerEvent {
-    use ui_events::pointer::{PointerEvent, PointerUpdate};
-
-    PointerEvent::Move(PointerUpdate {
-        pointer: pointer_info(),
-        current: pointer_state(point, time, primary_down),
-        coalesced: Vec::new(),
-        predicted: Vec::new(),
-    })
-}
-
-fn pointer_scroll(point: Point, time: u64, delta: ScrollDelta) -> PointerEvent {
-    use ui_events::pointer::{PointerEvent, PointerScrollEvent};
-
-    PointerEvent::Scroll(PointerScrollEvent {
-        pointer: pointer_info(),
-        delta,
-        state: pointer_state(point, time, false),
-    })
-}
-
-fn pointer_info() -> PointerInfo {
-    use ui_events::pointer::{PointerId, PointerInfo, PointerType};
-
-    PointerInfo {
-        pointer_id: Some(PointerId::PRIMARY),
-        persistent_device_id: None,
-        pointer_type: PointerType::Mouse,
-    }
-}
-
-fn pointer_state(point: Point, time: u64, primary_down: bool) -> PointerState {
-    use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
-
-    let mut buttons = PointerButtons::new();
-    if primary_down {
-        buttons.insert(PointerButton::Primary);
-    }
-    let mut state = PointerState {
-        time,
-        buttons,
-        count: 1,
-        pressure: if primary_down { 0.5 } else { 0.0 },
-        ..PointerState::default()
-    };
-    state.position.x = point.x;
-    state.position.y = point.y;
-    state
 }
