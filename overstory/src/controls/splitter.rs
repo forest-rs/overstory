@@ -6,9 +6,11 @@
 use alloc::boxed::Box;
 
 use cursor_icon::CursorIcon;
+use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::Phase;
+use crate::controls::support::{axis_point, axis_rect_size, axis_vec, f32_from_logical};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
@@ -31,6 +33,15 @@ pub enum SplitterAxis {
     /// Vertical rule between left/right panes. Dragging changes pane widths.
     #[default]
     Vertical,
+}
+
+impl SplitterAxis {
+    fn movement_axis(self) -> Axis {
+        match self {
+            Self::Horizontal => Axis::Vertical,
+            Self::Vertical => Axis::Horizontal,
+        }
+    }
 }
 
 /// Payload produced when a splitter is dragged or moved from the keyboard.
@@ -342,17 +353,12 @@ impl Widget for SplitterWidget {
 }
 
 fn axis_delta(axis: SplitterAxis, delta: kurbo::Vec2) -> f64 {
-    match axis {
-        SplitterAxis::Horizontal => delta.y,
-        SplitterAxis::Vertical => delta.x,
-    }
+    axis_vec(axis.movement_axis(), delta)
 }
 
 fn point_axis_delta(axis: SplitterAxis, position: kurbo::Point, origin: kurbo::Point) -> f64 {
-    match axis {
-        SplitterAxis::Horizontal => position.y - origin.y,
-        SplitterAxis::Vertical => position.x - origin.x,
-    }
+    let movement_axis = axis.movement_axis();
+    axis_point(movement_axis, position) - axis_point(movement_axis, origin)
 }
 
 /// Resizes two fixed-size panes as if a splitter between them moved by `delta`.
@@ -404,10 +410,7 @@ pub fn resize_split_pair(
 }
 
 fn axis_size(axis: SplitterAxis, bounds: kurbo::Rect) -> f64 {
-    match axis {
-        SplitterAxis::Horizontal => bounds.height(),
-        SplitterAxis::Vertical => bounds.width(),
-    }
+    axis_rect_size(axis.movement_axis(), bounds)
 }
 
 fn resized_layout(
@@ -417,21 +420,15 @@ fn resized_layout(
     layout: Layout,
 ) -> Layout {
     match axis {
-        SplitterAxis::Horizontal => {
-            layout.logical_size(f32_from_f64(bounds.width()), f32_from_f64(axis_size))
-        }
-        SplitterAxis::Vertical => {
-            layout.logical_size(f32_from_f64(axis_size), f32_from_f64(bounds.height()))
-        }
+        SplitterAxis::Horizontal => layout.logical_size(
+            f32_from_logical(bounds.width()),
+            f32_from_logical(axis_size),
+        ),
+        SplitterAxis::Vertical => layout.logical_size(
+            f32_from_logical(axis_size),
+            f32_from_logical(bounds.height()),
+        ),
     }
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "control-local logical coordinates fit f32"
-)]
-fn f32_from_f64(value: f64) -> f32 {
-    value as f32
 }
 
 #[cfg(test)]

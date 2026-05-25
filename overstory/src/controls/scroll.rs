@@ -8,13 +8,13 @@ use alloc::rc::Rc;
 use core::cell::Cell;
 
 use cursor_icon::CursorIcon;
-use kurbo::Point;
-use kurbo::Vec2;
+use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::LayoutContext;
 use crate::channels::LAYOUT;
+use crate::controls::support::{axis_point, axis_vec, is_initial_drag_move};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::Layout;
@@ -47,6 +47,15 @@ pub enum ScrollAxis {
     Vertical,
 }
 
+impl ScrollAxis {
+    fn axis(self) -> Axis {
+        match self {
+            Self::Horizontal => Axis::Horizontal,
+            Self::Vertical => Axis::Vertical,
+        }
+    }
+}
+
 /// Shared scroll offset state for viewport-like controls.
 #[derive(Clone)]
 pub struct ScrollState {
@@ -54,12 +63,36 @@ pub struct ScrollState {
 }
 
 struct ScrollStateInner {
-    offset_x: Cell<f64>,
-    offset_y: Cell<f64>,
-    viewport_width: Cell<f64>,
-    viewport_height: Cell<f64>,
-    content_width: Cell<f64>,
-    content_height: Cell<f64>,
+    offset: Cell<Vec2>,
+    metrics: Cell<ScrollMetrics>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ScrollMetrics {
+    viewport: Size,
+    content: Size,
+}
+
+impl ScrollMetrics {
+    fn new(viewport: Size, content: Size) -> Self {
+        Self {
+            viewport: Size::new(
+                normalize_scroll_axis(viewport.width),
+                normalize_scroll_axis(viewport.height),
+            ),
+            content: Size::new(
+                normalize_scroll_axis(content.width),
+                normalize_scroll_axis(content.height),
+            ),
+        }
+    }
+
+    fn max_offset(self) -> Vec2 {
+        Vec2::new(
+            (self.content.width - self.viewport.width).max(0.0),
+            (self.content.height - self.viewport.height).max(0.0),
+        )
+    }
 }
 
 impl core::fmt::Debug for ScrollState {
@@ -82,12 +115,8 @@ impl ScrollState {
     pub fn new() -> Self {
         Self {
             inner: Rc::new(ScrollStateInner {
-                offset_x: Cell::new(0.0),
-                offset_y: Cell::new(0.0),
-                viewport_width: Cell::new(0.0),
-                viewport_height: Cell::new(0.0),
-                content_width: Cell::new(0.0),
-                content_height: Cell::new(0.0),
+                offset: Cell::new(Vec2::ZERO),
+                metrics: Cell::new(ScrollMetrics::default()),
             }),
         }
     }
@@ -103,22 +132,19 @@ impl ScrollState {
     /// Returns the current scroll offset in logical pixels.
     #[must_use]
     pub fn offset(&self) -> Vec2 {
-        Vec2::new(self.inner.offset_x.get(), self.inner.offset_y.get())
+        self.inner.offset.get()
     }
 
     /// Returns the current vertical scroll offset in logical pixels.
     #[must_use]
     pub fn offset_y(&self) -> f64 {
-        self.inner.offset_y.get()
+        self.inner.offset.get().y
     }
 
     /// Returns the current maximum scroll offset in logical pixels.
     #[must_use]
     pub fn max_offset(&self) -> Vec2 {
-        Vec2::new(
-            (self.inner.content_width.get() - self.inner.viewport_width.get()).max(0.0),
-            (self.inner.content_height.get() - self.inner.viewport_height.get()).max(0.0),
-        )
+        self.inner.metrics.get().max_offset()
     }
 
     /// Returns the current maximum vertical scroll offset in logical pixels.
@@ -129,20 +155,14 @@ impl ScrollState {
 
     /// Returns the latest viewport size in logical pixels.
     #[must_use]
-    pub fn viewport_size(&self) -> kurbo::Size {
-        kurbo::Size::new(
-            self.inner.viewport_width.get(),
-            self.inner.viewport_height.get(),
-        )
+    pub fn viewport_size(&self) -> Size {
+        self.inner.metrics.get().viewport
     }
 
     /// Returns the latest scrollable content size in logical pixels.
     #[must_use]
-    pub fn content_size(&self) -> kurbo::Size {
-        kurbo::Size::new(
-            self.inner.content_width.get(),
-            self.inner.content_height.get(),
-        )
+    pub fn content_size(&self) -> Size {
+        self.inner.metrics.get().content
     }
 
     pub(crate) fn set_offset_raw(&self, offset: Vec2) -> bool {
@@ -150,33 +170,24 @@ impl ScrollState {
             normalize_scroll_axis(offset.x),
             normalize_scroll_axis(offset.y),
         );
-        if (self.inner.offset_x.get() - offset.x).abs() <= f64::EPSILON
-            && (self.inner.offset_y.get() - offset.y).abs() <= f64::EPSILON
+        let current = self.inner.offset.get();
+        if (current.x - offset.x).abs() <= f64::EPSILON
+            && (current.y - offset.y).abs() <= f64::EPSILON
         {
             return false;
         }
-        self.inner.offset_x.set(offset.x);
-        self.inner.offset_y.set(offset.y);
+        self.inner.offset.set(offset);
         true
     }
 
     pub(crate) fn set_offset_y_raw(&self, offset_y: f64) -> bool {
-        self.set_offset_raw(Vec2::new(self.inner.offset_x.get(), offset_y))
+        self.set_offset_raw(Vec2::new(self.inner.offset.get().x, offset_y))
     }
 
-    pub(crate) fn set_metrics(&self, viewport: kurbo::Size, content: kurbo::Size) {
+    pub(crate) fn set_metrics(&self, viewport: Size, content: Size) {
         self.inner
-            .viewport_width
-            .set(normalize_scroll_axis(viewport.width));
-        self.inner
-            .viewport_height
-            .set(normalize_scroll_axis(viewport.height));
-        self.inner
-            .content_width
-            .set(normalize_scroll_axis(content.width));
-        self.inner
-            .content_height
-            .set(normalize_scroll_axis(content.height));
+            .metrics
+            .set(ScrollMetrics::new(viewport, content));
     }
 }
 
@@ -484,7 +495,7 @@ impl Widget for ScrollBarWidget {
             self.length,
             self.thumb_extent,
         );
-        let pointer = axis_point(self.axis, event.position);
+        let pointer = axis_point(self.axis.axis(), event.position);
         let next = if pointer < thumb_start {
             current - page
         } else {
@@ -561,8 +572,20 @@ pub(crate) fn handle_wheel_scroll(
     state: &ScrollState,
     event: ScrollEvent<'_>,
 ) {
-    if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
+    let Some(delta) = wheel_scroll_delta(ui, viewport, event) else {
         return;
+    };
+    scroll_by(ui, viewport, state, delta);
+    event.mark_handled();
+}
+
+pub(crate) fn wheel_scroll_delta(
+    ui: &Ui,
+    viewport: ElementId,
+    event: ScrollEvent<'_>,
+) -> Option<Vec2> {
+    if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
+        return None;
     }
     let bounds = ui.effective_bounds(viewport);
     let page = Vec2::new(bounds.width(), bounds.height());
@@ -570,9 +593,10 @@ pub(crate) fn handle_wheel_scroll(
         Vec2::new(DEFAULT_SCROLL_LINE_Y, DEFAULT_SCROLL_LINE_Y),
         page,
     );
-    if delta != Vec2::ZERO {
-        scroll_by(ui, viewport, state, delta);
-        event.mark_handled();
+    if delta == Vec2::ZERO {
+        None
+    } else {
+        Some(delta)
     }
 }
 
@@ -629,7 +653,7 @@ impl ScrollBarDragState {
         delta: Vec2,
     ) {
         let bar_origin = ui.effective_bounds(scroll_bar).origin();
-        if is_first_drag_move(press_position, position, delta) {
+        if is_initial_drag_move(press_position, position, delta) {
             let thumb_start = axis_thumb_start(
                 widget.axis,
                 bar_origin,
@@ -640,14 +664,15 @@ impl ScrollBarDragState {
             );
             if is_scroll_bar_thumb(ui, scroll_bar, source) {
                 self.offset_from_thumb_start =
-                    axis_point(widget.axis, press_position) - thumb_start;
+                    axis_point(widget.axis.axis(), press_position) - thumb_start;
             } else {
                 self.offset_from_thumb_start = f64::from(widget.thumb_extent) / 2.0;
             }
         }
-        let track_start = axis_point(widget.axis, bar_origin);
+        let axis = widget.axis.axis();
+        let track_start = axis_point(axis, bar_origin);
         let thumb_position =
-            axis_point(widget.axis, position) - track_start - self.offset_from_thumb_start;
+            axis_point(axis, position) - track_start - self.offset_from_thumb_start;
         let travel = f64::from((widget.length - widget.thumb_extent).max(0.0));
         if travel <= f64::EPSILON {
             return;
@@ -656,10 +681,6 @@ impl ScrollBarDragState {
         let next = (thumb_position / travel).clamp(0.0, 1.0) * max;
         set_axis_scroll_offset(ui, widget.viewport, &widget.state, widget.axis, next);
     }
-}
-
-fn is_first_drag_move(press_position: Point, position: Point, delta: Vec2) -> bool {
-    delta == position - press_position
 }
 
 fn scroll_by(ui: &mut Ui, viewport: ElementId, state: &ScrollState, delta: Vec2) -> bool {
@@ -715,7 +736,7 @@ fn update_scroll_metrics_from_bounds(
     child_bounds: impl IntoIterator<Item = kurbo::Rect>,
 ) {
     if viewport_bounds.width() <= 0.0 || viewport_bounds.height() <= 0.0 {
-        state.set_metrics(kurbo::Size::ZERO, kurbo::Size::ZERO);
+        state.set_metrics(Size::ZERO, Size::ZERO);
         return;
     }
     let offset = state.offset();
@@ -726,8 +747,8 @@ fn update_scroll_metrics_from_bounds(
         content_bottom = content_bottom.max(child_bounds.y1 + offset.y - viewport_bounds.y0);
     }
     state.set_metrics(
-        kurbo::Size::new(viewport_bounds.width(), viewport_bounds.height()),
-        kurbo::Size::new(content_right, content_bottom),
+        Size::new(viewport_bounds.width(), viewport_bounds.height()),
+        Size::new(content_right, content_bottom),
     );
 }
 
@@ -782,10 +803,7 @@ fn scroll_bar_thumb_offset(
     }
     let travel = f64::from((length - thumb_extent).max(0.0));
     let offset = (state_axis_scroll_offset(state, axis) / max).clamp(0.0, 1.0) * travel;
-    match axis {
-        ScrollAxis::Horizontal => Vec2::new(offset, 0.0),
-        ScrollAxis::Vertical => Vec2::new(0.0, offset),
-    }
+    axis.axis().pack_vec2(offset, 0.0)
 }
 
 fn is_scroll_bar_thumb(ui: &Ui, scroll_bar: ElementId, source: ElementId) -> bool {
@@ -808,12 +826,9 @@ fn set_axis_scroll_offset(
     axis: ScrollAxis,
     offset: f64,
 ) -> bool {
-    match axis {
-        ScrollAxis::Horizontal => {
-            set_scroll_offset(ui, viewport, state, Vec2::new(offset, state.offset().y))
-        }
-        ScrollAxis::Vertical => set_scroll_offset_y(ui, viewport, state, offset),
-    }
+    let axis = axis.axis();
+    let next = axis.pack_vec2(offset, axis_vec(axis.cross(), state.offset()));
+    set_scroll_offset(ui, viewport, state, next)
 }
 
 fn state_axis_scroll_offset(state: &ScrollState, axis: ScrollAxis) -> f64 {
@@ -821,10 +836,7 @@ fn state_axis_scroll_offset(state: &ScrollState, axis: ScrollAxis) -> f64 {
 }
 
 fn axis_scroll_offset(offset: Vec2, axis: ScrollAxis) -> f64 {
-    match axis {
-        ScrollAxis::Horizontal => offset.x,
-        ScrollAxis::Vertical => offset.y,
-    }
+    axis_vec(axis.axis(), offset)
 }
 
 fn axis_thumb_start(
@@ -835,11 +847,10 @@ fn axis_thumb_start(
     length: f32,
     thumb_extent: f32,
 ) -> f64 {
+    let axis = axis.axis();
     axis_point(axis, track_origin)
-        + axis_scroll_fraction(
-            axis_scroll_offset(offset, axis),
-            axis_scroll_offset(max, axis),
-        ) * f64::from((length - thumb_extent).max(0.0))
+        + axis_scroll_fraction(axis_vec(axis, offset), axis_vec(axis, max))
+            * f64::from((length - thumb_extent).max(0.0))
 }
 
 fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
@@ -847,13 +858,6 @@ fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
         0.0
     } else {
         (offset / max).clamp(0.0, 1.0)
-    }
-}
-
-fn axis_point(axis: ScrollAxis, point: Point) -> f64 {
-    match axis {
-        ScrollAxis::Horizontal => point.x,
-        ScrollAxis::Vertical => point.y,
     }
 }
 
@@ -881,10 +885,10 @@ mod tests {
         append_scroll_test_child(&mut ui, scroll);
         append_scroll_test_child(&mut ui, scroll);
 
-        ui.compute_layout(kurbo::Size::new(180.0, 100.0));
+        ui.compute_layout(Size::new(180.0, 100.0));
         let before = ui.effective_bounds(first);
         assert!(set_scroll_view_offset_y(&mut ui, scroll, 12.0));
-        ui.compute_layout(kurbo::Size::new(180.0, 100.0));
+        ui.compute_layout(Size::new(180.0, 100.0));
         let after = ui.effective_bounds(first);
         assert!((after.y0 - (before.y0 - 12.0)).abs() <= 0.01);
         assert_eq!(scroll_view_offset_y(&ui, scroll), Some(12.0));
@@ -900,7 +904,7 @@ mod tests {
             append_scroll_test_child(&mut ui, scroll);
         }
 
-        ui.compute_layout(kurbo::Size::new(180.0, 120.0));
+        ui.compute_layout(Size::new(180.0, 120.0));
         let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, 1.0));
         assert!(result.handled);
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
@@ -920,9 +924,9 @@ mod tests {
             append_scroll_test_child(&mut ui, scroll);
         }
 
-        ui.compute_layout(kurbo::Size::new(180.0, 120.0));
+        ui.compute_layout(Size::new(180.0, 120.0));
 
-        assert_eq!(state.viewport_size(), kurbo::Size::new(120.0, 48.0));
+        assert_eq!(state.viewport_size(), Size::new(120.0, 48.0));
         assert!(state.content_size().height > state.viewport_size().height);
         assert!(state.max_offset_y() > 0.0);
     }
@@ -951,10 +955,10 @@ mod tests {
             .slot(bar, SLOT_SCROLL_BAR_THUMB)
             .expect("scrollbar template should create a thumb slot");
 
-        ui.compute_layout(kurbo::Size::new(180.0, 80.0));
+        ui.compute_layout(Size::new(180.0, 80.0));
         let before = ui.effective_bounds(thumb);
         assert!(set_scroll_view_offset_y(&mut ui, scroll, 24.0));
-        ui.compute_layout(kurbo::Size::new(180.0, 80.0));
+        ui.compute_layout(Size::new(180.0, 80.0));
         let after = ui.effective_bounds(thumb);
 
         assert!(after.y0 > before.y0);
@@ -981,7 +985,7 @@ mod tests {
                 .thumb_extent(12.0),
         );
 
-        ui.compute_layout(kurbo::Size::new(180.0, 80.0));
+        ui.compute_layout(Size::new(180.0, 80.0));
         let bar_bounds = ui.effective_bounds(bar);
         let result =
             ui.synthesize_click(bar, Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0));
@@ -1014,7 +1018,7 @@ mod tests {
             .slot(bar, SLOT_SCROLL_BAR_THUMB)
             .expect("scrollbar template should create a thumb slot");
 
-        ui.compute_layout(kurbo::Size::new(180.0, 80.0));
+        ui.compute_layout(Size::new(180.0, 80.0));
         let start = ui.effective_bounds(thumb).center();
         assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)).changed());
         assert!(

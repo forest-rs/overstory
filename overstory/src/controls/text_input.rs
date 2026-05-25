@@ -8,10 +8,10 @@ use alloc::{boxed::Box, string::String};
 use kurbo::Rect;
 use parley::{FontFamily, FontWeight, LineHeight, PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
-use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::controls::support::{f32_from_logical, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
@@ -243,7 +243,7 @@ impl Widget for TextInputWidget {
             event.mark_handled();
             return;
         }
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
         self.edit.sync_style(font_size);
         move_editor_to_point(ui, input, event.position, font_size, &mut self.edit.editor);
         self.refresh_parts(ui, input);
@@ -257,7 +257,7 @@ impl Widget for TextInputWidget {
         if !ui.is_enabled(input) {
             return;
         }
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
         self.edit.sync_style(font_size);
         if !self.pointer.dragging {
             let (x, y) = editor_local_point(ui, input, event.press_position, font_size);
@@ -286,8 +286,8 @@ impl Widget for TextInputWidget {
         if !ui.is_enabled(input) {
             return;
         }
-        let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-        let read_only = read_or(ui, input, ui.properties().is_read_only, false);
+        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let read_only = read_local_or(ui, input, ui.properties().is_read_only, false);
         self.edit.sync_style(font_size);
         let edit = self.edit.edit_from_key(ui, event.key, read_only);
         if edit.handled {
@@ -377,7 +377,7 @@ struct TextInputEditState {
 
 impl TextInputEditState {
     fn new(text: String, font_size: f64) -> Self {
-        let mut editor = PlainEditor::new(f32_from_f64(font_size));
+        let mut editor = PlainEditor::new(f32_from_logical(font_size));
         apply_editor_style(&mut editor, font_size);
         editor.set_text(&text);
         Self { editor, font_size }
@@ -558,7 +558,7 @@ fn refresh_text_input_parts(
     state: &mut TextInputEditState,
     placeholder: Option<&str>,
 ) {
-    let font_size = read_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+    let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
     state.sync_style(font_size);
     let text = state.text();
     let display = if text.is_empty() {
@@ -617,7 +617,7 @@ fn editor_local_point(
     let bounds = ui.effective_bounds(input);
     let local_x = (position.x - bounds.x0 - f64::from(TEXT_INPUT_PADDING_X)).max(0.0);
     let local_y = (position.y - bounds.y0 - f64::from(text_top(font_size))).max(0.0);
-    (f32_from_f64(local_x), f32_from_f64(local_y))
+    (f32_from_logical(local_x), f32_from_logical(local_y))
 }
 
 fn caret_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, font_size: f64) -> Layout {
@@ -657,10 +657,13 @@ fn rect_from_bounding_box(bounds: parley::BoundingBox) -> Rect {
 fn editor_rect_layout(rect: Rect, font_size: f64) -> Layout {
     Layout::new()
         .absolute_at(
-            f32_from_f64(f64::from(TEXT_INPUT_PADDING_X) + rect.x0),
-            f32_from_f64(f64::from(text_top(font_size)) + rect.y0),
+            f32_from_logical(f64::from(TEXT_INPUT_PADDING_X) + rect.x0),
+            f32_from_logical(f64::from(text_top(font_size)) + rect.y0),
         )
-        .logical_size(f32_from_f64(rect.width()), f32_from_f64(rect.height()))
+        .logical_size(
+            f32_from_logical(rect.width()),
+            f32_from_logical(rect.height()),
+        )
 }
 
 fn apply_editor_style(editor: &mut PlainEditor<Brush>, font_size: f64) {
@@ -669,7 +672,7 @@ fn apply_editor_style(editor: &mut PlainEditor<Brush>, font_size: f64) {
         "system-ui, sans-serif".into(),
     )));
     styles.insert(StyleProperty::FontWeight(FontWeight::MEDIUM));
-    styles.insert(StyleProperty::FontSize(f32_from_f64(font_size)));
+    styles.insert(StyleProperty::FontSize(f32_from_logical(font_size)));
     styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.2)));
     styles.insert(StyleProperty::LetterSpacing(0.4));
     styles.insert(StyleProperty::Brush(Brush::Solid(Color::from_rgba8(
@@ -678,26 +681,7 @@ fn apply_editor_style(editor: &mut PlainEditor<Brush>, font_size: f64) {
 }
 
 fn text_top(font_size: f64) -> f32 {
-    f32_from_f64((f64::from(TEXT_INPUT_HEIGHT) - font_size * 1.35) * 0.5)
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "control-local logical coordinates fit f32"
-)]
-fn f32_from_f64(value: f64) -> f32 {
-    value as f32
-}
-
-fn read_or<T: Clone + 'static>(
-    ui: &Ui,
-    element: ElementId,
-    property: understory_property::Property<T>,
-    default: T,
-) -> T {
-    ui.get(element)
-        .and_then(|el| el.get_local_value(property).cloned())
-        .unwrap_or(default)
+    f32_from_logical((f64::from(TEXT_INPUT_HEIGHT) - font_size * 1.35) * 0.5)
 }
 
 /// Sets `IsReadOnly` on `input` and keeps the `:read-only` pseudoclass in sync.
@@ -716,6 +700,7 @@ mod tests {
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+    use understory_property::DependencyObjectExt;
 
     #[test]
     fn text_input_edits_content_from_keyboard() {

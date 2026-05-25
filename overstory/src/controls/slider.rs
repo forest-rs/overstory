@@ -9,10 +9,10 @@ use understory_axis::{
     AxisMapping1D, AxisRuler1D, AxisRulerMark, AxisRulerOptions, AxisScale1D, AxisScaleOptions,
     AxisSubdivisionPolicy, AxisTickKind,
 };
-use understory_property::DependencyObjectExt;
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
+use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
@@ -306,8 +306,8 @@ impl Widget for SliderWidget {
         if !ui.is_enabled(slider) {
             return;
         }
-        let min = read_or(ui, slider, ui.properties().minimum, 0.0);
-        let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+        let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
+        let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
         let small = read_change_or(
             ui,
             slider,
@@ -324,7 +324,7 @@ impl Widget for SliderWidget {
             max,
             DEFAULT_LARGE_CHANGE_FRACTION,
         );
-        let current = read_or(ui, slider, ui.properties().value, min);
+        let current = read_local_or(ui, slider, ui.properties().value, min);
         let next = match &event.key.key {
             Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
                 current - keyboard_step(event.key.modifiers.shift(), small, large)
@@ -389,7 +389,7 @@ impl Template for SliderTemplate {
             if mark.labeled {
                 let label = cx.keyed_slot_widget(SLOT_SLIDER_TICK_LABEL, key, Box::new(TextWidget));
                 cx.add_class(label, class);
-                let content = tick_label_for_mark(mark);
+                let content = format_tick_value(mark.value);
                 cx.set_local(label, layout_prop, tick_label_layout(mark, &content));
                 cx.set_local(label, content_prop, content);
             }
@@ -407,17 +407,6 @@ impl Template for SliderTemplate {
     }
 }
 
-fn read_or<T: Clone + 'static>(
-    ui: &Ui,
-    id: ElementId,
-    prop: understory_property::Property<T>,
-    default: T,
-) -> T {
-    ui.get(id)
-        .and_then(|el| el.get_local_value(prop).cloned())
-        .unwrap_or(default)
-}
-
 #[derive(Copy, Clone, Debug, Default)]
 struct SliderDragState {
     offset_from_thumb_center: f64,
@@ -433,7 +422,7 @@ impl SliderDragState {
         position: kurbo::Point,
         delta: kurbo::Vec2,
     ) {
-        if is_first_drag_move(press_position, position, delta) {
+        if is_initial_drag_move(press_position, position, delta) {
             let thumb_bounds = ui.effective_bounds(thumb);
             self.offset_from_thumb_center = if thumb_bounds.contains(press_position) {
                 press_position.x - thumb_bounds.center().x
@@ -450,14 +439,6 @@ impl SliderDragState {
     }
 }
 
-fn is_first_drag_move(
-    press_position: kurbo::Point,
-    position: kurbo::Point,
-    delta: kurbo::Vec2,
-) -> bool {
-    delta == position - press_position
-}
-
 fn keyboard_step(large_requested: bool, small: f64, large: f64) -> f64 {
     if large_requested { large } else { small }
 }
@@ -470,7 +451,7 @@ fn read_change_or(
     max: f64,
     default_fraction: f64,
 ) -> f64 {
-    let configured = read_or(ui, slider, prop, 0.0);
+    let configured = read_local_or(ui, slider, prop, 0.0);
     if configured.is_finite() && configured > 0.0 {
         configured
     } else {
@@ -533,7 +514,7 @@ fn ruler_mark_in_view(ruler: &AxisRuler1D, mark: AxisRulerMark) -> bool {
 fn tick_layout(mark: AxisRulerMark) -> Layout {
     Layout::new()
         .absolute_at(tick_left(mark.view_position, TICK_WIDTH), TICK_TOP)
-        .logical_size(TICK_WIDTH, axis_px(mark.mark_extent))
+        .logical_size(TICK_WIDTH, f32_from_logical(mark.mark_extent))
 }
 
 fn tick_label_layout(mark: AxisRulerMark, label: &str) -> Layout {
@@ -549,7 +530,7 @@ fn label_width(label: &str) -> f32 {
 }
 
 fn tick_left(view_position: f64, width: f32) -> f32 {
-    (axis_px(view_position) - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
+    (f32_from_logical(view_position) - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
 }
 
 fn tick_class(kind: AxisTickKind) -> ClassId {
@@ -557,10 +538,6 @@ fn tick_class(kind: AxisTickKind) -> ClassId {
         AxisTickKind::Major => CLASS_SLIDER_MAJOR_TICK,
         AxisTickKind::Medium | AxisTickKind::Minor => CLASS_SLIDER_MINOR_TICK,
     }
-}
-
-fn tick_label_for_mark(mark: AxisRulerMark) -> String {
-    format_tick_value(mark.value)
 }
 
 fn format_tick_value(value: f64) -> String {
@@ -574,17 +551,9 @@ fn format_tick_value(value: f64) -> String {
     label
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "slider axis values are bounded to small logical-pixel coordinates"
-)]
-fn axis_px(value: f64) -> f32 {
-    value as f32
-}
-
 fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
-    let min = read_or(ui, slider, ui.properties().minimum, 0.0);
-    let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+    let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
+    let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let content_prop = ui.properties().content;
     let layout_prop = ui.properties().layout;
     let ruler = slider_ruler(min, max);
@@ -613,7 +582,7 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
         ui.remove_class(label, CLASS_SLIDER_MAJOR_TICK);
         ui.remove_class(label, CLASS_SLIDER_MINOR_TICK);
         ui.add_class(label, tick_class(mark.kind));
-        let content = tick_label_for_mark(mark);
+        let content = format_tick_value(mark.value);
         ui.set_local(label, layout_prop, tick_label_layout(mark, &content));
         ui.set_local(label, content_prop, content);
     }
@@ -625,8 +594,8 @@ fn tick_key(index: usize) -> TemplateItemKey {
 }
 
 fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64) {
-    let min = read_or(ui, slider, ui.properties().minimum, 0.0);
-    let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+    let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
+    let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let clamped = value.clamp(min, max);
     let value_prop = ui.properties().value;
     let layout_prop = ui.properties().layout;
@@ -653,8 +622,8 @@ fn set_value_from_center_position(ui: &mut Ui, slider: ElementId, thumb: Element
     let track_width = SLIDER_WIDTH - THUMB_DIAMETER;
     let usable_origin = bounds.origin().x + f64::from(THUMB_DIAMETER) / 2.0;
     let t = ((center_x - usable_origin) / f64::from(track_width)).clamp(0.0, 1.0);
-    let min = read_or(ui, slider, ui.properties().minimum, 0.0);
-    let max = read_or(ui, slider, ui.properties().maximum, 1.0);
+    let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
+    let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let value = min + t * (max - min);
     set_value(ui, slider, thumb, value);
 }

@@ -5,9 +5,9 @@
 
 use alloc::{boxed::Box, format, string::String};
 
-use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
+use crate::controls::support::read_local_or;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::layouts::Layout;
@@ -197,8 +197,8 @@ impl Template for ProgressTemplate {
 /// Sets a progress bar's value and synchronizes its default fill and label
 /// parts if they exist.
 pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
-    let min = read_or(ui, progress, ui.properties().minimum, 0.0);
-    let max = read_or(ui, progress, ui.properties().maximum, 1.0);
+    let min = read_local_or(ui, progress, ui.properties().minimum, 0.0);
+    let max = read_local_or(ui, progress, ui.properties().maximum, 1.0);
     let clamped = value.clamp(min.min(max), min.max(max));
     ui.set_local(progress, ui.properties().value, clamped);
 
@@ -247,21 +247,11 @@ fn f32_from_unit_fraction(fraction: f64) -> f32 {
     fraction as f32
 }
 
-fn read_or<T: Clone + 'static>(
-    ui: &Ui,
-    element: ElementId,
-    property: understory_property::Property<T>,
-    default: T,
-) -> T {
-    ui.get(element)
-        .and_then(|el| el.get_local_value(property).cloned())
-        .unwrap_or(default)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use kurbo::Size;
+    use understory_property::DependencyObjectExt;
 
     #[test]
     fn progress_value_sizes_fill_and_updates_label() {
