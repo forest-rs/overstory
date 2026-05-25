@@ -221,7 +221,7 @@ impl AppendSpec for Splitter {
 }
 
 /// Per-element widget for `Splitter`.
-pub struct SplitterWidget {
+pub(crate) struct SplitterWidget {
     axis: SplitterAxis,
     keyboard_step: f64,
     keyboard_large_step: f64,
@@ -437,6 +437,7 @@ fn f32_from_f64(value: f64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls::panel::PanelWidget;
     use alloc::rc::Rc;
     use alloc::vec::Vec;
     use core::cell::Cell;
@@ -447,9 +448,9 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(0.0).logical_size(260.0, 80.0));
-        let before = ui.append_widget(root, Box::new(crate::PanelWidget));
+        let before = ui.append_widget(root, Box::new(PanelWidget));
         ui.set_layout(before, Layout::new().logical_size(120.0, 80.0));
-        let after = ui.append_widget(root, Box::new(crate::PanelWidget));
+        let after = ui.append_widget(root, Box::new(PanelWidget));
         ui.set_layout(after, Layout::new().logical_size(120.0, 80.0));
         let splitter = ui.append(
             root,

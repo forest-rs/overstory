@@ -127,7 +127,7 @@ impl AppendSpec for ToggleSwitch {
 
 /// Per-element widget for `ToggleSwitch`.
 #[derive(Debug, Default)]
-pub struct ToggleWidget;
+pub(crate) struct ToggleWidget;
 
 impl Widget for ToggleWidget {
     fn type_tag(&self) -> Option<TypeTag> {

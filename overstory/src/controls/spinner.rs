@@ -108,7 +108,7 @@ impl AppendSpec for Spinner {
 /// lives in the timer-handler closure that was registered during
 /// `append_to`.
 #[derive(Debug, Default)]
-pub struct SpinnerWidget;
+pub(crate) struct SpinnerWidget;
 
 impl Widget for SpinnerWidget {
     fn type_tag(&self) -> Option<TypeTag> {

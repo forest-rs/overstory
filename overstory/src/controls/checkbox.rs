@@ -138,7 +138,7 @@ impl AppendSpec for CheckBox {
 
 /// Per-element widget for `CheckBox`.
 #[derive(Debug, Default)]
-pub struct CheckBoxWidget;
+pub(crate) struct CheckBoxWidget;
 
 impl Widget for CheckBoxWidget {
     fn type_tag(&self) -> Option<TypeTag> {

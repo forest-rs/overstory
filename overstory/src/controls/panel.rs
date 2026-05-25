@@ -116,7 +116,7 @@ impl AppendSpec for Panel {
 /// is the only thing it provides. Panels resolve their surface
 /// via the standard `present_surface` default in `Widget::present`.
 #[derive(Debug, Default)]
-pub struct PanelWidget;
+pub(crate) struct PanelWidget;
 
 impl Widget for PanelWidget {
     fn type_tag(&self) -> Option<TypeTag> {

@@ -163,7 +163,7 @@ impl AppendSpec for ProgressBar {
 
 /// Per-element widget for `ProgressBar`.
 #[derive(Debug, Default)]
-pub struct ProgressBarWidget;
+pub(crate) struct ProgressBarWidget;
 
 impl Widget for ProgressBarWidget {
     fn type_tag(&self) -> Option<TypeTag> {

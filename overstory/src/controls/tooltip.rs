@@ -133,7 +133,7 @@ impl AppendSpec for Tooltip {
 
 /// Per-element widget for `Tooltip`.
 #[derive(Debug, Default)]
-pub struct TooltipWidget;
+pub(crate) struct TooltipWidget;
 
 impl Widget for TooltipWidget {
     fn type_tag(&self) -> Option<TypeTag> {

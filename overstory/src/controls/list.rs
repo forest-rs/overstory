@@ -204,7 +204,7 @@ impl AppendSpec for ListBox {
 }
 
 /// Per-element widget for `ListBox`.
-pub struct ListBoxWidget {
+pub(crate) struct ListBoxWidget {
     selection: SharedSelection,
     scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
@@ -508,7 +508,7 @@ impl AppendSpec for ListItem {
 
 /// Per-element widget for `ListItem`.
 #[derive(Debug, Default)]
-pub struct ListItemWidget;
+pub(crate) struct ListItemWidget;
 
 impl Widget for ListItemWidget {
     fn type_tag(&self) -> Option<TypeTag> {

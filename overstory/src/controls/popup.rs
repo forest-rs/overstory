@@ -149,7 +149,7 @@ impl AppendSpec for Popup {
 
 /// Per-element widget for `Popup`.
 #[derive(Debug, Default)]
-pub struct PopupWidget;
+pub(crate) struct PopupWidget;
 
 impl Widget for PopupWidget {
     fn type_tag(&self) -> Option<TypeTag> {

@@ -92,7 +92,7 @@ impl AppendSpec for Divider {
 
 /// Per-element widget for `Divider`.
 #[derive(Debug, Default)]
-pub struct DividerWidget;
+pub(crate) struct DividerWidget;
 
 impl Widget for DividerWidget {
     fn type_tag(&self) -> Option<TypeTag> {

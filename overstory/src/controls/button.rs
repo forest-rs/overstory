@@ -201,7 +201,7 @@ impl AppendSpec for Button {
 /// registered handlers. The unit struct is enough to attach
 /// behavior via `Widget`.
 #[derive(Debug, Default)]
-pub struct ButtonWidget;
+pub(crate) struct ButtonWidget;
 
 impl Widget for ButtonWidget {
     fn type_tag(&self) -> Option<TypeTag> {

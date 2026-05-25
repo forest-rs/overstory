@@ -275,7 +275,7 @@ impl AppendSpec for ScrollView {
 
 /// Per-element widget for `ScrollView`.
 #[derive(Clone, Debug)]
-pub struct ScrollViewWidget {
+pub(crate) struct ScrollViewWidget {
     state: ScrollState,
 }
 
@@ -433,7 +433,7 @@ impl AppendSpec for ScrollBar {
 
 /// Per-element widget for `ScrollBar`.
 #[derive(Clone, Debug)]
-pub struct ScrollBarWidget {
+pub(crate) struct ScrollBarWidget {
     axis: ScrollAxis,
     viewport: ElementId,
     state: ScrollState,

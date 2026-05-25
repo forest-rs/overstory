@@ -67,7 +67,7 @@ impl AppendSpec for Viewport {
 
 /// Per-element widget for `Viewport`.
 #[derive(Debug, Default)]
-pub struct ViewportWidget {
+pub(crate) struct ViewportWidget {
     cursor_icon: Option<CursorIcon>,
 }
 

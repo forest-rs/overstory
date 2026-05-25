@@ -56,55 +56,50 @@ pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
 };
 pub use composition::{CompositionPolicy, CompositionSurface, SurfaceId};
-pub use controls::button::{
-    Button, ButtonWidget, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
-};
+pub use controls::button::{Button, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON};
 pub use controls::checkbox::{
-    CheckBox, CheckBoxWidget, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK,
-    SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX,
-    set_check_box_checked,
+    CheckBox, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, SLOT_CHECK_BOX_BOX,
+    SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX, set_check_box_checked,
 };
-pub use controls::divider::{Divider, DividerAxis, DividerWidget, TYPE_DIVIDER};
+pub use controls::divider::{Divider, DividerAxis, TYPE_DIVIDER};
 pub use controls::list::{
-    ListBox, ListBoxWidget, ListItem, ListItemWidget, ListSelectionChangedEvent, ListSelectionMode,
-    PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM,
-    list_scroll_offset_y, scroll_list_item_into_view, select_list_item, selected_list_item,
-    selected_list_items, set_list_scroll_offset_y,
+    ListBox, ListItem, ListSelectionChangedEvent, ListSelectionMode, PART_LIST_ITEM_LABEL,
+    SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, list_scroll_offset_y,
+    scroll_list_item_into_view, select_list_item, selected_list_item, selected_list_items,
+    set_list_scroll_offset_y,
 };
-pub use controls::panel::{Panel, PanelWidget};
-pub use controls::popup::{Popup, PopupWidget, TYPE_POPUP};
+pub use controls::panel::Panel;
+pub use controls::popup::{Popup, TYPE_POPUP};
 pub use controls::progress::{
-    PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, ProgressBarWidget,
-    SLOT_PROGRESS_BAR_FILL, SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
+    PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, SLOT_PROGRESS_BAR_FILL,
+    SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
 pub use controls::scroll::{
-    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollAxis, ScrollBar, ScrollBarWidget,
-    ScrollState, ScrollView, ScrollViewWidget, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
-    scroll_view_offset_y, scroll_view_state, set_scroll_view_offset_y,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollAxis, ScrollBar, ScrollState, ScrollView,
+    TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_view_offset_y, scroll_view_state,
+    set_scroll_view_offset_y,
 };
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
     PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,
     SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL, SLOT_SLIDER_TRACK, Slider,
-    SliderWidget, TYPE_SLIDER, set_slider_value,
+    TYPE_SLIDER, set_slider_value,
 };
-pub use controls::spinner::{Spinner, SpinnerWidget, TYPE_SPINNER};
+pub use controls::spinner::{Spinner, TYPE_SPINNER};
 pub use controls::splitter::{
-    Splitter, SplitterAxis, SplitterResizeEvent, SplitterWidget, TYPE_SPLITTER, resize_split_pair,
+    Splitter, SplitterAxis, SplitterResizeEvent, TYPE_SPLITTER, resize_split_pair,
 };
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     CLASS_TEXT_INPUT_PLACEHOLDER, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
     PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET, SLOT_TEXT_INPUT_SELECTION, SLOT_TEXT_INPUT_TEXT,
-    TYPE_TEXT_INPUT, TextInput, TextInputWidget, set_text_input_read_only,
+    TYPE_TEXT_INPUT, TextInput, set_text_input_read_only,
 };
 pub use controls::toggle::{
-    PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, ToggleWidget, toggle_checked,
+    PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, toggle_checked,
 };
-pub use controls::tooltip::{
-    PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip, TooltipWidget,
-};
-pub use controls::viewport::{TYPE_VIEWPORT, Viewport, ViewportWidget};
+pub use controls::tooltip::{PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip};
+pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
 pub use event_runtime::{

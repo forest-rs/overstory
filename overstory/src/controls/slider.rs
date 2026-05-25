@@ -241,7 +241,7 @@ impl AppendSpec for Slider {
 /// on the property store; the thumb's position is recomputed
 /// imperatively by the template's event handlers.
 #[derive(Debug, Default)]
-pub struct SliderWidget {
+pub(crate) struct SliderWidget {
     drag: SliderDragState,
 }
 

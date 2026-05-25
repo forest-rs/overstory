@@ -207,7 +207,7 @@ impl AppendSpec for TextInput {
 }
 
 /// Per-element widget for `TextInput`.
-pub struct TextInputWidget {
+pub(crate) struct TextInputWidget {
     placeholder: Option<String>,
     edit: TextInputEditState,
     pointer: TextInputPointerState,
