@@ -10,6 +10,10 @@ use crate::element::ElementId;
 
 /// Retained presentation primitives keyed by box-tree node identity.
 pub(crate) struct PresentationRuntime {
+    /// Presentation store for the current paint pass.
+    ///
+    /// Temporarily `None` while paint code takes ownership to rebuild a node
+    /// without fighting the surrounding `&mut Ui` borrow.
     presentation: Option<PresentationStore<NodeId, ElementId>>,
 }
 
@@ -34,6 +38,7 @@ impl PresentationRuntime {
             .expect("presentation always Some outside present_element")
     }
 
+    /// Restores the presentation store after a temporary rebuild borrow.
     pub(crate) fn restore_presentation(
         &mut self,
         presentation: PresentationStore<NodeId, ElementId>,

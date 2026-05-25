@@ -12,8 +12,15 @@ use crate::widget::TYPE_GENERIC;
 
 /// Active style cascade, theme resources, and per-element match states.
 pub(crate) struct StyleRuntime {
+    /// Selector cascade used to resolve styled property values.
     cascade: StyleCascade,
+    /// Theme resource table used by style resolution.
     theme: Theme,
+    /// Cached selector automaton state for each retained element.
+    ///
+    /// The state is derived from the parent state and this element's current
+    /// type, part, classes, and pseudo-classes. It is cleared when the cascade
+    /// is replaced because state ids are cascade-local.
     match_states: HashMap<ElementId, MatchState>,
 }
 

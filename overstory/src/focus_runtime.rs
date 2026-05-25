@@ -12,9 +12,16 @@ use crate::element::ElementId;
 
 /// Focus state, focusability preferences, and focus navigation policy.
 pub(crate) struct FocusRuntime {
+    /// Currently focused element, if any.
     focused: Option<ElementId>,
+    /// Construction-time focusability preference for each element.
+    ///
+    /// Disabled controls may be temporarily removed from focus traversal while
+    /// preserving this preference so it can be restored when re-enabled.
     focusable_preferences: HashMap<ElementId, bool>,
+    /// Policy used by keyboard focus navigation.
     focus_policy: DefaultPolicy,
+    /// Scratch buffer reused when building an `understory_focus` focus space.
     focus_buf: Vec<FocusEntry<NodeId>>,
 }
 

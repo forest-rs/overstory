@@ -10,6 +10,10 @@ use crate::element::ElementId;
 
 /// One-way property bindings and their internal invalidation tracker.
 pub(crate) struct BindingRuntime {
+    /// Binding graph for retained elements.
+    ///
+    /// Temporarily `None` while `Ui::flush_bindings` owns the set and evaluates
+    /// updates against `&mut Ui`.
     bindings: Option<BindingSet<ElementId>>,
 }
 
@@ -37,6 +41,10 @@ impl BindingRuntime {
         Ok(id)
     }
 
+    /// Marks bindings that depend on `endpoint` dirty.
+    ///
+    /// No-ops while bindings are already being flushed; the active flush owns
+    /// the binding set and records changes directly.
     pub(crate) fn mark_endpoint_changed(&mut self, endpoint: EndpointKey<ElementId>) {
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.mark_endpoint_changed(endpoint);
@@ -49,12 +57,14 @@ impl BindingRuntime {
         }
     }
 
+    /// Takes the binding graph for a flush pass.
     pub(crate) fn take(&mut self) -> BindingSet<ElementId> {
         self.bindings
             .take()
             .expect("bindings always Some outside flush_bindings")
     }
 
+    /// Restores the binding graph after a flush pass.
     pub(crate) fn restore(&mut self, bindings: BindingSet<ElementId>) {
         self.bindings = Some(bindings);
     }

@@ -9,6 +9,10 @@ use crate::template::{TemplateInstance, TemplateSlot};
 
 /// Retained default-template expansion metadata for controls.
 pub(crate) struct TemplateRuntime {
+    /// Template instance per owner element.
+    ///
+    /// The instance records the realized part/slot element ids created when a
+    /// default template expands. Template children remain normal elements.
     instances: HashMap<ElementId, TemplateInstance>,
 }
 
@@ -59,6 +63,8 @@ impl TemplateRuntime {
 
     pub(crate) fn remove_element(&mut self, id: ElementId) {
         self.instances.remove(&id);
+        // A removed element may be a realized part inside some other owner's
+        // template instance, so prune it from every remaining instance too.
         for instance in self.instances.values_mut() {
             instance.remove_element(id);
         }

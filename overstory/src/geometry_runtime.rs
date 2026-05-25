@@ -12,8 +12,15 @@ use crate::element::ElementId;
 
 /// Box-tree geometry, spatial indexing, hit testing, and focus flags.
 pub(crate) struct GeometryRuntime {
+    /// Understory box tree that owns committed local/world geometry.
     tree: Tree,
+    /// Mapping from retained elements to their primary box-tree nodes.
+    ///
+    /// Stored as a small vector so future widgets can own multiple boxes
+    /// without changing the external lookup shape.
     element_to_nodes: HashMap<ElementId, SmallVec<[NodeId; 1]>>,
+    /// Reverse lookup used to turn spatial hits and focus results back into
+    /// retained element ids.
     node_to_element: HashMap<NodeId, ElementId>,
 }
 
@@ -27,6 +34,7 @@ impl GeometryRuntime {
     }
 
     pub(crate) fn insert_element(&mut self, id: ElementId, parent: Option<ElementId>) -> NodeId {
+        // The first node is the element's primary layout/hit/focus box.
         let parent_node = parent
             .and_then(|p| self.element_to_nodes.get(&p))
             .and_then(|nodes| nodes.first())

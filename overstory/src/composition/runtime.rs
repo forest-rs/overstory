@@ -88,16 +88,27 @@ impl<'a> CompositionSurface<'a> {
 /// Maintains the Subduction layer tree for one [`crate::Ui`].
 #[derive(Debug)]
 pub(crate) struct CompositionRuntime {
+    /// Retained compositor-neutral layer tree.
     layers: LayerStore,
+    /// Allocator for stable surface identities attached to layers.
     surface_ids: SurfaceIds,
+    /// Root layer corresponding to the UI root element.
     main_root: Option<LayerId>,
+    /// Dedicated layer parent for popup/tooltip/overlay surfaces.
     overlay_root: Option<LayerId>,
+    /// Mapping from retained elements to Subduction layers.
     element_to_layer: HashMap<ElementId, LayerId>,
+    /// Reverse lookup for diagnostics and tests.
     layer_to_element: HashMap<LayerId, ElementId>,
+    /// Per-element content policy used when creating or rebuilding surfaces.
     element_to_policy: HashMap<ElementId, CompositionPolicy>,
+    /// Per-element surface identity for policies that attach content.
     element_to_surface: HashMap<ElementId, SurfaceId>,
+    /// Overstory-owned scene recordings keyed by surface identity.
     surfaces: HashMap<SurfaceId, Scene>,
+    /// Surface ids whose scene was rewritten by the most recent paint.
     updated_surfaces: Vec<SurfaceId>,
+    /// Accumulated layer-tree changes ready for the host frame bridge.
     changes: FrameChanges,
 }
 

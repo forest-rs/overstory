@@ -25,9 +25,16 @@ pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 pub(crate) type FocusHandler = Box<dyn FnMut(&mut Ui, FocusEvent<'_>)>;
 pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>;
 
+/// Handler ownership lane.
+///
+/// Control handlers implement built-in widget behavior; user handlers are
+/// registered through public `Ui::on_*` APIs. Dispatch can run both lanes while
+/// preserving separate removal/replacement state.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HandlerLane {
+    /// Application-supplied handler registered through public APIs.
     User,
+    /// Framework/control behavior handler installed by built-in widgets.
     Control,
 }
 
@@ -576,22 +583,39 @@ impl ScrollEvent<'_> {
 
 /// Routed event handler stores and in-flight removal tracking.
 pub(crate) struct EventRuntime {
+    /// User/control click handlers keyed by current route element.
     click: HandlerPair<ClickHandler>,
+    /// User/control drag handlers keyed by current route element.
     drag: HandlerPair<DragHandler>,
+    /// User scroll handlers keyed by current route element.
     scroll: HandlerPair<ScrollHandler>,
+    /// User/control keyboard handlers keyed by current route element.
     key: HandlerPair<KeyHandler>,
+    /// Focus gained/lost handlers keyed by current route element.
     focus: HandlerPair<FocusHandler>,
+    /// Pointer down handlers keyed by current route element.
     pointer_down: HandlerPair<PointerHandler>,
+    /// Pointer move handlers keyed by current route element.
     pointer_move: HandlerPair<PointerHandler>,
+    /// Pointer up handlers keyed by current route element.
     pointer_up: HandlerPair<PointerHandler>,
+    /// Pointer enter handlers keyed by current route element.
     pointer_enter: HandlerPair<PointerHandler>,
+    /// Pointer leave handlers keyed by current route element.
     pointer_leave: HandlerPair<PointerHandler>,
+    /// Pointer cancel handlers keyed by current route element.
     pointer_cancel: HandlerPair<PointerHandler>,
+    /// Last hover path, used to synthesize pointer enter/leave routes.
     hover: HoverState<ElementId>,
+    /// Click recognizer state derived from pointer press/move/up events.
     clicks: ClickState<ElementId>,
+    /// Element that received the primary pointer press being tracked.
     press_target: Option<ElementId>,
+    /// Explicit pointer capture target for move/up/cancel routing.
     pointer_capture: Option<ElementId>,
+    /// Pointer position at the tracked press start.
     press_position: Option<Point>,
+    /// Previous pointer position used to compute drag deltas.
     last_drag_position: Option<Point>,
 }
 
@@ -1095,7 +1119,9 @@ impl EventRuntime {
 }
 
 struct HandlerPair<H> {
+    /// Host-registered application handler slot.
     user: HandlerSlot<H>,
+    /// Built-in control behavior handler slot.
     control: HandlerSlot<H>,
 }
 
@@ -1176,12 +1202,17 @@ impl<H> HandlerPair<H> {
 }
 
 struct HandlerSlot<H> {
+    /// Registered handlers keyed by element id.
     handlers: HashMap<ElementId, HandlerRegistration<H>>,
+    /// Tracks removals while a handler is temporarily taken for dispatch.
     dispatch: HandlerDispatchTracker,
 }
 
+/// Handler plus dispatch options.
 pub(crate) struct HandlerRegistration<H> {
+    /// Dispatch options for this handler.
     pub(crate) options: RoutedHandlerOptions,
+    /// Callback body.
     pub(crate) handler: H,
 }
 
@@ -1238,7 +1269,12 @@ impl<H> HandlerSlot<H> {
 
 #[derive(Default)]
 struct HandlerDispatchTracker {
+    /// Stack of currently dispatching handlers.
+    ///
+    /// A stack allows callback-driven nested dispatch to remove the correct
+    /// handler without losing the outer dispatch context.
     active: Vec<ElementId>,
+    /// Handlers removed while present in `active`.
     removals: HashSet<ElementId>,
 }
 

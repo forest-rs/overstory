@@ -56,9 +56,14 @@ mod tests;
 /// narrow responsibilities to internal runtimes such as [`ElementStore`] and
 /// [`TemplateRuntime`].
 pub struct Ui {
+    /// Retained element tree and per-element widget/property storage.
     elements: ElementStore,
+    /// Property metadata registry used for typed property storage and
+    /// invalidation-channel lookup.
     registry: PropertyRegistry,
+    /// Built-in property ids registered into `registry`.
     properties: BuiltInProperties,
+    /// Dirty-channel tracker keyed by element id.
     invalidation: InvalidationTracker<ElementId>,
     /// Box-tree geometry, hit testing, spatial index, and focus flags.
     geometry: GeometryRuntime,
@@ -73,11 +78,17 @@ pub struct Ui {
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
+    /// One-way property binding graph and binding invalidation state.
     bindings: BindingRuntime,
+    /// Routed event handlers, pointer capture, hover, click, and drag state.
     events: EventRuntime,
+    /// Focused element, focusable preferences, and keyboard navigation policy.
     focus: FocusRuntime,
+    /// Retained timer queue and per-element timer handlers.
     timers: TimerRuntime,
+    /// Tooltip and popup declarations plus currently active overlay stack.
     overlays: OverlayRuntime,
+    /// Last viewport size used during layout/paint.
     last_viewport: kurbo::Size,
 }
 

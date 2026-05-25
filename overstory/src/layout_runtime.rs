@@ -7,7 +7,10 @@ use crate::element::ElementId;
 
 /// Taffy layout tree plus the element-to-layout-node map.
 pub(crate) struct LayoutRuntime {
+    /// Internal Taffy tree. Overstory keeps Taffy behind this runtime so most
+    /// callers deal in `ElementId` rather than layout-node ids.
     taffy: taffy::TaffyTree<ElementId>,
+    /// Mapping from retained elements to their Taffy layout nodes.
     element_to_taffy: HashMap<ElementId, taffy::NodeId>,
 }
 

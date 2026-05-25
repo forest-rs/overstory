@@ -101,24 +101,35 @@ fn clamp_axis(origin: f64, extent: f64, viewport: f64) -> f64 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OverlayKind {
+    /// Transient descriptive overlay anchored to an element.
     Tooltip,
+    /// User-opened popup overlay that may participate in dismissal policy.
     Popup,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ActiveOverlay {
+    /// Overlay category.
     pub(crate) kind: OverlayKind,
+    /// Element the overlay is anchored to.
     pub(crate) target: ElementId,
+    /// Overlay element inserted into the retained UI tree.
     pub(crate) element: ElementId,
+    /// Preferred placement relative to `target`.
     pub(crate) placement: Placement,
+    /// Placement offset in logical pixels.
     pub(crate) offset: Vec2,
+    /// Dismissal behavior for this active overlay.
     pub(crate) dismissal: OverlayDismissal,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct OverlayDismissal {
+    /// Close when a pointer down occurs outside the overlay.
     pub(crate) outside_pointer: bool,
+    /// Close when Escape is pressed.
     pub(crate) escape: bool,
+    /// Focus target to restore when the overlay is dismissed.
     pub(crate) restore_focus: Option<ElementId>,
 }
 
@@ -130,7 +141,12 @@ impl OverlayDismissal {
 
 #[derive(Debug, Default)]
 pub(crate) struct OverlayRuntime {
+    /// Tooltip declarations keyed by the element they describe.
     tooltips: HashMap<ElementId, Tooltip>,
+    /// Active overlay entries in opening order.
+    ///
+    /// Popups are treated as stack-like, so queries walk this vector from the
+    /// end when they need the topmost popup.
     active: Vec<ActiveOverlay>,
 }
 
@@ -178,6 +194,7 @@ impl OverlayRuntime {
         self.active.push(entry);
     }
 
+    /// Removes an active overlay for the exact element/kind pair.
     pub(crate) fn take_element_kind(
         &mut self,
         element: ElementId,
@@ -190,11 +207,15 @@ impl OverlayRuntime {
         Some(self.active.remove(index))
     }
 
+    /// Removes the oldest active overlay of `kind`.
+    ///
+    /// Tooltip activation uses this to keep only one live tooltip at a time.
     pub(crate) fn take_kind(&mut self, kind: OverlayKind) -> Option<ActiveOverlay> {
         let index = self.active.iter().position(|entry| entry.kind == kind)?;
         Some(self.active.remove(index))
     }
 
+    /// Removes a tooltip declaration and closes it if it is active.
     pub(crate) fn remove_tooltip(&mut self, target: ElementId) -> Option<ElementId> {
         self.tooltips.remove(&target);
         let active = self.active_tooltip()?;
@@ -206,6 +227,10 @@ impl OverlayRuntime {
         }
     }
 
+    /// Removes overlay declarations and active entries involving `id`.
+    ///
+    /// Returns overlay elements that must also be removed from the retained UI
+    /// tree by the caller.
     pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<ElementId> {
         self.tooltips.remove(&id);
         let mut removed = Vec::new();
