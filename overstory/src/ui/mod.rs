@@ -32,7 +32,7 @@ use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
-use crate::text::{TextEngine, TextResources};
+use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
 use crate::timer_runtime::TimerRuntime;
 
 mod bindings;
@@ -183,6 +183,23 @@ impl Ui {
     #[must_use]
     pub fn with_text_resources(text_resources: &TextResources) -> Self {
         Self::with_text_engine(TextEngine::from_resources(text_resources))
+    }
+
+    /// Clears cached shaped text layouts.
+    pub fn clear_text_layout_cache(&mut self) {
+        self.text.borrow_mut().clear_layout_cache();
+    }
+
+    /// Returns the number of cached shaped text layouts.
+    #[must_use]
+    pub fn text_layout_cache_len(&self) -> usize {
+        self.text.borrow().layout_cache_len()
+    }
+
+    /// Returns shaped text layout cache counters.
+    #[must_use]
+    pub fn text_layout_cache_stats(&self) -> TextLayoutCacheStats {
+        self.text.borrow().layout_cache_stats()
     }
 
     fn with_text_engine(text_engine: TextEngine) -> Self {

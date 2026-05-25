@@ -163,10 +163,7 @@ impl Widget for TextWidget {
             TextWrapMode::NoWrap => None,
             TextWrapMode::Wrap => constraints.known.width,
         };
-        let layout = ctx
-            .text
-            .borrow_mut()
-            .shape(&content, font_size, Brush::default(), wrap_width);
+        let layout = ctx.text.borrow_mut().shape(&content, font_size, wrap_width);
         let width = f64::from(layout.width());
         let height = f64::from(layout.height());
         Some(Size::new(width, height))

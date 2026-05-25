@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
-use crate::channels::{COMPOSE, PAINT};
+use crate::channels::{COMPOSE, LAYOUT, PAINT};
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
@@ -413,6 +413,59 @@ fn text_measure_uses_styled_content_and_font_size() {
 }
 
 #[test]
+fn repeated_text_widgets_share_shaped_layout_cache() {
+    use crate::Text;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(4.0).logical_size(240.0, 120.0));
+
+    ui.append(root, Text::new("Shared label").font_size(14.0));
+    ui.append(root, Text::new("Shared label").font_size(14.0));
+    ui.append(root, Text::new("Shared label").font_size(14.0));
+
+    ui.compute_layout(Size::new(240.0, 120.0));
+
+    let stats = ui.text_layout_cache_stats();
+    assert_eq!(stats.misses, 1);
+    assert!(
+        stats.hits >= 2,
+        "expected repeated labels to hit cache: {stats:?}"
+    );
+    assert_eq!(ui.text_layout_cache_len(), 1);
+}
+
+#[test]
+fn text_foreground_repaint_reuses_shaped_layout() {
+    use crate::Text;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(4.0).logical_size(240.0, 120.0));
+    let text = ui.append(root, Text::new("Shared label").font_size(14.0));
+
+    ui.compute_layout(Size::new(240.0, 120.0));
+    let mut first = Scene::new();
+    ui.paint(&mut first);
+    let before = ui.text_layout_cache_stats();
+
+    ui.set_local(
+        text,
+        ui.properties().foreground,
+        Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)),
+    );
+    assert!(!ui.invalidation().has_invalidated(LAYOUT));
+    assert!(ui.invalidation().has_invalidated(PAINT));
+
+    let mut second = Scene::new();
+    ui.paint(&mut second);
+    let after = ui.text_layout_cache_stats();
+
+    assert_eq!(after.misses, before.misses);
+    assert!(after.hits > before.hits);
+}
+
+#[test]
 fn paint_keeps_default_text_on_one_line() {
     use crate::Text;
     use imaging::record::{Command, Draw};
@@ -583,13 +636,13 @@ fn control_row_labels_keep_single_line_widths() {
     let toggle_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Live rendering", 15.0, Brush::default(), None)
+            .shape("Live rendering", 15.0, None)
             .width(),
     );
     let spinner_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Streaming updates", 13.0, Brush::default(), None)
+            .shape("Streaming updates", 13.0, None)
             .width(),
     );
 

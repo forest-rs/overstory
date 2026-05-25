@@ -80,7 +80,6 @@ fn lower_presentation(
                     let layout = text.borrow_mut().shape(
                         plain.content.as_str(),
                         plain.style.font_size,
-                        fg.clone(),
                         if plain_text_wraps(plain) {
                             Some(bounds.width())
                         } else {
@@ -92,6 +91,7 @@ fn lower_presentation(
                         &mut painter,
                         Affine::translate((origin.x, origin.y)),
                         &layout,
+                        fg,
                     );
                 }
             }

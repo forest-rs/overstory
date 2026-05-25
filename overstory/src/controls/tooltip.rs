@@ -198,11 +198,7 @@ impl Widget for TooltipLabelWidget {
         }
         #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
         let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        let layout = ctx
-            .text
-            .borrow_mut()
-            .shape(&content, font_size, foreground, None);
+        let layout = ctx.text.borrow_mut().shape(&content, font_size, None);
         Some(Size::new(
             f64::from(layout.width()),
             f64::from(layout.height()),

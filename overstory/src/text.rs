@@ -4,9 +4,14 @@
 //! Text shaping and rendering via parley + imaging.
 //!
 //! This module owns the parley `FontContext` + `LayoutContext` that Ui
-//! holds, and provides a helper that walks a built parley `Layout` and
-//! emits glyph runs through imaging's `Painter`.
+//! holds, caches shaped text layouts, and provides a helper that walks a
+//! built parley `Layout` and emits glyph runs through imaging's `Painter`.
 
+use alloc::borrow::ToOwned;
+use alloc::collections::VecDeque;
+use alloc::rc::Rc;
+use alloc::string::String;
+use hashbrown::HashMap;
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
 use parley::{
@@ -14,6 +19,8 @@ use parley::{
     LineHeight, PlainEditor, PlainEditorDriver, PositionedLayoutItem, StyleProperty,
 };
 use peniko::{Brush, Fill, Style};
+
+const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
 
 /// Shared font discovery and source-cache state for text engines.
 ///
@@ -81,6 +88,7 @@ pub struct TextEngine {
     pub font_context: FontContext,
     /// Working context for building text layouts.
     pub layout_context: LayoutContext<Brush>,
+    layout_cache: TextLayoutCache,
 }
 
 impl TextEngine {
@@ -104,10 +112,11 @@ impl TextEngine {
         Self {
             font_context: resources.font_context.clone(),
             layout_context: LayoutContext::new(),
+            layout_cache: TextLayoutCache::with_capacity(DEFAULT_LAYOUT_CACHE_CAPACITY),
         }
     }
 
-    /// Shapes `text` with the given font size and brush.
+    /// Shapes `text` with the given font size.
     ///
     /// If `wrap_width` is `Some`, it is treated as a logical-pixel line width.
     /// The conversion to Parley's `f32` max advance stays inside the text
@@ -119,12 +128,38 @@ impl TextEngine {
     /// touch of positive letter-spacing for crisp button labels. Apps
     /// will eventually be able to override these via per-element style
     /// properties; for now the defaults are baked in here.
-    pub fn shape(
+    pub fn shape(&mut self, text: &str, font_size: f32, wrap_width: Option<f64>) -> TextLayout {
+        let max_advance = parley_max_advance(wrap_width);
+        let key = TextLayoutKey::new(text, font_size, max_advance);
+        if let Some(layout) = self.layout_cache.get(&key) {
+            return layout;
+        }
+        let layout = self.shape_uncached(text, font_size, max_advance);
+        self.layout_cache.insert(key, layout)
+    }
+
+    /// Clears all cached text layouts.
+    pub fn clear_layout_cache(&mut self) {
+        self.layout_cache.clear();
+    }
+
+    /// Returns the number of cached text layouts.
+    #[must_use]
+    pub fn layout_cache_len(&self) -> usize {
+        self.layout_cache.len()
+    }
+
+    /// Returns cache hit/miss counters for shaped text layouts.
+    #[must_use]
+    pub fn layout_cache_stats(&self) -> TextLayoutCacheStats {
+        self.layout_cache.stats()
+    }
+
+    fn shape_uncached(
         &mut self,
         text: &str,
         font_size: f32,
-        brush: Brush,
-        wrap_width: Option<f64>,
+        max_advance: Option<f32>,
     ) -> Layout<Brush> {
         let mut builder =
             self.layout_context
@@ -134,9 +169,9 @@ impl TextEngine {
         builder.push_default(StyleProperty::FontSize(font_size));
         builder.push_default(LineHeight::FontSizeRelative(1.2));
         builder.push_default(StyleProperty::LetterSpacing(0.4));
-        builder.push_default(StyleProperty::Brush(brush));
+        builder.push_default(StyleProperty::Brush(Brush::default()));
         let mut layout = builder.build(text);
-        layout.break_all_lines(parley_max_advance(wrap_width));
+        layout.break_all_lines(max_advance);
         layout.align(Alignment::Start, AlignmentOptions::default());
         layout
     }
@@ -161,6 +196,141 @@ impl core::fmt::Debug for TextEngine {
 impl Default for TextEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Shared shaped text layout returned by [`TextEngine::shape`].
+///
+/// Cloning this handle is cheap. The underlying parley layout may be shared by
+/// multiple widgets with the same text and geometry-affecting style.
+#[derive(Clone)]
+pub struct TextLayout {
+    layout: Rc<Layout<Brush>>,
+}
+
+impl TextLayout {
+    fn new(layout: Rc<Layout<Brush>>) -> Self {
+        Self { layout }
+    }
+
+    /// Returns the shaped parley layout.
+    #[must_use]
+    pub fn layout(&self) -> &Layout<Brush> {
+        self.layout.as_ref()
+    }
+}
+
+impl core::ops::Deref for TextLayout {
+    type Target = Layout<Brush>;
+
+    fn deref(&self) -> &Self::Target {
+        self.layout()
+    }
+}
+
+impl core::fmt::Debug for TextLayout {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextLayout")
+            .field("width", &self.width())
+            .field("height", &self.height())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Runtime counters for shaped text layout caching.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TextLayoutCacheStats {
+    /// Number of cached layout hits.
+    pub hits: usize,
+    /// Number of uncached layout builds.
+    pub misses: usize,
+    /// Number of layouts evicted after the cache reached capacity.
+    pub evictions: usize,
+}
+
+struct TextLayoutCache {
+    entries: HashMap<TextLayoutKey, Rc<Layout<Brush>>>,
+    insertion_order: VecDeque<TextLayoutKey>,
+    capacity: usize,
+    stats: TextLayoutCacheStats,
+}
+
+impl TextLayoutCache {
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            insertion_order: VecDeque::new(),
+            capacity,
+            stats: TextLayoutCacheStats::default(),
+        }
+    }
+
+    fn get(&mut self, key: &TextLayoutKey) -> Option<TextLayout> {
+        let layout = self.entries.get(key)?;
+        self.stats.hits += 1;
+        Some(TextLayout::new(Rc::clone(layout)))
+    }
+
+    fn insert(&mut self, key: TextLayoutKey, layout: Layout<Brush>) -> TextLayout {
+        self.stats.misses += 1;
+        let layout = Rc::new(layout);
+        if self.capacity == 0 {
+            return TextLayout::new(layout);
+        }
+        while self.entries.len() >= self.capacity {
+            let Some(evicted) = self.insertion_order.pop_front() else {
+                break;
+            };
+            if self.entries.remove(&evicted).is_some() {
+                self.stats.evictions += 1;
+            }
+        }
+        self.entries.insert(key.clone(), Rc::clone(&layout));
+        self.insertion_order.push_back(key);
+        TextLayout::new(layout)
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.insertion_order.clear();
+    }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn stats(&self) -> TextLayoutCacheStats {
+        self.stats
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TextLayoutKey {
+    text: String,
+    font_size: ScalarKey,
+    max_advance: Option<ScalarKey>,
+}
+
+impl TextLayoutKey {
+    fn new(text: &str, font_size: f32, max_advance: Option<f32>) -> Self {
+        Self {
+            text: text.to_owned(),
+            font_size: ScalarKey::new(font_size),
+            max_advance: max_advance.map(ScalarKey::new),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct ScalarKey(u32);
+
+impl ScalarKey {
+    fn new(value: f32) -> Self {
+        if value == 0.0 {
+            Self(0)
+        } else {
+            Self(value.to_bits())
+        }
     }
 }
 
@@ -193,6 +363,7 @@ pub(crate) fn render_text<S>(
     painter: &mut Painter<'_, S>,
     transform: Affine,
     layout: &Layout<Brush>,
+    brush: &Brush,
 ) where
     S: PaintSink + ?Sized,
 {
@@ -203,7 +374,7 @@ pub(crate) fn render_text<S>(
             };
             let run = glyph_run.run();
             painter
-                .glyphs(run.font(), &glyph_run.style().brush)
+                .glyphs(run.font(), brush)
                 .transform(transform)
                 .font_size(run.font_size())
                 .normalized_coords(run.normalized_coords())
@@ -216,5 +387,37 @@ pub(crate) fn render_text<S>(
                     }),
                 );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TextEngine, TextResources};
+
+    #[test]
+    fn shape_reuses_cached_layout_for_same_geometry_inputs() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+
+        let first = engine.shape("Shared label", 14.0, None);
+        let second = engine.shape("Shared label", 14.0, None);
+
+        assert_eq!(first.width(), second.width());
+        assert_eq!(engine.layout_cache_len(), 1);
+        assert_eq!(engine.layout_cache_stats().misses, 1);
+        assert_eq!(engine.layout_cache_stats().hits, 1);
+    }
+
+    #[test]
+    fn shape_wrap_width_participates_in_cache_key() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+
+        let _ = engine.shape("Shared label", 14.0, Some(80.0));
+        let _ = engine.shape("Shared label", 14.0, Some(120.0));
+
+        assert_eq!(engine.layout_cache_len(), 2);
+        assert_eq!(engine.layout_cache_stats().misses, 2);
+        assert_eq!(engine.layout_cache_stats().hits, 0);
     }
 }
