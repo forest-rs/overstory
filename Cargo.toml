@@ -6,6 +6,7 @@ members = [
     "overstory_host",
     "overstory_host_winit",
     "overstory_node_graph_demo",
+    "overstory_wind_tunnel",
 ]
 
 [workspace.package]

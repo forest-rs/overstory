@@ -1,0 +1,23 @@
+[package]
+name = "overstory_wind_tunnel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+imaging.workspace = true
+kurbo.workspace = true
+overstory.workspace = true
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "ui_pipeline"
+harness = false
+
+[lints]
+workspace = true
