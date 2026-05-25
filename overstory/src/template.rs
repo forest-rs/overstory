@@ -155,6 +155,76 @@ impl TemplatePart {
     }
 }
 
+/// Description of one child element a template wants to insert.
+pub struct TemplateChild {
+    widget: Box<dyn Widget>,
+    slot: Option<TemplateSlot>,
+    part_tag: Option<PartTag>,
+    key: Option<TemplateItemKey>,
+}
+
+impl core::fmt::Debug for TemplateChild {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TemplateChild")
+            .field("slot", &self.slot)
+            .field("part_tag", &self.part_tag)
+            .field("key", &self.key)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TemplateChild {
+    /// Creates an unnamed child with no retained slot or part record.
+    #[must_use]
+    #[inline]
+    pub fn widget(widget: Box<dyn Widget>) -> Self {
+        Self {
+            widget,
+            slot: None,
+            part_tag: None,
+            key: None,
+        }
+    }
+
+    /// Creates a child that fills a semantic template slot.
+    #[must_use]
+    #[inline]
+    pub fn slot(slot: TemplateSlot, widget: Box<dyn Widget>) -> Self {
+        Self::widget(widget).with_slot(slot)
+    }
+
+    /// Creates a child with an owner-local part tag.
+    #[must_use]
+    #[inline]
+    pub fn part(part_tag: PartTag, widget: Box<dyn Widget>) -> Self {
+        Self::widget(widget).with_part(part_tag)
+    }
+
+    /// Assigns this child to a semantic template slot.
+    #[must_use]
+    #[inline]
+    pub fn with_slot(mut self, slot: TemplateSlot) -> Self {
+        self.slot = Some(slot);
+        self
+    }
+
+    /// Assigns an owner-local part tag to this child.
+    #[must_use]
+    #[inline]
+    pub fn with_part(mut self, part_tag: PartTag) -> Self {
+        self.part_tag = Some(part_tag);
+        self
+    }
+
+    /// Assigns a stable repeated-item key to this child.
+    #[must_use]
+    #[inline]
+    pub fn with_key(mut self, key: TemplateItemKey) -> Self {
+        self.key = Some(key);
+        self
+    }
+}
+
 /// Retained result of expanding one element's default template.
 ///
 /// The instance records the generated part elements and binding ids created
@@ -317,126 +387,23 @@ impl<'a> TemplateContext<'a> {
         self.ui.properties()
     }
 
-    /// Inserts a widget part directly under the template owner.
-    pub fn part_widget(&mut self, tag: PartTag, widget: Box<dyn Widget>) -> ElementId {
-        self.part_widget_under_inner(self.owner, tag, None, widget)
+    /// Inserts a generated child directly under the template owner.
+    pub fn insert(&mut self, child: TemplateChild) -> ElementId {
+        self.insert_under(self.owner, child)
     }
 
-    /// Inserts a widget for a semantic slot directly under the template owner.
-    pub fn slot_widget(&mut self, slot: TemplateSlot, widget: Box<dyn Widget>) -> ElementId {
-        self.slot_widget_under_inner(self.owner, slot, None, widget)
-    }
-
-    /// Inserts an unnamed widget directly under the template owner.
-    pub fn widget(&mut self, widget: Box<dyn Widget>) -> ElementId {
-        self.widget_under(self.owner, widget)
-    }
-
-    /// Inserts a keyed repeated widget part directly under the template owner.
-    pub fn keyed_part_widget(
-        &mut self,
-        tag: PartTag,
-        key: TemplateItemKey,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.part_widget_under_inner(self.owner, tag, Some(key), widget)
-    }
-
-    /// Inserts a keyed repeated widget for a semantic slot directly under the template owner.
-    pub fn keyed_slot_widget(
-        &mut self,
-        slot: TemplateSlot,
-        key: TemplateItemKey,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.slot_widget_under_inner(self.owner, slot, Some(key), widget)
-    }
-
-    /// Inserts a widget part under an existing template-generated parent.
-    pub fn part_widget_under(
-        &mut self,
-        parent: ElementId,
-        tag: PartTag,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.part_widget_under_inner(parent, tag, None, widget)
-    }
-
-    /// Inserts a widget for a semantic slot under an existing template parent.
-    pub fn slot_widget_under(
-        &mut self,
-        parent: ElementId,
-        slot: TemplateSlot,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.slot_widget_under_inner(parent, slot, None, widget)
-    }
-
-    /// Inserts a keyed repeated widget part under an existing template parent.
-    pub fn keyed_part_widget_under(
-        &mut self,
-        parent: ElementId,
-        tag: PartTag,
-        key: TemplateItemKey,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.part_widget_under_inner(parent, tag, Some(key), widget)
-    }
-
-    /// Inserts a keyed repeated widget for a semantic slot under an existing template parent.
-    pub fn keyed_slot_widget_under(
-        &mut self,
-        parent: ElementId,
-        slot: TemplateSlot,
-        key: TemplateItemKey,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.slot_widget_under_inner(parent, slot, Some(key), widget)
-    }
-
-    fn part_widget_under_inner(
-        &mut self,
-        parent: ElementId,
-        tag: PartTag,
-        key: Option<TemplateItemKey>,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
+    /// Inserts a generated child under an existing template-generated parent.
+    pub fn insert_under(&mut self, parent: ElementId, child: TemplateChild) -> ElementId {
+        let part_tag = child
+            .part_tag
+            .or_else(|| child.slot.and_then(TemplateSlot::part_tag));
         let id = self
             .ui
-            .insert_template_child(self.owner, parent, Some(tag), Some(widget));
-        self.instance.push_part(None, Some(tag), key, id);
+            .insert_template_child(self.owner, parent, part_tag, Some(child.widget));
+        if child.slot.is_some() || part_tag.is_some() {
+            self.instance.push_part(child.slot, part_tag, child.key, id);
+        }
         id
-    }
-
-    fn slot_widget_under_inner(
-        &mut self,
-        parent: ElementId,
-        slot: TemplateSlot,
-        key: Option<TemplateItemKey>,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        self.slot_widget_under_inner_with_part_tag(parent, slot, slot.part_tag(), key, widget)
-    }
-
-    fn slot_widget_under_inner_with_part_tag(
-        &mut self,
-        parent: ElementId,
-        slot: TemplateSlot,
-        part_tag: Option<PartTag>,
-        key: Option<TemplateItemKey>,
-        widget: Box<dyn Widget>,
-    ) -> ElementId {
-        let id = self
-            .ui
-            .insert_template_child(self.owner, parent, part_tag, Some(widget));
-        self.instance.push_part(Some(slot), part_tag, key, id);
-        id
-    }
-
-    /// Inserts an unnamed widget under an existing template-generated parent.
-    pub fn widget_under(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
-        self.ui
-            .insert_template_child(self.owner, parent, None, Some(widget))
     }
 
     /// Adds a class to a generated element.
@@ -802,26 +769,17 @@ fn instantiate_spec_node(
     parent: ElementId,
     node: &TemplateNode,
 ) -> ElementId {
-    let widget = node.widget.create();
-    let id = match (node.slot, node.part, node.key) {
-        (Some(slot), part_tag, Some(key)) => cx.slot_widget_under_inner_with_part_tag(
-            parent,
-            slot,
-            part_tag.or_else(|| slot.part_tag()),
-            Some(key),
-            widget,
-        ),
-        (Some(slot), part_tag, None) => cx.slot_widget_under_inner_with_part_tag(
-            parent,
-            slot,
-            part_tag.or_else(|| slot.part_tag()),
-            None,
-            widget,
-        ),
-        (None, Some(part), Some(key)) => cx.keyed_part_widget_under(parent, part, key, widget),
-        (None, Some(part), None) => cx.part_widget_under(parent, part, widget),
-        (None, None, _) => cx.widget_under(parent, widget),
-    };
+    let mut child = TemplateChild::widget(node.widget.create());
+    if let Some(slot) = node.slot {
+        child = child.with_slot(slot);
+    }
+    if let Some(part) = node.part {
+        child = child.with_part(part);
+    }
+    if let Some(key) = node.key {
+        child = child.with_key(key);
+    }
+    let id = cx.insert_under(parent, child);
 
     for class in node.classes {
         cx.add_class(id, *class);

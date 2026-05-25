@@ -17,7 +17,7 @@ use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
-use crate::template::{Template, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -334,16 +334,25 @@ struct TextInputTemplate;
 
 impl Template for TextInputTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let selection = cx.slot_widget(SLOT_TEXT_INPUT_SELECTION, Box::new(SurfacePartWidget));
+        let selection = cx.insert(TemplateChild::slot(
+            SLOT_TEXT_INPUT_SELECTION,
+            Box::new(SurfacePartWidget),
+        ));
         cx.set_local(
             selection,
             cx.properties().layout,
             editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE),
         );
 
-        let _ = cx.slot_widget(SLOT_TEXT_INPUT_TEXT, Box::new(TextWidget));
+        let _ = cx.insert(TemplateChild::slot(
+            SLOT_TEXT_INPUT_TEXT,
+            Box::new(TextWidget),
+        ));
 
-        let caret = cx.slot_widget(SLOT_TEXT_INPUT_CARET, Box::new(SurfacePartWidget));
+        let caret = cx.insert(TemplateChild::slot(
+            SLOT_TEXT_INPUT_CARET,
+            Box::new(SurfacePartWidget),
+        ));
         cx.set_local(
             caret,
             cx.properties().layout,

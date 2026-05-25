@@ -707,7 +707,7 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     use crate::widget::SurfacePartWidget;
     use crate::{
         Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
-        TextWidget, ToggleSwitch, set_slider_value,
+        TemplateChild, TextWidget, ToggleSwitch, set_slider_value,
     };
 
     const OUTER_FRAME: PartTag = PartTag(0x40);
@@ -717,9 +717,18 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     impl Template for DoubleFrameButtonTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
             let props = *cx.properties();
-            let outer = cx.part_widget(OUTER_FRAME, Box::new(SurfacePartWidget));
-            let inner = cx.part_widget_under(outer, INNER_FRAME, Box::new(SurfacePartWidget));
-            let content = cx.slot_widget_under(inner, SLOT_BUTTON_CONTENT, Box::new(TextWidget));
+            let outer = cx.insert(TemplateChild::part(
+                OUTER_FRAME,
+                Box::new(SurfacePartWidget),
+            ));
+            let inner = cx.insert_under(
+                outer,
+                TemplateChild::part(INNER_FRAME, Box::new(SurfacePartWidget)),
+            );
+            let content = cx.insert_under(
+                inner,
+                TemplateChild::slot(SLOT_BUTTON_CONTENT, Box::new(TextWidget)),
+            );
             cx.bind_owner_to_part(props.content, content, props.content)
                 .expect("content binding should install");
             cx.bind_owner_to_part(props.font_size, content, props.font_size)
@@ -730,7 +739,7 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     struct SingleSlotTemplate(TemplateSlot);
     impl Template for SingleSlotTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let _part = cx.slot_widget(self.0, Box::new(SurfacePartWidget));
+            let _part = cx.insert(TemplateChild::slot(self.0, Box::new(SurfacePartWidget)));
         }
     }
 
@@ -2419,7 +2428,7 @@ fn remove_clears_bindings_for_subtree() {
 #[test]
 fn template_expansion_inserts_parts_under_owner() {
     use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
-    use crate::{Template, TemplateContext};
+    use crate::{Template, TemplateChild, TemplateContext};
     use understory_style::TypeTag;
 
     // A unit-test widget whose default_template inserts two
@@ -2432,8 +2441,14 @@ fn template_expansion_inserts_parts_under_owner() {
     struct TestTemplate;
     impl Template for TestTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let _a = cx.part_widget(TEST_PART_A, Box::new(SurfacePartWidget));
-            let _b = cx.part_widget(TEST_PART_B, Box::new(SurfacePartWidget));
+            let _a = cx.insert(TemplateChild::part(
+                TEST_PART_A,
+                Box::new(SurfacePartWidget),
+            ));
+            let _b = cx.insert(TemplateChild::part(
+                TEST_PART_B,
+                Box::new(SurfacePartWidget),
+            ));
         }
     }
     static TEST_TEMPLATE: TestTemplate = TestTemplate;

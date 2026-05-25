@@ -17,7 +17,7 @@ use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::template::{Template, TemplateContext, TemplateItemKey, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -358,7 +358,10 @@ impl Template for SliderTemplate {
         let content_prop = cx.properties().content;
 
         // Track: full width, vertically centered.
-        let track = cx.slot_widget(SLOT_SLIDER_TRACK, Box::new(SurfacePartWidget));
+        let track = cx.insert(TemplateChild::slot(
+            SLOT_SLIDER_TRACK,
+            Box::new(SurfacePartWidget),
+        ));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
         cx.set_local(
             track,
@@ -368,7 +371,10 @@ impl Template for SliderTemplate {
                 .logical_size(SLIDER_WIDTH, TRACK_HEIGHT),
         );
 
-        let axis = cx.slot_widget(SLOT_SLIDER_AXIS, Box::new(SurfacePartWidget));
+        let axis = cx.insert(TemplateChild::slot(
+            SLOT_SLIDER_AXIS,
+            Box::new(SurfacePartWidget),
+        ));
         cx.set_local(axis, layout_prop, axis_layout());
         let min = cx.read_local_or(owner, min_prop, 0.0);
         let max = cx.read_local_or(owner, max_prop, 1.0);
@@ -382,12 +388,16 @@ impl Template for SliderTemplate {
         {
             let key = tick_key(index);
             let class = tick_class(mark.kind);
-            let tick = cx.keyed_slot_widget(SLOT_SLIDER_TICK, key, Box::new(SurfacePartWidget));
+            let tick = cx.insert(
+                TemplateChild::slot(SLOT_SLIDER_TICK, Box::new(SurfacePartWidget)).with_key(key),
+            );
             cx.add_class(tick, class);
             cx.set_local(tick, layout_prop, tick_layout(mark));
 
             if mark.labeled {
-                let label = cx.keyed_slot_widget(SLOT_SLIDER_TICK_LABEL, key, Box::new(TextWidget));
+                let label = cx.insert(
+                    TemplateChild::slot(SLOT_SLIDER_TICK_LABEL, Box::new(TextWidget)).with_key(key),
+                );
                 cx.add_class(label, class);
                 let content = format_tick_value(mark.value);
                 cx.set_local(label, layout_prop, tick_label_layout(mark, &content));
@@ -396,7 +406,10 @@ impl Template for SliderTemplate {
         }
 
         // Thumb: absolute, recomputed left whenever Value changes.
-        let thumb = cx.slot_widget(SLOT_SLIDER_THUMB, Box::new(SurfacePartWidget));
+        let thumb = cx.insert(TemplateChild::slot(
+            SLOT_SLIDER_THUMB,
+            Box::new(SurfacePartWidget),
+        ));
         let thumb_top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
         let initial_left = thumb_left_for_value(
             cx.read_local_or(owner, value_prop, 0.0),

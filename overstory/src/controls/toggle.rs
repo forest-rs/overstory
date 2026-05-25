@@ -16,7 +16,7 @@ use crate::Phase;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{Template, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -180,7 +180,10 @@ struct ToggleTemplate;
 impl Template for ToggleTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
         // Thumb part. Sized + styled by the cascade.
-        let _thumb = cx.slot_widget(SLOT_TOGGLE_THUMB, Box::new(SurfacePartWidget));
+        let _thumb = cx.insert(TemplateChild::slot(
+            SLOT_TOGGLE_THUMB,
+            Box::new(SurfacePartWidget),
+        ));
     }
 }
 

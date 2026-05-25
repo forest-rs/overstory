@@ -20,7 +20,7 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::Layout;
-use crate::template::{Template, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -508,7 +508,10 @@ struct ScrollBarTemplate;
 
 impl Template for ScrollBarTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let thumb = cx.slot_widget(SLOT_SCROLL_BAR_THUMB, Box::new(SurfacePartWidget));
+        let thumb = cx.insert(TemplateChild::slot(
+            SLOT_SCROLL_BAR_THUMB,
+            Box::new(SurfacePartWidget),
+        ));
         cx.set_local(
             thumb,
             cx.properties().layout,

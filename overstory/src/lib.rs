@@ -115,8 +115,9 @@ pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContext, TemplateInstance,
-    TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateChild, TemplateContext,
+    TemplateInstance, TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSpec,
+    TemplateWidgetFactory,
 };
 pub use text::TextEngine;
 pub use timer_runtime::TimerEvent;
