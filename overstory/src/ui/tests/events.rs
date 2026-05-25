@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
+use alloc::borrow::ToOwned;
 
 #[test]
 fn set_focus_toggles_pseudoclass() {
@@ -89,8 +90,8 @@ fn focus_navigate_walks_focusables() {
 
 #[test]
 fn dispatch_key_runs_target_handler() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -117,8 +118,8 @@ fn dispatch_key_runs_target_handler() {
 
 #[test]
 fn dispatch_key_noop_without_focus() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -137,8 +138,8 @@ fn dispatch_key_noop_without_focus() {
 
 #[test]
 fn dispatch_key_stops_route_when_handler_marks_handled() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -172,8 +173,8 @@ fn dispatch_key_stops_route_when_handler_marks_handled() {
 
 #[test]
 fn handled_events_too_key_handler_observes_handled_route() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -217,8 +218,8 @@ fn handled_events_too_key_handler_observes_handled_route() {
 
 #[test]
 fn dispatch_key_stops_route_when_handler_stops_propagation() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -251,8 +252,8 @@ fn dispatch_key_stops_route_when_handler_stops_propagation() {
 
 #[test]
 fn focus_events_route_lost_and_gained_notifications() {
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use alloc::rc::Rc;
+    use core::cell::RefCell;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -362,8 +363,8 @@ fn dispatch_key_handles_tab_focus_navigation() {
 
 #[test]
 fn built_in_controls_mark_consumed_keys_handled() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     use crate::{Button, Slider, ToggleSwitch};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
@@ -411,8 +412,8 @@ fn built_in_controls_mark_consumed_keys_handled() {
 
 #[test]
 fn user_click_handler_does_not_replace_control_default_handler() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     use crate::ToggleSwitch;
 
@@ -460,8 +461,8 @@ fn dispatch_click_runs_target_handler() {
     // Register a click handler on a child element; dispatch a
     // click against it; the handler should run with phase Target
     // and source == child.
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -489,9 +490,9 @@ fn dispatch_click_walks_capture_target_bubble() {
     // Register handlers on root, child, and grandchild; click the
     // grandchild. Expected dispatch order: root capture, child
     // capture, grandchild target, child bubble, root bubble.
+    use alloc::rc::Rc;
     use alloc::string::String;
     use core::cell::RefCell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -528,8 +529,8 @@ fn dispatch_click_walks_capture_target_bubble() {
 
 #[test]
 fn dispatch_click_stops_route_when_handler_stops_propagation() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -558,9 +559,9 @@ fn dispatch_click_stops_route_when_handler_stops_propagation() {
 
 #[test]
 fn dispatch_scroll_walks_capture_target_bubble() {
+    use alloc::rc::Rc;
     use alloc::string::String;
     use core::cell::RefCell;
-    use std::rc::Rc;
     use ui_events::ScrollDelta;
 
     let mut ui = Ui::new();
@@ -605,8 +606,8 @@ fn dispatch_scroll_walks_capture_target_bubble() {
 
 #[test]
 fn pointer_scroll_hit_tests_and_routes_to_target() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::ScrollDelta;
 
     let mut ui = Ui::new();
@@ -639,9 +640,9 @@ fn pointer_scroll_hit_tests_and_routes_to_target() {
 
 #[test]
 fn pointer_down_walks_capture_target_bubble() {
+    use alloc::rc::Rc;
     use alloc::string::String;
     use core::cell::RefCell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -684,8 +685,8 @@ fn pointer_down_walks_capture_target_bubble() {
 
 #[test]
 fn handled_pointer_down_suppresses_derived_click() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -718,8 +719,8 @@ fn handled_pointer_down_suppresses_derived_click() {
 
 #[test]
 fn explicit_pointer_capture_routes_move_outside_hit_target() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -777,9 +778,9 @@ fn public_pointer_capture_release_updates_capture_state() {
 
 #[test]
 fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
+    use alloc::rc::Rc;
     use alloc::string::String;
     use core::cell::RefCell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -827,8 +828,8 @@ fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
 
 #[test]
 fn dispatch_drag_stops_route_when_handler_marks_handled() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -861,8 +862,8 @@ fn dispatch_drag_stops_route_when_handler_marks_handled() {
 
 #[test]
 fn pointer_capture_preserves_template_part_as_drag_source() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     use crate::{Button, SLOT_BUTTON_CONTENT};
 
@@ -899,8 +900,8 @@ fn pointer_capture_preserves_template_part_as_drag_source() {
 
 #[test]
 fn remove_click_handler_stops_firing() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -922,8 +923,8 @@ fn remove_click_handler_stops_firing() {
 
 #[test]
 fn click_handler_can_remove_itself_during_dispatch() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -946,8 +947,8 @@ fn click_handler_can_remove_itself_during_dispatch() {
 
 #[test]
 fn key_handler_can_remove_itself_during_dispatch() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
@@ -974,8 +975,8 @@ fn key_handler_can_remove_itself_during_dispatch() {
 
 #[test]
 fn drag_handler_can_remove_itself_during_dispatch() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();

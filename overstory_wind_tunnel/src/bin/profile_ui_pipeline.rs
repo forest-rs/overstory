@@ -3,14 +3,11 @@
 
 //! Repeatedly runs one UI pipeline scenario for external profilers.
 
+use core::{hint::black_box, time::Duration};
 use overstory_wind_tunnel::scenarios::{
     DASHBOARD_ROWS, LIST_ITEMS, layout_dashboard, paint_dashboard, scroll_virtual_list,
 };
-use std::{
-    env,
-    hint::black_box,
-    time::{Duration, Instant},
-};
+use std::{env, time::Instant};
 
 const DEFAULT_SECONDS: u64 = 30;
 

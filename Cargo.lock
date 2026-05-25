@@ -1750,10 +1750,12 @@ dependencies = [
 name = "overstory_host"
 version = "0.1.0"
 dependencies = [
+ "hashbrown 0.17.1",
  "imaging",
  "kurbo",
  "overstory",
  "ui-events",
+ "web-time",
 ]
 
 [[package]]
@@ -1766,6 +1768,7 @@ dependencies = [
  "overstory_host",
  "pollster",
  "ui-events-winit",
+ "web-time",
  "wgpu",
  "winit",
 ]
@@ -1846,6 +1849,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fad031076f48f0d4d85ce1aea9b94b4e715a4d636a030a123038f8f5b5e4343"
 dependencies = [
+ "core_maths",
  "fontique",
  "harfrust",
  "hashbrown 0.17.1",
@@ -2385,6 +2389,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c34617370ae968efb7161bb2beb517d9084659aae19e24b89e3db25b46e4564"
 dependencies = [
  "bytemuck",
+ "core_maths",
  "read-fonts 0.39.2",
 ]
 

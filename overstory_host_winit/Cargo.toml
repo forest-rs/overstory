@@ -15,6 +15,7 @@ imaging_vello.workspace = true
 imaging_wgpu.workspace = true
 pollster.workspace = true
 ui-events-winit.workspace = true
+web-time.workspace = true
 wgpu = { workspace = true, features = ["wgsl"] }
 winit.workspace = true
 

@@ -3,8 +3,10 @@
 
 //! Overstory control gallery.
 
-use std::cell::Cell;
-use std::rc::Rc;
+extern crate alloc;
+
+use alloc::rc::Rc;
+use core::cell::Cell;
 
 use overstory::{
     Button, CheckBox, Divider, ListBox, Panel, Popup, ProgressBar, ScrollBar, ScrollState, Slider,

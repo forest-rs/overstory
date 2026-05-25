@@ -169,6 +169,7 @@ impl Ui {
     ///
     /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
     /// application-supplied styling.
+    #[cfg(feature = "system-fonts")]
     #[must_use]
     pub fn new() -> Self {
         Self::with_text_resources(&TextResources::system_fonts())
@@ -347,6 +348,7 @@ impl Ui {
     }
 }
 
+#[cfg(feature = "system-fonts")]
 impl Default for Ui {
     fn default() -> Self {
         Self::new()

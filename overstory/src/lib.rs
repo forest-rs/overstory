@@ -1,6 +1,8 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![no_std]
+
 //! Overstory: a WPF / `WinUI` 3-inspired UI toolkit built on
 //! `understory` and `imaging`.
 //!
@@ -22,6 +24,10 @@
 //! users (bindings, dynamic theming, custom controls), but isn't
 //! the typical app-level entry point.
 
+#[cfg(any(feature = "std", test))]
+extern crate std;
+
+#[cfg_attr(test, macro_use)]
 extern crate alloc;
 
 mod behavior;

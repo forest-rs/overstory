@@ -3,9 +3,10 @@
 
 //! Element-based node graph showcase.
 
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+extern crate alloc;
 
+use alloc::rc::Rc;
+use core::cell::{Cell, RefCell};
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
     ClickEvent, CursorIcon, DragEvent, ElementId, Layout, Panel, Phase, PointerEventKind,

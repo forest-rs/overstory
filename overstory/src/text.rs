@@ -32,17 +32,41 @@ impl TextResources {
     /// retained so that cloned [`TextEngine`] instances can share discovered
     /// font collection and source-cache data.
     #[must_use]
-    pub fn from_font_context(mut font_context: FontContext) -> Self {
-        font_context.collection.make_shared();
-        font_context.source_cache.make_shared();
-        Self { font_context }
+    pub fn from_font_context(font_context: FontContext) -> Self {
+        Self {
+            font_context: make_shared_font_context(font_context),
+        }
+    }
+
+    /// Constructs text resources with an initially empty font context.
+    ///
+    /// This is the no-std-friendly constructor. Hosts that want platform font
+    /// discovery should use [`Self::system_fonts`] when the `system-fonts`
+    /// feature is enabled, or pass their own populated [`FontContext`] through
+    /// [`Self::from_font_context`].
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::from_font_context(FontContext::default())
     }
 
     /// Constructs text resources backed by Parley's platform font discovery.
+    #[cfg(feature = "system-fonts")]
     #[must_use]
     pub fn system_fonts() -> Self {
         Self::from_font_context(FontContext::default())
     }
+}
+
+#[cfg(feature = "std")]
+fn make_shared_font_context(mut font_context: FontContext) -> FontContext {
+    font_context.collection.make_shared();
+    font_context.source_cache.make_shared();
+    font_context
+}
+
+#[cfg(not(feature = "std"))]
+fn make_shared_font_context(font_context: FontContext) -> FontContext {
+    font_context
 }
 
 impl core::fmt::Debug for TextResources {
@@ -64,6 +88,7 @@ impl TextEngine {
     ///
     /// Prefer [`Self::from_resources`] when constructing many UIs; that keeps
     /// platform font discovery explicit and reusable.
+    #[cfg(feature = "system-fonts")]
     #[must_use]
     pub fn new() -> Self {
         Self::from_resources(&TextResources::system_fonts())
@@ -132,6 +157,7 @@ impl core::fmt::Debug for TextEngine {
     }
 }
 
+#[cfg(feature = "system-fonts")]
 impl Default for TextEngine {
     fn default() -> Self {
         Self::new()

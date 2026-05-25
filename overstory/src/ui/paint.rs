@@ -3,6 +3,7 @@
 
 //! Presentation collection and lowering into an imaging scene.
 
+use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use imaging::record::Scene;

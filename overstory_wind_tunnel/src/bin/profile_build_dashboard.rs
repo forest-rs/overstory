@@ -3,12 +3,9 @@
 
 //! Repeatedly builds the rich dashboard scenario for external profilers.
 
+use core::{hint::black_box, time::Duration};
 use overstory_wind_tunnel::scenarios::{DASHBOARD_ROWS, build_dashboard};
-use std::{
-    env,
-    hint::black_box,
-    time::{Duration, Instant},
-};
+use std::{env, time::Instant};
 
 const DEFAULT_SECONDS: u64 = 30;
 

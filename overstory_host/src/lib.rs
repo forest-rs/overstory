@@ -11,10 +11,9 @@
 //! loop ownership, and GPU presentation are intentionally left to backend
 //! crates such as `overstory_host_winit`.
 
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use std::time::{Duration, Instant};
+use core::{fmt, time::Duration};
 
+use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use kurbo::{Affine, Size};
 use overstory::{
@@ -22,6 +21,7 @@ use overstory::{
 };
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
+use web_time::Instant;
 
 /// Drives one [`Ui`] instance between platform events and rendering.
 pub struct UiHost {

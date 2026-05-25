@@ -3,7 +3,7 @@
 
 //! Routed input dispatch and host event synthesis for `Ui`.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 use kurbo::{Point, Vec2};
 use ui_events::ScrollDelta;

@@ -3,6 +3,8 @@
 
 //! Explicit anchored popup lifecycle.
 
+use alloc::vec::Vec;
+
 use kurbo::Size;
 use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
 

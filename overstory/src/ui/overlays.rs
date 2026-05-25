@@ -3,6 +3,8 @@
 
 //! Overlay placement updates after layout has measured overlay content.
 
+use alloc::vec::Vec;
+
 use kurbo::{Point, Size};
 
 use crate::element::ElementId;

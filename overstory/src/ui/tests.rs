@@ -12,6 +12,7 @@ use crate::{
     PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
     TemplateSlot, UiResolveLookup,
 };
+use alloc::string::String;
 use imaging::record::Scene;
 use kurbo::{Point, Rect, Size, Vec2};
 use peniko::{Brush, Color};
@@ -1139,8 +1140,8 @@ fn viewport_clips_subtree_and_sets_cursor() {
 
 #[test]
 fn repeating_timer_rearms_while_handler_remains() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let target = ui.root();
@@ -1166,8 +1167,8 @@ fn repeating_timer_rearms_while_handler_remains() {
 
 #[test]
 fn repeating_timer_stops_when_handler_removes_itself() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let target = ui.root();
@@ -1194,8 +1195,8 @@ fn repeating_timer_stops_when_handler_removes_itself() {
 
 #[test]
 fn repeating_timer_stops_when_target_is_removed() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -2250,8 +2251,8 @@ fn escape_closes_topmost_popup_and_restores_focus() {
 
 #[test]
 fn outside_pointer_down_closes_popup_without_consuming_click() {
+    use alloc::rc::Rc;
     use core::cell::Cell;
-    use std::rc::Rc;
 
     let mut ui = Ui::new();
     let root = ui.root();

@@ -3,7 +3,7 @@
 
 //! Timer scheduling and dispatch for retained `Ui` elements.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 use understory_timing::{TimerDuration, TimerId, TimerInstant};
 

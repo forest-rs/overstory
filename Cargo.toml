@@ -31,41 +31,50 @@ hashbrown = { default-features = false, features = [
 ], version = "0.17.0" }
 invalidation = { default-features = false, version = "0.2.0" }
 smallvec = { default-features = false, version = "1.13.2" }
-kurbo = { default-features = true, version = "0.13.1" }
-peniko = { default-features = true, version = "0.6.1" }
-subduction_core = { default-features = false, features = ["std"], git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
+kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
+peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
+subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
 
 # Understory primitives (path deps — closely coupled).
 understory_axis = { default-features = false, path = "../understory/understory_axis" }
-understory_box_tree = { default-features = false, features = ["std"], path = "../understory/understory_box_tree" }
-understory_event_state = { default-features = false, features = ["std", "click", "drag"], path = "../understory/understory_event_state" }
-understory_focus = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_focus" }
-understory_presentation = { default-features = false, features = ["std"], path = "../understory/understory_presentation" }
-understory_node_graph = { default-features = false, features = ["std"], path = "../understory/understory_node_graph" }
+understory_box_tree = { default-features = false, path = "../understory/understory_box_tree" }
+understory_event_state = { default-features = false, path = "../understory/understory_event_state" }
+understory_focus = { default-features = false, path = "../understory/understory_focus" }
+understory_presentation = { default-features = false, path = "../understory/understory_presentation" }
+understory_node_graph = { default-features = false, path = "../understory/understory_node_graph" }
 understory_property = { default-features = false, path = "../understory/understory_property" }
 understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
-understory_responder = { default-features = false, features = ["std", "box_tree_adapter"], path = "../understory/understory_responder" }
+understory_responder = { default-features = false, path = "../understory/understory_responder" }
 understory_selection = { default-features = false, path = "../understory/understory_selection" }
 understory_style = { default-features = false, path = "../understory/understory_style" }
 understory_timing = { default-features = false, path = "../understory/understory_timing" }
 understory_virtual_list = { default-features = false, path = "../understory/understory_virtual_list" }
-understory_view2d = { default-features = false, features = ["std"], path = "../understory/understory_view2d" }
+understory_view2d = { default-features = false, path = "../understory/understory_view2d" }
 
 # Imaging — rendering backend.
-imaging = { default-features = false, features = ["std"], version = "0.0.1" }
+imaging = { default-features = false, features = ["libm"], version = "0.0.1" }
 imaging_vello = { default-features = false, features = ["vello-0-8"], version = "0.0.1" }
 imaging_wgpu = { default-features = false, features = ["wgpu-28"], version = "0.0.1" }
 
 # Input event normalization.
-cursor-icon = { version = "1.2.0" }
-ui-events = { default-features = false, features = ["std", "kurbo"], version = "0.3" }
+cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
+ui-events = { default-features = false, features = ["kurbo"], version = "0.3" }
 ui-events-winit = { version = "0.3" }
+web-time = { version = "1.1.0" }
 
 # Layout engine.
-taffy = { default-features = true, version = "0.10" }
+taffy = { default-features = false, features = [
+    "taffy_tree",
+    "flexbox",
+    "grid",
+    "block_layout",
+    "float_layout",
+    "calc",
+    "content_size",
+], version = "0.10" }
 
 # Text shaping and layout.
-parley = { default-features = false, features = ["std", "system"], version = "0.9" }
+parley = { default-features = false, features = ["libm"], version = "0.9" }
 
 # Host runtime for the demo binary.
 winit = { default-features = true, version = "0.30" }

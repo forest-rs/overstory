@@ -10,9 +10,11 @@ publish = false
 
 [dependencies]
 overstory.workspace = true
+hashbrown.workspace = true
 imaging.workspace = true
 kurbo.workspace = true
 ui-events.workspace = true
+web-time.workspace = true
 
 [lints]
 workspace = true

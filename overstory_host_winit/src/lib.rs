@@ -7,14 +7,17 @@
 //! input translation, GPU surface setup, and presentation path. Application
 //! crates only need to provide a function that builds an [`overstory::Ui`].
 
-use std::sync::Arc;
-use std::time::Instant;
+extern crate alloc;
+
+use alloc::{boxed::Box, format, string::String, sync::Arc};
+use core::error::Error;
 
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use overstory::Ui;
 use overstory_host::{UiHost, logical_viewport};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
+use web_time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
@@ -60,7 +63,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 "#;
 
 /// Result type used by the winit host.
-pub type HostResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub type HostResult<T> = Result<T, Box<dyn Error>>;
 
 /// Window options for [`run`].
 #[derive(Clone, Debug)]
@@ -317,7 +320,7 @@ where
                 compatible_surface: Some(&surface),
             })
             .await
-            .map_err(|e| Box::<dyn std::error::Error>::from(format!("request_adapter: {e}")))?;
+            .map_err(|e| Box::<dyn Error>::from(format!("request_adapter: {e}")))?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("overstory_host_winit device"),
@@ -328,8 +331,8 @@ where
                 experimental_features: wgpu::ExperimentalFeatures::default(),
             })
             .await
-            .map_err(|e| Box::<dyn std::error::Error>::from(format!("request_device: {e}")))?;
-        Ok::<_, Box<dyn std::error::Error>>((adapter, device, queue))
+            .map_err(|e| Box::<dyn Error>::from(format!("request_device: {e}")))?;
+        Ok::<_, Box<dyn Error>>((adapter, device, queue))
     })?;
 
     let inner = window.inner_size();
