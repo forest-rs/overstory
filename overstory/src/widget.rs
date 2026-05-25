@@ -108,6 +108,17 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         let _ = (element, ctx);
     }
 
+    /// Called after a full layout pass has written bounds for the tree.
+    ///
+    /// Widgets that derive child structure from final geometry, such as
+    /// virtualized controls, can synchronize their realized children here.
+    /// Return `true` when the synchronization changed the tree or layout and
+    /// the UI should run another layout pass before presenting.
+    fn post_layout(&mut self, id: ElementId, ui: &mut Ui) -> bool {
+        let _ = (id, ui);
+        false
+    }
+
     /// Returns the default template this widget's element should
     /// expand on insertion, if any. Typical use is a templated
     /// control creating its parts (e.g. `ToggleSwitch`'s thumb,
@@ -212,6 +223,10 @@ impl dyn Widget {
     pub(crate) fn downcast_ref<T: Widget>(&self) -> Option<&T> {
         (self as &dyn Any).downcast_ref::<T>()
     }
+
+    pub(crate) fn downcast_mut<T: Widget>(&mut self) -> Option<&mut T> {
+        (self as &mut dyn Any).downcast_mut::<T>()
+    }
 }
 
 /// Widget wrapper that replaces a control's default template without changing
@@ -261,6 +276,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
         self.widget.layout_updated(element, ctx);
+    }
+
+    fn post_layout(&mut self, id: ElementId, ui: &mut Ui) -> bool {
+        self.widget.post_layout(id, ui)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

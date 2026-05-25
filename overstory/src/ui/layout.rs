@@ -92,9 +92,9 @@ impl Ui {
     /// whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
         self.last_viewport = viewport;
-        self.compute_layout_pass(viewport);
+        self.compute_layout_until_stable(viewport);
         if self.reposition_overlays(viewport) {
-            self.compute_layout_pass(viewport);
+            self.compute_layout_until_stable(viewport);
         }
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
@@ -103,7 +103,15 @@ impl Ui {
         self.flush_composition();
     }
 
-    fn compute_layout_pass(&mut self, viewport: Size) {
+    fn compute_layout_until_stable(&mut self, viewport: Size) {
+        for _ in 0..4 {
+            if !self.compute_layout_pass(viewport) {
+                return;
+            }
+        }
+    }
+
+    fn compute_layout_pass(&mut self, viewport: Size) -> bool {
         // Bindings first — they may dirty LAYOUT/PAINT for their targets.
         self.flush_bindings();
         // Push any pending Layout changes into the layout engine. We collect
@@ -123,7 +131,7 @@ impl Ui {
         }
 
         let Some(root_taffy) = self.layout.node_for(self.root()) else {
-            return;
+            return false;
         };
         let available = taffy::Size {
             #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
@@ -193,6 +201,34 @@ impl Ui {
 
         // Walk the tree and write absolute bounds for every element.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
+        self.run_post_layout_widgets()
+    }
+
+    fn run_post_layout_widgets(&mut self) -> bool {
+        let mut ids = Vec::new();
+        self.collect_subtree_ids(self.root(), &mut ids);
+        let mut changed = false;
+        for id in ids {
+            if self.get(id).is_none() {
+                continue;
+            }
+            let mut widget_changed = false;
+            self.with_widget_mut(id, |widget, ui| {
+                widget_changed = widget.post_layout(id, ui);
+            });
+            changed |= widget_changed;
+        }
+        changed
+    }
+
+    fn collect_subtree_ids(&self, id: ElementId, ids: &mut Vec<ElementId>) {
+        let Some(element) = self.get(id) else {
+            return;
+        };
+        ids.push(id);
+        for child in element.children() {
+            self.collect_subtree_ids(*child, ids);
+        }
     }
 
     fn write_bounds_recursive(
