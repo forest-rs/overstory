@@ -8,6 +8,7 @@ use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
+use core::ops::Range;
 
 use kurbo::{Size, Vec2};
 use understory_property::DependencyObjectExt;
@@ -18,8 +19,9 @@ use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 use crate::Phase;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
-    DEFAULT_SCROLL_LINE_Y, ScrollState, normalize_scroll_offset_y, scroll_offset_y,
+    ScrollState, normalize_scroll_offset_y, scroll_offset_y, wheel_scroll_delta,
 };
+use crate::controls::support::f32_from_logical;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
@@ -326,15 +328,9 @@ impl Widget for ListBoxWidget {
     }
 
     fn handle_scroll(&mut self, listbox: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(listbox) {
+        let Some(delta) = wheel_scroll_delta(ui, listbox, event) else {
             return;
-        }
-        let bounds = ui.effective_bounds(listbox);
-        let page = Vec2::new(bounds.width(), bounds.height());
-        let delta = event.logical_delta(
-            Vec2::new(DEFAULT_SCROLL_LINE_Y, DEFAULT_SCROLL_LINE_Y),
-            page,
-        );
+        };
         if delta.y != 0.0 {
             self.scroll_by(listbox, ui, delta.y);
             event.mark_handled();
@@ -407,6 +403,15 @@ impl Widget for ListBoxWidget {
 
 impl ListBoxWidget {
     fn sync_virtual_items(&mut self, listbox: ElementId, ui: &mut Ui) -> bool {
+        let sync = self.sync_virtual_metrics(listbox, ui);
+        let mut changed = sync.changed;
+        changed |= self.reconcile_realized_items(listbox, ui, sync.range);
+        changed |= self.layout_realized_items(ui, sync.viewport);
+        self.sync_realized_selected_pseudos(ui);
+        changed
+    }
+
+    fn sync_virtual_metrics(&mut self, listbox: ElementId, ui: &mut Ui) -> ListVirtualSync {
         let bounds = ui.effective_bounds(listbox);
         let viewport = Size::new(bounds.width().max(0.0), bounds.height().max(0.0));
         let viewport_changed = !sizes_nearly_equal(viewport, self.last_viewport);
@@ -423,8 +428,20 @@ impl ListBoxWidget {
             .set_metrics(viewport, Size::new(viewport.width, content_height));
 
         let range = self.virtual_list.materialized_range();
-        let mut changed = viewport_changed || offset_changed;
+        ListVirtualSync {
+            viewport,
+            range,
+            changed: viewport_changed || offset_changed,
+        }
+    }
 
+    fn reconcile_realized_items(
+        &mut self,
+        listbox: ElementId,
+        ui: &mut Ui,
+        range: Range<usize>,
+    ) -> bool {
+        let mut changed = false;
         let mut kept = Vec::with_capacity(self.realized.len());
         for item in self.realized.drain(..) {
             if range.contains(&item.index) && ui.get(item.element).is_some() {
@@ -443,16 +460,20 @@ impl ListBoxWidget {
             let Some(content) = self.items.get(index) else {
                 continue;
             };
-            let element = ui.append(listbox, ListItem::realized(index, content.clone()));
+            let element = append_realized_list_item(ui, listbox, index, content.clone());
             self.realized.push(RealizedListItem { index, element });
             changed = true;
         }
         self.realized.sort_by_key(|item| item.index);
+        changed
+    }
 
-        let width = f32_from_f64(viewport.width);
-        let height = f32_from_f64(self.item_extent);
+    fn layout_realized_items(&mut self, ui: &mut Ui, viewport: Size) -> bool {
+        let mut changed = false;
+        let width = f32_from_logical(viewport.width);
+        let height = f32_from_logical(self.item_extent);
         for item in &self.realized {
-            let top = f32_from_f64(self.virtual_list.offset_of(item.index));
+            let top = f32_from_logical(self.virtual_list.offset_of(item.index));
             let layout = Layout::new()
                 .absolute_at(0.0, top)
                 .logical_size(width, height);
@@ -465,7 +486,6 @@ impl ListBoxWidget {
                 changed = true;
             }
         }
-        self.sync_realized_selected_pseudos(ui);
         changed
     }
 
@@ -616,9 +636,9 @@ impl ListBoxWidget {
     }
 
     fn sync_realized_selected_pseudos(&self, ui: &mut Ui) {
-        let selected = self.selected_indices();
+        let selection = self.selection.borrow();
         for item in &self.realized {
-            if selected.contains(&item.index) {
+            if selection.contains(&item.index) {
                 ui.add_pseudo(item.element, PSEUDO_SELECTED);
             } else {
                 ui.remove_pseudo(item.element, PSEUDO_SELECTED);
@@ -640,36 +660,6 @@ impl ListBoxWidget {
                 .floor()
                 .max(1.0) as usize
         }
-    }
-}
-
-/// Builder + spec for a realized list item container.
-pub(crate) struct ListItem {
-    index: usize,
-    content: String,
-}
-
-impl core::fmt::Debug for ListItem {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ListItem")
-            .field("index", &self.index)
-            .field("content", &self.content)
-            .finish_non_exhaustive()
-    }
-}
-
-impl ListItem {
-    fn realized(index: usize, content: String) -> Self {
-        Self { index, content }
-    }
-}
-
-impl AppendSpec for ListItem {
-    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget(parent, Box::new(ListItemWidget { index: self.index }));
-        ui.set_local(id, ui.properties().content, self.content);
-        ui.set_control_state(id, ControlState::interactive().focusable(false));
-        id
     }
 }
 
@@ -716,6 +706,13 @@ struct RealizedListItem {
     element: ElementId,
 }
 
+#[derive(Clone, Debug)]
+struct ListVirtualSync {
+    viewport: Size,
+    range: Range<usize>,
+    changed: bool,
+}
+
 type ListItemTemplate = TemplateSpec;
 
 static LIST_ITEM_TEMPLATE: ListItemTemplate = TemplateSpec::new(LIST_ITEM_TEMPLATE_NODES);
@@ -740,6 +737,18 @@ const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
 
 fn list_item_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
+}
+
+fn append_realized_list_item(
+    ui: &mut Ui,
+    listbox: ElementId,
+    index: usize,
+    content: String,
+) -> ElementId {
+    let id = ui.append_widget(listbox, Box::new(ListItemWidget { index }));
+    ui.set_local(id, ui.properties().content, content);
+    ui.set_control_state(id, ControlState::interactive().focusable(false));
+    id
 }
 
 /// Selects `index` in `listbox`, clearing any previous listbox selection.
@@ -915,14 +924,6 @@ fn normalize_item_extent(extent: f64) -> f64 {
 
 fn sizes_nearly_equal(a: Size, b: Size) -> bool {
     (a.width - b.width).abs() <= f64::EPSILON && (a.height - b.height).abs() <= f64::EPSILON
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "control-local logical coordinates fit f32"
-)]
-fn f32_from_f64(value: f64) -> f32 {
-    value as f32
 }
 
 #[cfg(test)]
