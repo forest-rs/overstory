@@ -282,13 +282,11 @@ impl Widget for ScrollViewWidget {
         update_scroll_metrics_from_layout(element, ctx, &self.state);
     }
 
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
+    fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
 
-    fn child_layout_offset(&self, element: &Element) -> Vec2 {
-        let _ = element;
+    fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         -self.state.offset()
     }
 
@@ -446,18 +444,15 @@ impl Widget for ScrollBarWidget {
         Some(&SCROLL_BAR_TEMPLATE)
     }
 
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        let _ = element;
+    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         Some(CursorIcon::AllScroll)
     }
 
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
+    fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
 
-    fn child_layout_offset(&self, element: &Element) -> Vec2 {
-        let _ = element;
+    fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         scroll_bar_thumb_offset(self.axis, &self.state, self.length, self.thumb_extent)
     }
 

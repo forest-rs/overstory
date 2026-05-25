@@ -275,8 +275,7 @@ impl Widget for SplitterWidget {
         Some(TYPE_SPLITTER)
     }
 
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        let _ = element;
+    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         Some(match self.orientation {
             SplitterOrientation::Horizontal => CursorIcon::RowResize,
             SplitterOrientation::Vertical => CursorIcon::ColResize,

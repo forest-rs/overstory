@@ -76,13 +76,11 @@ impl Widget for ViewportWidget {
         Some(TYPE_VIEWPORT)
     }
 
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        let _ = element;
+    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         self.cursor_icon
     }
 
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
+    fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
 }

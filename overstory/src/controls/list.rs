@@ -313,13 +313,11 @@ impl Widget for ListBoxWidget {
         Some(TYPE_LIST_BOX)
     }
 
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
+    fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
 
-    fn child_layout_offset(&self, element: &Element) -> Vec2 {
-        let _ = element;
+    fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         -self.scroll_state.offset()
     }
 

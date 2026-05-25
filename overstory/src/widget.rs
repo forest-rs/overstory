@@ -139,8 +139,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// The default leaves cursor selection to ancestors or the host's
     /// platform default.
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        let _ = element;
+    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         None
     }
 
@@ -149,8 +148,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// The default is hit-test visible. Passive overlays such as tooltips can
     /// opt out so they render above controls without becoming routed pointer
     /// targets.
-    fn is_hit_test_visible(&self, element: &Element) -> bool {
-        let _ = element;
+    fn is_hit_test_visible(&self, _element: &Element) -> bool {
         true
     }
 
@@ -158,8 +156,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// The default leaves descendants visible and pickable outside the
     /// element's own box. Viewport-like controls override this.
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
+    fn clips_subtree(&self, _element: &Element) -> bool {
         false
     }
 
@@ -168,8 +165,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// This is intentionally separate from layout sizing: layout still computes
     /// the normal child positions, then viewport-like controls can translate
     /// the arranged subtree for scrolling.
-    fn child_layout_offset(&self, element: &Element) -> Vec2 {
-        let _ = element;
+    fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         Vec2::ZERO
     }
 
