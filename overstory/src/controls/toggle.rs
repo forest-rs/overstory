@@ -23,8 +23,9 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::animation_runtime::{ChangeCause, PresentationProperty, TransitionSpec};
-use crate::channels::COMPOSE;
+use crate::animation_runtime::{
+    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
+};
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
@@ -221,10 +222,10 @@ pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
         ui.remove_pseudo(toggle, PSEUDO_CHECKED);
     }
     if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
-        ui.request_scalar_transition(
+        ui.request_presentation_transition(
             thumb,
             PresentationProperty::CompositionOffsetX,
-            THUMB_TRANSITION,
+            TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
 }
@@ -246,5 +247,5 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
     } else {
         ChangeCause::Other
     };
-    ui.set_scalar_presentation_target(thumb, property, target, cause, COMPOSE.into_set())
+    ui.set_scalar_presentation_target(thumb, property, target, cause)
 }

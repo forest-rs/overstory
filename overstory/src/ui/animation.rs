@@ -8,25 +8,24 @@
 //! host crates. Controls can request transitions, but the runtime remains the
 //! owner of active tracks.
 
-use invalidation::ChannelSet;
 use understory_timing::TimerInstant;
 
 use crate::animation_runtime::{
-    ChangeCause, PresentationProperty, PresentationTrackKey, TransitionSpec,
+    ChangeCause, PresentationProperty, PresentationTrackKey, TransitionPolicy,
 };
 use crate::element::ElementId;
 
 use super::Ui;
 
 impl Ui {
-    pub(crate) fn request_scalar_transition(
+    pub(crate) fn request_presentation_transition(
         &mut self,
         element: ElementId,
         property: PresentationProperty,
-        spec: TransitionSpec,
+        policy: TransitionPolicy,
     ) {
         self.animations
-            .request_scalar_transition(PresentationTrackKey::new(element, property), spec);
+            .request_transition(PresentationTrackKey::new(element, property), policy);
     }
 
     pub(crate) fn has_pending_scalar_transition(
@@ -44,17 +43,15 @@ impl Ui {
         property: PresentationProperty,
         target: f32,
         cause: ChangeCause,
-        affects: ChannelSet,
     ) -> bool {
         let needs_sample = self.animations.set_scalar_target(
             PresentationTrackKey::new(element, property),
             target,
             self.now(),
             cause,
-            affects,
         );
         if needs_sample {
-            self.mark_channels(element, affects);
+            self.mark_channels(element, property.metadata().affects());
         }
         needs_sample
     }

@@ -27,6 +27,7 @@ use hashbrown::HashMap;
 use invalidation::ChannelSet;
 use understory_timing::{TimerDuration, TimerInstant};
 
+use crate::channels::COMPOSE;
 use crate::element::ElementId;
 
 /// Nominal frame interval hosts can use while presentation tracks are active.
@@ -40,6 +41,70 @@ pub(crate) enum PresentationProperty {
     CompositionOffsetX,
 }
 
+impl PresentationProperty {
+    /// Returns static metadata for this presentation property.
+    #[must_use]
+    pub(crate) const fn metadata(self) -> PresentationPropertyMetadata {
+        match self {
+            Self::CompositionOffsetX => PresentationPropertyMetadata {
+                value_kind: PresentationValueKind::Scalar,
+                evaluation_domain: AnimationEvaluationDomain::Composition,
+                affects: COMPOSE.into_set(),
+            },
+        }
+    }
+}
+
+/// Storage/interpolation kind for a presentation property.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PresentationValueKind {
+    /// A single `f32` value.
+    Scalar,
+}
+
+/// Frame-pipeline domain that samples the presentation value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AnimationEvaluationDomain {
+    /// Sampled during layout. Avoid unless animated layout is intentional.
+    Layout,
+    /// Sampled during paint/presentation recording.
+    #[expect(
+        dead_code,
+        reason = "paint-domain properties are added in the next slice"
+    )]
+    Paint,
+    /// Sampled during layer composition.
+    Composition,
+}
+
+/// Static metadata for a presentation property.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PresentationPropertyMetadata {
+    value_kind: PresentationValueKind,
+    evaluation_domain: AnimationEvaluationDomain,
+    affects: ChannelSet,
+}
+
+impl PresentationPropertyMetadata {
+    /// Returns the value kind this property stores.
+    #[must_use]
+    pub(crate) const fn value_kind(self) -> PresentationValueKind {
+        self.value_kind
+    }
+
+    /// Returns where this property is sampled in the frame pipeline.
+    #[must_use]
+    pub(crate) const fn evaluation_domain(self) -> AnimationEvaluationDomain {
+        self.evaluation_domain
+    }
+
+    /// Returns the earliest invalidation channels this property affects.
+    #[must_use]
+    pub(crate) const fn affects(self) -> ChannelSet {
+        self.affects
+    }
+}
+
 /// Why a target value changed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ChangeCause {
@@ -47,6 +112,21 @@ pub(crate) enum ChangeCause {
     Interaction,
     /// Any change that should snap for the first animation slice.
     Other,
+}
+
+/// Which target changes a transition policy applies to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TransitionTrigger {
+    /// Animate only interaction-driven changes.
+    Interaction,
+}
+
+impl TransitionTrigger {
+    fn allows(self, cause: ChangeCause) -> bool {
+        match self {
+            Self::Interaction => cause == ChangeCause::Interaction,
+        }
+    }
 }
 
 /// Timing function for a scalar transition.
@@ -83,6 +163,28 @@ impl TransitionSpec {
     }
 }
 
+/// Policy for deciding whether a target change creates a presentation track.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TransitionPolicy {
+    trigger: TransitionTrigger,
+    spec: TransitionSpec,
+}
+
+impl TransitionPolicy {
+    /// Animates interaction-driven changes with `spec`.
+    #[must_use]
+    pub(crate) const fn interaction(spec: TransitionSpec) -> Self {
+        Self {
+            trigger: TransitionTrigger::Interaction,
+            spec,
+        }
+    }
+
+    fn spec_for(self, cause: ChangeCause) -> Option<TransitionSpec> {
+        self.trigger.allows(cause).then_some(self.spec)
+    }
+}
+
 /// Key for one implicit presentation track.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct PresentationTrackKey {
@@ -101,6 +203,12 @@ impl PresentationTrackKey {
     #[must_use]
     pub(crate) const fn element(self) -> ElementId {
         self.element
+    }
+
+    /// Returns the presentation property this track targets.
+    #[must_use]
+    pub(crate) const fn property(self) -> PresentationProperty {
+        self.property
     }
 }
 
@@ -180,7 +288,6 @@ impl ScalarTransition {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PresentationTrack {
     clip: MotionClip,
-    affects: ChannelSet,
 }
 
 /// Internal animation runtime for sampled presentation values.
@@ -192,7 +299,7 @@ struct PresentationTrack {
 pub(crate) struct AnimationRuntime {
     targets: HashMap<PresentationTrackKey, f32>,
     tracks: HashMap<PresentationTrackKey, PresentationTrack>,
-    pending: HashMap<PresentationTrackKey, TransitionSpec>,
+    pending: HashMap<PresentationTrackKey, TransitionPolicy>,
 }
 
 impl AnimationRuntime {
@@ -204,12 +311,12 @@ impl AnimationRuntime {
 
     /// Requests that the next target change for `key` animate when it is caused
     /// by interaction.
-    pub(crate) fn request_scalar_transition(
+    pub(crate) fn request_transition(
         &mut self,
         key: PresentationTrackKey,
-        spec: TransitionSpec,
+        policy: TransitionPolicy,
     ) {
-        self.pending.insert(key, spec);
+        self.pending.insert(key, policy);
     }
 
     /// Returns whether a transition spec is waiting for `key`'s next target.
@@ -226,8 +333,13 @@ impl AnimationRuntime {
         target: f32,
         now: TimerInstant,
         cause: ChangeCause,
-        affects: ChannelSet,
     ) -> bool {
+        let metadata = key.property().metadata();
+        debug_assert_eq!(metadata.value_kind(), PresentationValueKind::Scalar);
+        debug_assert_ne!(
+            metadata.evaluation_domain(),
+            AnimationEvaluationDomain::Layout
+        );
         let previous_target = self.targets.insert(key, target);
         let target_changed = previous_target.is_none_or(|previous| !same_scalar(previous, target));
         if !target_changed {
@@ -238,9 +350,10 @@ impl AnimationRuntime {
         }
 
         let had_track = self.tracks.contains_key(&key);
-        let spec = (cause == ChangeCause::Interaction)
-            .then(|| self.pending.remove(&key))
-            .flatten();
+        let spec = self
+            .pending
+            .remove(&key)
+            .and_then(|policy| policy.spec_for(cause));
         let Some(spec) = spec else {
             self.tracks.remove(&key);
             return had_track;
@@ -257,7 +370,6 @@ impl AnimationRuntime {
             key,
             PresentationTrack {
                 clip: MotionClip::ScalarTransition(ScalarTransition::new(from, target, now, spec)),
-                affects,
             },
         );
         true
@@ -281,7 +393,7 @@ impl AnimationRuntime {
     pub(crate) fn advance(&mut self, now: TimerInstant) -> Vec<(ElementId, ChannelSet)> {
         let mut affected = Vec::new();
         self.tracks.retain(|key, track| {
-            affected.push((key.element(), track.affects));
+            affected.push((key.element(), key.property().metadata().affects()));
             !track.clip.is_complete(now)
         });
         affected
@@ -325,9 +437,10 @@ fn same_scalar(a: f32, b: f32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channels::PAINT;
+    use crate::channels::COMPOSE;
 
     const SPEC: TransitionSpec = TransitionSpec::linear(100);
+    const POLICY: TransitionPolicy = TransitionPolicy::interaction(SPEC);
 
     fn key() -> PresentationTrackKey {
         PresentationTrackKey::new(
@@ -340,9 +453,9 @@ mod tests {
     fn scalar_transition_samples_linearly() {
         let key = key();
         let mut runtime = AnimationRuntime::new();
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 10.0, 10, ChangeCause::Interaction, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 10.0, 10, ChangeCause::Interaction);
 
         assert_eq!(runtime.sample_scalar(key, 10.0, 10), 0.0);
         assert_eq!(runtime.sample_scalar(key, 10.0, 60), 5.0);
@@ -353,11 +466,11 @@ mod tests {
     fn scalar_transition_retargets_from_sampled_value() {
         let key = key();
         let mut runtime = AnimationRuntime::new();
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 2.0, 50, ChangeCause::Interaction, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 2.0, 50, ChangeCause::Interaction);
 
         assert_eq!(runtime.sample_scalar(key, 2.0, 50), 5.0);
         assert_eq!(runtime.sample_scalar(key, 2.0, 100), 3.5);
@@ -368,14 +481,14 @@ mod tests {
     fn completed_transition_is_removed_by_advance() {
         let key = key();
         let mut runtime = AnimationRuntime::new();
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction);
 
         assert!(runtime.has_active_track(key));
         let affected = runtime.advance(100);
 
-        assert_eq!(affected, alloc::vec![(key.element(), PAINT.into_set())]);
+        assert_eq!(affected, alloc::vec![(key.element(), COMPOSE.into_set())]);
         assert!(!runtime.has_active_track(key));
         assert_eq!(runtime.sample_scalar(key, 10.0, 150), 10.0);
     }
@@ -384,9 +497,9 @@ mod tests {
     fn other_changes_snap_to_target() {
         let key = key();
         let mut runtime = AnimationRuntime::new();
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Other, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Other);
 
         assert!(!runtime.has_active_track(key));
         assert_eq!(runtime.sample_scalar(key, 10.0, 50), 10.0);
@@ -397,9 +510,9 @@ mod tests {
         let key = key();
         let mut runtime = AnimationRuntime::new();
         let long_spec = TransitionSpec::linear(PRESENTATION_FRAME_INTERVAL * 4);
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, long_spec);
-        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, TransitionPolicy::interaction(long_spec));
+        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction);
 
         assert_eq!(runtime.next_deadline(0), Some(PRESENTATION_FRAME_INTERVAL));
         assert_eq!(
@@ -412,9 +525,9 @@ mod tests {
     fn remove_element_drops_tracks_targets_and_pending_specs() {
         let key = key();
         let mut runtime = AnimationRuntime::new();
-        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other, PAINT.into_set());
-        runtime.request_scalar_transition(key, SPEC);
-        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction, PAINT.into_set());
+        runtime.set_scalar_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.request_transition(key, POLICY);
+        runtime.set_scalar_target(key, 10.0, 0, ChangeCause::Interaction);
 
         runtime.remove_element(key.element());
 
