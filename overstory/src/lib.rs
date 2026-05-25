@@ -104,6 +104,7 @@ pub use controls::toggle::{
 pub use controls::tooltip::{
     PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip, TooltipWidget,
 };
+pub use controls::viewport::{TYPE_VIEWPORT, Viewport, ViewportWidget};
 pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
 pub use event_runtime::{

@@ -1098,6 +1098,34 @@ fn hit_test_picks_topmost_child() {
 }
 
 #[test]
+fn viewport_clips_subtree_and_sets_cursor() {
+    use crate::{CursorIcon, Viewport};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_local(
+        root,
+        ui.properties().layout,
+        Layout::flex().logical_size(100.0, 100.0),
+    );
+    let viewport = ui.append(
+        root,
+        Viewport::new()
+            .layout(Layout::new().logical_size(100.0, 100.0))
+            .cursor_icon(CursorIcon::Grab),
+    );
+    let element = ui.get(viewport).unwrap();
+    assert!(element.widget().unwrap().clips_subtree(element));
+
+    ui.compute_layout(Size::new(100.0, 100.0));
+    assert!(
+        ui.dispatch_pointer_event(&pointer_move(Point::new(10.0, 10.0), 1, false))
+            .hover_changed
+    );
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::Grab));
+}
+
+#[test]
 fn set_focus_toggles_pseudoclass() {
     let mut ui = Ui::new();
     let root = ui.root();

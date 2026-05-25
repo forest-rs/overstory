@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
-    ClickEvent, CursorIcon, DragEvent, Element, ElementId, Layout, Panel, Phase, PointerEventKind,
-    PointerRoutedEvent, ScrollEvent, Text, Tooltip, Ui, Widget, theme,
+    ClickEvent, CursorIcon, DragEvent, ElementId, Layout, Panel, Phase, PointerEventKind,
+    PointerRoutedEvent, ScrollEvent, Text, Tooltip, Ui, Viewport, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -66,21 +66,6 @@ impl core::fmt::Display for ValueKind {
             Self::Layer => f.write_str("layer"),
             Self::Frame => f.write_str("frame"),
         }
-    }
-}
-
-#[derive(Debug)]
-struct GraphViewportWidget;
-
-impl Widget for GraphViewportWidget {
-    fn clips_subtree(&self, element: &Element) -> bool {
-        let _ = element;
-        true
-    }
-
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        let _ = element;
-        Some(CursorIcon::Grab)
     }
 }
 
@@ -181,7 +166,7 @@ fn build_ui() -> Ui {
             .foreground(Color::from_rgba8(0xb7, 0xb8, 0xc8, 0xff)),
     );
 
-    let graph_host = ui.append_widget(root, Box::new(GraphViewportWidget));
+    let graph_host = ui.append(root, Viewport::new().cursor_icon(CursorIcon::Grab));
     ui.set_layout(
         graph_host,
         Layout::new()
