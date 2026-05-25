@@ -344,6 +344,11 @@ impl Template for TextInputTemplate {
             editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE),
         );
 
+        // TODO(text): Editable text is still rendered through a `TextWidget`
+        // template part, while `PlainEditor` owns editing, caret, and selection
+        // geometry. That can shape the same text twice after edits. Keep this
+        // conservative until editor-backed rendering can flow through the
+        // presentation model, likely as a keyed prepared-text primitive/store.
         let _ = cx.insert(TemplateChild::slot(
             SLOT_TEXT_INPUT_TEXT,
             Box::new(TextWidget),
