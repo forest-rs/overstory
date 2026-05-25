@@ -6,7 +6,8 @@
 use imaging::record::Scene;
 use kurbo::Size;
 use overstory::{
-    Button, Layout, ListBox, Panel, ProgressBar, Slider, TextInput, TextResources, ToggleSwitch, Ui,
+    Button, Layout, ListBox, Panel, ProgressBar, Slider, Text, TextInput, TextLayoutCacheStats,
+    TextResources, ToggleSwitch, Ui,
 };
 use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
 use std::sync::OnceLock;
@@ -16,6 +17,9 @@ pub const DASHBOARD_ROWS: usize = 64;
 
 /// Default item count in the virtual list scenario.
 pub const LIST_ITEMS: usize = 10_000;
+
+/// Default label count in the repeated text scenario.
+pub const REPEATED_TEXT_LABELS: usize = 512;
 
 /// Default viewport width used by dashboard scenarios.
 pub const VIEWPORT_WIDTH: f32 = 960.0;
@@ -84,6 +88,25 @@ pub fn build_virtual_list(items: usize) -> (Ui, overstory::ElementId) {
     (ui, listbox)
 }
 
+/// Builds a text-heavy tree where many widgets share identical text/style.
+pub fn build_repeated_text_labels(labels: usize) -> Ui {
+    let mut ui = Ui::with_text_resources(shared_text_resources());
+    let root = ui.root();
+    let labels = u16::try_from(labels).expect("label count fits in u16");
+    ui.set_layout(
+        root,
+        Layout::column(2.0)
+            .padding_all(8.0)
+            .logical_size(260.0, (f32::from(labels) * 20.0) + 16.0),
+    );
+
+    for _ in 0..usize::from(labels) {
+        ui.append(root, Text::new("Shared label").font_size(14.0));
+    }
+
+    ui
+}
+
 /// Builds the rich dashboard, computes layout, and returns the live element count.
 pub fn layout_dashboard(rows: usize) -> usize {
     let mut ui = build_dashboard(rows);
@@ -111,4 +134,20 @@ pub fn scroll_virtual_list(items: usize) -> f64 {
         ui.compute_layout(VIEWPORT);
     }
     list_scroll_offset_y(&ui, listbox).expect("listbox scroll offset should be present")
+}
+
+/// Builds and lays out the repeated text scenario, returning text cache stats.
+pub fn layout_repeated_text_labels(labels: usize) -> TextLayoutCacheStats {
+    let mut ui = build_repeated_text_labels(labels);
+    ui.compute_layout(VIEWPORT);
+    ui.text_layout_cache_stats()
+}
+
+/// Builds, lays out, and paints the repeated text scenario, returning text cache stats.
+pub fn paint_repeated_text_labels(labels: usize) -> TextLayoutCacheStats {
+    let mut ui = build_repeated_text_labels(labels);
+    ui.compute_layout(VIEWPORT);
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+    ui.text_layout_cache_stats()
 }

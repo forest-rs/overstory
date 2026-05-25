@@ -5,7 +5,8 @@
 
 use core::{hint::black_box, time::Duration};
 use overstory_wind_tunnel::scenarios::{
-    DASHBOARD_ROWS, LIST_ITEMS, layout_dashboard, paint_dashboard, scroll_virtual_list,
+    DASHBOARD_ROWS, LIST_ITEMS, REPEATED_TEXT_LABELS, layout_dashboard,
+    layout_repeated_text_labels, paint_dashboard, paint_repeated_text_labels, scroll_virtual_list,
 };
 use std::{env, time::Instant};
 
@@ -16,7 +17,7 @@ fn main() {
     let scenario = args
         .next()
         .map(|value| value.parse::<ProfileScenario>().expect("unknown profile scenario"))
-        .expect("usage: profile_ui_pipeline <layout_dashboard|paint_dashboard|scroll_virtual_list> [count] [seconds]");
+        .expect("usage: profile_ui_pipeline <layout_dashboard|paint_dashboard|scroll_virtual_list|layout_repeated_text_labels|paint_repeated_text_labels> [count] [seconds]");
     let count = args
         .next()
         .map(|value| value.parse::<usize>().expect("count must be a usize"))
@@ -54,6 +55,8 @@ enum ProfileScenario {
     LayoutDashboard,
     PaintDashboard,
     ScrollVirtualList,
+    LayoutRepeatedTextLabels,
+    PaintRepeatedTextLabels,
 }
 
 impl ProfileScenario {
@@ -61,6 +64,7 @@ impl ProfileScenario {
         match self {
             Self::LayoutDashboard | Self::PaintDashboard => DASHBOARD_ROWS,
             Self::ScrollVirtualList => LIST_ITEMS,
+            Self::LayoutRepeatedTextLabels | Self::PaintRepeatedTextLabels => REPEATED_TEXT_LABELS,
         }
     }
 
@@ -69,8 +73,14 @@ impl ProfileScenario {
             Self::LayoutDashboard => layout_dashboard(count) as u64,
             Self::PaintDashboard => u64::from(paint_dashboard(count)),
             Self::ScrollVirtualList => scroll_virtual_list(count).to_bits(),
+            Self::LayoutRepeatedTextLabels => text_cache_result(layout_repeated_text_labels(count)),
+            Self::PaintRepeatedTextLabels => text_cache_result(paint_repeated_text_labels(count)),
         }
     }
+}
+
+fn text_cache_result(stats: overstory::TextLayoutCacheStats) -> u64 {
+    u64::try_from(stats.hits.saturating_sub(stats.misses)).unwrap_or(u64::MAX)
 }
 
 impl core::fmt::Display for ProfileScenario {
@@ -79,6 +89,8 @@ impl core::fmt::Display for ProfileScenario {
             Self::LayoutDashboard => f.write_str("layout_dashboard"),
             Self::PaintDashboard => f.write_str("paint_dashboard"),
             Self::ScrollVirtualList => f.write_str("scroll_virtual_list"),
+            Self::LayoutRepeatedTextLabels => f.write_str("layout_repeated_text_labels"),
+            Self::PaintRepeatedTextLabels => f.write_str("paint_repeated_text_labels"),
         }
     }
 }
@@ -91,7 +103,9 @@ impl core::str::FromStr for ProfileScenario {
             "layout_dashboard" => Ok(Self::LayoutDashboard),
             "paint_dashboard" => Ok(Self::PaintDashboard),
             "scroll_virtual_list" => Ok(Self::ScrollVirtualList),
-            _ => Err("expected layout_dashboard, paint_dashboard, or scroll_virtual_list"),
+            "layout_repeated_text_labels" => Ok(Self::LayoutRepeatedTextLabels),
+            "paint_repeated_text_labels" => Ok(Self::PaintRepeatedTextLabels),
+            _ => Err("expected a known UI pipeline profile scenario"),
         }
     }
 }

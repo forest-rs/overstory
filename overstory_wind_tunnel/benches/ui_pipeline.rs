@@ -10,7 +10,8 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use imaging::record::Scene;
 use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
 use overstory_wind_tunnel::scenarios::{
-    DASHBOARD_ROWS, LIST_ITEMS, VIEWPORT, build_dashboard, build_virtual_list,
+    DASHBOARD_ROWS, LIST_ITEMS, REPEATED_TEXT_LABELS, VIEWPORT, build_dashboard,
+    build_virtual_list, layout_repeated_text_labels, paint_repeated_text_labels,
 };
 use std::hint::black_box;
 
@@ -61,6 +62,14 @@ fn bench_ui_pipeline(c: &mut Criterion) {
             },
             BatchSize::SmallInput,
         );
+    });
+
+    group.bench_function("layout_repeated_text_labels", |b| {
+        b.iter(|| black_box(layout_repeated_text_labels(black_box(REPEATED_TEXT_LABELS))));
+    });
+
+    group.bench_function("paint_repeated_text_labels", |b| {
+        b.iter(|| black_box(paint_repeated_text_labels(black_box(REPEATED_TEXT_LABELS))));
     });
 
     group.finish();
