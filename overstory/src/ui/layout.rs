@@ -296,6 +296,8 @@ impl Ui {
             rect.size(),
             local_clip,
         );
+        let opacity = self.presented_scalar(id, PresentationProperty::LayerOpacity, 1.0);
+        self.composition.set_opacity(id, opacity);
 
         let children: Vec<ElementId> = self
             .get(id)
@@ -314,13 +316,7 @@ impl Ui {
         }
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "composition-local logical offsets fit f32"
-    )]
     fn presented_composition_offset(&self, id: ElementId, local_offset: Vec2) -> Vec2 {
-        let target = local_offset.x as f32;
-        let x = self.presented_scalar(id, PresentationProperty::CompositionOffsetX, target);
-        Vec2::new(f64::from(x), local_offset.y)
+        self.presented_offset(id, PresentationProperty::LayerOffset, local_offset)
     }
 }

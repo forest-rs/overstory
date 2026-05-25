@@ -8,6 +8,8 @@
 //! host crates. Controls can request transitions, but the runtime remains the
 //! owner of active tracks.
 
+use kurbo::Vec2;
+use peniko::Color;
 use understory_timing::TimerInstant;
 
 use crate::animation_runtime::{
@@ -28,7 +30,7 @@ impl Ui {
             .request_transition(PresentationTrackKey::new(element, property), policy);
     }
 
-    pub(crate) fn has_pending_scalar_transition(
+    pub(crate) fn has_pending_presentation_transition(
         &self,
         element: ElementId,
         property: PresentationProperty,
@@ -37,6 +39,10 @@ impl Ui {
             .has_pending_transition(PresentationTrackKey::new(element, property))
     }
 
+    #[expect(
+        dead_code,
+        reason = "controls use scalar presentation targets in the next slice"
+    )]
     pub(crate) fn set_scalar_presentation_target(
         &mut self,
         element: ElementId,
@@ -56,6 +62,45 @@ impl Ui {
         needs_sample
     }
 
+    #[expect(dead_code, reason = "controls use color targets in the next slice")]
+    pub(crate) fn set_color_presentation_target(
+        &mut self,
+        element: ElementId,
+        property: PresentationProperty,
+        target: Color,
+        cause: ChangeCause,
+    ) -> bool {
+        let needs_sample = self.animations.set_color_target(
+            PresentationTrackKey::new(element, property),
+            target,
+            self.now(),
+            cause,
+        );
+        if needs_sample {
+            self.mark_channels(element, property.metadata().affects());
+        }
+        needs_sample
+    }
+
+    pub(crate) fn set_offset_presentation_target(
+        &mut self,
+        element: ElementId,
+        property: PresentationProperty,
+        target: Vec2,
+        cause: ChangeCause,
+    ) -> bool {
+        let needs_sample = self.animations.set_offset_target(
+            PresentationTrackKey::new(element, property),
+            target,
+            self.now(),
+            cause,
+        );
+        if needs_sample {
+            self.mark_channels(element, property.metadata().affects());
+        }
+        needs_sample
+    }
+
     pub(crate) fn presented_scalar(
         &self,
         element: ElementId,
@@ -63,6 +108,19 @@ impl Ui {
         target: f32,
     ) -> f32 {
         self.animations.sample_scalar(
+            PresentationTrackKey::new(element, property),
+            target,
+            self.now(),
+        )
+    }
+
+    pub(crate) fn presented_offset(
+        &self,
+        element: ElementId,
+        property: PresentationProperty,
+        target: Vec2,
+    ) -> Vec2 {
+        self.animations.sample_offset(
             PresentationTrackKey::new(element, property),
             target,
             self.now(),

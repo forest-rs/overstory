@@ -224,7 +224,7 @@ pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
     if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
         ui.request_presentation_transition(
             thumb,
-            PresentationProperty::CompositionOffsetX,
+            PresentationProperty::LayerOffset,
             TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
@@ -236,16 +236,12 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
     };
     let toggle_bounds = ui.effective_bounds(toggle);
     let thumb_bounds = ui.effective_bounds(thumb);
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "toggle-local thumb offset fits f32"
-    )]
-    let target = (thumb_bounds.x0 - toggle_bounds.x0) as f32;
-    let property = PresentationProperty::CompositionOffsetX;
-    let cause = if ui.has_pending_scalar_transition(thumb, property) {
+    let target = kurbo::Vec2::new(thumb_bounds.x0 - toggle_bounds.x0, 0.0);
+    let property = PresentationProperty::LayerOffset;
+    let cause = if ui.has_pending_presentation_transition(thumb, property) {
         ChangeCause::Interaction
     } else {
         ChangeCause::Other
     };
-    ui.set_scalar_presentation_target(thumb, property, target, cause)
+    ui.set_offset_presentation_target(thumb, property, target, cause)
 }

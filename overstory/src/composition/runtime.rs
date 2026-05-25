@@ -372,6 +372,15 @@ impl CompositionRuntime {
         }
     }
 
+    /// Updates compositor-local opacity for an element layer.
+    pub(crate) fn set_opacity(&mut self, id: ElementId, opacity: f32) {
+        let Some(entry) = self.elements.get(id).copied() else {
+            return;
+        };
+        self.layers
+            .set_opacity(entry.layer, opacity.clamp(0.0, 1.0));
+    }
+
     /// Evaluates layer dirty state and stores the latest frame changes.
     pub(crate) fn evaluate(&mut self) {
         self.layers.evaluate_into(&mut self.changes);

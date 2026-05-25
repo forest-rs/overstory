@@ -39,6 +39,7 @@ pub fn present_surface(
     node: NodeId,
 ) {
     let background: Option<Brush> = ctx.get_value(element, ctx.properties.background);
+    let background = ctx.presented_background(element, background);
     let corner_radius: f64 = ctx.get_value(element, ctx.properties.corner_radius);
     let border_brush: Option<Brush> = ctx.get_value(element, ctx.properties.border_brush);
     let border_width: f64 = ctx.get_value(element, ctx.properties.border_width);
