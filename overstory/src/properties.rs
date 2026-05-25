@@ -158,6 +158,9 @@ impl BuiltInProperties {
                 "FontSize",
                 PropertyMetadataBuilder::new(14.0_f64)
                     .affects_channels(LAYOUT.into_set())
+                    // Typography should flow from controls to generated text
+                    // parts and ordinary descendants unless a child overrides it.
+                    .inherits(true)
                     .build(),
             ),
             text_wrap_mode: registry.register(

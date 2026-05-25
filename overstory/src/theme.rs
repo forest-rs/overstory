@@ -145,6 +145,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let button_idle = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
+        .set(properties.font_size, 22.0_f64)
         .set(properties.corner_radius, 10.0_f64)
         .set(properties.layout, button_layout())
         .build();
@@ -260,6 +261,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 
     let checkbox_idle = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 15.0_f64)
         .set(properties.layout, Layout::row(10.0).align_center())
         .build();
     let checkbox_disabled = StyleBuilder::new()
@@ -319,6 +321,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 15.0_f64)
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 8.0_f64)
         .build();
@@ -360,6 +363,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let list_item_idle = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 14.0_f64)
         .set(
             properties.layout,
             Layout::row(0.0)
@@ -380,6 +384,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 13.0_f64)
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 6.0_f64)
         .build();

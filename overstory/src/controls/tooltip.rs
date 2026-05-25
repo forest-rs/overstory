@@ -41,7 +41,7 @@ pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tooltip {
     content: String,
-    font_size: f64,
+    font_size: Option<f64>,
     placement: Placement,
     offset: Vec2,
     padding_x: f32,
@@ -54,7 +54,7 @@ impl Tooltip {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            font_size: 13.0,
+            font_size: None,
             placement: Placement::Bottom,
             offset: Vec2::new(0.0, 8.0),
             padding_x: 10.0,
@@ -63,9 +63,11 @@ impl Tooltip {
     }
 
     /// Overrides the tooltip text font size in logical pixels.
+    ///
+    /// When unset, the value comes from the active style cascade.
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
-        self.font_size = font_size;
+        self.font_size = Some(font_size);
         self
     }
 
@@ -216,7 +218,9 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
     let id = ui.append_widget(parent, Box::new(TooltipWidget));
     let properties = *ui.properties();
     ui.set_local(id, properties.content, tooltip.content.clone());
-    ui.set_local(id, properties.font_size, tooltip.font_size);
+    if let Some(font_size) = tooltip.font_size {
+        ui.set_local(id, properties.font_size, font_size);
+    }
     ui.set_local(id, properties.layout, tooltip.layout_for(origin));
     id
 }

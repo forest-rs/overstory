@@ -42,7 +42,7 @@ pub const SLOT_CHECK_BOX_LABEL: TemplateSlot =
 pub struct CheckBox {
     content: String,
     initial_checked: bool,
-    font_size: f64,
+    font_size: Option<f64>,
     state: ControlState,
     template: Option<&'static dyn Template>,
 }
@@ -63,7 +63,7 @@ impl CheckBox {
         Self {
             content: content.into(),
             initial_checked: false,
-            font_size: 15.0,
+            font_size: None,
             state: ControlState::interactive(),
             template: None,
         }
@@ -77,9 +77,11 @@ impl CheckBox {
     }
 
     /// Overrides the label font size.
+    ///
+    /// When unset, the value comes from the active style cascade.
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
-        self.font_size = font_size;
+        self.font_size = Some(font_size);
         self
     }
 
@@ -125,7 +127,9 @@ impl AppendSpec for CheckBox {
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         ui.set_local(id, content_prop, self.content);
-        ui.set_local(id, font_size_prop, self.font_size);
+        if let Some(font_size) = self.font_size {
+            ui.set_local(id, font_size_prop, font_size);
+        }
         ui.set_control_state(id, self.state);
         set_check_box_checked(ui, id, self.initial_checked);
         id

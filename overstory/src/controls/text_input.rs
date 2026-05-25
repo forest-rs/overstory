@@ -51,7 +51,7 @@ pub struct TextInput {
     text: String,
     placeholder: Option<String>,
     width: f32,
-    font_size: f64,
+    font_size: Option<f64>,
     read_only: bool,
     state: ControlState,
     template: Option<&'static dyn Template>,
@@ -74,7 +74,7 @@ impl TextInput {
             text: String::new(),
             placeholder: None,
             width: TEXT_INPUT_WIDTH,
-            font_size: DEFAULT_FONT_SIZE,
+            font_size: None,
             read_only: false,
             state: ControlState::interactive(),
             template: None,
@@ -103,9 +103,11 @@ impl TextInput {
     }
 
     /// Overrides the text font size.
+    ///
+    /// When unset, the value comes from the active style cascade.
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
-        self.font_size = font_size.max(1.0);
+        self.font_size = Some(font_size.max(1.0));
         self
     }
 
@@ -169,7 +171,8 @@ impl AppendSpec for TextInput {
             state,
             template,
         } = self;
-        let mut edit = TextInputEditState::new(text.clone(), font_size);
+        let mut edit =
+            TextInputEditState::new(text.clone(), font_size.unwrap_or(DEFAULT_FONT_SIZE));
         ui.with_plain_editor(&mut edit.editor, |driver| driver.move_to_text_end());
         let input_widget = TextInputWidget {
             placeholder,
@@ -185,7 +188,9 @@ impl AppendSpec for TextInput {
         let font_size_prop = ui.properties().font_size;
         let layout_prop = ui.properties().layout;
         ui.set_local(id, content_prop, text);
-        ui.set_local(id, font_size_prop, font_size);
+        if let Some(font_size) = font_size {
+            ui.set_local(id, font_size_prop, font_size);
+        }
         ui.set_local(
             id,
             layout_prop,
@@ -338,8 +343,7 @@ impl Template for TextInputTemplate {
             editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE),
         );
 
-        let text = cx.slot_widget(SLOT_TEXT_INPUT_TEXT, Box::new(TextWidget));
-        cx.set_local(text, cx.properties().font_size, DEFAULT_FONT_SIZE);
+        let _ = cx.slot_widget(SLOT_TEXT_INPUT_TEXT, Box::new(TextWidget));
 
         let caret = cx.slot_widget(SLOT_TEXT_INPUT_CARET, Box::new(SurfacePartWidget));
         cx.set_local(

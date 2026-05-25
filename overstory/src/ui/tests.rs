@@ -310,6 +310,69 @@ fn styled_button_foreground_reaches_template_label() {
 }
 
 #[test]
+fn default_cascade_supplies_control_font_sizes() {
+    use crate::{
+        Button, CheckBox, ListItem, PART_BUTTON_LABEL, PART_CHECK_BOX_LABEL,
+        SLOT_LIST_ITEM_CONTENT, SLOT_TEXT_INPUT_TEXT, SLOT_TOOLTIP_CONTENT, TextInput, Tooltip,
+        theme,
+    };
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    let font_size = ui.properties().font_size;
+
+    let button = ui.append(root, Button::new("Run"));
+    let button_label = ui.part(button, PART_BUTTON_LABEL).unwrap();
+    let checkbox = ui.append(root, CheckBox::new("Enabled"));
+    let checkbox_label = ui.part(checkbox, PART_CHECK_BOX_LABEL).unwrap();
+    let list_item = ui.append(root, ListItem::new("Row"));
+    let list_item_label = ui.slot(list_item, SLOT_LIST_ITEM_CONTENT).unwrap();
+    let text_input = ui.append(root, TextInput::new());
+    let text_input_label = ui.slot(text_input, SLOT_TEXT_INPUT_TEXT).unwrap();
+    let tooltip = ui.append(root, Tooltip::new("Tip"));
+    let tooltip_label = ui.slot(tooltip, SLOT_TOOLTIP_CONTENT).unwrap();
+
+    for id in [button, checkbox, list_item, text_input, tooltip] {
+        assert!(
+            ui.get(id).unwrap().get_local_value(font_size).is_none(),
+            "default builder should leave font size to styling"
+        );
+    }
+
+    assert_eq!(
+        ui.effective_value_for(ui.get(button_label).unwrap(), font_size),
+        22.0
+    );
+    assert_eq!(
+        ui.effective_value_for(ui.get(checkbox_label).unwrap(), font_size),
+        15.0
+    );
+    assert_eq!(
+        ui.effective_value_for(ui.get(list_item_label).unwrap(), font_size),
+        14.0
+    );
+    assert_eq!(
+        ui.effective_value_for(ui.get(text_input_label).unwrap(), font_size),
+        15.0
+    );
+    assert_eq!(
+        ui.effective_value_for(ui.get(tooltip_label).unwrap(), font_size),
+        13.0
+    );
+
+    let explicit = ui.append(root, Button::new("Small").font_size(12.0));
+    assert_eq!(
+        ui.get(explicit)
+            .unwrap()
+            .get_local_value(font_size)
+            .copied(),
+        Some(12.0)
+    );
+}
+
+#[test]
 fn text_measure_uses_styled_content_and_font_size() {
     use crate::{TYPE_TEXT, Text};
     use alloc::string::String;

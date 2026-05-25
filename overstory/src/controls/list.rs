@@ -448,7 +448,7 @@ impl ListBoxWidget {
 /// Builder + spec for a selectable list item.
 pub struct ListItem {
     content: String,
-    font_size: f64,
+    font_size: Option<f64>,
     state: ControlState,
 }
 
@@ -456,7 +456,6 @@ impl core::fmt::Debug for ListItem {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListItem")
             .field("content", &self.content)
-            .field("font_size", &self.font_size)
             .finish_non_exhaustive()
     }
 }
@@ -467,15 +466,17 @@ impl ListItem {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            font_size: 14.0,
+            font_size: None,
             state: ControlState::interactive().focusable(false),
         }
     }
 
     /// Overrides the item label font size.
+    ///
+    /// When unset, the value comes from the active style cascade.
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
-        self.font_size = font_size;
+        self.font_size = Some(font_size);
         self
     }
 
@@ -497,7 +498,9 @@ impl AppendSpec for ListItem {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(ListItemWidget));
         ui.set_local(id, ui.properties().content, self.content);
-        ui.set_local(id, ui.properties().font_size, self.font_size);
+        if let Some(font_size) = self.font_size {
+            ui.set_local(id, ui.properties().font_size, font_size);
+        }
         ui.set_control_state(id, self.state);
         id
     }

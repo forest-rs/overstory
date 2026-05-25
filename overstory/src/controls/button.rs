@@ -44,7 +44,7 @@ pub const SLOT_BUTTON_CONTENT: TemplateSlot =
 /// [`Ui::append`].
 pub struct Button {
     content: String,
-    font_size: f64,
+    font_size: Option<f64>,
     foreground: Option<Brush>,
     state: ControlState,
     template: Option<&'static dyn Template>,
@@ -59,7 +59,6 @@ impl core::fmt::Debug for Button {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Button")
             .field("content", &self.content)
-            .field("font_size", &self.font_size)
             .finish_non_exhaustive()
     }
 }
@@ -70,7 +69,7 @@ impl Button {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            font_size: 22.0,
+            font_size: None,
             foreground: None,
             state: ControlState::interactive(),
             template: None,
@@ -79,11 +78,12 @@ impl Button {
         }
     }
 
-    /// Overrides the button's font size (logical pixels). Default
-    /// is 22.0.
+    /// Overrides the button's font size (logical pixels).
+    ///
+    /// When unset, the value comes from the active style cascade.
     #[must_use]
     pub fn font_size(mut self, font_size: f64) -> Self {
-        self.font_size = font_size;
+        self.font_size = Some(font_size);
         self
     }
 
@@ -174,7 +174,9 @@ impl AppendSpec for Button {
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
         ui.set_local(id, content_prop, self.content);
-        ui.set_local(id, font_size_prop, self.font_size);
+        if let Some(font_size) = self.font_size {
+            ui.set_local(id, font_size_prop, font_size);
+        }
         if let Some(brush) = self.foreground {
             ui.set_local(id, fg_prop, brush);
         }
