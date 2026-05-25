@@ -36,3 +36,6 @@ pub const PSEUDO_FOCUS_VISIBLE: PseudoClassId = PseudoClassId(7);
 
 /// `:selected` — this item is selected by its owning selection control.
 pub const PSEUDO_SELECTED: PseudoClassId = PseudoClassId(8);
+
+/// `:placeholder-shown` — this text input is currently showing placeholder text.
+pub const PSEUDO_PLACEHOLDER_SHOWN: PseudoClassId = PseudoClassId(9);

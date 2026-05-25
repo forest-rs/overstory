@@ -61,8 +61,7 @@ use crate::controls::slider::{
 };
 use crate::controls::splitter::TYPE_SPLITTER;
 use crate::controls::text_input::{
-    CLASS_TEXT_INPUT_PLACEHOLDER, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
-    PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
+    PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
 };
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::controls::tooltip::TYPE_TOOLTIP;
@@ -70,7 +69,7 @@ use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
-    PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
+    PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
 use crate::selectors;
 use crate::widget::TYPE_GENERIC;
@@ -633,10 +632,9 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part_with_class(
-                TYPE_TEXT_INPUT,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_TEXT_INPUT).with_pseudo(PSEUDO_PLACEHOLDER_SHOWN),
                 PART_TEXT_INPUT_TEXT,
-                CLASS_TEXT_INPUT_PLACEHOLDER,
             ),
             text_input_placeholder,
         )

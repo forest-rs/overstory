@@ -9,14 +9,14 @@ use kurbo::Rect;
 use parley::{FontFamily, FontWeight, LineHeight, PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
 use understory_property::DependencyObjectExt;
-use understory_style::{ClassId, PartTag, TypeTag};
+use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::pseudos::PSEUDO_READ_ONLY;
+use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -38,8 +38,6 @@ pub const SLOT_TEXT_INPUT_CARET: TemplateSlot =
 /// Semantic slot for the current selection highlight.
 pub const SLOT_TEXT_INPUT_SELECTION: TemplateSlot =
     TemplateSlot::new("text-input-selection").with_part_tag(PART_TEXT_INPUT_SELECTION);
-/// Class applied to the text part while it is showing placeholder text.
-pub const CLASS_TEXT_INPUT_PLACEHOLDER: ClassId = ClassId(3);
 
 const TEXT_INPUT_WIDTH: f32 = 280.0;
 const TEXT_INPUT_HEIGHT: f32 = 40.0;
@@ -576,9 +574,9 @@ fn refresh_text_input_parts(
         Layout::new().absolute_at(TEXT_INPUT_PADDING_X, text_top(font_size)),
     );
     if text.is_empty() && !display.is_empty() {
-        ui.add_class(text_part, CLASS_TEXT_INPUT_PLACEHOLDER);
+        ui.add_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
     } else {
-        ui.remove_class(text_part, CLASS_TEXT_INPUT_PLACEHOLDER);
+        ui.remove_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
     }
     ui.set_local(
         selection_part,
@@ -744,6 +742,36 @@ mod tests {
                 .and_then(|el| el.get_local_value(ui.properties().content))
                 .map(String::as_str),
             Some("")
+        );
+    }
+
+    #[test]
+    fn text_input_placeholder_shown_tracks_empty_text() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().placeholder("Search"));
+
+        assert!(
+            ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_PLACEHOLDER_SHOWN))
+                .unwrap_or(false)
+        );
+
+        ui.set_focus(Some(input));
+        let key = KeyboardEvent::key_down(Key::Character(String::from("a")), Code::KeyA);
+        assert!(ui.dispatch_key(&key).handled);
+        assert!(
+            !ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_PLACEHOLDER_SHOWN))
+                .unwrap_or(false)
+        );
+
+        let backspace = KeyboardEvent::key_down(Key::Named(NamedKey::Backspace), Code::Backspace);
+        assert!(ui.dispatch_key(&backspace).handled);
+        assert!(
+            ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_PLACEHOLDER_SHOWN))
+                .unwrap_or(false)
         );
     }
 
