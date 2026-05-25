@@ -759,6 +759,98 @@ fn default_templates_label_named_parts() {
 }
 
 #[test]
+fn toggle_thumb_transition_samples_composition_offset() {
+    use crate::SLOT_TOGGLE_THUMB;
+
+    let (mut ui, toggle, thumb) = animated_toggle_fixture();
+    let start_x = toggle_thumb_layer_x(&ui, thumb);
+
+    ui.set_now(0);
+    ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let target_x = ui.effective_bounds(thumb).x0;
+    assert!(
+        target_x > start_x,
+        "checked layout target should move thumb to the right"
+    );
+    assert_close(toggle_thumb_layer_x(&ui, thumb), start_x);
+
+    ui.set_now(60_000_000);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(toggle_thumb_layer_x(&ui, thumb), (start_x + target_x) * 0.5);
+
+    ui.set_now(120_000_000);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(toggle_thumb_layer_x(&ui, thumb), target_x);
+
+    assert_eq!(ui.slot(toggle, SLOT_TOGGLE_THUMB), Some(thumb));
+}
+
+#[test]
+fn toggle_thumb_transition_retargets_from_sampled_offset() {
+    let (mut ui, toggle, thumb) = animated_toggle_fixture();
+    let start_x = toggle_thumb_layer_x(&ui, thumb);
+
+    ui.set_now(0);
+    ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
+    ui.compute_layout(Size::new(200.0, 80.0));
+    let checked_target = ui.effective_bounds(thumb).x0;
+
+    ui.set_now(60_000_000);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    let midpoint = toggle_thumb_layer_x(&ui, thumb);
+    assert_close(midpoint, (start_x + checked_target) * 0.5);
+
+    ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(toggle_thumb_layer_x(&ui, thumb), midpoint);
+
+    ui.set_now(120_000_000);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(toggle_thumb_layer_x(&ui, thumb), (midpoint + start_x) * 0.5);
+
+    ui.set_now(180_000_000);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(toggle_thumb_layer_x(&ui, thumb), start_x);
+}
+
+fn animated_toggle_fixture() -> (Ui, ElementId, ElementId) {
+    use crate::{SLOT_TOGGLE_THUMB, ToggleSwitch, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let toggle = ui.append(root, ToggleSwitch::new());
+    ui.compute_layout(Size::new(200.0, 80.0));
+    let thumb = ui
+        .slot(toggle, SLOT_TOGGLE_THUMB)
+        .expect("toggle template should create a thumb slot");
+    (ui, toggle, thumb)
+}
+
+fn toggle_thumb_layer_x(ui: &Ui, thumb: ElementId) -> f64 {
+    let layer = ui
+        .composition
+        .layer_for(thumb)
+        .expect("thumb should have a composition layer");
+    ui.composition_layers()
+        .world_transform(layer)
+        .transform_point(Point::ZERO)
+        .expect("thumb layer transform should be affine")
+        .x
+}
+
+fn assert_close(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 0.001,
+        "expected {expected}, got {actual}"
+    );
+}
+
+#[test]
 fn template_overrides_replace_visuals_not_control_behavior() {
     use crate::widget::SurfacePartWidget;
     use crate::{

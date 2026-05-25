@@ -194,6 +194,12 @@ impl AnimationRuntime {
         self.pending.insert(key, spec);
     }
 
+    /// Returns whether a transition spec is waiting for `key`'s next target.
+    #[must_use]
+    pub(crate) fn has_pending_transition(&self, key: PresentationTrackKey) -> bool {
+        self.pending.contains_key(&key)
+    }
+
     /// Records the resolved target value for `key`, planning or retargeting its
     /// presentation track when policy allows.
     pub(crate) fn set_scalar_target(
@@ -207,22 +213,26 @@ impl AnimationRuntime {
         let previous_target = self.targets.insert(key, target);
         let target_changed = previous_target.is_none_or(|previous| !same_scalar(previous, target));
         if !target_changed {
+            if cause == ChangeCause::Interaction {
+                self.pending.remove(&key);
+            }
             return false;
         }
 
+        let had_track = self.tracks.contains_key(&key);
         let spec = (cause == ChangeCause::Interaction)
             .then(|| self.pending.remove(&key))
             .flatten();
         let Some(spec) = spec else {
             self.tracks.remove(&key);
-            return true;
+            return had_track;
         };
 
         let previous_target = previous_target.unwrap_or(target);
         let from = self.sample_scalar(key, previous_target, now);
         if same_scalar(from, target) || spec.duration == 0 {
             self.tracks.remove(&key);
-            return true;
+            return had_track;
         }
 
         self.tracks.insert(

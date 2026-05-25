@@ -23,6 +23,8 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::animation_runtime::{ChangeCause, PresentationProperty, TransitionSpec};
+use crate::channels::COMPOSE;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
@@ -37,6 +39,7 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the toggle thumb.
 pub const SLOT_TOGGLE_THUMB: TemplateSlot =
     TemplateSlot::new("toggle-thumb").with_part_tag(PART_TOGGLE_THUMB);
+const THUMB_TRANSITION: TransitionSpec = TransitionSpec::linear(120_000_000);
 
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
@@ -180,6 +183,10 @@ impl Widget for ToggleWidget {
             event.mark_handled();
         }
     }
+
+    fn post_layout(&mut self, toggle: ElementId, ui: &mut Ui) -> bool {
+        sync_thumb_offset_target(ui, toggle)
+    }
 }
 
 static TOGGLE_TEMPLATE: ToggleTemplate = ToggleTemplate;
@@ -213,4 +220,31 @@ pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
     } else {
         ui.remove_pseudo(toggle, PSEUDO_CHECKED);
     }
+    if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
+        ui.request_scalar_transition(
+            thumb,
+            PresentationProperty::CompositionOffsetX,
+            THUMB_TRANSITION,
+        );
+    }
+}
+
+fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
+    let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) else {
+        return false;
+    };
+    let toggle_bounds = ui.effective_bounds(toggle);
+    let thumb_bounds = ui.effective_bounds(thumb);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "toggle-local thumb offset fits f32"
+    )]
+    let target = (thumb_bounds.x0 - toggle_bounds.x0) as f32;
+    let property = PresentationProperty::CompositionOffsetX;
+    let cause = if ui.has_pending_scalar_transition(thumb, property) {
+        ChangeCause::Interaction
+    } else {
+        ChangeCause::Other
+    };
+    ui.set_scalar_presentation_target(thumb, property, target, cause, COMPOSE.into_set())
 }

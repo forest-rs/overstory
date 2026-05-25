@@ -86,17 +86,17 @@ impl UiHost {
         self.ui.pump_timers(now);
     }
 
-    /// Returns the next absolute host instant when a pending UI timer should
-    /// wake, if any.
+    /// Returns the next absolute host instant when pending UI work should wake,
+    /// if any.
     pub fn next_wakeup(&self) -> Option<Instant> {
         self.ui
-            .next_timer_deadline()
+            .next_wakeup_deadline()
             .map(|deadline| self.instant_for_deadline(deadline))
     }
 
-    /// Returns the duration until the next pending UI timer, if any.
+    /// Returns the duration until the next pending UI wakeup, if any.
     pub fn duration_until_next_wakeup(&self) -> Option<Duration> {
-        self.ui.next_timer_deadline().map(|deadline| {
+        self.ui.next_wakeup_deadline().map(|deadline| {
             let elapsed = self.start_instant.elapsed().as_nanos();
             let until = u128::from(deadline).saturating_sub(elapsed);
             Duration::from_nanos(u64::try_from(until).unwrap_or(u64::MAX))
@@ -131,6 +131,7 @@ impl UiHost {
     /// `scale_factor` maps those logical coordinates into the physical
     /// texture that the backend renderer will target.
     pub fn prepare_frame(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
+        self.ui.set_now(self.now());
         self.ui.compute_layout(logical_viewport);
         self.ui.paint(&mut self.scene);
         self.sync_surface_scenes();

@@ -33,6 +33,7 @@ use core::cell::RefCell;
 use invalidation::{ChannelSet, InvalidationTracker};
 use understory_property::PropertyRegistry;
 
+use crate::animation_runtime::AnimationRuntime;
 use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
@@ -51,6 +52,7 @@ use crate::template_runtime::TemplateRuntime;
 use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
 use crate::timer_runtime::TimerRuntime;
 
+mod animation;
 mod bindings;
 mod events;
 mod layout;
@@ -100,6 +102,8 @@ pub struct Ui {
     events: EventRuntime,
     /// Focused element, focusable preferences, and keyboard navigation policy.
     focus: FocusRuntime,
+    /// Internal presentation timeline tracks sampled from host time.
+    animations: AnimationRuntime,
     /// Retained timer queue and per-element timer handlers.
     timers: TimerRuntime,
     /// Tooltip and popup declarations plus currently active overlay stack.
@@ -259,6 +263,7 @@ impl Ui {
             bindings: BindingRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
+            animations: AnimationRuntime::new(),
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
             last_viewport: kurbo::Size::ZERO,

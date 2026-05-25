@@ -949,7 +949,7 @@ impl Ui {
         // nanoseconds. Handlers and templates can use `Ui::now()`
         // without threading it through every call.
         if let Some(t) = pointer_event_time(event) {
-            self.timers.set_now(t);
+            self.set_now(t);
         }
         // Pointer dispatch may follow tree mutations that do not require a
         // full layout pass before they are query-safe (for example hiding a

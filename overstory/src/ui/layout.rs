@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use kurbo::{Point, Rect, RoundedRect, Size, Vec2};
 use understory_box_tree::NodeId;
 
+use crate::animation_runtime::PresentationProperty;
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::LAYOUT;
 use crate::element::ElementId;
@@ -285,9 +286,10 @@ impl Ui {
                 0.0,
             )
         });
+        let composition_offset = self.presented_composition_offset(id, local_offset);
         self.composition.set_geometry(
             id,
-            local_offset,
+            composition_offset,
             Vec2::new(rect.x0, rect.y0),
             rect.size(),
             local_clip,
@@ -308,5 +310,15 @@ impl Ui {
             let ctx = crate::behavior::LayoutContext { ui: self };
             widget.layout_updated(element, &ctx);
         }
+    }
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "composition-local logical offsets fit f32"
+    )]
+    fn presented_composition_offset(&self, id: ElementId, local_offset: Vec2) -> Vec2 {
+        let target = local_offset.x as f32;
+        let x = self.presented_scalar(id, PresentationProperty::CompositionOffsetX, target);
+        Vec2::new(f64::from(x), local_offset.y)
     }
 }

@@ -30,6 +30,7 @@ impl Ui {
     /// the pointer state's timestamp), and [`Self::dispatch_key`].
     pub fn set_now(&mut self, now: TimerInstant) {
         self.timers.set_now(now);
+        self.advance_animations(now);
     }
 
     /// Schedules a one-shot timer targeted at `target`. Returns the
@@ -85,7 +86,7 @@ impl Ui {
     /// handler after dispatch. Updates the cached [`Self::now`] to
     /// `now`.
     pub fn pump_timers(&mut self, now: TimerInstant) {
-        self.timers.set_now(now);
+        self.set_now(now);
         let mut rearm = Vec::new();
         while let Some(timer) = self.timers.pop_expired(now) {
             let target = *timer.target();
