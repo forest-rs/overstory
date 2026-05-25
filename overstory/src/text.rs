@@ -7,11 +7,9 @@
 //! holds, caches shaped text layouts, and provides a helper that walks a
 //! built parley `Layout` and emits glyph runs through imaging's `Painter`.
 
-use alloc::borrow::ToOwned;
 use alloc::collections::VecDeque;
 use alloc::rc::Rc;
-use alloc::string::String;
-use hashbrown::HashMap;
+use hashbrown::{Equivalent, HashMap};
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
 use parley::{
@@ -130,11 +128,12 @@ impl TextEngine {
     /// properties; for now the defaults are baked in here.
     pub fn shape(&mut self, text: &str, font_size: f32, wrap_width: Option<f64>) -> TextLayout {
         let max_advance = parley_max_advance(wrap_width);
-        let key = TextLayoutKey::new(text, font_size, max_advance);
-        if let Some(layout) = self.layout_cache.get(&key) {
+        let lookup = TextLayoutLookupKey::new(text, font_size, max_advance);
+        if let Some(layout) = self.layout_cache.get(&lookup) {
             return layout;
         }
         let layout = self.shape_uncached(text, font_size, max_advance);
+        let key = TextLayoutKey::new(text, font_size, max_advance);
         self.layout_cache.insert(key, layout)
     }
 
@@ -265,7 +264,7 @@ impl TextLayoutCache {
         }
     }
 
-    fn get(&mut self, key: &TextLayoutKey) -> Option<TextLayout> {
+    fn get(&mut self, key: &TextLayoutLookupKey<'_>) -> Option<TextLayout> {
         let layout = self.entries.get(key)?;
         self.stats.hits += 1;
         Some(TextLayout::new(Rc::clone(layout)))
@@ -306,7 +305,7 @@ impl TextLayoutCache {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct TextLayoutKey {
-    text: String,
+    text: Rc<str>,
     font_size: ScalarKey,
     max_advance: Option<ScalarKey>,
 }
@@ -314,10 +313,35 @@ struct TextLayoutKey {
 impl TextLayoutKey {
     fn new(text: &str, font_size: f32, max_advance: Option<f32>) -> Self {
         Self {
-            text: text.to_owned(),
+            text: Rc::from(text),
             font_size: ScalarKey::new(font_size),
             max_advance: max_advance.map(ScalarKey::new),
         }
+    }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+struct TextLayoutLookupKey<'a> {
+    text: &'a str,
+    font_size: ScalarKey,
+    max_advance: Option<ScalarKey>,
+}
+
+impl<'a> TextLayoutLookupKey<'a> {
+    fn new(text: &'a str, font_size: f32, max_advance: Option<f32>) -> Self {
+        Self {
+            text,
+            font_size: ScalarKey::new(font_size),
+            max_advance: max_advance.map(ScalarKey::new),
+        }
+    }
+}
+
+impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
+    fn equivalent(&self, key: &TextLayoutKey) -> bool {
+        self.text == key.text.as_ref()
+            && self.font_size == key.font_size
+            && self.max_advance == key.max_advance
     }
 }
 
