@@ -135,7 +135,7 @@ impl TextEngine {
     /// details. Returns the built parley [`Layout`] ready for rendering or
     /// measuring.
     ///
-    /// Phase 1f-4 uses platform-default UI font, medium weight, and normal
+    /// Phase 1f-4 uses platform-default UI font, normal weight, and normal
     /// spacing. Apps will eventually be able to override these via per-element
     /// style properties; for now the defaults are baked in here.
     pub fn shape(&mut self, text: &str, font_size: f32, wrap_width: Option<f64>) -> TextLayout {
@@ -176,7 +176,7 @@ impl TextEngine {
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);
         builder.push_default(FontFamily::from("system-ui, sans-serif"));
-        builder.push_default(StyleProperty::FontWeight(FontWeight::MEDIUM));
+        builder.push_default(StyleProperty::FontWeight(FontWeight::NORMAL));
         builder.push_default(StyleProperty::FontSize(font_size));
         builder.push_default(LineHeight::FontSizeRelative(1.2));
         builder.push_default(StyleProperty::Brush(Brush::default()));
