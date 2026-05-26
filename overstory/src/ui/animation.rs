@@ -8,13 +8,15 @@
 //! host crates. Controls can request transitions, but the runtime remains the
 //! owner of active tracks.
 
-use understory_timing::TimerInstant;
+use alloc::vec::Vec;
+
+use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
 use crate::timeline_runtime::{
-    AnimatableValue, ChangeCause, PresentationValue, TimelineSample, TimelineTarget,
-    TimelineTrackKey, TransitionPolicy, VisualOutput,
+    AnimatableValue, ChangeCause, PresentationValue, TimelineCue, TimelineCueId, TimelineSample,
+    TimelineTarget, TimelineTrackKey, TransitionPolicy, VisualOutput,
 };
 
 use super::Ui;
@@ -143,8 +145,52 @@ impl Ui {
         self.mark_channels(element, channels);
     }
 
-    /// Returns the next timer or presentation-track deadline the host should
-    /// wake for.
+    /// Schedules an app-level timeline cue relative to [`Self::now`].
+    ///
+    /// Cues are deterministic wakeup points for side effects that are not
+    /// themselves property animations. Overstory stores the opaque `payload`
+    /// token and returns it when the cue is drained; callers decide what that
+    /// token means.
+    pub fn schedule_timeline_cue(&mut self, delay: TimerDuration, payload: u64) -> TimelineCueId {
+        self.timeline
+            .schedule_cue(None, self.now().saturating_add(delay), payload)
+    }
+
+    /// Schedules an element-scoped timeline cue relative to [`Self::now`].
+    ///
+    /// Returns `None` if `target` is stale. Element-scoped cues are removed
+    /// automatically when the target element is removed.
+    pub fn schedule_element_timeline_cue(
+        &mut self,
+        target: ElementId,
+        delay: TimerDuration,
+        payload: u64,
+    ) -> Option<TimelineCueId> {
+        self.get(target)?;
+        Some(
+            self.timeline
+                .schedule_cue(Some(target), self.now().saturating_add(delay), payload),
+        )
+    }
+
+    /// Cancels a pending timeline cue.
+    ///
+    /// Returns `true` if the cue was still pending and is now removed.
+    pub fn cancel_timeline_cue(&mut self, cue: TimelineCueId) -> bool {
+        self.timeline.cancel_cue(cue)
+    }
+
+    /// Drains timeline cues due at or before `now`.
+    ///
+    /// This updates [`Self::now`] first, so due cue delivery and animation
+    /// sampling observe the same host time.
+    pub fn drain_timeline_cues(&mut self, now: TimerInstant) -> Vec<TimelineCue> {
+        self.set_now(now);
+        self.timeline.drain_cues(now)
+    }
+
+    /// Returns the next timer, presentation-track, or timeline-cue deadline the
+    /// host should wake for.
     #[must_use]
     pub fn next_wakeup_deadline(&self) -> Option<TimerInstant> {
         min_deadline(

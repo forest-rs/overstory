@@ -1551,6 +1551,32 @@ fn repeating_timer_stops_when_target_is_removed() {
 }
 
 #[test]
+fn timeline_cues_drain_by_time_and_drop_removed_targets() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let scoped_target = ui.append(root, crate::Panel::new());
+    let _removed = ui
+        .schedule_element_timeline_cue(scoped_target, 10, 7)
+        .expect("fresh element should accept scoped cue");
+    let kept = ui.schedule_timeline_cue(10, 9);
+
+    assert_eq!(ui.next_wakeup_deadline(), Some(10));
+    ui.remove(scoped_target);
+
+    assert_eq!(ui.drain_timeline_cues(9), alloc::vec![]);
+    assert_eq!(
+        ui.drain_timeline_cues(10),
+        alloc::vec![crate::TimelineCue {
+            id: kept,
+            target: None,
+            payload: 9,
+            due_at: 10,
+        }]
+    );
+    assert_eq!(ui.next_wakeup_deadline(), None);
+}
+
+#[test]
 fn hover_path_marks_ancestor_pseudoclasses() {
     // A child hover should mark every element along the
     // root→target path as `:hover` — the more correct CSS/WPF

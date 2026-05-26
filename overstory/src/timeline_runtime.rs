@@ -34,6 +34,39 @@ use crate::element::ElementId;
 /// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
 
+/// Stable id for a scheduled timeline cue.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TimelineCueId(u64);
+
+impl TimelineCueId {
+    /// Returns this cue id as a compact integer token.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// A deterministic cue point emitted by the UI timeline.
+///
+/// Cues are for scheduled side effects that are not themselves animations:
+/// a host may map `payload` to a sound, an inspector marker, a scripted action,
+/// or future control-service work. The timeline only stores and emits the cue;
+/// it does not execute arbitrary callbacks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TimelineCue {
+    /// Stable id returned when the cue was scheduled.
+    pub id: TimelineCueId,
+    /// Optional element the cue is scoped to.
+    ///
+    /// Element-scoped cues are removed automatically when that element is
+    /// removed from the UI tree.
+    pub target: Option<ElementId>,
+    /// Host/application-defined payload token.
+    pub payload: u64,
+    /// Monotonic instant when the cue becomes due.
+    pub due_at: TimerInstant,
+}
+
 /// Destination whose sampled value may differ from its target value.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum TimelineTarget {
@@ -515,6 +548,8 @@ pub(crate) struct TimelineRuntime {
     targets: HashMap<TimelineTrackKey, PresentationValue>,
     tracks: HashMap<TimelineTrackKey, TimelineTrack>,
     pending: HashMap<TimelineTrackKey, TransitionPolicy>,
+    cues: Vec<TimelineCue>,
+    next_cue_id: u64,
 }
 
 impl TimelineRuntime {
@@ -522,6 +557,47 @@ impl TimelineRuntime {
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    /// Schedules a cue for `due_at`.
+    pub(crate) fn schedule_cue(
+        &mut self,
+        target: Option<ElementId>,
+        due_at: TimerInstant,
+        payload: u64,
+    ) -> TimelineCueId {
+        let id = TimelineCueId(self.next_cue_id);
+        self.next_cue_id = self.next_cue_id.wrapping_add(1);
+        self.cues.push(TimelineCue {
+            id,
+            target,
+            payload,
+            due_at,
+        });
+        id
+    }
+
+    /// Cancels a pending cue by id.
+    pub(crate) fn cancel_cue(&mut self, id: TimelineCueId) -> bool {
+        let before = self.cues.len();
+        self.cues.retain(|cue| cue.id != id);
+        self.cues.len() != before
+    }
+
+    /// Drains all cues due at or before `now`.
+    pub(crate) fn drain_cues(&mut self, now: TimerInstant) -> Vec<TimelineCue> {
+        let mut due = Vec::new();
+        let mut pending = Vec::new();
+        for cue in self.cues.drain(..) {
+            if cue.due_at <= now {
+                due.push(cue);
+            } else {
+                pending.push(cue);
+            }
+        }
+        self.cues = pending;
+        due.sort_by_key(|cue| (cue.due_at, cue.id.get()));
+        due
     }
 
     /// Requests that the next target change for `key` animate when it is caused
@@ -655,16 +731,19 @@ impl TimelineRuntime {
     /// tracks.
     #[must_use]
     pub(crate) fn next_deadline(&self, now: TimerInstant) -> Option<TimerInstant> {
-        if self.tracks.is_empty() {
-            return None;
-        }
-        let next_frame = now.saturating_add(PRESENTATION_FRAME_INTERVAL);
-        let next_end = self
-            .tracks
-            .values()
-            .map(|track| track.clip.end_time())
-            .min();
-        Some(next_end.map_or(next_frame, |end| next_frame.min(end).max(now)))
+        let track_deadline = if self.tracks.is_empty() {
+            None
+        } else {
+            let next_frame = now.saturating_add(PRESENTATION_FRAME_INTERVAL);
+            let next_end = self
+                .tracks
+                .values()
+                .map(|track| track.clip.end_time())
+                .min();
+            Some(next_end.map_or(next_frame, |end| next_frame.min(end).max(now)))
+        };
+        let cue_deadline = self.cues.iter().map(|cue| cue.due_at.max(now)).min();
+        min_deadline(track_deadline, cue_deadline)
     }
 
     /// Removes all runtime state for `element`.
@@ -672,6 +751,7 @@ impl TimelineRuntime {
         self.targets.retain(|key, _| key.element() != element);
         self.tracks.retain(|key, _| key.element() != element);
         self.pending.retain(|key, _| key.element() != element);
+        self.cues.retain(|cue| cue.target != Some(element));
     }
 
     /// Returns whether `key` currently has an active timeline track.
@@ -689,6 +769,15 @@ fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
         (PresentationValue::Color(a), PresentationValue::Color(b)) => a.same(b),
         (PresentationValue::Offset2d(a), PresentationValue::Offset2d(b)) => a.same(b),
         _ => false,
+    }
+}
+
+fn min_deadline(a: Option<TimerInstant>, b: Option<TimerInstant>) -> Option<TimerInstant> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
     }
 }
 
@@ -836,6 +925,63 @@ mod tests {
             runtime.next_deadline(PRESENTATION_FRAME_INTERVAL * 4 - 10),
             Some(PRESENTATION_FRAME_INTERVAL * 4)
         );
+    }
+
+    #[test]
+    fn scheduled_cues_drain_in_due_then_id_order() {
+        let mut runtime = TimelineRuntime::new();
+        let second = runtime.schedule_cue(None, 20, 2);
+        let first = runtime.schedule_cue(None, 10, 1);
+        let third = runtime.schedule_cue(None, 20, 3);
+
+        assert_eq!(runtime.next_deadline(0), Some(10));
+        assert_eq!(
+            runtime.drain_cues(20),
+            alloc::vec![
+                TimelineCue {
+                    id: first,
+                    target: None,
+                    payload: 1,
+                    due_at: 10,
+                },
+                TimelineCue {
+                    id: second,
+                    target: None,
+                    payload: 2,
+                    due_at: 20,
+                },
+                TimelineCue {
+                    id: third,
+                    target: None,
+                    payload: 3,
+                    due_at: 20,
+                },
+            ]
+        );
+        assert_eq!(runtime.next_deadline(20), None);
+    }
+
+    #[test]
+    fn cancel_and_remove_element_drop_pending_cues() {
+        let mut runtime = TimelineRuntime::new();
+        let element = ElementId::new(7, 0);
+        let cancelled = runtime.schedule_cue(None, 10, 1);
+        let scoped = runtime.schedule_cue(Some(element), 10, 2);
+        let kept = runtime.schedule_cue(None, 10, 3);
+
+        assert!(runtime.cancel_cue(cancelled));
+        runtime.remove_element(element);
+
+        assert_eq!(
+            runtime.drain_cues(10),
+            alloc::vec![TimelineCue {
+                id: kept,
+                target: None,
+                payload: 3,
+                due_at: 10,
+            }]
+        );
+        assert!(!runtime.cancel_cue(scoped));
     }
 
     #[test]

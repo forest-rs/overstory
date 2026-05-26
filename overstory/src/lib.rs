@@ -146,6 +146,7 @@ pub use template::{
     TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
+pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ControlState, Ui};
 pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
