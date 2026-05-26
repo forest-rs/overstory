@@ -62,6 +62,7 @@ mod geometry_runtime;
 mod layout_runtime;
 pub mod layouts;
 mod lookup;
+pub mod motion;
 mod overlay;
 mod presentation_runtime;
 mod properties;

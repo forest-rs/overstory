@@ -30,6 +30,7 @@ use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
+use crate::motion::{Animatable, Easing, Transition};
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
@@ -156,8 +157,8 @@ pub(crate) enum PresentationValue {
     Offset2d(Vec2),
 }
 
-/// Value type that can be sampled by a presentation transition.
-pub(crate) trait AnimatableValue: Copy + PartialEq {
+/// Value type that can be stored in erased timeline sample storage.
+pub(crate) trait AnimatableValue: Animatable {
     /// Runtime storage kind for this value.
     const KIND: PresentationValueKind;
 
@@ -166,12 +167,6 @@ pub(crate) trait AnimatableValue: Copy + PartialEq {
 
     /// Converts erased presentation storage back into this typed value.
     fn from_value(value: PresentationValue) -> Option<Self>;
-
-    /// Interpolates from this value to `to` at progress `t`.
-    fn lerp(self, to: Self, t: f32) -> Self;
-
-    /// Returns whether two values are close enough to avoid an animation step.
-    fn same(self, other: Self) -> bool;
 }
 
 impl AnimatableValue for f32 {
@@ -188,14 +183,6 @@ impl AnimatableValue for f32 {
             | PresentationValue::Color(_)
             | PresentationValue::Offset2d(_) => None,
         }
-    }
-
-    fn lerp(self, to: Self, t: f32) -> Self {
-        self + ((to - self) * t)
-    }
-
-    fn same(self, other: Self) -> bool {
-        (self - other).abs() <= Self::EPSILON
     }
 }
 
@@ -214,14 +201,6 @@ impl AnimatableValue for f64 {
             | PresentationValue::Offset2d(_) => None,
         }
     }
-
-    fn lerp(self, to: Self, t: f32) -> Self {
-        self + ((to - self) * Self::from(t))
-    }
-
-    fn same(self, other: Self) -> bool {
-        (self - other).abs() <= Self::EPSILON
-    }
 }
 
 impl AnimatableValue for Color {
@@ -239,17 +218,6 @@ impl AnimatableValue for Color {
             | PresentationValue::Offset2d(_) => None,
         }
     }
-
-    fn lerp(self, to: Self, t: f32) -> Self {
-        self.lerp_rect(to, t)
-    }
-
-    fn same(self, other: Self) -> bool {
-        self.components
-            .into_iter()
-            .zip(other.components)
-            .all(|(a, b)| a.same(b))
-    }
 }
 
 impl AnimatableValue for Vec2 {
@@ -266,15 +234,6 @@ impl AnimatableValue for Vec2 {
             | PresentationValue::Scalar64(_)
             | PresentationValue::Color(_) => None,
         }
-    }
-
-    fn lerp(self, to: Self, t: f32) -> Self {
-        let t = f64::from(t);
-        self + ((to - self) * t)
-    }
-
-    fn same(self, other: Self) -> bool {
-        (self.x - other.x).abs() <= f64::EPSILON && (self.y - other.y).abs() <= f64::EPSILON
     }
 }
 
@@ -298,22 +257,6 @@ impl TransitionTrigger {
     fn allows(self, cause: ChangeCause) -> bool {
         match self {
             Self::Interaction => cause == ChangeCause::Interaction,
-        }
-    }
-}
-
-/// Timing function for a scalar transition.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum Easing {
-    /// Linear interpolation.
-    #[default]
-    Linear,
-}
-
-impl Easing {
-    fn sample(self, t: f32) -> f32 {
-        match self {
-            Self::Linear => t,
         }
     }
 }
@@ -416,10 +359,10 @@ impl TimelineSample {
 /// Active clip carried by one timeline track.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum MotionClip {
-    Scalar32(ValueTransition<f32>),
-    Scalar64(ValueTransition<f64>),
-    Color(ValueTransition<Color>),
-    Offset(ValueTransition<Vec2>),
+    Scalar32(Transition<f32>),
+    Scalar64(Transition<f64>),
+    Color(Transition<Color>),
+    Offset(Transition<Vec2>),
 }
 
 impl MotionClip {
@@ -430,18 +373,18 @@ impl MotionClip {
         spec: TransitionSpec,
     ) -> Self {
         match (from, to) {
-            (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
-                Self::Scalar32(ValueTransition::new(from, to, started_at, spec))
-            }
-            (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
-                Self::Scalar64(ValueTransition::new(from, to, started_at, spec))
-            }
-            (PresentationValue::Color(from), PresentationValue::Color(to)) => {
-                Self::Color(ValueTransition::new(from, to, started_at, spec))
-            }
-            (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
-                Self::Offset(ValueTransition::new(from, to, started_at, spec))
-            }
+            (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => Self::Scalar32(
+                Transition::new(from, to, started_at, spec.duration, spec.easing),
+            ),
+            (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => Self::Scalar64(
+                Transition::new(from, to, started_at, spec.duration, spec.easing),
+            ),
+            (PresentationValue::Color(from), PresentationValue::Color(to)) => Self::Color(
+                Transition::new(from, to, started_at, spec.duration, spec.easing),
+            ),
+            (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => Self::Offset(
+                Transition::new(from, to, started_at, spec.duration, spec.easing),
+            ),
             _ => unreachable!("timeline target kinds should match property metadata"),
         }
     }
@@ -471,64 +414,6 @@ impl MotionClip {
             Self::Color(transition) => transition.end_time(),
             Self::Offset(transition) => transition.end_time(),
         }
-    }
-}
-
-/// One value transition clip.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ValueTransition<T: AnimatableValue> {
-    from: T,
-    to: T,
-    started_at: TimerInstant,
-    duration: TimerDuration,
-    easing: Easing,
-}
-
-impl<T: AnimatableValue> ValueTransition<T> {
-    fn new(from: T, to: T, started_at: TimerInstant, spec: TransitionSpec) -> Self {
-        Self {
-            from,
-            to,
-            started_at,
-            duration: spec.duration,
-            easing: spec.easing,
-        }
-    }
-
-    fn sample(self, now: TimerInstant) -> T {
-        let t = self
-            .easing
-            .sample(transition_progress(now, self.started_at, self.duration));
-        self.from.lerp(self.to, t)
-    }
-
-    fn is_complete(self, now: TimerInstant) -> bool {
-        now.saturating_sub(self.started_at) >= self.duration
-    }
-
-    fn end_time(self) -> TimerInstant {
-        self.started_at.saturating_add(self.duration)
-    }
-}
-
-fn transition_progress(
-    now: TimerInstant,
-    started_at: TimerInstant,
-    duration: TimerDuration,
-) -> f32 {
-    if duration == 0 {
-        return 1.0;
-    }
-    let elapsed = now.saturating_sub(started_at);
-    if elapsed >= duration {
-        return 1.0;
-    }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "transition progress is a bounded f32 sample"
-    )]
-    {
-        elapsed as f32 / duration as f32
     }
 }
 
@@ -764,10 +649,10 @@ impl TimelineRuntime {
 
 fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
     match (a, b) {
-        (PresentationValue::Scalar32(a), PresentationValue::Scalar32(b)) => a.same(b),
-        (PresentationValue::Scalar64(a), PresentationValue::Scalar64(b)) => a.same(b),
-        (PresentationValue::Color(a), PresentationValue::Color(b)) => a.same(b),
-        (PresentationValue::Offset2d(a), PresentationValue::Offset2d(b)) => a.same(b),
+        (PresentationValue::Scalar32(a), PresentationValue::Scalar32(b)) => a.is_close(b),
+        (PresentationValue::Scalar64(a), PresentationValue::Scalar64(b)) => a.is_close(b),
+        (PresentationValue::Color(a), PresentationValue::Color(b)) => a.is_close(b),
+        (PresentationValue::Offset2d(a), PresentationValue::Offset2d(b)) => a.is_close(b),
         _ => false,
     }
 }
