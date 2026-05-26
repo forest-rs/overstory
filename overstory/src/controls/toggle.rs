@@ -25,6 +25,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
+use crate::motion::Easing;
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::timeline_runtime::{
@@ -40,7 +41,7 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the toggle thumb.
 pub const SLOT_TOGGLE_THUMB: TemplateSlot =
     TemplateSlot::new("toggle-thumb").with_part_tag(PART_TOGGLE_THUMB);
-const THUMB_TRANSITION: TransitionSpec = TransitionSpec::linear(120_000_000);
+const THUMB_TRANSITION: TransitionSpec = TransitionSpec::eased(120_000_000, Easing::EaseOutCubic);
 
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {

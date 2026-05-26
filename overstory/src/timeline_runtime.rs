@@ -277,6 +277,12 @@ impl TransitionSpec {
             easing: Easing::Linear,
         }
     }
+
+    /// Creates a transition over `duration` using `easing`.
+    #[must_use]
+    pub(crate) const fn eased(duration: TimerDuration, easing: Easing) -> Self {
+        Self { duration, easing }
+    }
 }
 
 /// Policy for deciding whether a target change creates a timeline track.
