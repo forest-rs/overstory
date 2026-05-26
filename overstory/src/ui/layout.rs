@@ -288,6 +288,7 @@ impl Ui {
         });
         // Composition can use a sampled timeline value while layout and hit
         // testing keep the resolved target geometry.
+        self.sync_composition_offset_target(id, local_offset);
         let composition_offset = self.presented_composition_offset(id, local_offset);
         self.composition.set_geometry(
             id,

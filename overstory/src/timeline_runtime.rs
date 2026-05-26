@@ -464,6 +464,12 @@ impl TimelineRuntime {
         self.pending.contains_key(&key)
     }
 
+    /// Returns whether `key` has a resolved target value.
+    #[must_use]
+    pub(crate) fn has_target(&self, key: TimelineTrackKey) -> bool {
+        self.targets.contains_key(&key)
+    }
+
     /// Removes the target, active track, and pending transition for `key`.
     pub(crate) fn clear_target(&mut self, key: TimelineTrackKey) -> bool {
         let had_target = self.targets.remove(&key).is_some();

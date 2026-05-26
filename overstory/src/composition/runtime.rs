@@ -12,8 +12,10 @@
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;
-use imaging::record::{Clip, Geometry, Scene};
+use imaging::Composite;
+use imaging::record::{Clip, Geometry, Group, Scene};
 use kurbo::{Affine, Rect, RoundedRect, Size, Vec2};
+use peniko::BlendMode;
 use subduction_core::layer::{
     ClipShape, FrameChanges, HitPolicy, HitRegion, LayerId, LayerStore, SurfaceId, SurfaceIds,
 };
@@ -418,6 +420,10 @@ impl CompositionRuntime {
         if self.layers.effective_hidden(layer) {
             return;
         }
+        let opacity = self.layers.effective_opacity(layer);
+        if opacity <= 0.0 {
+            return;
+        }
         let Some(transform) = affine_from_transform(self.layers.world_transform(layer)) else {
             return;
         };
@@ -429,7 +435,16 @@ impl CompositionRuntime {
         if let Some(surface) = self.layers.content(layer)
             && let Some(scene) = scene_for(surface)
         {
+            let group_pushed = (opacity < 1.0).then(|| {
+                output.push_group(Group {
+                    composite: Composite::new(BlendMode::default(), opacity),
+                    ..Group::default()
+                });
+            });
             output.append_transformed(scene, transform);
+            if group_pushed.is_some() {
+                output.pop_group();
+            }
         }
 
         for child in self.layers.children(layer) {

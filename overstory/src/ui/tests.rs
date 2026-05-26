@@ -13,7 +13,7 @@ use crate::{
     TemplateSlot, UiResolveLookup,
 };
 use alloc::string::String;
-use imaging::record::Scene;
+use imaging::record::{Command, Scene};
 use kurbo::{Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
@@ -668,7 +668,7 @@ fn control_row_labels_keep_single_line_widths() {
 
     let mut max_span = 0.0_f32;
     for command in output.commands() {
-        let imaging::record::Command::Draw(id) = command else {
+        let Command::Draw(id) = command else {
             continue;
         };
         let imaging::record::Draw::GlyphRun(run) = output.draw_op(*id) else {
@@ -2226,6 +2226,104 @@ fn composition_layers_track_layout_geometry() {
         Some(Point::new(10.0, 10.0))
     );
     assert_eq!(ui.composition.element_for_layer(child_layer), Some(child));
+}
+
+#[test]
+fn scene_composition_applies_effective_layer_opacity() {
+    use crate::Panel;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(100.0, 60.0));
+    let child = ui.append(
+        root,
+        Panel::new().layout(Layout::new().logical_size(40.0, 30.0)),
+    );
+    ui.set_local(
+        child,
+        ui.properties().background,
+        Some(Brush::Solid(Color::from_rgba8(0x40, 0x80, 0xff, 0xff))),
+    );
+    ui.set_local(child, ui.properties().opacity, 0.5_f32);
+
+    ui.compute_layout(Size::new(100.0, 60.0));
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let has_half_opacity_group = output.commands().iter().any(|command| {
+        let Command::PushGroup(group) = command else {
+            return false;
+        };
+        (output.group(*group).composite.alpha - 0.5).abs() <= f32::EPSILON
+    });
+    assert!(has_half_opacity_group);
+}
+
+#[test]
+fn generic_layer_offset_transition_tracks_layout_target_changes() {
+    use crate::Panel;
+
+    const MOVING: ClassId = ClassId(90);
+
+    let mut ui = Ui::new();
+    let layout = ui.properties().layout;
+    let transitions = ui.properties().transitions;
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(MOVING)).build(),
+            StyleBuilder::new()
+                .set(
+                    transitions,
+                    TransitionRules::single(TransitionRule::interaction(
+                        TransitionTarget::layer_offset(),
+                        TransitionSpec::linear(millis(100)),
+                    )),
+                )
+                .build(),
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let stage = ui.append(
+        root,
+        Panel::new().layout(Layout::flex().relative().logical_size(180.0, 60.0)),
+    );
+    let mover = ui.append(
+        stage,
+        Panel::new().class(MOVING).layout(
+            Layout::new()
+                .absolute_at(10.0, 20.0)
+                .logical_size(24.0, 24.0),
+        ),
+    );
+
+    ui.compute_layout(Size::new(200.0, 80.0));
+    let start_x = layer_x(&ui, mover);
+    assert_close(start_x, 10.0);
+
+    ui.set_now(0);
+    assert!(ui.request_layer_offset_transition(mover));
+    ui.set_local(
+        mover,
+        layout,
+        Layout::new()
+            .absolute_at(130.0, 20.0)
+            .logical_size(24.0, 24.0),
+    );
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(ui.effective_bounds(mover).x0, 130.0);
+    assert_close(layer_x(&ui, mover), 10.0);
+
+    ui.set_now(millis(50));
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(layer_x(&ui, mover), 70.0);
+
+    ui.set_now(millis(100));
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(layer_x(&ui, mover), 130.0);
 }
 
 #[test]

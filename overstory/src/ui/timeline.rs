@@ -10,6 +10,7 @@
 
 use alloc::vec::Vec;
 
+use kurbo::Vec2;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::channels::COMPOSE;
@@ -52,6 +53,53 @@ impl Ui {
     ) -> bool {
         self.timeline
             .has_pending_transition(TimelineTrackKey::new(element, target))
+    }
+
+    pub(in crate::ui) fn has_presentation_target(
+        &self,
+        element: ElementId,
+        target: TimelineTarget,
+    ) -> bool {
+        self.timeline
+            .has_target(TimelineTrackKey::new(element, target))
+    }
+
+    pub(in crate::ui) fn sync_composition_offset_target(
+        &mut self,
+        element: ElementId,
+        offset: Vec2,
+    ) {
+        let target = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
+        let has_pending = self.has_pending_presentation_transition(element, target);
+        let should_track = has_pending
+            || self.has_presentation_target(element, target)
+            || self
+                .transition_spec_for(element, target, ChangeCause::Interaction)
+                .is_some();
+        if !should_track {
+            return;
+        }
+        let cause = if has_pending {
+            ChangeCause::Interaction
+        } else {
+            ChangeCause::Other
+        };
+        self.set_presentation_target(element, target, offset, cause);
+    }
+
+    /// Requests that the next layer-offset target change for `element`
+    /// use the element's style-authored layer-offset transition rule.
+    ///
+    /// This is useful for app-authored motion where layout snaps to its
+    /// target position while composition presents the element moving from
+    /// the previous target to the new one. Returns `false` when `element`
+    /// is stale or its resolved transition rules do not include
+    /// [`crate::motion::TransitionTarget::LayerOffset`].
+    pub fn request_layer_offset_transition(&mut self, element: ElementId) -> bool {
+        self.request_styled_presentation_transition(
+            element,
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+        )
     }
 
     pub(crate) fn clear_presentation_target(&mut self, element: ElementId, target: TimelineTarget) {
