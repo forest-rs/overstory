@@ -145,9 +145,7 @@ impl<'a> PresentContext<'a> {
             Some(Brush::Solid(color)) => {
                 let key =
                     PresentationTrackKey::new(element.id(), PresentationProperty::BackgroundColor);
-                Some(Brush::Solid(
-                    self.animations.sample_color(key, color, self.now),
-                ))
+                Some(Brush::Solid(self.animations.sample(key, color, self.now)))
             }
             other => other,
         }

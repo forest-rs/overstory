@@ -317,6 +317,6 @@ impl Ui {
     }
 
     fn presented_composition_offset(&self, id: ElementId, local_offset: Vec2) -> Vec2 {
-        self.presented_offset(id, PresentationProperty::LayerOffset, local_offset)
+        self.presented_value(id, PresentationProperty::LayerOffset, local_offset)
     }
 }

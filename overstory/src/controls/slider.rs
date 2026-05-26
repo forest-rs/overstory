@@ -705,7 +705,7 @@ fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
     } else {
         ChangeCause::Other
     };
-    ui.set_offset_presentation_target(thumb, property, target, cause)
+    ui.set_presentation_target(thumb, property, target, cause)
 }
 
 /// Programmatically set a slider's value (and move its thumb).

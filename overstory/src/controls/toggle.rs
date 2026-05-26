@@ -246,5 +246,5 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
     } else {
         ChangeCause::Other
     };
-    ui.set_offset_presentation_target(thumb, property, target, cause)
+    ui.set_presentation_target(thumb, property, target, cause)
 }

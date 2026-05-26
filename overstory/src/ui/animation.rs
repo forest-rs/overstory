@@ -8,12 +8,10 @@
 //! host crates. Controls can request transitions, but the runtime remains the
 //! owner of active tracks.
 
-use kurbo::Vec2;
-use peniko::Color;
 use understory_timing::TimerInstant;
 
 use crate::animation_runtime::{
-    ChangeCause, PresentationProperty, PresentationTrackKey, TransitionPolicy,
+    AnimatableValue, ChangeCause, PresentationProperty, PresentationTrackKey, TransitionPolicy,
 };
 use crate::element::ElementId;
 
@@ -39,52 +37,14 @@ impl Ui {
             .has_pending_transition(PresentationTrackKey::new(element, property))
     }
 
-    pub(crate) fn set_scalar_presentation_target(
+    pub(crate) fn set_presentation_target<T: AnimatableValue>(
         &mut self,
         element: ElementId,
         property: PresentationProperty,
-        target: f32,
+        target: T,
         cause: ChangeCause,
     ) -> bool {
-        let needs_sample = self.animations.set_scalar_target(
-            PresentationTrackKey::new(element, property),
-            target,
-            self.now(),
-            cause,
-        );
-        if needs_sample {
-            self.mark_channels(element, property.metadata().affects());
-        }
-        needs_sample
-    }
-
-    pub(crate) fn set_color_presentation_target(
-        &mut self,
-        element: ElementId,
-        property: PresentationProperty,
-        target: Color,
-        cause: ChangeCause,
-    ) -> bool {
-        let needs_sample = self.animations.set_color_target(
-            PresentationTrackKey::new(element, property),
-            target,
-            self.now(),
-            cause,
-        );
-        if needs_sample {
-            self.mark_channels(element, property.metadata().affects());
-        }
-        needs_sample
-    }
-
-    pub(crate) fn set_offset_presentation_target(
-        &mut self,
-        element: ElementId,
-        property: PresentationProperty,
-        target: Vec2,
-        cause: ChangeCause,
-    ) -> bool {
-        let needs_sample = self.animations.set_offset_target(
+        let needs_sample = self.animations.set_target(
             PresentationTrackKey::new(element, property),
             target,
             self.now(),
@@ -98,17 +58,17 @@ impl Ui {
 
     pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {
         let key = PresentationTrackKey::new(element, PresentationProperty::LayerOpacity);
-        let target = self.animations.scalar_target(key).unwrap_or(1.0);
-        self.animations.sample_scalar(key, target, self.now())
+        let target = self.animations.stored_target(key).unwrap_or(1.0);
+        self.animations.sample(key, target, self.now())
     }
 
-    pub(crate) fn presented_offset(
+    pub(crate) fn presented_value<T: AnimatableValue>(
         &self,
         element: ElementId,
         property: PresentationProperty,
-        target: Vec2,
-    ) -> Vec2 {
-        self.animations.sample_offset(
+        target: T,
+    ) -> T {
+        self.animations.sample(
             PresentationTrackKey::new(element, property),
             target,
             self.now(),

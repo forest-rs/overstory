@@ -115,7 +115,7 @@ impl Ui {
         pressed_before: Option<f32>,
     ) {
         if let Some(before) = background_before {
-            self.set_color_presentation_target(
+            self.set_presentation_target(
                 id,
                 PresentationProperty::BackgroundColor,
                 before,
@@ -130,7 +130,7 @@ impl Ui {
                 PresentationProperty::BackgroundColor,
                 TransitionPolicy::interaction(INTERACTION_BACKGROUND_TRANSITION),
             );
-            self.set_color_presentation_target(
+            self.set_presentation_target(
                 id,
                 PresentationProperty::BackgroundColor,
                 after,
@@ -141,7 +141,7 @@ impl Ui {
             && let Some(before) = pressed_before
             && let Some(after) = self.pressed_opacity_target(id)
         {
-            self.set_scalar_presentation_target(
+            self.set_presentation_target(
                 id,
                 PresentationProperty::LayerOpacity,
                 before,
@@ -152,7 +152,7 @@ impl Ui {
                 PresentationProperty::LayerOpacity,
                 TransitionPolicy::interaction(INTERACTION_OPACITY_TRANSITION),
             );
-            self.set_scalar_presentation_target(
+            self.set_presentation_target(
                 id,
                 PresentationProperty::LayerOpacity,
                 after,
