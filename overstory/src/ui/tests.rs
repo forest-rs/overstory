@@ -528,6 +528,7 @@ fn paint_keeps_default_text_on_one_line() {
     let mut output = Scene::new();
     ui.paint(&mut output);
 
+    let mut saw_glyph_run = false;
     let mut min_y = f32::INFINITY;
     let mut max_y = f32::NEG_INFINITY;
     for command in output.commands() {
@@ -537,12 +538,15 @@ fn paint_keeps_default_text_on_one_line() {
         let Draw::GlyphRun(run) = output.draw_op(*id) else {
             continue;
         };
+        saw_glyph_run = true;
+        assert!(run.hint, "UI text glyph runs should enable hinting");
         for glyph in &run.glyphs {
             min_y = min_y.min(glyph.y);
             max_y = max_y.max(glyph.y);
         }
     }
 
+    assert!(saw_glyph_run, "text should paint at least one glyph run");
     assert!(
         max_y - min_y < 20.0,
         "default text should paint on one line; glyph y span was {}",
@@ -620,7 +624,7 @@ fn row_text_uses_natural_width_until_width_is_chosen() {
 
     let label_bounds = ui.effective_bounds(label);
     assert!(
-        label_bounds.width() > 90.0,
+        label_bounds.width() > 75.0,
         "row label should keep its natural width instead of measuring wrapped; got {label_bounds:?}"
     );
 

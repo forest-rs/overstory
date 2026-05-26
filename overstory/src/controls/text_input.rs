@@ -700,7 +700,6 @@ fn apply_editor_style(editor: &mut PlainEditor<Brush>, font_size: f64) {
     styles.insert(StyleProperty::FontWeight(FontWeight::MEDIUM));
     styles.insert(StyleProperty::FontSize(f32_from_logical(font_size)));
     styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.2)));
-    styles.insert(StyleProperty::LetterSpacing(0.4));
     styles.insert(StyleProperty::Brush(Brush::Solid(Color::from_rgba8(
         0, 0, 0, 0xff,
     ))));

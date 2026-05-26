@@ -135,10 +135,9 @@ impl TextEngine {
     /// details. Returns the built parley [`Layout`] ready for rendering or
     /// measuring.
     ///
-    /// Phase 1f-4 uses platform-default UI font, medium weight, and a
-    /// touch of positive letter-spacing for crisp button labels. Apps
-    /// will eventually be able to override these via per-element style
-    /// properties; for now the defaults are baked in here.
+    /// Phase 1f-4 uses platform-default UI font, medium weight, and normal
+    /// spacing. Apps will eventually be able to override these via per-element
+    /// style properties; for now the defaults are baked in here.
     pub fn shape(&mut self, text: &str, font_size: f32, wrap_width: Option<f64>) -> TextLayout {
         let max_advance = parley_max_advance(wrap_width);
         let lookup = TextLayoutLookupKey::new(text, font_size, max_advance);
@@ -180,7 +179,6 @@ impl TextEngine {
         builder.push_default(StyleProperty::FontWeight(FontWeight::MEDIUM));
         builder.push_default(StyleProperty::FontSize(font_size));
         builder.push_default(LineHeight::FontSizeRelative(1.2));
-        builder.push_default(StyleProperty::LetterSpacing(0.4));
         builder.push_default(StyleProperty::Brush(Brush::default()));
         let mut layout = builder.build(text);
         layout.break_all_lines(max_advance);
@@ -425,8 +423,8 @@ fn parley_max_advance(wrap_width: Option<f64>) -> Option<f32> {
 
 /// Emits a built parley `Layout` as glyph runs through `painter`.
 ///
-/// Underlines / strikethroughs / hinting are omitted for now; they'll
-/// come back when richer text styling lands.
+/// Underlines and strikethroughs are omitted for now; they'll come back when
+/// richer text styling lands.
 pub(crate) fn render_text<S>(
     painter: &mut Painter<'_, S>,
     transform: Affine,
@@ -445,6 +443,7 @@ pub(crate) fn render_text<S>(
                 .glyphs(run.font(), brush)
                 .transform(transform)
                 .font_size(run.font_size())
+                .hint(true)
                 .normalized_coords(run.normalized_coords())
                 .draw(
                     &Style::Fill(Fill::NonZero),
