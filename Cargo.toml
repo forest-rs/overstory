@@ -36,21 +36,21 @@ peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
 smallvec = { default-features = false, version = "1.13.2" }
 subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
 
-# Understory primitives (path deps — closely coupled).
-understory_axis = { default-features = false, path = "../understory/understory_axis" }
-understory_box_tree = { default-features = false, path = "../understory/understory_box_tree" }
-understory_event_state = { default-features = false, path = "../understory/understory_event_state" }
-understory_focus = { default-features = false, path = "../understory/understory_focus" }
-understory_node_graph = { default-features = false, path = "../understory/understory_node_graph" }
-understory_presentation = { default-features = false, path = "../understory/understory_presentation" }
-understory_property = { default-features = false, path = "../understory/understory_property" }
-understory_property_binding = { default-features = false, path = "../understory/understory_property_binding" }
-understory_responder = { default-features = false, path = "../understory/understory_responder" }
-understory_selection = { default-features = false, path = "../understory/understory_selection" }
-understory_style = { default-features = false, path = "../understory/understory_style" }
-understory_timing = { default-features = false, path = "../understory/understory_timing" }
-understory_view2d = { default-features = false, path = "../understory/understory_view2d" }
-understory_virtual_list = { default-features = false, path = "../understory/understory_virtual_list" }
+# Understory primitives.
+understory_axis = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_box_tree = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_event_state = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_focus = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_node_graph = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_presentation = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_property = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_property_binding = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_responder = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_selection = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_style = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_timing = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_view2d = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
+understory_virtual_list = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "84285887b89b2c9c1b919d4ce26474e3682efedd" }
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["libm"], version = "0.0.1" }
