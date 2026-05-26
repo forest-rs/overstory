@@ -1774,6 +1774,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_motion_demo"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "overstory_host_winit",
+ "peniko",
+ "understory_style",
+]
+
+[[package]]
 name = "overstory_node_graph_demo"
 version = "0.0.1"
 dependencies = [

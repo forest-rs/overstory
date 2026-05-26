@@ -5,6 +5,7 @@ members = [
     "overstory_demo",
     "overstory_host",
     "overstory_host_winit",
+    "overstory_motion_demo",
     "overstory_node_graph_demo",
     "overstory_wind_tunnel",
 ]
