@@ -47,7 +47,6 @@ extern crate std;
 #[cfg_attr(test, macro_use)]
 extern crate alloc;
 
-mod animation_runtime;
 mod behavior;
 mod binding_runtime;
 pub mod channels;
@@ -75,6 +74,7 @@ mod template_runtime;
 pub(crate) mod test_support;
 mod text;
 pub mod theme;
+mod timeline_runtime;
 mod timer_runtime;
 mod ui;
 mod widget;

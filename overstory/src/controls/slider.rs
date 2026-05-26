@@ -25,15 +25,15 @@ use understory_axis::{
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
-use crate::animation_runtime::{
-    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
-};
 use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
+use crate::timeline_runtime::{
+    ChangeCause, TimelineTarget, TransitionPolicy, TransitionSpec, VisualOutput,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -650,7 +650,7 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     if motion == ThumbMotion::Animate {
         ui.request_presentation_transition(
             thumb,
-            PresentationProperty::LayerOffset,
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
             TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
@@ -699,7 +699,7 @@ fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
         thumb_bounds.x0 - slider_bounds.x0,
         thumb_bounds.y0 - slider_bounds.y0,
     );
-    let property = PresentationProperty::LayerOffset;
+    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
     let cause = if ui.has_pending_presentation_transition(thumb, property) {
         ChangeCause::Interaction
     } else {

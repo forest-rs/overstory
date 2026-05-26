@@ -23,12 +23,9 @@ use core::cell::RefCell;
 use core::fmt;
 
 use kurbo::{Rect, Size};
-use peniko::Brush;
 use understory_property::{DependencyObject, Property, PropertyRegistry};
 use understory_style::{MatchState, ResolveCx, StyleCascade, StyleValueRef, Theme};
-use understory_timing::TimerInstant;
 
-use crate::animation_runtime::{AnimationRuntime, PresentationProperty, PresentationTrackKey};
 use crate::element::{Element, ElementId};
 use crate::lookup::UiResolveLookup;
 use crate::properties::BuiltInProperties;
@@ -110,10 +107,6 @@ pub struct PresentContext<'a> {
     pub match_state: MatchState,
     /// Parent-walking lookup the [`ResolveCx`] uses for style-aware inheritance.
     pub(crate) lookup: UiResolveLookup<'a>,
-    /// Presentation timeline used to sample paint-domain overrides.
-    pub(crate) animations: &'a AnimationRuntime,
-    /// Host-supplied monotonic time for this paint sample.
-    pub(crate) now: TimerInstant,
 }
 
 impl<'a> PresentContext<'a> {
@@ -132,23 +125,6 @@ impl<'a> PresentContext<'a> {
     {
         self.resolve_cx()
             .get_value(element, property, Some((self.cascade, self.match_state)))
-    }
-
-    /// Returns a sampled background brush for the current paint frame.
-    ///
-    /// Only solid brushes participate in the first color-transition slice;
-    /// gradients, images, and other future brush kinds snap to their resolved
-    /// target value.
-    #[must_use]
-    pub fn presented_background(&self, element: &Element, target: Option<Brush>) -> Option<Brush> {
-        match target {
-            Some(Brush::Solid(color)) => {
-                let key =
-                    PresentationTrackKey::new(element.id(), PresentationProperty::BackgroundColor);
-                Some(Brush::Solid(self.animations.sample(key, color, self.now)))
-            }
-            other => other,
-        }
     }
 }
 

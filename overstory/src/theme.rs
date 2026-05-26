@@ -163,6 +163,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let button_pressed = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_PRESSED_BG)
+        .set(properties.opacity, 0.92_f32)
         .build();
     let button_focused = StyleBuilder::new()
         .set_resource(properties.border_brush, FOCUS_RING_BORDER)

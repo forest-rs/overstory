@@ -24,110 +24,99 @@
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;
-use invalidation::ChannelSet;
 use kurbo::Vec2;
 use peniko::Color;
+use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
-use crate::channels::{COMPOSE, PAINT};
 use crate::element::ElementId;
 
-/// Nominal frame interval hosts can use while presentation tracks are active.
+/// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
 
-/// Presentation property whose sampled value may differ from its target value.
+/// Destination whose sampled value may differ from its target value.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum PresentationProperty {
-    /// Solid background color sampled by paint while style keeps the resolved
-    /// target brush.
-    BackgroundColor,
-    /// Layer opacity sampled by composition while semantic visibility and hit
-    /// testing use the target state.
-    LayerOpacity,
+pub(crate) enum TimelineTarget {
+    /// Dependency property whose animation value participates in normal
+    /// property resolution.
+    Property(PropertyId),
+    /// Pipeline-derived visual output that is not an authored dependency
+    /// property.
+    VisualOutput(VisualOutput),
+}
+
+impl TimelineTarget {
+    /// Returns the expected value kind when this target knows it statically.
+    #[must_use]
+    pub(crate) const fn expected_value_kind(self) -> Option<PresentationValueKind> {
+        match self {
+            Self::Property(_) => None,
+            Self::VisualOutput(output) => Some(output.value_kind()),
+        }
+    }
+
+    /// Returns where this target is sampled when it is not a dependency
+    /// property.
+    #[must_use]
+    pub(crate) const fn visual_domain(self) -> Option<TimelineEvaluationDomain> {
+        match self {
+            Self::Property(_) => None,
+            Self::VisualOutput(output) => Some(output.evaluation_domain()),
+        }
+    }
+}
+
+/// Pipeline output animated by the timeline but not represented as a property.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum VisualOutput {
     /// Layer-local offset sampled by composition while layout keeps the
     /// resolved target geometry.
     LayerOffset,
 }
 
-impl PresentationProperty {
-    /// Returns static metadata for this presentation property.
-    #[must_use]
-    pub(crate) const fn metadata(self) -> PresentationPropertyMetadata {
+impl VisualOutput {
+    const fn value_kind(self) -> PresentationValueKind {
         match self {
-            Self::BackgroundColor => PresentationPropertyMetadata {
-                value_kind: PresentationValueKind::Color,
-                evaluation_domain: AnimationEvaluationDomain::Paint,
-                affects: PAINT.into_set(),
-            },
-            Self::LayerOpacity => PresentationPropertyMetadata {
-                value_kind: PresentationValueKind::Scalar,
-                evaluation_domain: AnimationEvaluationDomain::Composition,
-                affects: COMPOSE.into_set(),
-            },
-            Self::LayerOffset => PresentationPropertyMetadata {
-                value_kind: PresentationValueKind::Offset2d,
-                evaluation_domain: AnimationEvaluationDomain::Composition,
-                affects: COMPOSE.into_set(),
-            },
+            Self::LayerOffset => PresentationValueKind::Offset2d,
+        }
+    }
+
+    const fn evaluation_domain(self) -> TimelineEvaluationDomain {
+        match self {
+            Self::LayerOffset => TimelineEvaluationDomain::Composition,
         }
     }
 }
 
-/// Storage/interpolation kind for a presentation property.
+/// Storage/interpolation kind for a timeline target.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PresentationValueKind {
     /// A single `f32` value.
-    Scalar,
+    Scalar32,
+    /// A single `f64` value.
+    Scalar64,
     /// A straight-alpha sRGB color.
     Color,
     /// A two-dimensional logical offset.
     Offset2d,
 }
 
-/// Frame-pipeline domain that samples the presentation value.
+/// Frame-pipeline domain that samples the timeline value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AnimationEvaluationDomain {
+pub(crate) enum TimelineEvaluationDomain {
     /// Sampled during layout. Avoid unless animated layout is intentional.
     Layout,
-    /// Sampled during paint/presentation recording.
-    Paint,
     /// Sampled during layer composition.
     Composition,
 }
 
-/// Static metadata for a presentation property.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PresentationPropertyMetadata {
-    value_kind: PresentationValueKind,
-    evaluation_domain: AnimationEvaluationDomain,
-    affects: ChannelSet,
-}
-
-impl PresentationPropertyMetadata {
-    /// Returns the value kind this property stores.
-    #[must_use]
-    pub(crate) const fn value_kind(self) -> PresentationValueKind {
-        self.value_kind
-    }
-
-    /// Returns where this property is sampled in the frame pipeline.
-    #[must_use]
-    pub(crate) const fn evaluation_domain(self) -> AnimationEvaluationDomain {
-        self.evaluation_domain
-    }
-
-    /// Returns the earliest invalidation channels this property affects.
-    #[must_use]
-    pub(crate) const fn affects(self) -> ChannelSet {
-        self.affects
-    }
-}
-
-/// Typed target or sampled value carried by a presentation track.
+/// Typed target or sampled value carried by a timeline track.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PresentationValue {
     /// A scalar value.
-    Scalar(f32),
+    Scalar32(f32),
+    /// A scalar value.
+    Scalar64(f64),
     /// A straight-alpha sRGB color.
     Color(Color),
     /// A two-dimensional logical offset.
@@ -153,21 +142,48 @@ pub(crate) trait AnimatableValue: Copy + PartialEq {
 }
 
 impl AnimatableValue for f32 {
-    const KIND: PresentationValueKind = PresentationValueKind::Scalar;
+    const KIND: PresentationValueKind = PresentationValueKind::Scalar32;
 
     fn into_value(self) -> PresentationValue {
-        PresentationValue::Scalar(self)
+        PresentationValue::Scalar32(self)
     }
 
     fn from_value(value: PresentationValue) -> Option<Self> {
         match value {
-            PresentationValue::Scalar(value) => Some(value),
-            PresentationValue::Color(_) | PresentationValue::Offset2d(_) => None,
+            PresentationValue::Scalar32(value) => Some(value),
+            PresentationValue::Scalar64(_)
+            | PresentationValue::Color(_)
+            | PresentationValue::Offset2d(_) => None,
         }
     }
 
     fn lerp(self, to: Self, t: f32) -> Self {
         self + ((to - self) * t)
+    }
+
+    fn same(self, other: Self) -> bool {
+        (self - other).abs() <= Self::EPSILON
+    }
+}
+
+impl AnimatableValue for f64 {
+    const KIND: PresentationValueKind = PresentationValueKind::Scalar64;
+
+    fn into_value(self) -> PresentationValue {
+        PresentationValue::Scalar64(self)
+    }
+
+    fn from_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Scalar64(value) => Some(value),
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Color(_)
+            | PresentationValue::Offset2d(_) => None,
+        }
+    }
+
+    fn lerp(self, to: Self, t: f32) -> Self {
+        self + ((to - self) * Self::from(t))
     }
 
     fn same(self, other: Self) -> bool {
@@ -185,7 +201,9 @@ impl AnimatableValue for Color {
     fn from_value(value: PresentationValue) -> Option<Self> {
         match value {
             PresentationValue::Color(value) => Some(value),
-            PresentationValue::Scalar(_) | PresentationValue::Offset2d(_) => None,
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Scalar64(_)
+            | PresentationValue::Offset2d(_) => None,
         }
     }
 
@@ -211,7 +229,9 @@ impl AnimatableValue for Vec2 {
     fn from_value(value: PresentationValue) -> Option<Self> {
         match value {
             PresentationValue::Offset2d(value) => Some(value),
-            PresentationValue::Scalar(_) | PresentationValue::Color(_) => None,
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Scalar64(_)
+            | PresentationValue::Color(_) => None,
         }
     }
 
@@ -265,7 +285,7 @@ impl Easing {
     }
 }
 
-/// Transition policy for an implicit scalar presentation track.
+/// Transition policy for an implicit scalar timeline track.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TransitionSpec {
     duration: TimerDuration,
@@ -283,7 +303,7 @@ impl TransitionSpec {
     }
 }
 
-/// Policy for deciding whether a target change creates a presentation track.
+/// Policy for deciding whether a target change creates a timeline track.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TransitionPolicy {
     trigger: TransitionTrigger,
@@ -305,18 +325,18 @@ impl TransitionPolicy {
     }
 }
 
-/// Key for one implicit presentation track.
+/// Key for one implicit timeline track.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct PresentationTrackKey {
+pub(crate) struct TimelineTrackKey {
     element: ElementId,
-    property: PresentationProperty,
+    target: TimelineTarget,
 }
 
-impl PresentationTrackKey {
-    /// Creates a presentation track key.
+impl TimelineTrackKey {
+    /// Creates a timeline track key.
     #[must_use]
-    pub(crate) const fn new(element: ElementId, property: PresentationProperty) -> Self {
-        Self { element, property }
+    pub(crate) const fn new(element: ElementId, target: TimelineTarget) -> Self {
+        Self { element, target }
     }
 
     /// Returns the element this track targets.
@@ -325,17 +345,46 @@ impl PresentationTrackKey {
         self.element
     }
 
-    /// Returns the presentation property this track targets.
+    /// Returns the timeline target this track targets.
     #[must_use]
-    pub(crate) const fn property(self) -> PresentationProperty {
-        self.property
+    pub(crate) const fn target(self) -> TimelineTarget {
+        self.target
     }
 }
 
-/// Active clip carried by one presentation track.
+/// Sample emitted while advancing a timeline track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TimelineSample {
+    key: TimelineTrackKey,
+    value: PresentationValue,
+    complete: bool,
+}
+
+impl TimelineSample {
+    /// Returns the track key this sample targets.
+    #[must_use]
+    pub(crate) const fn key(self) -> TimelineTrackKey {
+        self.key
+    }
+
+    /// Returns the sampled value.
+    #[must_use]
+    pub(crate) const fn value(self) -> PresentationValue {
+        self.value
+    }
+
+    /// Returns whether this is the final sample for the track.
+    #[must_use]
+    pub(crate) const fn is_complete(self) -> bool {
+        self.complete
+    }
+}
+
+/// Active clip carried by one timeline track.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum MotionClip {
-    Scalar(ValueTransition<f32>),
+    Scalar32(ValueTransition<f32>),
+    Scalar64(ValueTransition<f64>),
     Color(ValueTransition<Color>),
     Offset(ValueTransition<Vec2>),
 }
@@ -348,8 +397,11 @@ impl MotionClip {
         spec: TransitionSpec,
     ) -> Self {
         match (from, to) {
-            (PresentationValue::Scalar(from), PresentationValue::Scalar(to)) => {
-                Self::Scalar(ValueTransition::new(from, to, started_at, spec))
+            (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
+                Self::Scalar32(ValueTransition::new(from, to, started_at, spec))
+            }
+            (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
+                Self::Scalar64(ValueTransition::new(from, to, started_at, spec))
             }
             (PresentationValue::Color(from), PresentationValue::Color(to)) => {
                 Self::Color(ValueTransition::new(from, to, started_at, spec))
@@ -357,13 +409,14 @@ impl MotionClip {
             (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
                 Self::Offset(ValueTransition::new(from, to, started_at, spec))
             }
-            _ => unreachable!("presentation target kinds should match property metadata"),
+            _ => unreachable!("timeline target kinds should match property metadata"),
         }
     }
 
     fn sample(self, now: TimerInstant) -> PresentationValue {
         match self {
-            Self::Scalar(transition) => transition.sample(now).into_value(),
+            Self::Scalar32(transition) => transition.sample(now).into_value(),
+            Self::Scalar64(transition) => transition.sample(now).into_value(),
             Self::Color(transition) => transition.sample(now).into_value(),
             Self::Offset(transition) => transition.sample(now).into_value(),
         }
@@ -371,7 +424,8 @@ impl MotionClip {
 
     fn is_complete(self, now: TimerInstant) -> bool {
         match self {
-            Self::Scalar(transition) => transition.is_complete(now),
+            Self::Scalar32(transition) => transition.is_complete(now),
+            Self::Scalar64(transition) => transition.is_complete(now),
             Self::Color(transition) => transition.is_complete(now),
             Self::Offset(transition) => transition.is_complete(now),
         }
@@ -379,7 +433,8 @@ impl MotionClip {
 
     fn end_time(self) -> TimerInstant {
         match self {
-            Self::Scalar(transition) => transition.end_time(),
+            Self::Scalar32(transition) => transition.end_time(),
+            Self::Scalar64(transition) => transition.end_time(),
             Self::Color(transition) => transition.end_time(),
             Self::Offset(transition) => transition.end_time(),
         }
@@ -444,25 +499,25 @@ fn transition_progress(
     }
 }
 
-/// Active implicit presentation track.
+/// Active implicit timeline track.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct PresentationTrack {
+struct TimelineTrack {
     clip: MotionClip,
 }
 
-/// Internal animation runtime for sampled presentation values.
+/// Internal runtime for sampled timeline values.
 ///
 /// This is the degenerate form of a future global timeline: each active entry
-/// is an anonymous presentation track keyed by element/property. Retargeting
+/// is an anonymous timeline track keyed by element and target. Retargeting
 /// starts from the current sampled value, not the previous target value.
 #[derive(Debug, Default)]
-pub(crate) struct AnimationRuntime {
-    targets: HashMap<PresentationTrackKey, PresentationValue>,
-    tracks: HashMap<PresentationTrackKey, PresentationTrack>,
-    pending: HashMap<PresentationTrackKey, TransitionPolicy>,
+pub(crate) struct TimelineRuntime {
+    targets: HashMap<TimelineTrackKey, PresentationValue>,
+    tracks: HashMap<TimelineTrackKey, TimelineTrack>,
+    pending: HashMap<TimelineTrackKey, TransitionPolicy>,
 }
 
-impl AnimationRuntime {
+impl TimelineRuntime {
     /// Creates an empty runtime.
     #[must_use]
     pub(crate) fn new() -> Self {
@@ -471,39 +526,36 @@ impl AnimationRuntime {
 
     /// Requests that the next target change for `key` animate when it is caused
     /// by interaction.
-    pub(crate) fn request_transition(
-        &mut self,
-        key: PresentationTrackKey,
-        policy: TransitionPolicy,
-    ) {
+    pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, policy: TransitionPolicy) {
         self.pending.insert(key, policy);
     }
 
     /// Returns whether a transition spec is waiting for `key`'s next target.
     #[must_use]
-    pub(crate) fn has_pending_transition(&self, key: PresentationTrackKey) -> bool {
+    pub(crate) fn has_pending_transition(&self, key: TimelineTrackKey) -> bool {
         self.pending.contains_key(&key)
     }
 
     /// Records the resolved target value for `key`, planning or retargeting
-    /// its presentation track when policy allows.
+    /// its timeline track when policy allows.
     pub(crate) fn set_target<T: AnimatableValue>(
         &mut self,
-        key: PresentationTrackKey,
+        key: TimelineTrackKey,
         target: T,
         now: TimerInstant,
         cause: ChangeCause,
     ) -> bool {
         let target = target.into_value();
-        let metadata = key.property().metadata();
-        debug_assert_eq!(
-            metadata.value_kind(),
-            T::KIND,
-            "presentation target kind must match property metadata"
-        );
+        if let Some(kind) = key.target().expected_value_kind() {
+            debug_assert_eq!(
+                kind,
+                T::KIND,
+                "timeline target kind must match target metadata"
+            );
+        }
         debug_assert_ne!(
-            metadata.evaluation_domain(),
-            AnimationEvaluationDomain::Layout,
+            key.target().visual_domain(),
+            Some(TimelineEvaluationDomain::Layout),
             "layout-domain animation must not be sampled by the generic target setter"
         );
         let previous_target = self.targets.get(&key).copied();
@@ -535,18 +587,18 @@ impl AnimationRuntime {
 
         self.tracks.insert(
             key,
-            PresentationTrack {
+            TimelineTrack {
                 clip: MotionClip::new(from, target, now, spec),
             },
         );
         true
     }
 
-    /// Returns the sampled presentation value for `key`.
+    /// Returns the sampled timeline value for `key`.
     #[must_use]
     pub(crate) fn sample<T: AnimatableValue>(
         &self,
-        key: PresentationTrackKey,
+        key: TimelineTrackKey,
         target: T,
         now: TimerInstant,
     ) -> T {
@@ -554,17 +606,11 @@ impl AnimationRuntime {
         T::from_value(value).unwrap_or(target)
     }
 
-    /// Returns the last recorded typed target for `key`.
+    /// Returns the sampled timeline value for `key`.
     #[must_use]
-    pub(crate) fn stored_target<T: AnimatableValue>(&self, key: PresentationTrackKey) -> Option<T> {
-        self.targets.get(&key).copied().and_then(T::from_value)
-    }
-
-    /// Returns the sampled presentation value for `key`.
-    #[must_use]
-    fn sample_value(
+    pub(crate) fn sample_value(
         &self,
-        key: PresentationTrackKey,
+        key: TimelineTrackKey,
         target: PresentationValue,
         now: TimerInstant,
     ) -> PresentationValue {
@@ -573,15 +619,36 @@ impl AnimationRuntime {
             .map_or(target, |track| track.clip.sample(now))
     }
 
+    /// Returns the sampled value for an active track, if one exists.
+    #[must_use]
+    pub(crate) fn active_sample_value(
+        &self,
+        key: TimelineTrackKey,
+        now: TimerInstant,
+    ) -> Option<PresentationValue> {
+        self.tracks.get(&key).map(|track| track.clip.sample(now))
+    }
+
     /// Advances active tracks, removing completed clips and returning affected
-    /// elements/channels that should be invalidated for this sample.
-    pub(crate) fn advance(&mut self, now: TimerInstant) -> Vec<(ElementId, ChannelSet)> {
-        let mut affected = Vec::new();
-        self.tracks.retain(|key, track| {
-            affected.push((key.element(), key.property().metadata().affects()));
-            !track.clip.is_complete(now)
-        });
-        affected
+    /// samples that should be applied to their targets.
+    pub(crate) fn advance(&mut self, now: TimerInstant) -> Vec<TimelineSample> {
+        let mut samples = Vec::new();
+        let mut completed = Vec::new();
+        for (&key, track) in &self.tracks {
+            let complete = track.clip.is_complete(now);
+            samples.push(TimelineSample {
+                key,
+                value: track.clip.sample(now),
+                complete,
+            });
+            if complete {
+                completed.push(key);
+            }
+        }
+        for key in completed {
+            self.tracks.remove(&key);
+        }
+        samples
     }
 
     /// Returns the next deadline a host should wake for active presentation
@@ -607,17 +674,18 @@ impl AnimationRuntime {
         self.pending.retain(|key, _| key.element() != element);
     }
 
-    /// Returns whether `key` currently has an active presentation track.
+    /// Returns whether `key` currently has an active timeline track.
     #[cfg(test)]
     #[must_use]
-    pub(crate) fn has_active_track(&self, key: PresentationTrackKey) -> bool {
+    pub(crate) fn has_active_track(&self, key: TimelineTrackKey) -> bool {
         self.tracks.contains_key(&key)
     }
 }
 
 fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
     match (a, b) {
-        (PresentationValue::Scalar(a), PresentationValue::Scalar(b)) => a.same(b),
+        (PresentationValue::Scalar32(a), PresentationValue::Scalar32(b)) => a.same(b),
+        (PresentationValue::Scalar64(a), PresentationValue::Scalar64(b)) => a.same(b),
         (PresentationValue::Color(a), PresentationValue::Color(b)) => a.same(b),
         (PresentationValue::Offset2d(a), PresentationValue::Offset2d(b)) => a.same(b),
         _ => false,
@@ -627,62 +695,71 @@ fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channels::{COMPOSE, PAINT};
 
     const SPEC: TransitionSpec = TransitionSpec::linear(100);
     const POLICY: TransitionPolicy = TransitionPolicy::interaction(SPEC);
+    const SCALAR_PROPERTY: PropertyId = PropertyId::new(1);
+    const COLOR_PROPERTY: PropertyId = PropertyId::new(2);
 
-    fn scalar_key() -> PresentationTrackKey {
-        PresentationTrackKey::new(ElementId::new(7, 0), PresentationProperty::LayerOpacity)
+    fn scalar_key() -> TimelineTrackKey {
+        TimelineTrackKey::new(
+            ElementId::new(7, 0),
+            TimelineTarget::Property(SCALAR_PROPERTY),
+        )
     }
 
-    fn color_key() -> PresentationTrackKey {
-        PresentationTrackKey::new(ElementId::new(7, 0), PresentationProperty::BackgroundColor)
+    fn color_key() -> TimelineTrackKey {
+        TimelineTrackKey::new(
+            ElementId::new(7, 0),
+            TimelineTarget::Property(COLOR_PROPERTY),
+        )
     }
 
-    fn offset_key() -> PresentationTrackKey {
-        PresentationTrackKey::new(ElementId::new(7, 0), PresentationProperty::LayerOffset)
+    fn offset_key() -> TimelineTrackKey {
+        TimelineTrackKey::new(
+            ElementId::new(7, 0),
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+        )
     }
 
     #[test]
     fn scalar_transition_samples_linearly() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 10.0, 10, ChangeCause::Interaction);
+        runtime.set_target(key, 10.0_f32, 10, ChangeCause::Interaction);
 
-        assert_eq!(runtime.sample(key, 10.0, 10), 0.0);
-        assert_eq!(runtime.sample(key, 10.0, 60), 5.0);
-        assert_eq!(runtime.sample(key, 10.0, 110), 10.0);
+        assert_eq!(runtime.sample(key, 10.0_f32, 10), 0.0);
+        assert_eq!(runtime.sample(key, 10.0_f32, 60), 5.0);
+        assert_eq!(runtime.sample(key, 10.0_f32, 110), 10.0);
     }
 
     #[test]
     fn scalar_transition_retargets_from_sampled_value() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 10.0, 0, ChangeCause::Interaction);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 2.0, 50, ChangeCause::Interaction);
+        runtime.set_target(key, 2.0_f32, 50, ChangeCause::Interaction);
 
-        assert_eq!(runtime.sample(key, 2.0, 50), 5.0);
-        assert_eq!(runtime.sample(key, 2.0, 100), 3.5);
-        assert_eq!(runtime.sample(key, 2.0, 150), 2.0);
+        assert_eq!(runtime.sample(key, 2.0_f32, 50), 5.0);
+        assert_eq!(runtime.sample(key, 2.0_f32, 100), 3.5);
+        assert_eq!(runtime.sample(key, 2.0_f32, 150), 2.0);
     }
 
     #[test]
-    fn color_transition_samples_paint_domain() {
+    fn color_transition_samples_linearly() {
         let key = color_key();
-        let mut runtime = AnimationRuntime::new();
+        let mut runtime = TimelineRuntime::new();
         let from = Color::from_rgba8(0x00, 0x00, 0x00, 0xff);
         let to = Color::from_rgba8(0xff, 0xff, 0xff, 0xff);
         runtime.set_target(key, from, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
         runtime.set_target(key, to, 0, ChangeCause::Interaction);
 
-        assert_eq!(key.property().metadata().affects(), PAINT.into_set());
         assert_eq!(
             runtime.sample(key, to, 50),
             Color::new([0.5, 0.5, 0.5, 1.0])
@@ -692,7 +769,7 @@ mod tests {
     #[test]
     fn offset_transition_samples_both_axes() {
         let key = offset_key();
-        let mut runtime = AnimationRuntime::new();
+        let mut runtime = TimelineRuntime::new();
         let from = Vec2::new(2.0, 4.0);
         let to = Vec2::new(12.0, 24.0);
         runtime.set_target(key, from, 0, ChangeCause::Other);
@@ -705,23 +782,26 @@ mod tests {
     #[test]
     fn completed_transition_is_removed_by_advance() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 10.0, 0, ChangeCause::Interaction);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         assert!(runtime.has_active_track(key));
-        let affected = runtime.advance(100);
+        let samples = runtime.advance(100);
 
-        assert_eq!(affected, alloc::vec![(key.element(), COMPOSE.into_set())]);
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].key(), key);
+        assert_eq!(samples[0].value(), PresentationValue::Scalar32(10.0));
+        assert!(samples[0].is_complete());
         assert!(!runtime.has_active_track(key));
-        assert_eq!(runtime.sample(key, 10.0, 150), 10.0);
+        assert_eq!(runtime.sample(key, 10.0_f32, 150), 10.0);
     }
 
     #[test]
     fn idle_sample_uses_supplied_target_instead_of_stored_target() {
         let key = color_key();
-        let mut runtime = AnimationRuntime::new();
+        let mut runtime = TimelineRuntime::new();
         let old = Color::from_rgba8(0x00, 0x00, 0x00, 0xff);
         let new = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
 
@@ -733,23 +813,23 @@ mod tests {
     #[test]
     fn other_changes_snap_to_target() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 10.0, 0, ChangeCause::Other);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Other);
 
         assert!(!runtime.has_active_track(key));
-        assert_eq!(runtime.sample(key, 10.0, 50), 10.0);
+        assert_eq!(runtime.sample(key, 10.0_f32, 50), 10.0);
     }
 
     #[test]
     fn next_deadline_tracks_frame_and_completion() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
+        let mut runtime = TimelineRuntime::new();
         let long_spec = TransitionSpec::linear(PRESENTATION_FRAME_INTERVAL * 4);
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, TransitionPolicy::interaction(long_spec));
-        runtime.set_target(key, 10.0, 0, ChangeCause::Interaction);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         assert_eq!(runtime.next_deadline(0), Some(PRESENTATION_FRAME_INTERVAL));
         assert_eq!(
@@ -761,15 +841,15 @@ mod tests {
     #[test]
     fn remove_element_drops_tracks_targets_and_pending_specs() {
         let key = scalar_key();
-        let mut runtime = AnimationRuntime::new();
-        runtime.set_target(key, 0.0, 0, ChangeCause::Other);
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, POLICY);
-        runtime.set_target(key, 10.0, 0, ChangeCause::Interaction);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         runtime.remove_element(key.element());
 
         assert!(!runtime.has_active_track(key));
         assert_eq!(runtime.next_deadline(0), None);
-        assert_eq!(runtime.sample(key, 25.0, 50), 25.0);
+        assert_eq!(runtime.sample(key, 25.0_f32, 50), 25.0);
     }
 }

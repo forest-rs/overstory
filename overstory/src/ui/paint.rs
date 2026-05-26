@@ -208,8 +208,6 @@ impl Ui {
             cascade: self.style.cascade(),
             match_state,
             lookup: UiResolveLookup::new(self),
-            animations: &self.animations,
-            now: self.now(),
         };
         if let Some(widget) = element.widget() {
             widget.present(element, &ctx, presentation, node);

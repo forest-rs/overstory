@@ -12,21 +12,20 @@ use peniko::{Brush, Color};
 use understory_box_tree::NodeFlags;
 use understory_event_state::hover::HoverEvent;
 
-use crate::animation_runtime::{
-    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
-};
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
+use crate::timeline_runtime::{
+    ChangeCause, TimelineTarget, TimelineTrackKey, TransitionPolicy, TransitionSpec,
+};
 
 use super::{ControlState, Ui};
 
 const INTERACTION_BACKGROUND_TRANSITION: TransitionSpec = TransitionSpec::linear(90_000_000);
 const INTERACTION_OPACITY_TRANSITION: TransitionSpec = TransitionSpec::linear(70_000_000);
-const PRESSED_OPACITY: f32 = 0.92;
 
 impl Ui {
     /// Adds `class` to `id` and re-styles the affected subtree.
@@ -98,13 +97,8 @@ impl Ui {
     }
 
     fn pressed_opacity_target(&self, id: ElementId) -> Option<f32> {
-        self.get(id).map(|element| {
-            if element.pseudos().contains(&PSEUDO_PRESSED) {
-                PRESSED_OPACITY
-            } else {
-                1.0
-            }
-        })
+        let element = self.get(id)?;
+        Some(self.effective_value_for(element, self.properties.opacity))
     }
 
     fn sync_interaction_visual_transition(
@@ -114,50 +108,43 @@ impl Ui {
         background_before: Option<Color>,
         pressed_before: Option<f32>,
     ) {
-        if let Some(before) = background_before {
-            self.set_presentation_target(
-                id,
-                PresentationProperty::BackgroundColor,
-                before,
-                ChangeCause::Other,
-            );
+        let background_target = TimelineTarget::Property(self.properties.background.id());
+        let opacity_target = TimelineTarget::Property(self.properties.opacity.id());
+        if interaction_pseudo_animates_background(pseudo) {
+            self.clear_timeline_property_sample(TimelineTrackKey::new(id, background_target));
         }
-        if interaction_pseudo_animates_background(pseudo)
-            && let Some(after) = self.solid_background_color(id)
-        {
+        if pseudo == PSEUDO_PRESSED {
+            self.clear_timeline_property_sample(TimelineTrackKey::new(id, opacity_target));
+        }
+        let background_after = interaction_pseudo_animates_background(pseudo)
+            .then(|| self.solid_background_color(id))
+            .flatten();
+        let pressed_after = (pseudo == PSEUDO_PRESSED)
+            .then(|| self.pressed_opacity_target(id))
+            .flatten();
+
+        if let Some(before) = background_before {
+            self.set_presentation_target(id, background_target, before, ChangeCause::Other);
+        }
+        if let Some(after) = background_after {
             self.request_presentation_transition(
                 id,
-                PresentationProperty::BackgroundColor,
+                background_target,
                 TransitionPolicy::interaction(INTERACTION_BACKGROUND_TRANSITION),
             );
-            self.set_presentation_target(
-                id,
-                PresentationProperty::BackgroundColor,
-                after,
-                ChangeCause::Interaction,
-            );
+            self.set_presentation_target(id, background_target, after, ChangeCause::Interaction);
         }
         if pseudo == PSEUDO_PRESSED
             && let Some(before) = pressed_before
-            && let Some(after) = self.pressed_opacity_target(id)
+            && let Some(after) = pressed_after
         {
-            self.set_presentation_target(
-                id,
-                PresentationProperty::LayerOpacity,
-                before,
-                ChangeCause::Other,
-            );
+            self.set_presentation_target(id, opacity_target, before, ChangeCause::Other);
             self.request_presentation_transition(
                 id,
-                PresentationProperty::LayerOpacity,
+                opacity_target,
                 TransitionPolicy::interaction(INTERACTION_OPACITY_TRANSITION),
             );
-            self.set_presentation_target(
-                id,
-                PresentationProperty::LayerOpacity,
-                after,
-                ChangeCause::Interaction,
-            );
+            self.set_presentation_target(id, opacity_target, after, ChangeCause::Interaction);
         }
     }
 

@@ -23,13 +23,13 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::animation_runtime::{
-    ChangeCause, PresentationProperty, TransitionPolicy, TransitionSpec,
-};
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
+use crate::timeline_runtime::{
+    ChangeCause, TimelineTarget, TransitionPolicy, TransitionSpec, VisualOutput,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -224,7 +224,7 @@ pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
     if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
         ui.request_presentation_transition(
             thumb,
-            PresentationProperty::LayerOffset,
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
             TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
@@ -240,7 +240,7 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
         thumb_bounds.x0 - toggle_bounds.x0,
         thumb_bounds.y0 - toggle_bounds.y0,
     );
-    let property = PresentationProperty::LayerOffset;
+    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
     let cause = if ui.has_pending_presentation_transition(thumb, property) {
         ChangeCause::Interaction
     } else {

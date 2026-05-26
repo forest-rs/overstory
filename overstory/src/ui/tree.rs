@@ -185,7 +185,7 @@ impl Ui {
         self.bindings.clear_owner(id);
         self.templates.remove_element(id);
         self.events.remove_target(id);
-        self.animations.remove_element(id);
+        self.timeline.remove_element(id);
         self.timers.remove_target(id);
         self.focus.remove_target(id);
         self.layout.remove_element(id);

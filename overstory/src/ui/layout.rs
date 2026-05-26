@@ -8,11 +8,11 @@ use alloc::vec::Vec;
 use kurbo::{Point, Rect, RoundedRect, Size, Vec2};
 use understory_box_tree::NodeId;
 
-use crate::animation_runtime::PresentationProperty;
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::LAYOUT;
 use crate::element::ElementId;
 use crate::layouts::Layout;
+use crate::timeline_runtime::{TimelineTarget, VisualOutput};
 
 use super::Ui;
 
@@ -286,7 +286,7 @@ impl Ui {
                 0.0,
             )
         });
-        // Composition can use a sampled presentation value while layout and hit
+        // Composition can use a sampled timeline value while layout and hit
         // testing keep the resolved target geometry.
         let composition_offset = self.presented_composition_offset(id, local_offset);
         self.composition.set_geometry(
@@ -317,6 +317,10 @@ impl Ui {
     }
 
     fn presented_composition_offset(&self, id: ElementId, local_offset: Vec2) -> Vec2 {
-        self.presented_value(id, PresentationProperty::LayerOffset, local_offset)
+        self.presented_value(
+            id,
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            local_offset,
+        )
     }
 }

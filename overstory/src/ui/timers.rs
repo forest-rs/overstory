@@ -30,7 +30,7 @@ impl Ui {
     /// the pointer state's timestamp), and [`Self::dispatch_key`].
     pub fn set_now(&mut self, now: TimerInstant) {
         self.timers.set_now(now);
-        self.advance_animations(now);
+        self.advance_timeline(now);
     }
 
     /// Schedules a one-shot timer targeted at `target`. Returns the

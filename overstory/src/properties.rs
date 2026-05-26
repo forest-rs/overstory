@@ -22,7 +22,7 @@ use peniko::Brush;
 use understory_presentation::TextWrapMode;
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
-use crate::channels::{LAYOUT, PAINT};
+use crate::channels::{COMPOSE, LAYOUT, PAINT};
 use crate::layouts::Layout;
 
 /// Handles to the dependency properties Overstory registers in every
@@ -74,6 +74,9 @@ pub struct BuiltInProperties {
     /// border isn't drawn when either the brush is `None` or the
     /// width is zero.
     pub border_width: Property<f64>,
+
+    /// Layer opacity sampled by composition. Default `1.0`.
+    pub opacity: Property<f32>,
 
     /// Boolean toggled state for two-state controls (`ToggleSwitch`,
     /// `CheckBox`, …). Default `false`. Writers should pair the value
@@ -191,6 +194,12 @@ impl BuiltInProperties {
                 "BorderWidth",
                 PropertyMetadataBuilder::new(0.0_f64)
                     .affects_channels(PAINT.into_set())
+                    .build(),
+            ),
+            opacity: registry.register(
+                "Opacity",
+                PropertyMetadataBuilder::new(1.0_f32)
+                    .affects_channels(COMPOSE.into_set())
                     .build(),
             ),
             is_checked: registry.register(
