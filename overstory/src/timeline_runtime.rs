@@ -464,6 +464,14 @@ impl TimelineRuntime {
         self.pending.contains_key(&key)
     }
 
+    /// Removes the target, active track, and pending transition for `key`.
+    pub(crate) fn clear_target(&mut self, key: TimelineTrackKey) -> bool {
+        let had_target = self.targets.remove(&key).is_some();
+        let had_track = self.tracks.remove(&key).is_some();
+        let had_pending = self.pending.remove(&key).is_some();
+        had_target || had_track || had_pending
+    }
+
     /// Records the resolved target value for `key`, planning or retargeting
     /// its timeline track when policy allows.
     pub(crate) fn set_target<T: AnimatableValue>(
@@ -769,6 +777,22 @@ mod tests {
 
         assert!(!runtime.has_active_track(key));
         assert_eq!(runtime.sample(key, 10.0_f32, 50), 10.0);
+    }
+
+    #[test]
+    fn clear_target_drops_target_track_and_pending_transition() {
+        let key = scalar_key();
+        let mut runtime = TimelineRuntime::new();
+        runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
+        runtime.request_transition(key, SPEC);
+        runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
+
+        assert!(runtime.has_active_track(key));
+        assert!(runtime.clear_target(key));
+        assert!(!runtime.has_active_track(key));
+        assert!(!runtime.has_pending_transition(key));
+        assert_eq!(runtime.sample(key, 2.0_f32, 50), 2.0);
+        assert!(!runtime.clear_target(key));
     }
 
     #[test]

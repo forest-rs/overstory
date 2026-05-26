@@ -64,7 +64,10 @@ mod style;
 mod timeline;
 mod timers;
 mod tooltips;
+mod transition_planner;
 mod tree;
+
+use transition_planner::MotionPolicy;
 
 #[cfg(test)]
 mod tests;
@@ -105,6 +108,8 @@ pub struct Ui {
     focus: FocusRuntime,
     /// Internal presentation timeline tracks sampled from host time.
     timeline: TimelineRuntime,
+    /// Internal policy for planning presentation transitions from state changes.
+    motion_policy: MotionPolicy,
     /// Property adapters that can receive timeline samples.
     timeline_properties: TimelinePropertyRegistry,
     /// Retained timer queue and per-element timer handlers.
@@ -273,6 +278,7 @@ impl Ui {
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timeline: TimelineRuntime::new(),
+            motion_policy: MotionPolicy::new(),
             timeline_properties,
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),

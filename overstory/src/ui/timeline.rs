@@ -54,6 +54,15 @@ impl Ui {
             .has_pending_transition(TimelineTrackKey::new(element, target))
     }
 
+    pub(crate) fn clear_presentation_target(&mut self, element: ElementId, target: TimelineTarget) {
+        let key = TimelineTrackKey::new(element, target);
+        let had_runtime_state = self.timeline.clear_target(key);
+        self.clear_timeline_property_sample(key);
+        if had_runtime_state {
+            self.mark_timeline_target_channels(element, target);
+        }
+    }
+
     pub(crate) fn set_presentation_target<T: AnimatableValue>(
         &mut self,
         element: ElementId,
