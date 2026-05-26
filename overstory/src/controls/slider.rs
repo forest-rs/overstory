@@ -30,7 +30,7 @@ use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::motion::Easing;
+use crate::motion::TimingFunction;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::timeline_runtime::{
     ChangeCause, TimelineTarget, TransitionPolicy, TransitionSpec, VisualOutput,
@@ -83,7 +83,10 @@ const LABEL_CHAR_WIDTH: f32 = 6.0;
 const LABEL_MIN_WIDTH: f32 = 6.0;
 const DEFAULT_SMALL_CHANGE_FRACTION: f64 = 0.05;
 const DEFAULT_LARGE_CHANGE_FRACTION: f64 = 0.20;
-const THUMB_TRANSITION: TransitionSpec = TransitionSpec::eased(90_000_000, Easing::EaseOutCubic);
+const THUMB_TRANSITION: TransitionSpec = TransitionSpec::timed(
+    90_000_000,
+    TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0),
+);
 
 /// Builder + spec for a `Slider`.
 pub struct Slider {

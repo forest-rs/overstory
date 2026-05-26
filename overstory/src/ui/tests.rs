@@ -15,6 +15,7 @@ use crate::{
 use alloc::string::String;
 use imaging::record::Scene;
 use kurbo::{Point, Rect, Size, Vec2};
+use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
 use understory_property::{DependencyObject, DependencyObjectExt};
 use understory_style::{
@@ -22,7 +23,7 @@ use understory_style::{
     StyleOrigin,
 };
 
-use crate::motion::{Easing, Interpolate};
+use crate::motion::{Interpolate, TimingFunction};
 
 mod events;
 
@@ -800,7 +801,7 @@ fn toggle_thumb_transition_samples_composition_offset() {
 
     ui.set_now(60_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(layer_x(&ui, thumb), ease_out_cubic(start_x, target_x, 0.5));
+    assert_close(layer_x(&ui, thumb), thumb_timing(start_x, target_x, 0.5));
     assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(120_000_000);
@@ -824,7 +825,7 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
     ui.set_now(60_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
     let midpoint = layer_x(&ui, thumb);
-    assert_close(midpoint, ease_out_cubic(start_x, checked_target, 0.5));
+    assert_close(midpoint, thumb_timing(start_x, checked_target, 0.5));
 
     ui.synthesize_click(toggle, ui.effective_bounds(toggle).center());
     ui.compute_layout(Size::new(200.0, 80.0));
@@ -832,7 +833,7 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
 
     ui.set_now(120_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(layer_x(&ui, thumb), ease_out_cubic(midpoint, start_x, 0.5));
+    assert_close(layer_x(&ui, thumb), thumb_timing(midpoint, start_x, 0.5));
 
     ui.set_now(180_000_000);
     ui.compute_layout(Size::new(200.0, 80.0));
@@ -870,7 +871,7 @@ fn button_hover_transitions_background_color() {
     ui.paint(&mut scene);
     assert_eq!(
         element_background_color(&ui, button),
-        Some(idle.lerp_rect(hover, 0.5))
+        Some(interpolate_srgb_color(idle, hover, 0.5))
     );
 
     ui.set_now(90_000_000);
@@ -960,7 +961,7 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
 
     ui.set_now(45_000_000);
     ui.compute_layout(Size::new(300.0, 80.0));
-    assert_close(layer_x(&ui, thumb), ease_out_cubic(start_x, target_x, 0.5));
+    assert_close(layer_x(&ui, thumb), thumb_timing(start_x, target_x, 0.5));
     assert_close(layer_y(&ui, thumb), start_y);
 
     let drag_target = Point::new(target_x + 30.0, ui.effective_bounds(thumb).center().y);
@@ -1031,8 +1032,20 @@ fn assert_close(actual: f64, expected: f64) {
     );
 }
 
-fn ease_out_cubic(from: f64, to: f64, t: f32) -> f64 {
-    from.interpolate(to, Easing::EaseOutCubic.sample(t))
+fn thumb_timing(from: f64, to: f64, t: f32) -> f64 {
+    let timing = TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
+    from.interpolate(to, timing.sample(t))
+}
+
+fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {
+    DynamicColor::from_alpha_color(from)
+        .interpolate(
+            DynamicColor::from_alpha_color(to),
+            ColorSpaceTag::Srgb,
+            HueDirection::Shorter,
+        )
+        .eval(t)
+        .to_alpha_color::<Srgb>()
 }
 
 #[test]

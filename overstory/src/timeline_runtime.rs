@@ -30,7 +30,7 @@ use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
-use crate::motion::{Animatable, Easing, Transition};
+use crate::motion::{Animatable, ColorInterpolation, ColorTransition, TimingFunction, Transition};
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
@@ -158,7 +158,7 @@ pub(crate) enum PresentationValue {
 }
 
 /// Value type that can be stored in erased timeline sample storage.
-pub(crate) trait AnimatableValue: Animatable {
+pub(crate) trait AnimatableValue: Copy + PartialEq {
     /// Runtime storage kind for this value.
     const KIND: PresentationValueKind;
 
@@ -261,11 +261,12 @@ impl TransitionTrigger {
     }
 }
 
-/// Transition policy for an implicit scalar timeline track.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Transition policy for an implicit timeline track.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TransitionSpec {
     duration: TimerDuration,
-    easing: Easing,
+    timing: TimingFunction,
+    color_interpolation: ColorInterpolation,
 }
 
 impl TransitionSpec {
@@ -274,19 +275,34 @@ impl TransitionSpec {
     pub(crate) const fn linear(duration: TimerDuration) -> Self {
         Self {
             duration,
-            easing: Easing::Linear,
+            timing: TimingFunction::LINEAR,
+            color_interpolation: ColorInterpolation::SRGB,
         }
     }
 
-    /// Creates a transition over `duration` using `easing`.
+    /// Creates a transition over `duration` using `timing`.
     #[must_use]
-    pub(crate) const fn eased(duration: TimerDuration, easing: Easing) -> Self {
-        Self { duration, easing }
+    pub(crate) const fn timed(duration: TimerDuration, timing: TimingFunction) -> Self {
+        Self {
+            duration,
+            timing,
+            color_interpolation: ColorInterpolation::SRGB,
+        }
+    }
+
+    /// Sets the color interpolation policy for color-valued targets.
+    #[must_use]
+    pub(crate) const fn with_color_interpolation(
+        mut self,
+        interpolation: ColorInterpolation,
+    ) -> Self {
+        self.color_interpolation = interpolation;
+        self
     }
 }
 
 /// Policy for deciding whether a target change creates a timeline track.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TransitionPolicy {
     trigger: TransitionTrigger,
     spec: TransitionSpec,
@@ -367,7 +383,7 @@ impl TimelineSample {
 enum MotionClip {
     Scalar32(Transition<f32>),
     Scalar64(Transition<f64>),
-    Color(Transition<Color>),
+    Color(ColorTransition),
     Offset(Transition<Vec2>),
 }
 
@@ -380,16 +396,23 @@ impl MotionClip {
     ) -> Self {
         match (from, to) {
             (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => Self::Scalar32(
-                Transition::new(from, to, started_at, spec.duration, spec.easing),
+                Transition::new(from, to, started_at, spec.duration, spec.timing),
             ),
             (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => Self::Scalar64(
-                Transition::new(from, to, started_at, spec.duration, spec.easing),
+                Transition::new(from, to, started_at, spec.duration, spec.timing),
             ),
-            (PresentationValue::Color(from), PresentationValue::Color(to)) => Self::Color(
-                Transition::new(from, to, started_at, spec.duration, spec.easing),
-            ),
+            (PresentationValue::Color(from), PresentationValue::Color(to)) => {
+                Self::Color(ColorTransition::new(
+                    from,
+                    to,
+                    started_at,
+                    spec.duration,
+                    spec.timing,
+                    spec.color_interpolation,
+                ))
+            }
             (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => Self::Offset(
-                Transition::new(from, to, started_at, spec.duration, spec.easing),
+                Transition::new(from, to, started_at, spec.duration, spec.timing),
             ),
             _ => unreachable!("timeline target kinds should match property metadata"),
         }
@@ -657,10 +680,17 @@ fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
     match (a, b) {
         (PresentationValue::Scalar32(a), PresentationValue::Scalar32(b)) => a.is_close(b),
         (PresentationValue::Scalar64(a), PresentationValue::Scalar64(b)) => a.is_close(b),
-        (PresentationValue::Color(a), PresentationValue::Color(b)) => a.is_close(b),
+        (PresentationValue::Color(a), PresentationValue::Color(b)) => same_color(a, b),
         (PresentationValue::Offset2d(a), PresentationValue::Offset2d(b)) => a.is_close(b),
         _ => false,
     }
+}
+
+fn same_color(a: Color, b: Color) -> bool {
+    a.components
+        .into_iter()
+        .zip(b.components)
+        .all(|(a, b)| a.is_close(b))
 }
 
 fn min_deadline(a: Option<TimerInstant>, b: Option<TimerInstant>) -> Option<TimerInstant> {

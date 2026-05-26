@@ -14,6 +14,7 @@ use understory_event_state::hover::HoverEvent;
 
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
+use crate::motion::ColorInterpolation;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
@@ -24,7 +25,8 @@ use crate::timeline_runtime::{
 
 use super::{ControlState, Ui};
 
-const INTERACTION_BACKGROUND_TRANSITION: TransitionSpec = TransitionSpec::linear(90_000_000);
+const INTERACTION_BACKGROUND_TRANSITION: TransitionSpec =
+    TransitionSpec::linear(90_000_000).with_color_interpolation(ColorInterpolation::SRGB);
 const INTERACTION_OPACITY_TRANSITION: TransitionSpec = TransitionSpec::linear(70_000_000);
 
 impl Ui {
