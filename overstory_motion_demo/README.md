@@ -14,6 +14,7 @@ The demo shows:
 
 - OKLab background color interpolation;
 - layer opacity transitions;
+- layer-offset movement from one layout target to another;
 - border brush and border width transitions;
 - rapid retargeting where each new transition starts from the current sampled
   presentation value.
