@@ -53,7 +53,6 @@ use crate::timeline_properties::TimelinePropertyRegistry;
 use crate::timeline_runtime::TimelineRuntime;
 use crate::timer_runtime::TimerRuntime;
 
-mod animation;
 mod bindings;
 mod events;
 mod layout;
@@ -62,6 +61,7 @@ mod paint;
 mod popups;
 mod state;
 mod style;
+mod timeline;
 mod timers;
 mod tooltips;
 mod tree;
