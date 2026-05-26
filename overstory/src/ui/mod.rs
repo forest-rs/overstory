@@ -230,6 +230,7 @@ impl Ui {
         let properties = BuiltInProperties::register(&mut registry);
         let mut timeline_properties = TimelinePropertyRegistry::new();
         timeline_properties.register_solid_brush_color(properties.background);
+        timeline_properties.register_solid_brush_color(properties.border_brush);
         timeline_properties.register(properties.opacity);
         timeline_properties.register(properties.border_width);
         timeline_properties.register(properties.corner_radius);

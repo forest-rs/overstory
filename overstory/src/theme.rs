@@ -219,6 +219,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     };
     let toggle_idle = StyleBuilder::new()
         .set_resource(properties.background, TRACK_BG)
+        .set(properties.transitions, surface_transition_rules(properties))
         .set(properties.corner_radius, 16.0_f64)
         .set(properties.layout, toggle_layout(false))
         .build();
@@ -243,6 +244,12 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.layout, Layout::new().logical_size(24.0, 24.0))
         .build();
 
+    let slider_idle = StyleBuilder::new()
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .build();
     let slider_track_style = StyleBuilder::new()
         .set_resource(properties.background, TRACK_BG)
         .set(properties.corner_radius, 3.0_f64)
@@ -279,6 +286,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 
     let splitter_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BORDER)
+        .set(properties.transitions, surface_transition_rules(properties))
         .set(properties.corner_radius, 4.0_f64)
         .build();
     let splitter_hover = StyleBuilder::new()
@@ -374,6 +382,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
         .set(properties.font_size, 15.0_f64)
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 8.0_f64)
@@ -407,6 +419,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let list_box_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 8.0_f64)
         .build();
@@ -416,6 +432,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let list_item_idle = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            background_transition_rules(properties),
+        )
         .set(properties.font_size, 14.0_f64)
         .set(
             properties.layout,
@@ -493,6 +513,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::state(TYPE_TOGGLE, PSEUDO_FOCUS_VISIBLE),
             toggle_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_SLIDER),
+            slider_idle,
         )
         .push_rule(
             StyleOrigin::Base,
@@ -754,19 +779,64 @@ fn button_layout() -> Layout {
 }
 
 fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+    surface_transition_rules(properties).with_rule(TransitionRule::interaction(
+        TransitionTarget::property(properties.opacity.id()),
+        scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
+    ))
+}
+
+fn surface_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+    background_transition_rules(properties)
+        .with_rule(color_transition_rule(
+            TransitionTarget::property(properties.border_brush.id()),
+            DEFAULT_MOTION_NORMAL_DURATION,
+            MOTION_NORMAL_DURATION,
+        ))
+        .with_rule(border_width_transition_rule(properties))
+}
+
+fn border_affordance_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
     TransitionRules::new()
-        .with_rule(TransitionRule::interaction(
-            TransitionTarget::property(properties.background.id()),
-            TransitionSpec::linear(DEFAULT_MOTION_NORMAL_DURATION)
-                .with_duration_resource(MOTION_NORMAL_DURATION)
-                .with_color_interpolation(ColorInterpolation::SRGB)
-                .with_color_interpolation_resource(MOTION_COLOR_INTERPOLATION),
+        .with_rule(color_transition_rule(
+            TransitionTarget::property(properties.border_brush.id()),
+            DEFAULT_MOTION_NORMAL_DURATION,
+            MOTION_NORMAL_DURATION,
         ))
-        .with_rule(TransitionRule::interaction(
-            TransitionTarget::property(properties.opacity.id()),
-            TransitionSpec::linear(DEFAULT_MOTION_FAST_DURATION)
-                .with_duration_resource(MOTION_FAST_DURATION),
-        ))
+        .with_rule(border_width_transition_rule(properties))
+}
+
+fn background_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+    TransitionRules::single(color_transition_rule(
+        TransitionTarget::property(properties.background.id()),
+        DEFAULT_MOTION_NORMAL_DURATION,
+        MOTION_NORMAL_DURATION,
+    ))
+}
+
+fn border_width_transition_rule(properties: &BuiltInProperties) -> TransitionRule {
+    TransitionRule::interaction(
+        TransitionTarget::property(properties.border_width.id()),
+        scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
+    )
+}
+
+fn color_transition_rule(
+    target: TransitionTarget,
+    duration: TimerDuration,
+    duration_token: ResourceKey,
+) -> TransitionRule {
+    TransitionRule::interaction(target, color_transition_spec(duration, duration_token))
+}
+
+fn color_transition_spec(duration: TimerDuration, duration_token: ResourceKey) -> TransitionSpec {
+    TransitionSpec::linear(duration)
+        .with_duration_resource(duration_token)
+        .with_color_interpolation(ColorInterpolation::SRGB)
+        .with_color_interpolation_resource(MOTION_COLOR_INTERPOLATION)
+}
+
+fn scalar_transition_spec(duration: TimerDuration, duration_token: ResourceKey) -> TransitionSpec {
+    TransitionSpec::linear(duration).with_duration_resource(duration_token)
 }
 
 fn layer_offset_transition_rules(

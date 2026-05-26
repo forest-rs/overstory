@@ -11,6 +11,7 @@ use kurbo::Point;
 use peniko::{Brush, Color};
 use understory_box_tree::NodeFlags;
 use understory_event_state::hover::HoverEvent;
+use understory_property::Property;
 
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
@@ -18,7 +19,7 @@ use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
-use crate::timeline_runtime::{ChangeCause, TimelineTarget, TimelineTrackKey};
+use crate::timeline_runtime::{AnimatableValue, ChangeCause, TimelineTarget, TimelineTrackKey};
 
 use super::{ControlState, Ui};
 
@@ -48,6 +49,8 @@ impl Ui {
     /// Adds `pseudo` to `id` and re-styles the affected subtree.
     pub fn add_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
         let background_before = self.interaction_background_before(id, pseudo);
+        let border_brush_before = self.interaction_border_brush_before(id, pseudo);
+        let border_width_before = self.interaction_border_width_before(id, pseudo);
         let pressed_before = self.pressed_opacity_target(id);
         let changed = self
             .get_mut(id)
@@ -55,13 +58,22 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            self.sync_interaction_visual_transition(id, pseudo, background_before, pressed_before);
+            self.sync_interaction_visual_transition(
+                id,
+                pseudo,
+                background_before,
+                border_brush_before,
+                border_width_before,
+                pressed_before,
+            );
         }
     }
 
     /// Removes `pseudo` from `id` and re-styles the affected subtree.
     pub fn remove_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
         let background_before = self.interaction_background_before(id, pseudo);
+        let border_brush_before = self.interaction_border_brush_before(id, pseudo);
+        let border_width_before = self.interaction_border_width_before(id, pseudo);
         let pressed_before = self.pressed_opacity_target(id);
         let changed = self
             .get_mut(id)
@@ -69,7 +81,14 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            self.sync_interaction_visual_transition(id, pseudo, background_before, pressed_before);
+            self.sync_interaction_visual_transition(
+                id,
+                pseudo,
+                background_before,
+                border_brush_before,
+                border_width_before,
+                pressed_before,
+            );
         }
     }
 
@@ -79,16 +98,45 @@ impl Ui {
         pseudo: understory_style::PseudoClassId,
     ) -> Option<Color> {
         interaction_pseudo_animates_background(pseudo)
-            .then(|| self.solid_background_color(id))
+            .then(|| self.solid_optional_brush_color(id, self.properties.background))
             .flatten()
     }
 
-    fn solid_background_color(&self, id: ElementId) -> Option<Color> {
+    fn interaction_border_brush_before(
+        &self,
+        id: ElementId,
+        pseudo: understory_style::PseudoClassId,
+    ) -> Option<Color> {
+        interaction_pseudo_animates_border_brush(pseudo)
+            .then(|| self.solid_optional_brush_color(id, self.properties.border_brush))
+            .flatten()
+    }
+
+    fn interaction_border_width_before(
+        &self,
+        id: ElementId,
+        pseudo: understory_style::PseudoClassId,
+    ) -> Option<f64> {
+        interaction_pseudo_animates_border_width(pseudo)
+            .then(|| self.border_width_target(id))
+            .flatten()
+    }
+
+    fn solid_optional_brush_color(
+        &self,
+        id: ElementId,
+        property: Property<Option<Brush>>,
+    ) -> Option<Color> {
         let element = self.get(id)?;
-        match self.effective_value_for(element, self.properties.background) {
+        match self.effective_value_for(element, property) {
             Some(Brush::Solid(color)) => Some(color),
             _ => None,
         }
+    }
+
+    fn border_width_target(&self, id: ElementId) -> Option<f64> {
+        let element = self.get(id)?;
+        Some(self.effective_value_for(element, self.properties.border_width))
     }
 
     fn pressed_opacity_target(&self, id: ElementId) -> Option<f32> {
@@ -101,37 +149,70 @@ impl Ui {
         id: ElementId,
         pseudo: understory_style::PseudoClassId,
         background_before: Option<Color>,
+        border_brush_before: Option<Color>,
+        border_width_before: Option<f64>,
         pressed_before: Option<f32>,
     ) {
         let background_target = TimelineTarget::Property(self.properties.background.id());
+        let border_brush_target = TimelineTarget::Property(self.properties.border_brush.id());
+        let border_width_target = TimelineTarget::Property(self.properties.border_width.id());
         let opacity_target = TimelineTarget::Property(self.properties.opacity.id());
         if interaction_pseudo_animates_background(pseudo) {
             self.clear_timeline_property_sample(TimelineTrackKey::new(id, background_target));
+        }
+        if interaction_pseudo_animates_border_brush(pseudo) {
+            self.clear_timeline_property_sample(TimelineTrackKey::new(id, border_brush_target));
+        }
+        if interaction_pseudo_animates_border_width(pseudo) {
+            self.clear_timeline_property_sample(TimelineTrackKey::new(id, border_width_target));
         }
         if pseudo == PSEUDO_PRESSED {
             self.clear_timeline_property_sample(TimelineTrackKey::new(id, opacity_target));
         }
         let background_after = interaction_pseudo_animates_background(pseudo)
-            .then(|| self.solid_background_color(id))
+            .then(|| self.solid_optional_brush_color(id, self.properties.background))
+            .flatten();
+        let border_brush_after = interaction_pseudo_animates_border_brush(pseudo)
+            .then(|| self.solid_optional_brush_color(id, self.properties.border_brush))
+            .flatten();
+        let border_width_after = interaction_pseudo_animates_border_width(pseudo)
+            .then(|| self.border_width_target(id))
             .flatten();
         let pressed_after = (pseudo == PSEUDO_PRESSED)
             .then(|| self.pressed_opacity_target(id))
             .flatten();
 
-        if let Some(before) = background_before {
-            self.set_presentation_target(id, background_target, before, ChangeCause::Other);
+        self.sync_interaction_target(id, background_target, background_before, background_after);
+        self.sync_interaction_target(
+            id,
+            border_brush_target,
+            border_brush_before,
+            border_brush_after,
+        );
+        self.sync_interaction_target(
+            id,
+            border_width_target,
+            border_width_before,
+            border_width_after,
+        );
+        if pseudo == PSEUDO_PRESSED {
+            self.sync_interaction_target(id, opacity_target, pressed_before, pressed_after);
         }
-        if let Some(after) = background_after {
-            self.request_styled_presentation_transition(id, background_target);
-            self.set_presentation_target(id, background_target, after, ChangeCause::Interaction);
+    }
+
+    fn sync_interaction_target<T: AnimatableValue>(
+        &mut self,
+        id: ElementId,
+        target: TimelineTarget,
+        before: Option<T>,
+        after: Option<T>,
+    ) {
+        if let Some(before) = before {
+            self.set_presentation_target(id, target, before, ChangeCause::Other);
         }
-        if pseudo == PSEUDO_PRESSED
-            && let Some(before) = pressed_before
-            && let Some(after) = pressed_after
-        {
-            self.set_presentation_target(id, opacity_target, before, ChangeCause::Other);
-            self.request_styled_presentation_transition(id, opacity_target);
-            self.set_presentation_target(id, opacity_target, after, ChangeCause::Interaction);
+        if let Some(after) = after {
+            self.request_styled_presentation_transition(id, target);
+            self.set_presentation_target(id, target, after, ChangeCause::Interaction);
         }
     }
 
@@ -533,4 +614,15 @@ fn interaction_pseudo_animates_background(pseudo: understory_style::PseudoClassI
             | PSEUDO_CHECKED
             | PSEUDO_SELECTED
     )
+}
+
+fn interaction_pseudo_animates_border_brush(pseudo: understory_style::PseudoClassId) -> bool {
+    matches!(
+        pseudo,
+        PSEUDO_HOVER | PSEUDO_PRESSED | PSEUDO_FOCUS_VISIBLE | PSEUDO_CHECKED | PSEUDO_SELECTED
+    )
+}
+
+fn interaction_pseudo_animates_border_width(pseudo: understory_style::PseudoClassId) -> bool {
+    pseudo == PSEUDO_FOCUS_VISIBLE
 }

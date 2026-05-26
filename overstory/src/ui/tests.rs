@@ -1007,6 +1007,67 @@ fn button_press_transitions_layer_opacity() {
 }
 
 #[test]
+fn text_input_hover_transitions_border_brush_color() {
+    use crate::{TextInput, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(260.0, 80.0));
+    let input = ui.append(root, TextInput::new().text("Hover"));
+    ui.compute_layout(Size::new(260.0, 80.0));
+
+    let idle = Color::from_rgba8(0x62, 0x62, 0x70, 0xff);
+    let hover = Color::from_rgba8(0x86, 0x91, 0xaa, 0xff);
+    assert_eq!(element_border_color(&ui, input), Some(idle));
+
+    ui.set_now(0);
+    let _ = ui.dispatch_pointer_event(&pointer_move(ui.effective_bounds(input).center(), 0, false));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(element_border_color(&ui, input), Some(idle));
+
+    ui.set_now(millis(45));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(
+        element_border_color(&ui, input),
+        Some(interpolate_srgb_color(idle, hover, 0.5))
+    );
+
+    ui.set_now(millis(90));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(element_border_color(&ui, input), Some(hover));
+}
+
+#[test]
+fn text_input_focus_visible_transitions_border_width() {
+    use crate::{TextInput, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(260.0, 80.0));
+    let input = ui.append(root, TextInput::new().text("Focus"));
+    ui.compute_layout(Size::new(260.0, 80.0));
+
+    assert_close(element_border_width(&ui, input), 1.0);
+
+    ui.set_now(0);
+    assert!(ui.set_focus(Some(input)));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_close(element_border_width(&ui, input), 1.0);
+
+    ui.set_now(millis(35));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_close(element_border_width(&ui, input), 1.5);
+
+    ui.set_now(millis(70));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_close(element_border_width(&ui, input), 2.0);
+}
+
+#[test]
 fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
     use crate::{SLOT_SLIDER_THUMB, Slider, theme};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
@@ -1119,6 +1180,19 @@ fn element_background_color(ui: &Ui, id: ElementId) -> Option<Color> {
         Brush::Solid(color) => Some(*color),
         _ => None,
     }
+}
+
+fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
+    let element = ui.get(id)?;
+    match ui.effective_value_for(element, ui.properties().border_brush) {
+        Some(Brush::Solid(color)) => Some(color),
+        _ => None,
+    }
+}
+
+fn element_border_width(ui: &Ui, id: ElementId) -> f64 {
+    let element = ui.get(id).expect("element should exist");
+    ui.effective_value_for(element, ui.properties().border_width)
 }
 
 fn assert_close(actual: f64, expected: f64) {
