@@ -23,7 +23,10 @@ use understory_style::{
     StyleOrigin,
 };
 
-use crate::motion::{Interpolate, TimingFunction};
+use crate::motion::{
+    ColorInterpolation, Interpolate, TimingFunction, TransitionRule, TransitionRules,
+    TransitionSpec, TransitionTarget,
+};
 
 mod events;
 
@@ -881,6 +884,66 @@ fn button_hover_transitions_background_color() {
 }
 
 #[test]
+fn styled_transition_rule_controls_button_hover_duration() {
+    use crate::{Button, TYPE_BUTTON};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+
+    let idle = Color::from_rgba8(0x10, 0x20, 0x30, 0xff);
+    let hover = Color::from_rgba8(0x50, 0x60, 0x70, 0xff);
+    let background = ui.properties().background;
+    let transitions = ui.properties().transitions;
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            crate::selectors::type_tag(TYPE_BUTTON),
+            StyleBuilder::new()
+                .set(background, Some(Brush::Solid(idle)))
+                .set(
+                    transitions,
+                    TransitionRules::single(TransitionRule::interaction(
+                        TransitionTarget::property(background.id()),
+                        TransitionSpec::linear(180_000_000)
+                            .with_color_interpolation(ColorInterpolation::SRGB),
+                    )),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            crate::selectors::state(TYPE_BUTTON, PSEUDO_HOVER),
+            StyleBuilder::new()
+                .set(background, Some(Brush::Solid(hover)))
+                .build(),
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    let button = ui.append(root, Button::new("Hover"));
+    ui.set_layout(button, Layout::flex().logical_size(160.0, 48.0));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    ui.set_now(0);
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(button).center(),
+        0,
+        false,
+    ));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    ui.set_now(90_000_000);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+    assert_eq!(
+        element_background_color(&ui, button),
+        Some(interpolate_srgb_color(idle, hover, 0.5))
+    );
+}
+
+#[test]
 fn local_background_change_after_transition_paints_new_target() {
     use crate::{Button, theme};
 
@@ -937,10 +1000,12 @@ fn button_press_transitions_layer_opacity() {
 
 #[test]
 fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
-    use crate::{SLOT_SLIDER_THUMB, Slider};
+    use crate::{SLOT_SLIDER_THUMB, Slider, theme};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
     let root = ui.root();
     ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
     let slider = ui.append(root, Slider::new().value(0.0).small_change(0.5));
@@ -968,6 +1033,29 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
     let _ = ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(thumb).center(), 100));
     let _ = ui.dispatch_pointer_event(&pointer_move(drag_target, 101, true));
     ui.compute_layout(Size::new(300.0, 80.0));
+    assert_close(layer_x(&ui, thumb), ui.effective_bounds(thumb).x0);
+    assert_close(layer_y(&ui, thumb), start_y);
+}
+
+#[test]
+fn slider_thumb_snaps_without_styled_transition_rule() {
+    use crate::{SLOT_SLIDER_THUMB, Slider};
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
+    let slider = ui.append(root, Slider::new().value(0.0).small_change(0.5));
+    assert!(ui.set_focus(Some(slider)));
+    ui.compute_layout(Size::new(300.0, 80.0));
+    let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+    let start_y = layer_y(&ui, thumb);
+
+    ui.set_now(0);
+    let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+    assert!(ui.dispatch_key(&right).handled);
+    ui.compute_layout(Size::new(300.0, 80.0));
+
     assert_close(layer_x(&ui, thumb), ui.effective_bounds(thumb).x0);
     assert_close(layer_y(&ui, thumb), start_y);
 }

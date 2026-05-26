@@ -24,6 +24,7 @@ use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{COMPOSE, LAYOUT, PAINT};
 use crate::layouts::Layout;
+use crate::motion::TransitionRules;
 
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
@@ -77,6 +78,10 @@ pub struct BuiltInProperties {
 
     /// Layer opacity sampled by composition. Default `1.0`.
     pub opacity: Property<f32>,
+
+    /// Style-authored transition rules for dependency-property and visual
+    /// output targets. Default empty, which snaps target changes.
+    pub transitions: Property<TransitionRules>,
 
     /// Boolean toggled state for two-state controls (`ToggleSwitch`,
     /// `CheckBox`, …). Default `false`. Writers should pair the value
@@ -201,6 +206,10 @@ impl BuiltInProperties {
                 PropertyMetadataBuilder::new(1.0_f32)
                     .affects_channels(COMPOSE.into_set())
                     .build(),
+            ),
+            transitions: registry.register(
+                "Transitions",
+                PropertyMetadataBuilder::new(TransitionRules::new()).build(),
             ),
             is_checked: registry.register(
                 "IsChecked",

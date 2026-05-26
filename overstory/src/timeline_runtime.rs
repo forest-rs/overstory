@@ -30,7 +30,7 @@ use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
-use crate::motion::{Animatable, ColorInterpolation, ColorTransition, TimingFunction, Transition};
+use crate::motion::{Animatable, ColorTransition, Transition, TransitionSpec, TransitionTarget};
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
@@ -80,6 +80,15 @@ pub(crate) enum TimelineTarget {
 }
 
 impl TimelineTarget {
+    /// Returns the style-facing transition target for this runtime target.
+    #[must_use]
+    pub(crate) const fn transition_target(self) -> TransitionTarget {
+        match self {
+            Self::Property(property) => TransitionTarget::Property(property),
+            Self::VisualOutput(VisualOutput::LayerOffset) => TransitionTarget::LayerOffset,
+        }
+    }
+
     /// Returns the expected value kind when this target knows it statically.
     #[must_use]
     pub(crate) const fn expected_value_kind(self) -> Option<PresentationValueKind> {
@@ -246,83 +255,6 @@ pub(crate) enum ChangeCause {
     Other,
 }
 
-/// Which target changes a transition policy applies to.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TransitionTrigger {
-    /// Animate only interaction-driven changes.
-    Interaction,
-}
-
-impl TransitionTrigger {
-    fn allows(self, cause: ChangeCause) -> bool {
-        match self {
-            Self::Interaction => cause == ChangeCause::Interaction,
-        }
-    }
-}
-
-/// Transition policy for an implicit timeline track.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TransitionSpec {
-    duration: TimerDuration,
-    timing: TimingFunction,
-    color_interpolation: ColorInterpolation,
-}
-
-impl TransitionSpec {
-    /// Creates a linear transition over `duration` nanoseconds.
-    #[must_use]
-    pub(crate) const fn linear(duration: TimerDuration) -> Self {
-        Self {
-            duration,
-            timing: TimingFunction::LINEAR,
-            color_interpolation: ColorInterpolation::SRGB,
-        }
-    }
-
-    /// Creates a transition over `duration` using `timing`.
-    #[must_use]
-    pub(crate) const fn timed(duration: TimerDuration, timing: TimingFunction) -> Self {
-        Self {
-            duration,
-            timing,
-            color_interpolation: ColorInterpolation::SRGB,
-        }
-    }
-
-    /// Sets the color interpolation policy for color-valued targets.
-    #[must_use]
-    pub(crate) const fn with_color_interpolation(
-        mut self,
-        interpolation: ColorInterpolation,
-    ) -> Self {
-        self.color_interpolation = interpolation;
-        self
-    }
-}
-
-/// Policy for deciding whether a target change creates a timeline track.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TransitionPolicy {
-    trigger: TransitionTrigger,
-    spec: TransitionSpec,
-}
-
-impl TransitionPolicy {
-    /// Animates interaction-driven changes with `spec`.
-    #[must_use]
-    pub(crate) const fn interaction(spec: TransitionSpec) -> Self {
-        Self {
-            trigger: TransitionTrigger::Interaction,
-            spec,
-        }
-    }
-
-    fn spec_for(self, cause: ChangeCause) -> Option<TransitionSpec> {
-        self.trigger.allows(cause).then_some(self.spec)
-    }
-}
-
 /// Key for one implicit timeline track.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct TimelineTrackKey {
@@ -396,23 +328,23 @@ impl MotionClip {
     ) -> Self {
         match (from, to) {
             (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => Self::Scalar32(
-                Transition::new(from, to, started_at, spec.duration, spec.timing),
+                Transition::new(from, to, started_at, spec.duration(), spec.timing()),
             ),
             (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => Self::Scalar64(
-                Transition::new(from, to, started_at, spec.duration, spec.timing),
+                Transition::new(from, to, started_at, spec.duration(), spec.timing()),
             ),
             (PresentationValue::Color(from), PresentationValue::Color(to)) => {
                 Self::Color(ColorTransition::new(
                     from,
                     to,
                     started_at,
-                    spec.duration,
-                    spec.timing,
-                    spec.color_interpolation,
+                    spec.duration(),
+                    spec.timing(),
+                    spec.color_interpolation(),
                 ))
             }
             (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => Self::Offset(
-                Transition::new(from, to, started_at, spec.duration, spec.timing),
+                Transition::new(from, to, started_at, spec.duration(), spec.timing()),
             ),
             _ => unreachable!("timeline target kinds should match property metadata"),
         }
@@ -461,7 +393,7 @@ struct TimelineTrack {
 pub(crate) struct TimelineRuntime {
     targets: HashMap<TimelineTrackKey, PresentationValue>,
     tracks: HashMap<TimelineTrackKey, TimelineTrack>,
-    pending: HashMap<TimelineTrackKey, TransitionPolicy>,
+    pending: HashMap<TimelineTrackKey, TransitionSpec>,
     cues: Vec<TimelineCue>,
     next_cue_id: u64,
 }
@@ -516,8 +448,8 @@ impl TimelineRuntime {
 
     /// Requests that the next target change for `key` animate when it is caused
     /// by interaction.
-    pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, policy: TransitionPolicy) {
-        self.pending.insert(key, policy);
+    pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, spec: TransitionSpec) {
+        self.pending.insert(key, spec);
     }
 
     /// Returns whether a transition spec is waiting for `key`'s next target.
@@ -560,17 +492,19 @@ impl TimelineRuntime {
         }
 
         let had_track = self.tracks.contains_key(&key);
-        let spec = self
-            .pending
-            .remove(&key)
-            .and_then(|policy| policy.spec_for(cause));
+        let spec = if cause == ChangeCause::Interaction {
+            self.pending.remove(&key)
+        } else {
+            self.pending.remove(&key);
+            None
+        };
         let Some(spec) = spec else {
             self.tracks.remove(&key);
             return had_track;
         };
 
         let from = current_presented;
-        if same_value(from, target) || spec.duration == 0 {
+        if same_value(from, target) || spec.duration() == 0 {
             self.tracks.remove(&key);
             return had_track;
         }
@@ -707,7 +641,6 @@ mod tests {
     use super::*;
 
     const SPEC: TransitionSpec = TransitionSpec::linear(100);
-    const POLICY: TransitionPolicy = TransitionPolicy::interaction(SPEC);
     const SCALAR_PROPERTY: PropertyId = PropertyId::new(1);
     const COLOR_PROPERTY: PropertyId = PropertyId::new(2);
 
@@ -737,7 +670,7 @@ mod tests {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 10, ChangeCause::Interaction);
 
         assert_eq!(runtime.sample(key, 10.0_f32, 10), 0.0);
@@ -750,9 +683,9 @@ mod tests {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 2.0_f32, 50, ChangeCause::Interaction);
 
         assert_eq!(runtime.sample(key, 2.0_f32, 50), 5.0);
@@ -767,7 +700,7 @@ mod tests {
         let from = Color::from_rgba8(0x00, 0x00, 0x00, 0xff);
         let to = Color::from_rgba8(0xff, 0xff, 0xff, 0xff);
         runtime.set_target(key, from, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, to, 0, ChangeCause::Interaction);
 
         assert_eq!(
@@ -783,7 +716,7 @@ mod tests {
         let from = Vec2::new(2.0, 4.0);
         let to = Vec2::new(12.0, 24.0);
         runtime.set_target(key, from, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, to, 0, ChangeCause::Interaction);
 
         assert_eq!(runtime.sample(key, to, 50), Vec2::new(7.0, 14.0));
@@ -794,7 +727,7 @@ mod tests {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         assert!(runtime.has_active_track(key));
@@ -825,7 +758,7 @@ mod tests {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Other);
 
         assert!(!runtime.has_active_track(key));
@@ -838,7 +771,7 @@ mod tests {
         let mut runtime = TimelineRuntime::new();
         let long_spec = TransitionSpec::linear(PRESENTATION_FRAME_INTERVAL * 4);
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, TransitionPolicy::interaction(long_spec));
+        runtime.request_transition(key, long_spec);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         assert_eq!(runtime.next_deadline(0), Some(PRESENTATION_FRAME_INTERVAL));
@@ -910,7 +843,7 @@ mod tests {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, POLICY);
+        runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
         runtime.remove_element(key.element());

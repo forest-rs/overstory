@@ -76,6 +76,10 @@ use crate::controls::text_input::{
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::controls::tooltip::TYPE_TOOLTIP;
 use crate::layouts::Layout;
+use crate::motion::{
+    ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
+    TransitionTarget,
+};
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
@@ -154,6 +158,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let button_idle = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
+        .set(properties.transitions, button_transition_rules(properties))
         .set(properties.font_size, 22.0_f64)
         .set(properties.corner_radius, 10.0_f64)
         .set(properties.layout, button_layout())
@@ -200,6 +205,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let thumb_style = StyleBuilder::new()
         .set_resource(properties.background, THUMB_BG)
+        .set(
+            properties.transitions,
+            layer_offset_transition_rules(120_000_000),
+        )
         .set(properties.corner_radius, 12.0_f64)
         .set(properties.layout, Layout::new().logical_size(24.0, 24.0))
         .build();
@@ -210,6 +219,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build();
     let slider_thumb_style = StyleBuilder::new()
         .set_resource(properties.background, THUMB_BG)
+        .set(
+            properties.transitions,
+            layer_offset_transition_rules(90_000_000),
+        )
         .set(properties.corner_radius, 11.0_f64)
         .build();
     let slider_major_tick_style = StyleBuilder::new()
@@ -708,6 +721,28 @@ fn button_layout() -> Layout {
         .padding_xy(32.0, 18.0)
         .justify_center()
         .align_center()
+}
+
+fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+    TransitionRules::new()
+        .with_rule(TransitionRule::interaction(
+            TransitionTarget::property(properties.background.id()),
+            TransitionSpec::linear(90_000_000).with_color_interpolation(ColorInterpolation::SRGB),
+        ))
+        .with_rule(TransitionRule::interaction(
+            TransitionTarget::property(properties.opacity.id()),
+            TransitionSpec::linear(70_000_000),
+        ))
+}
+
+fn layer_offset_transition_rules(duration: u64) -> TransitionRules {
+    TransitionRules::single(TransitionRule::interaction(
+        TransitionTarget::layer_offset(),
+        TransitionSpec::timed(
+            duration,
+            TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0),
+        ),
+    ))
 }
 
 fn solid(r: u8, g: u8, b: u8, a: u8) -> Brush {

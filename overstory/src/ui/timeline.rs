@@ -14,9 +14,10 @@ use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
+use crate::motion::{TransitionSpec, TransitionTrigger};
 use crate::timeline_runtime::{
     AnimatableValue, ChangeCause, PresentationValue, TimelineCue, TimelineCueId, TimelineSample,
-    TimelineTarget, TimelineTrackKey, TransitionPolicy, VisualOutput,
+    TimelineTarget, TimelineTrackKey, VisualOutput,
 };
 
 use super::Ui;
@@ -26,10 +27,22 @@ impl Ui {
         &mut self,
         element: ElementId,
         target: TimelineTarget,
-        policy: TransitionPolicy,
+        spec: TransitionSpec,
     ) {
         self.timeline
-            .request_transition(TimelineTrackKey::new(element, target), policy);
+            .request_transition(TimelineTrackKey::new(element, target), spec);
+    }
+
+    pub(crate) fn request_styled_presentation_transition(
+        &mut self,
+        element: ElementId,
+        target: TimelineTarget,
+    ) -> bool {
+        let Some(spec) = self.transition_spec_for(element, target, ChangeCause::Interaction) else {
+            return false;
+        };
+        self.request_presentation_transition(element, target, spec);
+        true
     }
 
     pub(crate) fn has_pending_presentation_transition(
@@ -64,6 +77,22 @@ impl Ui {
             self.mark_timeline_target_channels(element, key.target());
         }
         needs_sample
+    }
+
+    fn transition_spec_for(
+        &self,
+        element: ElementId,
+        target: TimelineTarget,
+        cause: ChangeCause,
+    ) -> Option<TransitionSpec> {
+        let trigger = match cause {
+            ChangeCause::Interaction => TransitionTrigger::Interaction,
+            ChangeCause::Other => return None,
+        };
+        let element = self.get(element)?;
+        self.effective_value_for(element, self.properties.transitions)
+            .rule_for(target.transition_target(), trigger)
+            .map(|rule| rule.spec())
     }
 
     pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {

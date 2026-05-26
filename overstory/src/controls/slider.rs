@@ -30,11 +30,8 @@ use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::motion::TimingFunction;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
-use crate::timeline_runtime::{
-    ChangeCause, TimelineTarget, TransitionPolicy, TransitionSpec, VisualOutput,
-};
+use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -83,10 +80,6 @@ const LABEL_CHAR_WIDTH: f32 = 6.0;
 const LABEL_MIN_WIDTH: f32 = 6.0;
 const DEFAULT_SMALL_CHANGE_FRACTION: f64 = 0.05;
 const DEFAULT_LARGE_CHANGE_FRACTION: f64 = 0.20;
-const THUMB_TRANSITION: TransitionSpec = TransitionSpec::timed(
-    90_000_000,
-    TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0),
-);
 
 /// Builder + spec for a `Slider`.
 pub struct Slider {
@@ -652,10 +645,9 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     let layout_prop = ui.properties().layout;
     ui.set_local(slider, value_prop, clamped);
     if motion == ThumbMotion::Animate {
-        ui.request_presentation_transition(
+        ui.request_styled_presentation_transition(
             thumb,
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-            TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
     let left = thumb_left_for_value(clamped, min, max);

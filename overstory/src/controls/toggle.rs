@@ -25,12 +25,9 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::motion::TimingFunction;
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
-use crate::timeline_runtime::{
-    ChangeCause, TimelineTarget, TransitionPolicy, TransitionSpec, VisualOutput,
-};
+use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
 
@@ -41,10 +38,6 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the toggle thumb.
 pub const SLOT_TOGGLE_THUMB: TemplateSlot =
     TemplateSlot::new("toggle-thumb").with_part_tag(PART_TOGGLE_THUMB);
-const THUMB_TRANSITION: TransitionSpec = TransitionSpec::timed(
-    120_000_000,
-    TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0),
-);
 
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
@@ -226,10 +219,9 @@ pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
         ui.remove_pseudo(toggle, PSEUDO_CHECKED);
     }
     if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
-        ui.request_presentation_transition(
+        ui.request_styled_presentation_transition(
             thumb,
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-            TransitionPolicy::interaction(THUMB_TRANSITION),
         );
     }
 }

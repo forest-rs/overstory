@@ -14,20 +14,13 @@ use understory_event_state::hover::HoverEvent;
 
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
-use crate::motion::ColorInterpolation;
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
-use crate::timeline_runtime::{
-    ChangeCause, TimelineTarget, TimelineTrackKey, TransitionPolicy, TransitionSpec,
-};
+use crate::timeline_runtime::{ChangeCause, TimelineTarget, TimelineTrackKey};
 
 use super::{ControlState, Ui};
-
-const INTERACTION_BACKGROUND_TRANSITION: TransitionSpec =
-    TransitionSpec::linear(90_000_000).with_color_interpolation(ColorInterpolation::SRGB);
-const INTERACTION_OPACITY_TRANSITION: TransitionSpec = TransitionSpec::linear(70_000_000);
 
 impl Ui {
     /// Adds `class` to `id` and re-styles the affected subtree.
@@ -129,11 +122,7 @@ impl Ui {
             self.set_presentation_target(id, background_target, before, ChangeCause::Other);
         }
         if let Some(after) = background_after {
-            self.request_presentation_transition(
-                id,
-                background_target,
-                TransitionPolicy::interaction(INTERACTION_BACKGROUND_TRANSITION),
-            );
+            self.request_styled_presentation_transition(id, background_target);
             self.set_presentation_target(id, background_target, after, ChangeCause::Interaction);
         }
         if pseudo == PSEUDO_PRESSED
@@ -141,11 +130,7 @@ impl Ui {
             && let Some(after) = pressed_after
         {
             self.set_presentation_target(id, opacity_target, before, ChangeCause::Other);
-            self.request_presentation_transition(
-                id,
-                opacity_target,
-                TransitionPolicy::interaction(INTERACTION_OPACITY_TRANSITION),
-            );
+            self.request_styled_presentation_transition(id, opacity_target);
             self.set_presentation_target(id, opacity_target, after, ChangeCause::Interaction);
         }
     }

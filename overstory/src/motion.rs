@@ -8,11 +8,14 @@
 //! deliberately does not know about elements, dependency properties, style,
 //! invalidation, layout, or composition backends.
 
+use alloc::vec;
+use alloc::vec::Vec;
 use core::fmt;
 
 use kurbo::Vec2;
 use peniko::color::{self, ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Color, InterpolationAlphaSpace};
+use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 /// Value that can be interpolated between two endpoints.
@@ -236,6 +239,192 @@ impl ColorInterpolation {
 impl Default for ColorInterpolation {
     fn default() -> Self {
         Self::SRGB
+    }
+}
+
+/// Target whose value can transition when style or control state changes.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TransitionTarget {
+    /// A dependency property.
+    Property(PropertyId),
+    /// Layer-local visual offset sampled during composition.
+    LayerOffset,
+}
+
+impl TransitionTarget {
+    /// Creates a target for dependency property `property`.
+    #[must_use]
+    pub const fn property(property: PropertyId) -> Self {
+        Self::Property(property)
+    }
+
+    /// Creates a target for layer-local composition offset.
+    #[must_use]
+    pub const fn layer_offset() -> Self {
+        Self::LayerOffset
+    }
+}
+
+/// Cause that may trigger a style-authored transition rule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransitionTrigger {
+    /// User interaction changed a target value.
+    Interaction,
+}
+
+/// Transition policy for one target value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransitionSpec {
+    duration: TimerDuration,
+    timing: TimingFunction,
+    color_interpolation: ColorInterpolation,
+}
+
+impl TransitionSpec {
+    /// Creates a linear transition over `duration` nanoseconds.
+    #[must_use]
+    pub const fn linear(duration: TimerDuration) -> Self {
+        Self {
+            duration,
+            timing: TimingFunction::LINEAR,
+            color_interpolation: ColorInterpolation::SRGB,
+        }
+    }
+
+    /// Creates a transition over `duration` using `timing`.
+    #[must_use]
+    pub const fn timed(duration: TimerDuration, timing: TimingFunction) -> Self {
+        Self {
+            duration,
+            timing,
+            color_interpolation: ColorInterpolation::SRGB,
+        }
+    }
+
+    /// Sets the color interpolation policy for color-valued targets.
+    #[must_use]
+    pub const fn with_color_interpolation(mut self, interpolation: ColorInterpolation) -> Self {
+        self.color_interpolation = interpolation;
+        self
+    }
+
+    /// Returns the transition duration in nanoseconds.
+    #[must_use]
+    pub const fn duration(self) -> TimerDuration {
+        self.duration
+    }
+
+    /// Returns the timing function.
+    #[must_use]
+    pub const fn timing(self) -> TimingFunction {
+        self.timing
+    }
+
+    /// Returns the color interpolation policy used for color-valued targets.
+    #[must_use]
+    pub const fn color_interpolation(self) -> ColorInterpolation {
+        self.color_interpolation
+    }
+}
+
+/// One style-authored transition rule.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransitionRule {
+    target: TransitionTarget,
+    trigger: TransitionTrigger,
+    spec: TransitionSpec,
+}
+
+impl TransitionRule {
+    /// Creates an interaction-triggered transition rule for `target`.
+    #[must_use]
+    pub const fn interaction(target: TransitionTarget, spec: TransitionSpec) -> Self {
+        Self {
+            target,
+            trigger: TransitionTrigger::Interaction,
+            spec,
+        }
+    }
+
+    /// Returns the target this rule transitions.
+    #[must_use]
+    pub const fn target(self) -> TransitionTarget {
+        self.target
+    }
+
+    /// Returns the trigger this rule responds to.
+    #[must_use]
+    pub const fn trigger(self) -> TransitionTrigger {
+        self.trigger
+    }
+
+    /// Returns the transition policy.
+    #[must_use]
+    pub const fn spec(self) -> TransitionSpec {
+        self.spec
+    }
+}
+
+/// Style value containing transition rules for one element.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TransitionRules {
+    rules: Vec<TransitionRule>,
+}
+
+impl TransitionRules {
+    /// Creates an empty transition rule list.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { rules: Vec::new() }
+    }
+
+    /// Creates a transition rule list containing `rule`.
+    #[must_use]
+    pub fn single(rule: TransitionRule) -> Self {
+        Self { rules: vec![rule] }
+    }
+
+    /// Appends `rule` and returns the updated list.
+    #[must_use]
+    pub fn with_rule(mut self, rule: TransitionRule) -> Self {
+        self.rules.push(rule);
+        self
+    }
+
+    /// Appends `rule`.
+    pub fn push(&mut self, rule: TransitionRule) {
+        self.rules.push(rule);
+    }
+
+    /// Returns all transition rules in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = TransitionRule> + '_ {
+        self.rules.iter().copied()
+    }
+
+    /// Returns the last matching rule for `target` and `trigger`.
+    #[must_use]
+    pub fn rule_for(
+        &self,
+        target: TransitionTarget,
+        trigger: TransitionTrigger,
+    ) -> Option<TransitionRule> {
+        self.rules
+            .iter()
+            .rev()
+            .copied()
+            .find(|rule| rule.target == target && rule.trigger == trigger)
+    }
+
+    /// Returns whether this rule list is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
+    }
+}
+
+impl From<TransitionRule> for TransitionRules {
+    fn from(rule: TransitionRule) -> Self {
+        Self::single(rule)
     }
 }
 
