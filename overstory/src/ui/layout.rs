@@ -173,6 +173,7 @@ impl Ui {
                         theme: style.theme(),
                         cascade: style.cascade(),
                         match_state,
+                        lookup: crate::lookup::ElementResolveLookup::new(elements, style),
                         text,
                     };
                     let constraints = MeasureConstraints {

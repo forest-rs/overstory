@@ -419,6 +419,40 @@ fn text_measure_uses_styled_content_and_font_size() {
 }
 
 #[test]
+fn text_measure_uses_inherited_styled_font_size() {
+    use crate::Text;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_local(
+        root,
+        ui.properties().layout,
+        Layout::flex().logical_size(200.0, 100.0),
+    );
+    let text = ui.append(root, Text::new("Inherited font"));
+
+    let style = StyleBuilder::new()
+        .set(ui.properties().font_size, 40.0_f64)
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build(),
+            style,
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    let bounds = ui.effective_bounds(text);
+    assert!(
+        bounds.height() > 30.0,
+        "inherited styled font size should participate in measure; got {bounds:?}"
+    );
+}
+
+#[test]
 fn repeated_text_widgets_share_shaped_layout_cache() {
     use crate::Text;
 

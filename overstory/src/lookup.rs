@@ -15,6 +15,8 @@ use understory_property::{DependencyObject, ParentLookup, PropertyStore};
 use understory_style::{ResolveParent, ResolveParentLookup};
 
 use crate::element::ElementId;
+use crate::element_store::ElementStore;
+use crate::style_runtime::StyleRuntime;
 use crate::ui::Ui;
 
 /// Adapts a [`Ui`] reference to the
@@ -70,6 +72,40 @@ impl<'a> ResolveParentLookup<'a, ElementId> for UiResolveLookup<'a> {
                 el.property_store(),
                 el.parent(),
                 self.ui.match_state(key),
+            )
+        })
+    }
+}
+
+/// Style-aware parent lookup over split-borrowed UI fields.
+///
+/// Layout measurement cannot borrow the whole [`Ui`], but it can borrow the
+/// element arena and style runtime separately. This adapter keeps measure-time
+/// property resolution on the same [`understory_style::ResolveCx`] path as
+/// presentation.
+#[derive(Copy, Clone)]
+pub(crate) struct ElementResolveLookup<'a> {
+    elements: &'a ElementStore,
+    style: &'a StyleRuntime,
+}
+
+impl<'a> ElementResolveLookup<'a> {
+    /// Wraps split-borrowed element and style storage.
+    #[must_use]
+    #[inline]
+    pub(crate) fn new(elements: &'a ElementStore, style: &'a StyleRuntime) -> Self {
+        Self { elements, style }
+    }
+}
+
+impl<'a> ResolveParentLookup<'a, ElementId> for ElementResolveLookup<'a> {
+    #[inline]
+    fn lookup_resolve_parent(&self, key: ElementId) -> Option<ResolveParent<'a, ElementId>> {
+        self.elements.get(key).map(|el| {
+            ResolveParent::with_match_state(
+                el.property_store(),
+                el.parent(),
+                self.style.match_state(key),
             )
         })
     }

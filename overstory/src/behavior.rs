@@ -23,11 +23,11 @@ use core::cell::RefCell;
 use core::fmt;
 
 use kurbo::{Rect, Size};
-use understory_property::{DependencyObject, Property, PropertyRegistry};
-use understory_style::{MatchState, ResolveCx, StyleCascade, StyleValueRef, Theme};
+use understory_property::{Property, PropertyRegistry};
+use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
 
 use crate::element::{Element, ElementId};
-use crate::lookup::UiResolveLookup;
+use crate::lookup::{ElementResolveLookup, UiResolveLookup};
 use crate::properties::BuiltInProperties;
 use crate::text::TextEngine;
 use crate::ui::Ui;
@@ -110,12 +110,6 @@ pub struct PresentContext<'a> {
 }
 
 impl<'a> PresentContext<'a> {
-    /// Builds a raw [`ResolveCx`] tied to this context.
-    #[must_use]
-    pub fn resolve_cx(&self) -> ResolveCx<'a, ElementId, UiResolveLookup<'a>> {
-        ResolveCx::new(self.registry, self.theme, self.lookup)
-    }
-
     /// Resolves `property` for `element` through [`understory_style::ResolveCx`],
     /// including inherited styled values from ancestors.
     #[must_use]
@@ -123,8 +117,11 @@ impl<'a> PresentContext<'a> {
     where
         T: Clone + 'static,
     {
-        self.resolve_cx()
-            .get_value(element, property, Some((self.cascade, self.match_state)))
+        ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
+            element,
+            property,
+            Some((self.cascade, self.match_state)),
+        )
     }
 }
 
@@ -136,11 +133,8 @@ impl fmt::Debug for PresentContext<'_> {
 
 /// Read-only context handed to a widget's `measure` callback.
 ///
-/// Mirrors [`PresentContext`] minus the cascade-inheritance lookup
-/// — `measure` is called from inside the layout engine's split-borrow
-/// walk so the toolkit can't hand out a `&Ui`. Behaviors that need
-/// inherited cascade values in measure should read them from the
-/// cascade and match state directly.
+/// Mirrors [`PresentContext`] while using a split-borrow lookup for inherited
+/// values.
 #[derive(Copy, Clone)]
 pub struct MeasureContext<'a> {
     /// The property registry every property write is checked against.
@@ -153,44 +147,25 @@ pub struct MeasureContext<'a> {
     pub cascade: &'a StyleCascade,
     /// The match state for the element currently being measured.
     pub match_state: MatchState,
+    /// Parent-walking lookup the [`ResolveCx`] uses for style-aware inheritance.
+    pub(crate) lookup: ElementResolveLookup<'a>,
     /// Shared text shaping engine.
     pub text: &'a RefCell<TextEngine>,
 }
 
 impl<'a> MeasureContext<'a> {
-    /// Resolves a measure-time property value using animation/local, then the
-    /// element's own styled value, then the registry default.
-    ///
-    /// Layout measurement runs inside the layout engine's split-borrow
-    /// callback and cannot currently walk ancestor elements. This helper is
-    /// intentionally limited to properties whose measurement behavior depends
-    /// on the measured element's own value, such as `Content` and `FontSize`.
+    /// Resolves a measure-time property value through [`understory_style::ResolveCx`],
+    /// including inherited styled values from ancestors.
     #[must_use]
     pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
     where
         T: Clone + 'static,
     {
-        if let Some(value) = element.property_store().get_animation(property) {
-            return value.clone();
-        }
-        if let Some(value) = element.property_store().get_local(property) {
-            return value.clone();
-        }
-        if let Some(entry) = self.cascade.get_entry_ref(self.match_state, property) {
-            match entry {
-                StyleValueRef::Value(value) => return value.clone(),
-                StyleValueRef::Resource(key) => {
-                    if let Some(value) = self.theme.get::<T>(key) {
-                        return value.clone();
-                    }
-                }
-            }
-        }
-        self.registry
-            .get_metadata(property)
-            .expect("property should be registered")
-            .default_value()
-            .clone()
+        ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
+            element,
+            property,
+            Some((self.cascade, self.match_state)),
+        )
     }
 }
 
