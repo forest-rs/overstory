@@ -16,7 +16,14 @@ use kurbo::Vec2;
 use peniko::color::{self, ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Color, InterpolationAlphaSpace};
 use understory_property::PropertyId;
+use understory_style::{ResourceKey, Theme};
 use understory_timing::{TimerDuration, TimerInstant};
+
+/// Converts milliseconds to Overstory's timer duration unit.
+#[must_use]
+pub const fn millis(value: u64) -> TimerDuration {
+    value.saturating_mul(1_000_000)
+}
 
 /// Value that can be interpolated between two endpoints.
 pub trait Interpolate: Copy {
@@ -275,20 +282,211 @@ pub enum TransitionTrigger {
 /// Transition policy for one target value.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionSpec {
+    duration: TransitionDuration,
+    timing: TransitionTiming,
+    color_interpolation: TransitionColorInterpolation,
+}
+
+impl TransitionSpec {
+    /// Creates a linear transition over `duration`.
+    #[must_use]
+    pub const fn linear(duration: TimerDuration) -> Self {
+        Self {
+            duration: TransitionDuration::Value(duration),
+            timing: TransitionTiming::Value(TimingFunction::LINEAR),
+            color_interpolation: TransitionColorInterpolation::Value(ColorInterpolation::SRGB),
+        }
+    }
+
+    /// Creates a transition over `duration` using `timing`.
+    #[must_use]
+    pub const fn timed(duration: TimerDuration, timing: TimingFunction) -> Self {
+        Self {
+            duration: TransitionDuration::Value(duration),
+            timing: TransitionTiming::Value(timing),
+            color_interpolation: TransitionColorInterpolation::Value(ColorInterpolation::SRGB),
+        }
+    }
+
+    /// Resolves the transition duration from `resource` when present.
+    ///
+    /// The current concrete duration remains the fallback when the theme does
+    /// not define `resource` with a [`TimerDuration`] value.
+    #[must_use]
+    pub const fn with_duration_resource(mut self, resource: ResourceKey) -> Self {
+        self.duration = TransitionDuration::Resource {
+            resource,
+            fallback: self.duration.fallback(),
+        };
+        self
+    }
+
+    /// Resolves the easing curve from `resource` when present.
+    ///
+    /// The current concrete timing function remains the fallback when the theme
+    /// does not define `resource` with a [`TimingFunction`] value.
+    #[must_use]
+    pub const fn with_easing_resource(mut self, resource: ResourceKey) -> Self {
+        self.timing = TransitionTiming::Resource {
+            resource,
+            fallback: self.timing.fallback(),
+        };
+        self
+    }
+
+    /// Sets the color interpolation policy for color-valued targets.
+    #[must_use]
+    pub const fn with_color_interpolation(mut self, interpolation: ColorInterpolation) -> Self {
+        self.color_interpolation = TransitionColorInterpolation::Value(interpolation);
+        self
+    }
+
+    /// Resolves the color interpolation policy from `resource` when present.
+    ///
+    /// The current concrete color interpolation policy remains the fallback
+    /// when the theme does not define `resource` with a
+    /// [`ColorInterpolation`] value.
+    #[must_use]
+    pub const fn with_color_interpolation_resource(mut self, resource: ResourceKey) -> Self {
+        self.color_interpolation = TransitionColorInterpolation::Resource {
+            resource,
+            fallback: self.color_interpolation.fallback(),
+        };
+        self
+    }
+
+    /// Returns the fallback duration.
+    #[must_use]
+    pub const fn fallback_duration(self) -> TimerDuration {
+        self.duration.fallback()
+    }
+
+    /// Returns the fallback timing function.
+    #[must_use]
+    pub const fn fallback_timing(self) -> TimingFunction {
+        self.timing.fallback()
+    }
+
+    /// Returns the fallback color interpolation policy.
+    #[must_use]
+    pub const fn fallback_color_interpolation(self) -> ColorInterpolation {
+        self.color_interpolation.fallback()
+    }
+
+    /// Resolves theme-addressable motion tokens into concrete runtime values.
+    #[must_use]
+    pub fn resolve(self, theme: &Theme) -> ResolvedTransitionSpec {
+        ResolvedTransitionSpec {
+            duration: self.duration.resolve(theme),
+            timing: self.timing.resolve(theme),
+            color_interpolation: self.color_interpolation.resolve(theme),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TransitionDuration {
+    Value(TimerDuration),
+    Resource {
+        resource: ResourceKey,
+        fallback: TimerDuration,
+    },
+}
+
+impl TransitionDuration {
+    const fn fallback(self) -> TimerDuration {
+        match self {
+            Self::Value(value)
+            | Self::Resource {
+                fallback: value, ..
+            } => value,
+        }
+    }
+
+    fn resolve(self, theme: &Theme) -> TimerDuration {
+        match self {
+            Self::Value(value) => value,
+            Self::Resource { resource, fallback } => theme
+                .get::<TimerDuration>(resource)
+                .copied()
+                .unwrap_or(fallback),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TransitionTiming {
+    Value(TimingFunction),
+    Resource {
+        resource: ResourceKey,
+        fallback: TimingFunction,
+    },
+}
+
+impl TransitionTiming {
+    const fn fallback(self) -> TimingFunction {
+        match self {
+            Self::Value(value)
+            | Self::Resource {
+                fallback: value, ..
+            } => value,
+        }
+    }
+
+    fn resolve(self, theme: &Theme) -> TimingFunction {
+        match self {
+            Self::Value(value) => value,
+            Self::Resource { resource, fallback } => theme
+                .get::<TimingFunction>(resource)
+                .copied()
+                .unwrap_or(fallback),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TransitionColorInterpolation {
+    Value(ColorInterpolation),
+    Resource {
+        resource: ResourceKey,
+        fallback: ColorInterpolation,
+    },
+}
+
+impl TransitionColorInterpolation {
+    const fn fallback(self) -> ColorInterpolation {
+        match self {
+            Self::Value(value)
+            | Self::Resource {
+                fallback: value, ..
+            } => value,
+        }
+    }
+
+    fn resolve(self, theme: &Theme) -> ColorInterpolation {
+        match self {
+            Self::Value(value) => value,
+            Self::Resource { resource, fallback } => theme
+                .get::<ColorInterpolation>(resource)
+                .copied()
+                .unwrap_or(fallback),
+        }
+    }
+}
+
+/// Concrete runtime transition policy after theme resource resolution.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ResolvedTransitionSpec {
     duration: TimerDuration,
     timing: TimingFunction,
     color_interpolation: ColorInterpolation,
 }
 
-impl TransitionSpec {
-    /// Creates a linear transition over `duration` nanoseconds.
+impl ResolvedTransitionSpec {
+    /// Creates a linear transition over `duration`.
     #[must_use]
     pub const fn linear(duration: TimerDuration) -> Self {
-        Self {
-            duration,
-            timing: TimingFunction::LINEAR,
-            color_interpolation: ColorInterpolation::SRGB,
-        }
+        Self::timed(duration, TimingFunction::LINEAR)
     }
 
     /// Creates a transition over `duration` using `timing`.
@@ -308,7 +506,7 @@ impl TransitionSpec {
         self
     }
 
-    /// Returns the transition duration in nanoseconds.
+    /// Returns the transition duration.
     #[must_use]
     pub const fn duration(self) -> TimerDuration {
         self.duration

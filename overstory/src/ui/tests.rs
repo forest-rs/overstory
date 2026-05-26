@@ -19,13 +19,13 @@ use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
 use understory_property::{DependencyObject, DependencyObjectExt};
 use understory_style::{
-    ClassId, PartTag, ResolveCx, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder,
-    StyleOrigin,
+    ClassId, PartTag, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep, StyleBuilder,
+    StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
 };
 
 use crate::motion::{
     ColorInterpolation, Interpolate, TimingFunction, TransitionRule, TransitionRules,
-    TransitionSpec, TransitionTarget,
+    TransitionSpec, TransitionTarget, millis,
 };
 
 mod events;
@@ -802,12 +802,12 @@ fn toggle_thumb_transition_samples_composition_offset() {
     assert_close(layer_x(&ui, thumb), start_x);
     assert_close(layer_y(&ui, thumb), start_y);
 
-    ui.set_now(60_000_000);
+    ui.set_now(millis(60));
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), thumb_timing(start_x, target_x, 0.5));
     assert_close(layer_y(&ui, thumb), start_y);
 
-    ui.set_now(120_000_000);
+    ui.set_now(millis(120));
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), target_x);
     assert_close(layer_y(&ui, thumb), start_y);
@@ -825,7 +825,7 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
     ui.compute_layout(Size::new(200.0, 80.0));
     let checked_target = ui.effective_bounds(thumb).x0;
 
-    ui.set_now(60_000_000);
+    ui.set_now(millis(60));
     ui.compute_layout(Size::new(200.0, 80.0));
     let midpoint = layer_x(&ui, thumb);
     assert_close(midpoint, thumb_timing(start_x, checked_target, 0.5));
@@ -834,11 +834,11 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), midpoint);
 
-    ui.set_now(120_000_000);
+    ui.set_now(millis(120));
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), thumb_timing(midpoint, start_x, 0.5));
 
-    ui.set_now(180_000_000);
+    ui.set_now(millis(180));
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, thumb), start_x);
 }
@@ -869,7 +869,7 @@ fn button_hover_transitions_background_color() {
     ui.paint(&mut scene);
     assert_eq!(element_background_color(&ui, button), Some(idle));
 
-    ui.set_now(45_000_000);
+    ui.set_now(millis(45));
     ui.compute_layout(Size::new(240.0, 80.0));
     ui.paint(&mut scene);
     assert_eq!(
@@ -877,7 +877,7 @@ fn button_hover_transitions_background_color() {
         Some(interpolate_srgb_color(idle, hover, 0.5))
     );
 
-    ui.set_now(90_000_000);
+    ui.set_now(millis(90));
     ui.compute_layout(Size::new(240.0, 80.0));
     ui.paint(&mut scene);
     assert_eq!(element_background_color(&ui, button), Some(hover));
@@ -887,7 +887,14 @@ fn button_hover_transitions_background_color() {
 fn styled_transition_rule_controls_button_hover_duration() {
     use crate::{Button, TYPE_BUTTON};
 
+    const TEST_HOVER_DURATION: ResourceKey = ResourceKey::new(900);
+
     let mut ui = Ui::new();
+    ui.set_theme(
+        ThemeBuilder::new()
+            .set(TEST_HOVER_DURATION, millis(180))
+            .build(),
+    );
     let root = ui.root();
     ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
 
@@ -905,7 +912,8 @@ fn styled_transition_rule_controls_button_hover_duration() {
                     transitions,
                     TransitionRules::single(TransitionRule::interaction(
                         TransitionTarget::property(background.id()),
-                        TransitionSpec::linear(180_000_000)
+                        TransitionSpec::linear(millis(90))
+                            .with_duration_resource(TEST_HOVER_DURATION)
                             .with_color_interpolation(ColorInterpolation::SRGB),
                     )),
                 )
@@ -933,7 +941,7 @@ fn styled_transition_rule_controls_button_hover_duration() {
     ));
     ui.compute_layout(Size::new(240.0, 80.0));
 
-    ui.set_now(90_000_000);
+    ui.set_now(millis(90));
     ui.compute_layout(Size::new(240.0, 80.0));
     let mut scene = Scene::new();
     ui.paint(&mut scene);
@@ -961,7 +969,7 @@ fn local_background_change_after_transition_paints_new_target() {
         0,
         false,
     ));
-    ui.set_now(90_000_000);
+    ui.set_now(millis(90));
     let mut scene = Scene::new();
     ui.paint(&mut scene);
 
@@ -989,11 +997,11 @@ fn button_press_transitions_layer_opacity() {
     ui.compute_layout(Size::new(240.0, 80.0));
     assert_close(layer_opacity(&ui, button), 1.0);
 
-    ui.set_now(35_000_000);
+    ui.set_now(millis(35));
     ui.compute_layout(Size::new(240.0, 80.0));
     assert_close(layer_opacity(&ui, button), 0.96);
 
-    ui.set_now(70_000_000);
+    ui.set_now(millis(70));
     ui.compute_layout(Size::new(240.0, 80.0));
     assert_close(layer_opacity(&ui, button), 0.92);
 }
@@ -1024,7 +1032,7 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
     assert_close(layer_x(&ui, thumb), start_x);
     assert_close(layer_y(&ui, thumb), start_y);
 
-    ui.set_now(45_000_000);
+    ui.set_now(millis(45));
     ui.compute_layout(Size::new(300.0, 80.0));
     assert_close(layer_x(&ui, thumb), thumb_timing(start_x, target_x, 0.5));
     assert_close(layer_y(&ui, thumb), start_y);

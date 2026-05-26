@@ -30,7 +30,9 @@ use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
-use crate::motion::{Animatable, ColorTransition, Transition, TransitionSpec, TransitionTarget};
+use crate::motion::{
+    Animatable, ColorTransition, ResolvedTransitionSpec, Transition, TransitionTarget,
+};
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
 pub(crate) const PRESENTATION_FRAME_INTERVAL: TimerDuration = 16_666_667;
@@ -324,7 +326,7 @@ impl MotionClip {
         from: PresentationValue,
         to: PresentationValue,
         started_at: TimerInstant,
-        spec: TransitionSpec,
+        spec: ResolvedTransitionSpec,
     ) -> Self {
         match (from, to) {
             (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => Self::Scalar32(
@@ -393,7 +395,7 @@ struct TimelineTrack {
 pub(crate) struct TimelineRuntime {
     targets: HashMap<TimelineTrackKey, PresentationValue>,
     tracks: HashMap<TimelineTrackKey, TimelineTrack>,
-    pending: HashMap<TimelineTrackKey, TransitionSpec>,
+    pending: HashMap<TimelineTrackKey, ResolvedTransitionSpec>,
     cues: Vec<TimelineCue>,
     next_cue_id: u64,
 }
@@ -448,7 +450,11 @@ impl TimelineRuntime {
 
     /// Requests that the next target change for `key` animate when it is caused
     /// by interaction.
-    pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, spec: TransitionSpec) {
+    pub(crate) fn request_transition(
+        &mut self,
+        key: TimelineTrackKey,
+        spec: ResolvedTransitionSpec,
+    ) {
         self.pending.insert(key, spec);
     }
 
@@ -640,7 +646,7 @@ fn min_deadline(a: Option<TimerInstant>, b: Option<TimerInstant>) -> Option<Time
 mod tests {
     use super::*;
 
-    const SPEC: TransitionSpec = TransitionSpec::linear(100);
+    const SPEC: ResolvedTransitionSpec = ResolvedTransitionSpec::linear(100);
     const SCALAR_PROPERTY: PropertyId = PropertyId::new(1);
     const COLOR_PROPERTY: PropertyId = PropertyId::new(2);
 
@@ -769,7 +775,7 @@ mod tests {
     fn next_deadline_tracks_frame_and_completion() {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
-        let long_spec = TransitionSpec::linear(PRESENTATION_FRAME_INTERVAL * 4);
+        let long_spec = ResolvedTransitionSpec::linear(PRESENTATION_FRAME_INTERVAL * 4);
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, long_spec);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);

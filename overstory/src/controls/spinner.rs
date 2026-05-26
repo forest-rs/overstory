@@ -19,10 +19,12 @@ use core::f32::consts::FRAC_1_SQRT_2 as FRAC_1_SQRT_2_F32;
 
 use peniko::{Brush, Color};
 use understory_style::TypeTag;
+use understory_timing::TimerDuration;
 
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
 use crate::layouts::Layout;
+use crate::motion::millis;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
 
@@ -33,7 +35,7 @@ const SPINNER_SIZE: f32 = 36.0;
 const DOT_DIAMETER: f32 = 7.0;
 const RING_RADIUS: f32 = (SPINNER_SIZE - DOT_DIAMETER) / 2.0;
 const DOT_INSET_CENTER: f32 = SPINNER_SIZE / 2.0 - DOT_DIAMETER / 2.0;
-const STEP_INTERVAL_NANOS: u64 = 90_000_000;
+const STEP_INTERVAL: TimerDuration = millis(90);
 const DOT_COUNT: usize = 8;
 const DOT_VECTORS: [(f32, f32); DOT_COUNT] = [
     (0.0, -1.0),
@@ -100,7 +102,7 @@ impl AppendSpec for Spinner {
         // Schedule the repeating animation timer and register the
         // phase-rotating handler. Both the dots list and the running
         // phase counter are captured by the closure.
-        let _ = ui.schedule_timer_repeating(id, STEP_INTERVAL_NANOS);
+        let _ = ui.schedule_timer_repeating(id, STEP_INTERVAL);
         let mut phase: usize = 0;
         ui.on_timer(id, move |ui, _event| {
             phase = (phase + 1) % DOT_COUNT;

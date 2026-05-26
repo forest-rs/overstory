@@ -14,7 +14,7 @@ use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
-use crate::motion::{TransitionSpec, TransitionTrigger};
+use crate::motion::{ResolvedTransitionSpec, TransitionTrigger};
 use crate::timeline_runtime::{
     AnimatableValue, ChangeCause, PresentationValue, TimelineCue, TimelineCueId, TimelineSample,
     TimelineTarget, TimelineTrackKey, VisualOutput,
@@ -27,7 +27,7 @@ impl Ui {
         &mut self,
         element: ElementId,
         target: TimelineTarget,
-        spec: TransitionSpec,
+        spec: ResolvedTransitionSpec,
     ) {
         self.timeline
             .request_transition(TimelineTrackKey::new(element, target), spec);
@@ -84,7 +84,7 @@ impl Ui {
         element: ElementId,
         target: TimelineTarget,
         cause: ChangeCause,
-    ) -> Option<TransitionSpec> {
+    ) -> Option<ResolvedTransitionSpec> {
         let trigger = match cause {
             ChangeCause::Interaction => TransitionTrigger::Interaction,
             ChangeCause::Other => return None,
@@ -92,7 +92,7 @@ impl Ui {
         let element = self.get(element)?;
         self.effective_value_for(element, self.properties.transitions)
             .rule_for(target.transition_target(), trigger)
-            .map(|rule| rule.spec())
+            .map(|rule| rule.spec().resolve(self.theme()))
     }
 
     pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {

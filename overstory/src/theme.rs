@@ -34,8 +34,10 @@
 //! and a single value type. Background-flavored tokens carry an
 //! `Option<Brush>` to match the `Background` / `BorderBrush`
 //! properties; foreground tokens carry a `Brush` to match
-//! `Foreground`. Apps with richer palettes should layer additional
-//! tokens on top.
+//! `Foreground`. Motion tokens carry [`understory_timing::TimerDuration`],
+//! easing curves as [`crate::motion::TimingFunction`], or
+//! [`crate::motion::ColorInterpolation`]. Apps with richer palettes or motion
+//! systems should layer additional tokens on top.
 //!
 //! Roadmap:
 //! - Keep the built-in theme small: it should demonstrate token roles and
@@ -78,7 +80,7 @@ use crate::controls::tooltip::TYPE_TOOLTIP;
 use crate::layouts::Layout;
 use crate::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
-    TransitionTarget,
+    TransitionTarget, millis,
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -87,6 +89,7 @@ use crate::pseudos::{
 };
 use crate::selectors;
 use crate::widget::TYPE_GENERIC;
+use understory_timing::TimerDuration;
 
 /// Window-wide background surface.
 pub const SURFACE_BG: ResourceKey = ResourceKey::new(0);
@@ -118,6 +121,22 @@ pub const CONTROL_BG: ResourceKey = ResourceKey::new(12);
 pub const CONTROL_BORDER: ResourceKey = ResourceKey::new(13);
 /// Hovered control border.
 pub const CONTROL_HOVER_BORDER: ResourceKey = ResourceKey::new(14);
+/// Fast interaction motion duration.
+pub const MOTION_FAST_DURATION: ResourceKey = ResourceKey::new(15);
+/// Default interaction motion duration.
+pub const MOTION_NORMAL_DURATION: ResourceKey = ResourceKey::new(16);
+/// Emphasized motion duration for larger visual movement.
+pub const MOTION_EMPHASIZED_DURATION: ResourceKey = ResourceKey::new(17);
+/// Default easing curve for interaction motion.
+pub const MOTION_STANDARD_EASING: ResourceKey = ResourceKey::new(18);
+/// Default color interpolation policy for color transitions.
+pub const MOTION_COLOR_INTERPOLATION: ResourceKey = ResourceKey::new(19);
+
+const DEFAULT_MOTION_FAST_DURATION: TimerDuration = millis(70);
+const DEFAULT_MOTION_NORMAL_DURATION: TimerDuration = millis(90);
+const DEFAULT_MOTION_EMPHASIZED_DURATION: TimerDuration = millis(120);
+const DEFAULT_MOTION_STANDARD_EASING: TimingFunction =
+    TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
 
 /// Builds the default Overstory theme — a single dark palette that
 /// matches the demo's pre-token look. Apps can call
@@ -141,6 +160,14 @@ pub fn default_theme() -> Theme {
         .set(CONTROL_BG, opt_solid(0x2c, 0x2c, 0x35, 0xff))
         .set(CONTROL_BORDER, opt_solid(0x62, 0x62, 0x70, 0xff))
         .set(CONTROL_HOVER_BORDER, opt_solid(0x86, 0x91, 0xaa, 0xff))
+        .set(MOTION_FAST_DURATION, DEFAULT_MOTION_FAST_DURATION)
+        .set(MOTION_NORMAL_DURATION, DEFAULT_MOTION_NORMAL_DURATION)
+        .set(
+            MOTION_EMPHASIZED_DURATION,
+            DEFAULT_MOTION_EMPHASIZED_DURATION,
+        )
+        .set(MOTION_STANDARD_EASING, DEFAULT_MOTION_STANDARD_EASING)
+        .set(MOTION_COLOR_INTERPOLATION, ColorInterpolation::SRGB)
         .build()
 }
 
@@ -207,7 +234,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, THUMB_BG)
         .set(
             properties.transitions,
-            layer_offset_transition_rules(120_000_000),
+            layer_offset_transition_rules(
+                DEFAULT_MOTION_EMPHASIZED_DURATION,
+                MOTION_EMPHASIZED_DURATION,
+            ),
         )
         .set(properties.corner_radius, 12.0_f64)
         .set(properties.layout, Layout::new().logical_size(24.0, 24.0))
@@ -221,7 +251,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.background, THUMB_BG)
         .set(
             properties.transitions,
-            layer_offset_transition_rules(90_000_000),
+            layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
         )
         .set(properties.corner_radius, 11.0_f64)
         .build();
@@ -727,21 +757,27 @@ fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
     TransitionRules::new()
         .with_rule(TransitionRule::interaction(
             TransitionTarget::property(properties.background.id()),
-            TransitionSpec::linear(90_000_000).with_color_interpolation(ColorInterpolation::SRGB),
+            TransitionSpec::linear(DEFAULT_MOTION_NORMAL_DURATION)
+                .with_duration_resource(MOTION_NORMAL_DURATION)
+                .with_color_interpolation(ColorInterpolation::SRGB)
+                .with_color_interpolation_resource(MOTION_COLOR_INTERPOLATION),
         ))
         .with_rule(TransitionRule::interaction(
             TransitionTarget::property(properties.opacity.id()),
-            TransitionSpec::linear(70_000_000),
+            TransitionSpec::linear(DEFAULT_MOTION_FAST_DURATION)
+                .with_duration_resource(MOTION_FAST_DURATION),
         ))
 }
 
-fn layer_offset_transition_rules(duration: u64) -> TransitionRules {
+fn layer_offset_transition_rules(
+    duration: TimerDuration,
+    duration_token: ResourceKey,
+) -> TransitionRules {
     TransitionRules::single(TransitionRule::interaction(
         TransitionTarget::layer_offset(),
-        TransitionSpec::timed(
-            duration,
-            TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0),
-        ),
+        TransitionSpec::timed(duration, DEFAULT_MOTION_STANDARD_EASING)
+            .with_duration_resource(duration_token)
+            .with_easing_resource(MOTION_STANDARD_EASING),
     ))
 }
 
