@@ -96,17 +96,10 @@ impl Ui {
         needs_sample
     }
 
-    pub(crate) fn presented_scalar(
-        &self,
-        element: ElementId,
-        property: PresentationProperty,
-        target: f32,
-    ) -> f32 {
-        self.animations.sample_scalar(
-            PresentationTrackKey::new(element, property),
-            target,
-            self.now(),
-        )
+    pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {
+        let key = PresentationTrackKey::new(element, PresentationProperty::LayerOpacity);
+        let target = self.animations.scalar_target(key).unwrap_or(1.0);
+        self.animations.sample_scalar(key, target, self.now())
     }
 
     pub(crate) fn presented_offset(

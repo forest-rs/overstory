@@ -296,7 +296,7 @@ impl Ui {
             rect.size(),
             local_clip,
         );
-        let opacity = self.presented_scalar(id, PresentationProperty::LayerOpacity, 1.0);
+        let opacity = self.presented_layer_opacity(id);
         self.composition.set_opacity(id, opacity);
 
         let children: Vec<ElementId> = self

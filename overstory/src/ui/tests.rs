@@ -711,6 +711,24 @@ fn slider_initial_value_positions_thumb() {
 }
 
 #[test]
+fn slider_snap_value_change_updates_layer_without_waiting_for_second_layout() {
+    use crate::{SLOT_SLIDER_THUMB, Slider, set_slider_value};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
+    let slider = ui.append(root, Slider::new().value(0.0));
+    ui.compute_layout(Size::new(300.0, 80.0));
+    let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+
+    set_slider_value(&mut ui, slider, 1.0);
+    ui.compute_layout(Size::new(300.0, 80.0));
+
+    assert_close(layer_x(&ui, thumb), ui.effective_bounds(thumb).x0);
+    assert_close(layer_y(&ui, thumb), ui.effective_bounds(thumb).y0);
+}
+
+#[test]
 fn default_templates_label_named_parts() {
     use crate::{
         Button, PART_BUTTON_LABEL, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB,
@@ -857,6 +875,35 @@ fn button_hover_transitions_background_color() {
     ui.compute_layout(Size::new(240.0, 80.0));
     ui.paint(&mut scene);
     assert_eq!(element_background_color(&ui, button), Some(hover));
+}
+
+#[test]
+fn local_background_change_after_transition_paints_new_target() {
+    use crate::{Button, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+    let button = ui.append(root, Button::new("Hover"));
+    ui.compute_layout(Size::new(240.0, 80.0));
+
+    ui.set_now(0);
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(button).center(),
+        0,
+        false,
+    ));
+    ui.set_now(90_000_000);
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+
+    let red = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
+    ui.set_local(button, ui.properties().background, Some(Brush::Solid(red)));
+    ui.paint(&mut scene);
+
+    assert_eq!(element_background_color(&ui, button), Some(red));
 }
 
 #[test]

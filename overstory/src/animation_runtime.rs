@@ -614,6 +614,15 @@ impl AnimationRuntime {
         }
     }
 
+    /// Returns the last recorded scalar target for `key`.
+    #[must_use]
+    pub(crate) fn scalar_target(&self, key: PresentationTrackKey) -> Option<f32> {
+        match self.targets.get(&key).copied() {
+            Some(PresentationValue::Scalar(value)) => Some(value),
+            Some(PresentationValue::Color(_) | PresentationValue::Offset2d(_)) | None => None,
+        }
+    }
+
     /// Returns the sampled presentation value for `key`.
     #[must_use]
     pub(crate) fn sample(
@@ -622,10 +631,9 @@ impl AnimationRuntime {
         target: PresentationValue,
         now: TimerInstant,
     ) -> PresentationValue {
-        self.tracks.get(&key).map_or_else(
-            || self.targets.get(&key).copied().unwrap_or(target),
-            |track| track.clip.sample(now),
-        )
+        self.tracks
+            .get(&key)
+            .map_or(target, |track| track.clip.sample(now))
     }
 
     /// Advances active tracks, removing completed clips and returning affected
@@ -786,6 +794,18 @@ mod tests {
         assert_eq!(affected, alloc::vec![(key.element(), COMPOSE.into_set())]);
         assert!(!runtime.has_active_track(key));
         assert_eq!(runtime.sample_scalar(key, 10.0, 150), 10.0);
+    }
+
+    #[test]
+    fn idle_sample_uses_supplied_target_instead_of_stored_target() {
+        let key = color_key();
+        let mut runtime = AnimationRuntime::new();
+        let old = Color::from_rgba8(0x00, 0x00, 0x00, 0xff);
+        let new = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
+
+        runtime.set_color_target(key, old, 0, ChangeCause::Other);
+
+        assert_eq!(runtime.sample_color(key, new, 50), new);
     }
 
     #[test]
