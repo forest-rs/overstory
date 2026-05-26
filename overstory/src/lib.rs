@@ -74,6 +74,7 @@ mod template_runtime;
 pub(crate) mod test_support;
 mod text;
 pub mod theme;
+mod timeline_properties;
 mod timeline_runtime;
 mod timer_runtime;
 mod ui;

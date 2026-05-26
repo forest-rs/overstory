@@ -49,6 +49,7 @@ use crate::properties::BuiltInProperties;
 use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
 use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
+use crate::timeline_properties::TimelinePropertyRegistry;
 use crate::timeline_runtime::TimelineRuntime;
 use crate::timer_runtime::TimerRuntime;
 
@@ -104,6 +105,8 @@ pub struct Ui {
     focus: FocusRuntime,
     /// Internal presentation timeline tracks sampled from host time.
     timeline: TimelineRuntime,
+    /// Property adapters that can receive timeline samples.
+    timeline_properties: TimelinePropertyRegistry,
     /// Retained timer queue and per-element timer handlers.
     timers: TimerRuntime,
     /// Tooltip and popup declarations plus currently active overlay stack.
@@ -225,6 +228,11 @@ impl Ui {
     fn with_text_engine(text_engine: TextEngine) -> Self {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
+        let mut timeline_properties = TimelinePropertyRegistry::new();
+        timeline_properties.register_solid_brush_color(properties.background);
+        timeline_properties.register(properties.opacity);
+        timeline_properties.register(properties.border_width);
+        timeline_properties.register(properties.corner_radius);
         // Channel-to-channel cascade in the invalidation tracker:
         // STYLE → TEMPLATE → LAYOUT → PAINT → COMPOSE. Once
         // registered, marking any upstream channel auto-marks every
@@ -264,6 +272,7 @@ impl Ui {
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timeline: TimelineRuntime::new(),
+            timeline_properties,
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
             last_viewport: kurbo::Size::ZERO,

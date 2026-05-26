@@ -8,7 +8,6 @@
 //! host crates. Controls can request transitions, but the runtime remains the
 //! owner of active tracks.
 
-use understory_property::DependencyObject;
 use understory_timing::TimerInstant;
 
 use crate::channels::COMPOSE;
@@ -48,6 +47,15 @@ impl Ui {
         cause: ChangeCause,
     ) -> bool {
         let key = TimelineTrackKey::new(element, timeline_target);
+        if let TimelineTarget::Property(property) = timeline_target
+            && let Some(adapter) = self.timeline_properties.adapter(property)
+        {
+            debug_assert_eq!(
+                adapter.kind(),
+                T::KIND,
+                "timeline sample kind must match the property adapter"
+            );
+        }
         let needs_sample = self.timeline.set_target(key, value, self.now(), cause);
         self.sync_timeline_property_sample(key);
         if needs_sample {
@@ -105,48 +113,26 @@ impl Ui {
         let TimelineTarget::Property(property) = key.target() else {
             return;
         };
-        let props = self.properties;
+        let Some(adapter) = self.timeline_properties.adapter(property) else {
+            return;
+        };
         let Some(element) = self.get_mut(key.element()) else {
             return;
         };
-        let store = element.property_store_mut();
-        if property == props.background.id() {
-            if let PresentationValue::Color(color) = value {
-                store.set_animation(props.background, Some(peniko::Brush::Solid(color)));
-            }
-        } else if property == props.opacity.id() {
-            if let PresentationValue::Scalar32(value) = value {
-                store.set_animation(props.opacity, value);
-            }
-        } else if property == props.border_width.id() {
-            if let PresentationValue::Scalar64(value) = value {
-                store.set_animation(props.border_width, value);
-            }
-        } else if property == props.corner_radius.id()
-            && let PresentationValue::Scalar64(value) = value
-        {
-            store.set_animation(props.corner_radius, value);
-        }
+        adapter.set_sample(element, property, value);
     }
 
     pub(in crate::ui) fn clear_timeline_property_sample(&mut self, key: TimelineTrackKey) {
         let TimelineTarget::Property(property) = key.target() else {
             return;
         };
-        let props = self.properties;
+        let Some(adapter) = self.timeline_properties.adapter(property) else {
+            return;
+        };
         let Some(element) = self.get_mut(key.element()) else {
             return;
         };
-        let store = element.property_store_mut();
-        if property == props.background.id() {
-            store.clear_animation(props.background);
-        } else if property == props.opacity.id() {
-            store.clear_animation(props.opacity);
-        } else if property == props.border_width.id() {
-            store.clear_animation(props.border_width);
-        } else if property == props.corner_radius.id() {
-            store.clear_animation(props.corner_radius);
-        }
+        adapter.clear_sample(element, property);
     }
 
     fn mark_timeline_target_channels(&mut self, element: ElementId, target: TimelineTarget) {
