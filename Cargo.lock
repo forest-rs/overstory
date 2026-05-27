@@ -1745,6 +1745,7 @@ dependencies = [
  "overstory",
  "overstory_host_winit",
  "peniko",
+ "ui-events",
 ]
 
 [[package]]

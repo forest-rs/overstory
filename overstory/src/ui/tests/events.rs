@@ -57,6 +57,20 @@ fn pointer_focus_does_not_set_focus_visible() {
 }
 
 #[test]
+fn explicit_pointer_focus_does_not_set_focus_visible() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let target = ui.insert_child(root);
+    ui.set_focusable(target, true);
+
+    assert!(ui.set_pointer_focus(Some(target)));
+    let pseudos = ui.get(target).unwrap().pseudos();
+    assert_eq!(ui.focused(), Some(target));
+    assert!(pseudos.contains(&PSEUDO_FOCUSED));
+    assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
+}
+
+#[test]
 fn focus_navigate_walks_focusables() {
     // Lay out three focusable children. `Navigation::Next`
     // cycles through them in document order with WrapMode::Scope.

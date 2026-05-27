@@ -236,7 +236,13 @@ impl Ui {
         self.set_focus_with_visibility(new, true, FocusChangeReason::Programmatic)
     }
 
-    pub(crate) fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
+    /// Sets pointer-originated focus. Passes `None` to clear focus.
+    ///
+    /// This applies `:focused` without `:focus-visible`, matching the focus
+    /// modality used by the built-in pointer dispatch path. Composed controls
+    /// can call this from pointer/click handlers when focus should move without
+    /// showing keyboard-visible focus chrome.
+    pub fn set_pointer_focus(&mut self, new: Option<ElementId>) -> bool {
         self.set_focus_with_visibility(new, false, FocusChangeReason::Pointer)
     }
 

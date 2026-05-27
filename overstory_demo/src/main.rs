@@ -81,6 +81,21 @@ impl DemoPage {
         Self::Typography,
     ];
 
+    fn from_index(index: usize) -> Option<Self> {
+        Self::ALL.get(index).copied()
+    }
+
+    fn index(self) -> usize {
+        match self {
+            Self::Overview => 0,
+            Self::Inputs => 1,
+            Self::Systems => 2,
+            Self::Selection => 3,
+            Self::Layout => 4,
+            Self::Typography => 5,
+        }
+    }
+
     fn nav_label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
@@ -125,6 +140,12 @@ impl DemoPage {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NavKeyAction {
+    Activate(DemoPage),
+    MoveTo(DemoPage),
 }
 
 fn caption(text: &str) -> Text {
@@ -378,14 +399,22 @@ fn append_nav_row(ui: &mut Ui, stack: ElementId, page: DemoPage, selected: bool)
                 .align_center(),
         ),
     );
-    style_nav_row(ui, row, selected);
+    style_nav_row(ui, row, selected, false);
     ui.append(row, control_label(page.nav_label()));
     row
 }
 
 fn wire_nav_rows(ui: &mut Ui, nav_rows: &Rc<[ElementId]>, stage: ElementId) {
+    let selected_page = Rc::new(Cell::new(DemoPage::Overview));
+    let focused_page = Rc::new(Cell::new(None));
+    let focus_visible = Rc::new(Cell::new(false));
     for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
-        let nav_rows = Rc::clone(nav_rows);
+        ui.set_focusable(row, true);
+
+        let nav_rows_for_click = Rc::clone(nav_rows);
+        let selected_page_for_click = Rc::clone(&selected_page);
+        let focused_page_for_click = Rc::clone(&focused_page);
+        let focus_visible_for_click = Rc::clone(&focus_visible);
         ui.on_click(row, move |ui, event| {
             if !matches!(
                 event.phase,
@@ -393,24 +422,167 @@ fn wire_nav_rows(ui: &mut Ui, nav_rows: &Rc<[ElementId]>, stage: ElementId) {
             ) {
                 return;
             }
-            select_nav_row(ui, &nav_rows, page);
-            show_demo_page(ui, stage, page);
+            let _ = ui.set_pointer_focus(Some(row));
+            activate_nav_page(
+                ui,
+                &nav_rows_for_click,
+                &selected_page_for_click,
+                visible_focused_page(&focused_page_for_click, &focus_visible_for_click),
+                stage,
+                page,
+            );
             event.mark_handled();
+        });
+
+        let nav_rows_for_key = Rc::clone(nav_rows);
+        let selected_page_for_key = Rc::clone(&selected_page);
+        let focused_page_for_key = Rc::clone(&focused_page);
+        let focus_visible_for_key = Rc::clone(&focus_visible);
+        ui.on_key(row, move |ui, event| {
+            if !matches!(
+                event.phase,
+                overstory::Phase::Target | overstory::Phase::Bubble
+            ) {
+                return;
+            }
+            let Some(action) = nav_key_action(page, event.key) else {
+                return;
+            };
+            match action {
+                NavKeyAction::Activate(page) => {
+                    activate_nav_page(
+                        ui,
+                        &nav_rows_for_key,
+                        &selected_page_for_key,
+                        visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
+                        stage,
+                        page,
+                    );
+                }
+                NavKeyAction::MoveTo(page) => {
+                    focus_nav_page(ui, &nav_rows_for_key, page);
+                    activate_nav_page(
+                        ui,
+                        &nav_rows_for_key,
+                        &selected_page_for_key,
+                        visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
+                        stage,
+                        page,
+                    );
+                }
+            }
+            event.mark_handled();
+        });
+
+        let nav_rows_for_focus = Rc::clone(nav_rows);
+        let selected_page_for_focus = Rc::clone(&selected_page);
+        let focused_page_for_focus = Rc::clone(&focused_page);
+        let focus_visible_for_focus = Rc::clone(&focus_visible);
+        ui.on_focus(row, move |ui, event| {
+            match event.kind {
+                overstory::RoutedEventKind::FocusGained => {
+                    focused_page_for_focus.set(Some(page));
+                    focus_visible_for_focus.set(event.focus_visible);
+                }
+                overstory::RoutedEventKind::FocusLost => {
+                    if focused_page_for_focus.get() == Some(page) {
+                        focused_page_for_focus.set(None);
+                        focus_visible_for_focus.set(false);
+                    }
+                }
+                _ => return,
+            }
+            style_nav_rows(
+                ui,
+                &nav_rows_for_focus,
+                selected_page_for_focus.get(),
+                visible_focused_page(&focused_page_for_focus, &focus_visible_for_focus),
+            );
         });
     }
 }
 
-fn select_nav_row(ui: &mut Ui, nav_rows: &[ElementId], selected_page: DemoPage) {
-    for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
-        style_nav_row(ui, row, page == selected_page);
+fn activate_nav_page(
+    ui: &mut Ui,
+    nav_rows: &[ElementId],
+    selected_page: &Cell<DemoPage>,
+    focused_page: Option<DemoPage>,
+    stage: ElementId,
+    page: DemoPage,
+) {
+    selected_page.set(page);
+    style_nav_rows(ui, nav_rows, page, focused_page);
+    show_demo_page(ui, stage, page);
+}
+
+fn visible_focused_page(
+    focused_page: &Cell<Option<DemoPage>>,
+    focus_visible: &Cell<bool>,
+) -> Option<DemoPage> {
+    focus_visible.get().then(|| focused_page.get()).flatten()
+}
+
+fn focus_nav_page(ui: &mut Ui, nav_rows: &[ElementId], page: DemoPage) {
+    if let Some(row) = nav_rows.get(page.index()).copied() {
+        let _ = ui.set_focus(Some(row));
     }
 }
 
-fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool) {
+fn nav_key_action(
+    page: DemoPage,
+    event: &ui_events::keyboard::KeyboardEvent,
+) -> Option<NavKeyAction> {
+    use ui_events::keyboard::{Key, KeyState, NamedKey};
+
+    if event.state != KeyState::Down {
+        return None;
+    }
+    match &event.key {
+        Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
+            Some(NavKeyAction::MoveTo(page_offset(page, 1)))
+        }
+        Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
+            Some(NavKeyAction::MoveTo(page_offset(page, -1)))
+        }
+        Key::Named(NamedKey::Home) => DemoPage::from_index(0).map(NavKeyAction::MoveTo),
+        Key::Named(NamedKey::End) => {
+            DemoPage::from_index(DemoPage::ALL.len() - 1).map(NavKeyAction::MoveTo)
+        }
+        Key::Named(NamedKey::Enter) => Some(NavKeyAction::Activate(page)),
+        Key::Character(s) if s == " " => Some(NavKeyAction::Activate(page)),
+        _ => None,
+    }
+}
+
+fn page_offset(page: DemoPage, delta: isize) -> DemoPage {
+    let len = DemoPage::ALL.len() as isize;
+    let index = (page.index() as isize + delta).rem_euclid(len) as usize;
+    DemoPage::from_index(index).expect("wrapped page index should be valid")
+}
+
+fn style_nav_rows(
+    ui: &mut Ui,
+    nav_rows: &[ElementId],
+    selected_page: DemoPage,
+    focused_page: Option<DemoPage>,
+) {
+    for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
+        style_nav_row(ui, row, page == selected_page, focused_page == Some(page));
+    }
+}
+
+fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool, focused: bool) {
     let background = if selected {
         (0x4d, 0x6f, 0xdc)
+    } else if focused {
+        (0x2c, 0x2d, 0x37)
     } else {
         (0x22, 0x23, 0x2b)
+    };
+    let border = if focused {
+        (0xee, 0xef, 0xf8)
+    } else {
+        background
     };
     ui.set_local(
         row,
@@ -420,7 +592,7 @@ fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool) {
     ui.set_local(
         row,
         ui.properties().border_brush,
-        opt_solid(background.0, background.1, background.2, 0xff),
+        opt_solid(border.0, border.1, border.2, 0xff),
     );
     ui.set_local(row, ui.properties().border_width, 1.0_f64);
     ui.set_local(row, ui.properties().corner_radius, 8.0_f64);
@@ -921,19 +1093,10 @@ mod tests {
     #[test]
     fn gallery_nav_uses_shell_rows_instead_of_a_list_box() {
         let mut ui = build_ui();
-        let nav = nav_element(&ui);
-        let nav_children = ui.get(nav).expect("nav should exist").children();
-        let nav_stack = nav_children
-            .get(3)
-            .copied()
-            .expect("nav should contain a compact row stack");
-        let nav_rows = ui
-            .get(nav_stack)
-            .expect("nav stack should exist")
-            .children();
+        let nav_rows = nav_rows(&ui).to_vec();
 
         assert_eq!(nav_rows.len(), DemoPage::ALL.len());
-        for row in nav_rows {
+        for row in &nav_rows {
             assert_ne!(
                 ui.get(*row).and_then(|element| element.type_tag()),
                 Some(overstory::TYPE_LIST_BOX),
@@ -942,27 +1105,61 @@ mod tests {
         }
 
         let systems_row = nav_rows[2];
-        let result = ui.synthesize_click(systems_row, Point::ZERO);
-        assert!(result.handled, "nav row click should be handled");
-
-        let stage = stage_element(&ui);
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
-        let row = page_row(&ui, stage);
-        let first_card = ui
-            .get(row)
-            .expect("page row should exist")
-            .children()
-            .first()
-            .copied()
-            .expect("systems page should contain a first card");
-        assert_close(
-            ui.effective_bounds(first_card).height(),
-            322.0,
-            "nav row click should switch the page content",
+        let point = nav_row_activation_point(&mut ui, systems_row);
+        let down = ui.dispatch_pointer_event(&pointer_down(point, 1));
+        assert!(down.changed(), "pointer down should focus the nav row");
+        assert_eq!(
+            ui.focused(),
+            Some(systems_row),
+            "pointer activation should move focus to the nav row",
         );
+        assert!(
+            !ui.get(systems_row)
+                .expect("systems nav row should exist")
+                .pseudos()
+                .contains(&overstory::pseudos::PSEUDO_FOCUS_VISIBLE),
+            "pointer focus should not show keyboard-visible focus styling",
+        );
+        let up = ui.dispatch_pointer_event(&pointer_up(point, 2));
+        assert!(up.handled, "pointer up should dispatch handled nav click");
+
+        assert_first_page_card_height(&mut ui, 322.0, "nav row click should switch page content");
+    }
+
+    #[test]
+    fn gallery_nav_supports_focus_and_keyboard_controls() {
+        use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+        let mut ui = build_ui();
+        let nav_rows = nav_rows(&ui).to_vec();
+        for row in &nav_rows {
+            assert!(ui.is_focusable(*row), "nav rows should be focusable");
+        }
+
+        assert!(ui.set_focus(Some(nav_rows[1])));
+        assert!(
+            ui.get(nav_rows[1])
+                .expect("focused nav row should exist")
+                .pseudos()
+                .contains(&overstory::pseudos::PSEUDO_FOCUS_VISIBLE),
+            "keyboard focus should show focus-visible styling",
+        );
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&enter);
+        assert!(result.handled, "Enter should activate the focused nav row");
+        assert_first_page_card_height(&mut ui, 224.0, "Enter should switch to Inputs");
+
+        let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        let result = ui.dispatch_key(&down);
+        assert!(result.handled, "ArrowDown should move and activate nav");
+        assert_eq!(ui.focused(), Some(nav_rows[2]));
+        assert_first_page_card_height(&mut ui, 322.0, "ArrowDown should switch to Systems");
+
+        let home = KeyboardEvent::key_down(Key::Named(NamedKey::Home), Code::Home);
+        let result = ui.dispatch_key(&home);
+        assert!(result.handled, "Home should move to the first nav row");
+        assert_eq!(ui.focused(), Some(nav_rows[0]));
+        assert_first_page_card_height(&mut ui, 222.0, "Home should switch to Overview");
     }
 
     #[test]
@@ -1080,6 +1277,97 @@ mod tests {
             panic!("gallery root should contain nav and stage");
         };
         nav
+    }
+
+    fn nav_rows(ui: &Ui) -> &[ElementId] {
+        let nav = nav_element(ui);
+        let nav_children = ui.get(nav).expect("nav should exist").children();
+        let nav_stack = nav_children
+            .get(3)
+            .copied()
+            .expect("nav should contain a compact row stack");
+        ui.get(nav_stack)
+            .expect("nav stack should exist")
+            .children()
+    }
+
+    fn assert_first_page_card_height(ui: &mut Ui, height: f64, label: &str) {
+        let stage = stage_element(ui);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+        let row = page_row(ui, stage);
+        let first_card = ui
+            .get(row)
+            .expect("page row should exist")
+            .children()
+            .first()
+            .copied()
+            .expect("page should contain a first card");
+        assert_close(ui.effective_bounds(first_card).height(), height, label);
+    }
+
+    fn nav_row_activation_point(ui: &mut Ui, row: ElementId) -> Point {
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+        let bounds = ui.effective_bounds(row);
+        Point::new(bounds.x1 - 8.0, bounds.center().y)
+    }
+
+    fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+
+        PointerEvent::Down(PointerButtonEvent {
+            pointer: pointer_info(),
+            button: Some(PointerButton::Primary),
+            state: pointer_state(point, time, true),
+        })
+    }
+
+    fn pointer_up(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
+        use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+
+        PointerEvent::Up(PointerButtonEvent {
+            pointer: pointer_info(),
+            button: Some(PointerButton::Primary),
+            state: pointer_state(point, time, false),
+        })
+    }
+
+    fn pointer_info() -> ui_events::pointer::PointerInfo {
+        use ui_events::pointer::{PointerId, PointerInfo, PointerType};
+
+        PointerInfo {
+            pointer_id: Some(PointerId::PRIMARY),
+            persistent_device_id: None,
+            pointer_type: PointerType::Mouse,
+        }
+    }
+
+    fn pointer_state(
+        point: Point,
+        time: u64,
+        primary_down: bool,
+    ) -> ui_events::pointer::PointerState {
+        use ui_events::pointer::{PointerButton, PointerButtons, PointerState};
+
+        let mut buttons = PointerButtons::new();
+        if primary_down {
+            buttons.insert(PointerButton::Primary);
+        }
+        let mut state = PointerState {
+            time,
+            buttons,
+            count: 1,
+            pressure: if primary_down { 0.5 } else { 0.0 },
+            ..PointerState::default()
+        };
+        state.position.x = point.x;
+        state.position.y = point.y;
+        state
     }
 
     fn page_row(ui: &Ui, stage: ElementId) -> ElementId {
