@@ -20,13 +20,14 @@ use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     BuiltInProperties, Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign,
     LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar,
-    ScrollState, Slider, Spinner, Splitter, TYPE_GENERIC, Text, TextInput, TimerDuration,
-    ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
+    ScrollState, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
+    TimerDuration, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_style::{
-    ClassId, PseudoClassId, Selector, SelectorStep, StyleBuilder, StyleCascade, StyleOrigin,
+    ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade,
+    StyleOrigin,
 };
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
@@ -44,6 +45,48 @@ const PAGE_CONTROL_WIDTH: f32 = 328.0;
 const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
+
+const DEMO_ROOT_BG: ResourceKey = ResourceKey::new(1_000);
+const DEMO_NAV_BG: ResourceKey = ResourceKey::new(1_001);
+const DEMO_NAV_BORDER: ResourceKey = ResourceKey::new(1_002);
+const DEMO_NAV_SELECTED_BG: ResourceKey = ResourceKey::new(1_003);
+const DEMO_STAGE_BG: ResourceKey = ResourceKey::new(1_004);
+const DEMO_STAGE_BORDER: ResourceKey = ResourceKey::new(1_005);
+const DEMO_HEADER_BG: ResourceKey = ResourceKey::new(1_006);
+const DEMO_HEADER_BORDER: ResourceKey = ResourceKey::new(1_007);
+const DEMO_CARD_BG: ResourceKey = ResourceKey::new(1_008);
+const DEMO_CARD_BORDER: ResourceKey = ResourceKey::new(1_009);
+const DEMO_SPLIT_BORDER: ResourceKey = ResourceKey::new(1_010);
+const DEMO_SPLIT_SCENE_BG: ResourceKey = ResourceKey::new(1_011);
+const DEMO_SPLIT_INSPECTOR_BG: ResourceKey = ResourceKey::new(1_012);
+const DEMO_MOTION_STAGE_BG: ResourceKey = ResourceKey::new(1_013);
+const DEMO_ACCENT_BG: ResourceKey = ResourceKey::new(1_014);
+const DEMO_TEXT_FG: ResourceKey = ResourceKey::new(1_015);
+const DEMO_BODY_FG: ResourceKey = ResourceKey::new(1_016);
+const DEMO_MUTED_FG: ResourceKey = ResourceKey::new(1_017);
+const DEMO_TITLE_FG: ResourceKey = ResourceKey::new(1_018);
+const DEMO_FOCUS_BORDER: ResourceKey = ResourceKey::new(1_019);
+
+const CLASS_DEMO_ROOT: ClassId = ClassId(1);
+const CLASS_DEMO_NAV: ClassId = ClassId(2);
+const CLASS_DEMO_NAV_MARKER: ClassId = ClassId(3);
+const CLASS_DEMO_STAGE: ClassId = ClassId(4);
+const CLASS_DEMO_HEADER: ClassId = ClassId(5);
+const CLASS_DEMO_HEADER_ACCENT: ClassId = ClassId(6);
+const CLASS_DEMO_CARD: ClassId = ClassId(7);
+const CLASS_DEMO_NAV_ROW: ClassId = ClassId(8);
+const CLASS_DEMO_NAV_LABEL: ClassId = ClassId(9);
+const CLASS_DEMO_HEADING: ClassId = ClassId(10);
+const CLASS_DEMO_PAGE_HEADING: ClassId = ClassId(11);
+const CLASS_DEMO_CAPTION: ClassId = ClassId(12);
+const CLASS_DEMO_CARD_TITLE: ClassId = ClassId(13);
+const CLASS_DEMO_CONTROL_LABEL: ClassId = ClassId(14);
+const CLASS_DEMO_NUMBER: ClassId = ClassId(15);
+const CLASS_DEMO_LARGE_NUMBER: ClassId = ClassId(16);
+const CLASS_DEMO_BODY: ClassId = ClassId(17);
+const CLASS_DEMO_SPLIT_SCENE: ClassId = ClassId(18);
+const CLASS_DEMO_SPLIT_INSPECTOR: ClassId = ClassId(19);
+const CLASS_DEMO_MOTION_STAGE: ClassId = ClassId(20);
 
 const RENDERER_QUEUE_LEN: usize = 1_000;
 const INITIAL_RENDERER_SELECTION: usize = 2;
@@ -183,97 +226,59 @@ impl DemoThemeMode {
         }
     }
 
-    fn palette(self) -> DemoPalette {
+    fn theme(self) -> understory_style::Theme {
         match self {
-            Self::Dark => DemoPalette {
-                root_bg: (0x1e, 0x1e, 0x24),
-                nav_bg: (0x22, 0x23, 0x2b),
-                nav_border: (0x3a, 0x3d, 0x4b),
-                nav_focus_bg: (0x2c, 0x2d, 0x37),
-                nav_selected_bg: (0x4d, 0x6f, 0xdc),
-                stage_bg: (0x1b, 0x1c, 0x23),
-                stage_border: (0x2f, 0x32, 0x3d),
-                header_bg: (0x24, 0x25, 0x2e),
-                header_border: (0x3b, 0x3e, 0x4c),
-                card_bg: (0x27, 0x28, 0x31),
-                card_border: (0x3b, 0x3d, 0x49),
-                split_border: (0x48, 0x4c, 0x58),
-                split_scene_bg: (0x31, 0x35, 0x43),
-                split_inspector_bg: (0x2e, 0x3a, 0x35),
-                motion_stage_bg: (0x27, 0x28, 0x31),
-                accent: (0x59, 0x75, 0xe6),
-                text: (0xf4, 0xf4, 0xf7),
-                body: (0xd8, 0xd9, 0xe2),
-                muted: (0xc8, 0xc8, 0xd2),
-                title: (0x96, 0x9a, 0xa8),
-                focus_ring: (0xee, 0xef, 0xf8),
-            },
-            Self::Light => DemoPalette {
-                root_bg: (0xf0, 0xf3, 0xf8),
-                nav_bg: (0xff, 0xff, 0xff),
-                nav_border: (0xd2, 0xd8, 0xe5),
-                nav_focus_bg: (0xe8, 0xed, 0xf8),
-                nav_selected_bg: (0x2f, 0x62, 0xd6),
-                stage_bg: (0xf7, 0xf9, 0xfc),
-                stage_border: (0xd8, 0xde, 0xea),
-                header_bg: (0xff, 0xff, 0xff),
-                header_border: (0xda, 0xe0, 0xeb),
-                card_bg: (0xff, 0xff, 0xff),
-                card_border: (0xd8, 0xde, 0xea),
-                split_border: (0xbf, 0xc7, 0xd5),
-                split_scene_bg: (0xec, 0xf1, 0xfb),
-                split_inspector_bg: (0xea, 0xf5, 0xef),
-                motion_stage_bg: (0xf2, 0xf4, 0xf8),
-                accent: (0x2f, 0x62, 0xd6),
-                text: (0x16, 0x1a, 0x24),
-                body: (0x3a, 0x40, 0x4e),
-                muted: (0x61, 0x68, 0x78),
-                title: (0x6a, 0x72, 0x83),
-                focus_ring: (0x1e, 0x53, 0xc8),
-            },
+            Self::Dark => theme::dark_theme_builder()
+                .set(DEMO_ROOT_BG, opt_solid(0x1e, 0x1e, 0x24, 0xff))
+                .set(DEMO_NAV_BG, opt_solid(0x22, 0x23, 0x2b, 0xff))
+                .set(DEMO_NAV_BORDER, opt_solid(0x3a, 0x3d, 0x4b, 0xff))
+                .set(DEMO_NAV_SELECTED_BG, opt_solid(0x4d, 0x6f, 0xdc, 0xff))
+                .set(DEMO_STAGE_BG, opt_solid(0x1b, 0x1c, 0x23, 0xff))
+                .set(DEMO_STAGE_BORDER, opt_solid(0x2f, 0x32, 0x3d, 0xff))
+                .set(DEMO_HEADER_BG, opt_solid(0x24, 0x25, 0x2e, 0xff))
+                .set(DEMO_HEADER_BORDER, opt_solid(0x3b, 0x3e, 0x4c, 0xff))
+                .set(DEMO_CARD_BG, opt_solid(0x27, 0x28, 0x31, 0xff))
+                .set(DEMO_CARD_BORDER, opt_solid(0x3b, 0x3d, 0x49, 0xff))
+                .set(DEMO_SPLIT_BORDER, opt_solid(0x48, 0x4c, 0x58, 0xff))
+                .set(DEMO_SPLIT_SCENE_BG, opt_solid(0x31, 0x35, 0x43, 0xff))
+                .set(DEMO_SPLIT_INSPECTOR_BG, opt_solid(0x2e, 0x3a, 0x35, 0xff))
+                .set(DEMO_MOTION_STAGE_BG, opt_solid(0x27, 0x28, 0x31, 0xff))
+                .set(DEMO_ACCENT_BG, opt_solid(0x59, 0x75, 0xe6, 0xff))
+                .set(DEMO_TEXT_FG, solid(0xf4, 0xf4, 0xf7, 0xff))
+                .set(DEMO_BODY_FG, solid(0xd8, 0xd9, 0xe2, 0xff))
+                .set(DEMO_MUTED_FG, solid(0xc8, 0xc8, 0xd2, 0xff))
+                .set(DEMO_TITLE_FG, solid(0x96, 0x9a, 0xa8, 0xff))
+                .set(DEMO_FOCUS_BORDER, opt_solid(0xee, 0xef, 0xf8, 0xff))
+                .build(),
+            Self::Light => theme::light_theme_builder()
+                .set(DEMO_ROOT_BG, opt_solid(0xf0, 0xf3, 0xf8, 0xff))
+                .set(DEMO_NAV_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(DEMO_NAV_BORDER, opt_solid(0xd2, 0xd8, 0xe5, 0xff))
+                .set(DEMO_NAV_SELECTED_BG, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(DEMO_STAGE_BG, opt_solid(0xf7, 0xf9, 0xfc, 0xff))
+                .set(DEMO_STAGE_BORDER, opt_solid(0xd8, 0xde, 0xea, 0xff))
+                .set(DEMO_HEADER_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(DEMO_HEADER_BORDER, opt_solid(0xda, 0xe0, 0xeb, 0xff))
+                .set(DEMO_CARD_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(DEMO_CARD_BORDER, opt_solid(0xd8, 0xde, 0xea, 0xff))
+                .set(DEMO_SPLIT_BORDER, opt_solid(0xbf, 0xc7, 0xd5, 0xff))
+                .set(DEMO_SPLIT_SCENE_BG, opt_solid(0xec, 0xf1, 0xfb, 0xff))
+                .set(DEMO_SPLIT_INSPECTOR_BG, opt_solid(0xea, 0xf5, 0xef, 0xff))
+                .set(DEMO_MOTION_STAGE_BG, opt_solid(0xf2, 0xf4, 0xf8, 0xff))
+                .set(DEMO_ACCENT_BG, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(DEMO_TEXT_FG, solid(0x16, 0x1a, 0x24, 0xff))
+                .set(DEMO_BODY_FG, solid(0x3a, 0x40, 0x4e, 0xff))
+                .set(DEMO_MUTED_FG, solid(0x61, 0x68, 0x78, 0xff))
+                .set(DEMO_TITLE_FG, solid(0x6a, 0x72, 0x83, 0xff))
+                .set(DEMO_FOCUS_BORDER, opt_solid(0x1e, 0x53, 0xc8, 0xff))
+                .build(),
         }
     }
-
-    fn overstory_theme(self) -> understory_style::Theme {
-        match self {
-            Self::Dark => theme::dark_theme(),
-            Self::Light => theme::light_theme(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct DemoPalette {
-    root_bg: (u8, u8, u8),
-    nav_bg: (u8, u8, u8),
-    nav_border: (u8, u8, u8),
-    nav_focus_bg: (u8, u8, u8),
-    nav_selected_bg: (u8, u8, u8),
-    stage_bg: (u8, u8, u8),
-    stage_border: (u8, u8, u8),
-    header_bg: (u8, u8, u8),
-    header_border: (u8, u8, u8),
-    card_bg: (u8, u8, u8),
-    card_border: (u8, u8, u8),
-    split_border: (u8, u8, u8),
-    split_scene_bg: (u8, u8, u8),
-    split_inspector_bg: (u8, u8, u8),
-    motion_stage_bg: (u8, u8, u8),
-    accent: (u8, u8, u8),
-    text: (u8, u8, u8),
-    body: (u8, u8, u8),
-    muted: (u8, u8, u8),
-    title: (u8, u8, u8),
-    focus_ring: (u8, u8, u8),
 }
 
 #[derive(Clone, Copy, Debug)]
 struct NavChrome {
-    heading: ElementId,
-    subtitle: ElementId,
-    marker: ElementId,
     mode_toggle: ElementId,
-    mode_label: ElementId,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -282,61 +287,44 @@ enum NavKeyAction {
     MoveTo(DemoPage),
 }
 
-fn caption(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(13.0)
-        .foreground(rgb_color(palette.muted))
+fn caption(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_CAPTION)
 }
 
-fn heading(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(26.0)
-        .foreground(rgb_color(palette.text))
+fn heading(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_HEADING)
 }
 
-fn page_heading(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(22.0)
-        .foreground(rgb_color(palette.text))
+fn page_heading(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_PAGE_HEADING)
 }
 
-fn card_title(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(12.0)
-        .foreground(rgb_color(palette.title))
+fn card_title(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_CARD_TITLE)
 }
 
-fn control_label(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(15.0)
-        .foreground(rgb_color(palette.text))
+fn control_label(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_CONTROL_LABEL)
 }
 
-fn number_text(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(22.0)
-        .foreground(rgb_color(palette.text))
+fn number_text(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_NUMBER)
 }
 
-fn large_number_text(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(34.0)
-        .foreground(rgb_color(palette.text))
+fn large_number_text(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_LARGE_NUMBER)
 }
 
-fn body_text(text: &str, palette: DemoPalette) -> Text {
-    Text::new(text)
-        .font_size(14.0)
-        .foreground(rgb_color(palette.body))
-        .wrap()
-}
-
-fn rgb_color((r, g, b): (u8, u8, u8)) -> Color {
-    Color::from_rgba8(r, g, b, 0xff)
+fn body_text(text: &str) -> Text {
+    Text::new(text).class(CLASS_DEMO_BODY).wrap()
 }
 
 fn opt_solid(r: u8, g: u8, b: u8, a: u8) -> Option<Brush> {
-    Some(Color::from_rgba8(r, g, b, a).into())
+    Some(solid(r, g, b, a))
+}
+
+fn solid(r: u8, g: u8, b: u8, a: u8) -> Brush {
+    Color::from_rgba8(r, g, b, a).into()
 }
 
 fn tabular_number_features() -> Box<[FontFeature]> {
@@ -357,53 +345,16 @@ fn renderer_queue_label(index: usize) -> String {
     format!("{stage} {batch:03}")
 }
 
-fn style_surface(
-    ui: &mut Ui,
-    element: ElementId,
-    background: (u8, u8, u8),
-    border: (u8, u8, u8),
-    radius: f64,
-) {
-    ui.set_local(
-        element,
-        ui.properties().background,
-        opt_solid(background.0, background.1, background.2, 0xff),
-    );
-    ui.set_local(
-        element,
-        ui.properties().border_brush,
-        opt_solid(border.0, border.1, border.2, 0xff),
-    );
-    ui.set_local(element, ui.properties().border_width, 1.0_f64);
-    ui.set_local(element, ui.properties().corner_radius, radius);
-}
-
-fn style_fill(ui: &mut Ui, element: ElementId, color: (u8, u8, u8)) {
-    ui.set_local(
-        element,
-        ui.properties().background,
-        opt_solid(color.0, color.1, color.2, 0xff),
-    );
-}
-
-fn demo_card(
-    ui: &mut Ui,
-    parent: ElementId,
-    title: &str,
-    width: f32,
-    height: f32,
-    palette: DemoPalette,
-) -> ElementId {
+fn demo_card(ui: &mut Ui, parent: ElementId, title: &str, width: f32, height: f32) -> ElementId {
     let card = ui.append(
         parent,
-        Panel::column(14.0).layout(
+        Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
             Layout::column(14.0)
                 .logical_size(width, height)
                 .padding_all(18.0),
         ),
     );
-    style_surface(ui, card, palette.card_bg, palette.card_border, 12.0);
-    ui.append(card, card_title(title, palette));
+    ui.append(card, card_title(title));
     card
 }
 
@@ -466,6 +417,203 @@ fn popup_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'st
 
 fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
     theme::default_cascade_builder(properties)
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_ROOT),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ROOT_BG)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_NAV),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_NAV_BG)
+                .set_resource(properties.border_brush, DEMO_NAV_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 16.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_STAGE),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_STAGE_BG)
+                .set_resource(properties.border_brush, DEMO_STAGE_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 18.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_HEADER),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_HEADER_BG)
+                .set_resource(properties.border_brush, DEMO_HEADER_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 16.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_CARD),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_CARD_BG)
+                .set_resource(properties.border_brush, DEMO_CARD_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 12.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_NAV_MARKER),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set(properties.corner_radius, 2.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_HEADER_ACCENT),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set(properties.corner_radius, 8.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_NAV_ROW),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_NAV_BG)
+                .set_resource(properties.border_brush, DEMO_NAV_BG)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 8.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_NAV_SELECTED_BG)
+                .set_resource(properties.border_brush, DEMO_NAV_SELECTED_BG)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_FOCUS_VISIBLE),
+            StyleBuilder::new()
+                .set_resource(properties.border_brush, DEMO_FOCUS_BORDER)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_SPLIT_SCENE),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_SPLIT_SCENE_BG)
+                .set_resource(properties.border_brush, DEMO_SPLIT_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 8.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_SPLIT_INSPECTOR),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_SPLIT_INSPECTOR_BG)
+                .set_resource(properties.border_brush, DEMO_SPLIT_BORDER)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 8.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_DEMO_MOTION_STAGE),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_MOTION_STAGE_BG)
+                .set_resource(properties.border_brush, DEMO_MOTION_STAGE_BG)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 14.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_HEADING),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 26.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_PAGE_HEADING),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 22.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_CAPTION),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_MUTED_FG)
+                .set(properties.font_size, 13.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_CARD_TITLE),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TITLE_FG)
+                .set(properties.font_size, 12.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_CONTROL_LABEL),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 15.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_NAV_LABEL),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 15.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selected_nav_label_selector(),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, theme::ON_ACCENT_FG)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_NUMBER),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 22.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_LARGE_NUMBER),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set(properties.font_size, 34.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(CLASS_DEMO_BODY),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, DEMO_BODY_FG)
+                .set(properties.font_size, 14.0_f64)
+                .build(),
+        )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_OKLAB_SWATCH),
@@ -606,10 +754,9 @@ fn build_ui() -> Ui {
     let selected_page = Rc::new(Cell::new(DemoPage::Overview));
     let focused_page = Rc::new(Cell::new(None));
     let focus_visible = Rc::new(Cell::new(false));
-    let palette = mode.get().palette();
-    ui.set_theme(mode.get().overstory_theme());
+    ui.set_theme(mode.get().theme());
     let root = ui.root();
-    style_fill(&mut ui, root, palette.root_bg);
+    ui.add_class(root, CLASS_DEMO_ROOT);
 
     ui.set_layout(
         root,
@@ -621,7 +768,7 @@ fn build_ui() -> Ui {
 
     let nav = ui.append(
         root,
-        Panel::column(18.0).layout(
+        Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
             Layout::column(18.0)
                 .size(
                     LayoutSize::new()
@@ -632,12 +779,11 @@ fn build_ui() -> Ui {
                 .flex_shrink(0.0),
         ),
     );
-    style_surface(&mut ui, nav, palette.nav_bg, palette.nav_border, 16.0);
-    let nav_chrome = build_nav(&mut ui, nav, palette);
+    let nav_chrome = build_nav(&mut ui, nav);
 
     let stage = ui.append(
         root,
-        Panel::column(18.0).layout(
+        Panel::column(18.0).class(CLASS_DEMO_STAGE).layout(
             Layout::column(18.0)
                 .size(
                     LayoutSize::new()
@@ -648,9 +794,8 @@ fn build_ui() -> Ui {
                 .flex_shrink(1.0),
         ),
     );
-    style_surface(&mut ui, stage, palette.stage_bg, palette.stage_border, 18.0);
 
-    let nav_rows = build_nav_rows(&mut ui, nav, palette);
+    let nav_rows = build_nav_rows(&mut ui, nav);
     wire_nav_rows(
         &mut ui,
         &nav_rows,
@@ -658,35 +803,24 @@ fn build_ui() -> Ui {
         Rc::clone(&selected_page),
         Rc::clone(&focused_page),
         Rc::clone(&focus_visible),
-        Rc::clone(&mode),
     );
-    wire_theme_toggle(
-        &mut ui,
-        root,
-        nav,
-        stage,
-        nav_chrome,
-        Rc::clone(&nav_rows),
-        Rc::clone(&selected_page),
-        Rc::clone(&focused_page),
-        Rc::clone(&focus_visible),
-        Rc::clone(&mode),
-    );
+    wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&mode));
     show_demo_page(&mut ui, stage, DemoPage::Overview);
 
     ui.set_cascade(demo_cascade(ui.properties()));
     ui
 }
 
-fn build_nav(ui: &mut Ui, nav: ElementId, palette: DemoPalette) -> NavChrome {
-    let heading = ui.append(nav, heading("Overstory", palette));
-    let subtitle = ui.append(nav, caption("Focused widget gallery", palette));
+fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
+    ui.append(nav, heading("Overstory"));
+    ui.append(nav, caption("Focused widget gallery"));
 
-    let marker = ui.append(
+    ui.append(
         nav,
-        Panel::new().layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
+        Panel::new()
+            .class(CLASS_DEMO_NAV_MARKER)
+            .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
     );
-    style_fill(ui, marker, palette.accent);
 
     let mode_row = ui.append(
         nav,
@@ -697,53 +831,35 @@ fn build_nav(ui: &mut Ui, nav: ElementId, palette: DemoPalette) -> NavChrome {
         ),
     );
     let mode_toggle = ui.append(mode_row, ToggleSwitch::new());
-    let mode_label = ui.append(mode_row, control_label("Light mode", palette));
+    ui.append(mode_row, control_label("Light mode"));
 
-    NavChrome {
-        heading,
-        subtitle,
-        marker,
-        mode_toggle,
-        mode_label,
-    }
+    NavChrome { mode_toggle }
 }
 
-fn build_nav_rows(ui: &mut Ui, nav: ElementId, palette: DemoPalette) -> Rc<[ElementId]> {
+fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
     let stack = ui.append(
         nav,
         Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 312.0)),
     );
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
     for page in DemoPage::ALL {
-        rows.push(append_nav_row(
-            ui,
-            stack,
-            page,
-            page == DemoPage::Overview,
-            palette,
-        ));
+        rows.push(append_nav_row(ui, stack, page, page == DemoPage::Overview));
     }
     Rc::from(rows.into_boxed_slice())
 }
 
-fn append_nav_row(
-    ui: &mut Ui,
-    stack: ElementId,
-    page: DemoPage,
-    selected: bool,
-    palette: DemoPalette,
-) -> ElementId {
+fn append_nav_row(ui: &mut Ui, stack: ElementId, page: DemoPage, selected: bool) -> ElementId {
     let row = ui.append(
         stack,
-        Panel::row(0.0).layout(
+        Panel::row(0.0).class(CLASS_DEMO_NAV_ROW).layout(
             Layout::row(0.0)
                 .logical_size(NAV_CONTENT_WIDTH, 40.0)
                 .padding_xy(14.0, 0.0)
                 .align_center(),
         ),
     );
-    ui.append(row, control_label(page.nav_label(), palette));
-    style_nav_row(ui, row, selected, false, palette);
+    ui.append(row, Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
+    style_nav_row(ui, row, selected);
     row
 }
 
@@ -754,7 +870,6 @@ fn wire_nav_rows(
     selected_page: Rc<Cell<DemoPage>>,
     focused_page: Rc<Cell<Option<DemoPage>>>,
     focus_visible: Rc<Cell<bool>>,
-    mode: Rc<Cell<DemoThemeMode>>,
 ) {
     for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
         ui.set_focusable(row, true);
@@ -763,7 +878,6 @@ fn wire_nav_rows(
         let selected_page_for_click = Rc::clone(&selected_page);
         let focused_page_for_click = Rc::clone(&focused_page);
         let focus_visible_for_click = Rc::clone(&focus_visible);
-        let mode_for_click = Rc::clone(&mode);
         ui.on_click(row, move |ui, event| {
             if !matches!(
                 event.phase,
@@ -779,7 +893,6 @@ fn wire_nav_rows(
                 visible_focused_page(&focused_page_for_click, &focus_visible_for_click),
                 stage,
                 page,
-                mode_for_click.get(),
             );
             event.mark_handled();
         });
@@ -788,7 +901,6 @@ fn wire_nav_rows(
         let selected_page_for_key = Rc::clone(&selected_page);
         let focused_page_for_key = Rc::clone(&focused_page);
         let focus_visible_for_key = Rc::clone(&focus_visible);
-        let mode_for_key = Rc::clone(&mode);
         ui.on_key(row, move |ui, event| {
             if !matches!(
                 event.phase,
@@ -808,7 +920,6 @@ fn wire_nav_rows(
                         visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
                         stage,
                         page,
-                        mode_for_key.get(),
                     );
                 }
                 NavKeyAction::MoveTo(page) => {
@@ -820,7 +931,6 @@ fn wire_nav_rows(
                         visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
                         stage,
                         page,
-                        mode_for_key.get(),
                     );
                 }
             }
@@ -831,7 +941,6 @@ fn wire_nav_rows(
         let selected_page_for_focus = Rc::clone(&selected_page);
         let focused_page_for_focus = Rc::clone(&focused_page);
         let focus_visible_for_focus = Rc::clone(&focus_visible);
-        let mode_for_focus = Rc::clone(&mode);
         ui.on_focus(row, move |ui, event| {
             match event.kind {
                 overstory::RoutedEventKind::FocusGained => {
@@ -851,28 +960,12 @@ fn wire_nav_rows(
                 &nav_rows_for_focus,
                 selected_page_for_focus.get(),
                 visible_focused_page(&focused_page_for_focus, &focus_visible_for_focus),
-                mode_for_focus.get().palette(),
             );
         });
     }
 }
 
-fn wire_theme_toggle(
-    ui: &mut Ui,
-    root: ElementId,
-    nav: ElementId,
-    stage: ElementId,
-    nav_chrome: NavChrome,
-    nav_rows: Rc<[ElementId]>,
-    selected_page: Rc<Cell<DemoPage>>,
-    focused_page: Rc<Cell<Option<DemoPage>>>,
-    focus_visible: Rc<Cell<bool>>,
-    mode: Rc<Cell<DemoThemeMode>>,
-) {
-    let nav_rows_for_click = Rc::clone(&nav_rows);
-    let selected_page_for_click = Rc::clone(&selected_page);
-    let focused_page_for_click = Rc::clone(&focused_page);
-    let focus_visible_for_click = Rc::clone(&focus_visible);
+fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, mode: Rc<Cell<DemoThemeMode>>) {
     let mode_for_click = Rc::clone(&mode);
     ui.on_click(nav_chrome.mode_toggle, move |ui, event| {
         if !matches!(
@@ -881,105 +974,22 @@ fn wire_theme_toggle(
         ) {
             return;
         }
-        switch_demo_theme(
-            ui,
-            root,
-            nav,
-            stage,
-            nav_chrome,
-            &nav_rows_for_click,
-            &selected_page_for_click,
-            &focused_page_for_click,
-            &focus_visible_for_click,
-            &mode_for_click,
-        );
+        switch_demo_theme(ui, &mode_for_click);
     });
 
-    let nav_rows_for_key = Rc::clone(&nav_rows);
-    let selected_page_for_key = Rc::clone(&selected_page);
-    let focused_page_for_key = Rc::clone(&focused_page);
-    let focus_visible_for_key = Rc::clone(&focus_visible);
     let mode_for_key = Rc::clone(&mode);
     ui.on_key(nav_chrome.mode_toggle, move |ui, event| {
         if !matches!(event.phase, overstory::Phase::Target) || !is_activation_key(event.key) {
             return;
         }
-        switch_demo_theme(
-            ui,
-            root,
-            nav,
-            stage,
-            nav_chrome,
-            &nav_rows_for_key,
-            &selected_page_for_key,
-            &focused_page_for_key,
-            &focus_visible_for_key,
-            &mode_for_key,
-        );
+        switch_demo_theme(ui, &mode_for_key);
     });
 }
 
-fn switch_demo_theme(
-    ui: &mut Ui,
-    root: ElementId,
-    nav: ElementId,
-    stage: ElementId,
-    nav_chrome: NavChrome,
-    nav_rows: &[ElementId],
-    selected_page: &Cell<DemoPage>,
-    focused_page: &Cell<Option<DemoPage>>,
-    focus_visible: &Cell<bool>,
-    mode: &Cell<DemoThemeMode>,
-) {
+fn switch_demo_theme(ui: &mut Ui, mode: &Cell<DemoThemeMode>) {
     let next = mode.get().toggled();
     mode.set(next);
-    apply_demo_theme(
-        ui,
-        root,
-        nav,
-        stage,
-        nav_chrome,
-        nav_rows,
-        selected_page.get(),
-        visible_focused_page(focused_page, focus_visible),
-        next,
-    );
-    show_demo_page_with_mode(ui, stage, selected_page.get(), next);
-}
-
-fn apply_demo_theme(
-    ui: &mut Ui,
-    root: ElementId,
-    nav: ElementId,
-    stage: ElementId,
-    nav_chrome: NavChrome,
-    nav_rows: &[ElementId],
-    selected_page: DemoPage,
-    focused_page: Option<DemoPage>,
-    mode: DemoThemeMode,
-) {
-    let palette = mode.palette();
-    ui.set_theme(mode.overstory_theme());
-    style_fill(ui, root, palette.root_bg);
-    style_surface(ui, nav, palette.nav_bg, palette.nav_border, 16.0);
-    style_surface(ui, stage, palette.stage_bg, palette.stage_border, 18.0);
-    style_fill(ui, nav_chrome.marker, palette.accent);
-    ui.set_local(
-        nav_chrome.heading,
-        ui.properties().foreground,
-        Brush::from(rgb_color(palette.text)),
-    );
-    ui.set_local(
-        nav_chrome.subtitle,
-        ui.properties().foreground,
-        Brush::from(rgb_color(palette.muted)),
-    );
-    ui.set_local(
-        nav_chrome.mode_label,
-        ui.properties().foreground,
-        Brush::from(rgb_color(palette.text)),
-    );
-    style_nav_rows(ui, nav_rows, selected_page, focused_page, palette);
+    ui.set_theme(next.theme());
 }
 
 fn activate_nav_page(
@@ -989,11 +999,10 @@ fn activate_nav_page(
     focused_page: Option<DemoPage>,
     stage: ElementId,
     page: DemoPage,
-    mode: DemoThemeMode,
 ) {
     selected_page.set(page);
-    style_nav_rows(ui, nav_rows, page, focused_page, mode.palette());
-    show_demo_page_with_mode(ui, stage, page, mode);
+    style_nav_rows(ui, nav_rows, page, focused_page);
+    show_demo_page(ui, stage, page);
 }
 
 fn visible_focused_page(
@@ -1058,56 +1067,18 @@ fn style_nav_rows(
     ui: &mut Ui,
     nav_rows: &[ElementId],
     selected_page: DemoPage,
-    focused_page: Option<DemoPage>,
-    palette: DemoPalette,
+    _focused_page: Option<DemoPage>,
 ) {
     for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
-        style_nav_row(
-            ui,
-            row,
-            page == selected_page,
-            focused_page == Some(page),
-            palette,
-        );
+        style_nav_row(ui, row, page == selected_page);
     }
 }
 
-fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool, focused: bool, palette: DemoPalette) {
-    let background = if selected {
-        palette.nav_selected_bg
-    } else if focused {
-        palette.nav_focus_bg
+fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool) {
+    if selected {
+        ui.add_pseudo(row, PSEUDO_SELECTED);
     } else {
-        palette.nav_bg
-    };
-    let border = if focused {
-        palette.focus_ring
-    } else {
-        background
-    };
-    ui.set_local(
-        row,
-        ui.properties().background,
-        opt_solid(background.0, background.1, background.2, 0xff),
-    );
-    ui.set_local(
-        row,
-        ui.properties().border_brush,
-        opt_solid(border.0, border.1, border.2, 0xff),
-    );
-    ui.set_local(row, ui.properties().border_width, 1.0_f64);
-    ui.set_local(row, ui.properties().corner_radius, 8.0_f64);
-    let foreground = if selected {
-        Brush::from(Color::from_rgba8(0xff, 0xff, 0xff, 0xff))
-    } else {
-        Brush::from(rgb_color(palette.text))
-    };
-    let children = ui
-        .get(row)
-        .map(|element| element.children().to_vec())
-        .unwrap_or_default();
-    for child in children {
-        ui.set_local(child, ui.properties().foreground, foreground.clone());
+        ui.remove_pseudo(row, PSEUDO_SELECTED);
     }
 }
 
@@ -1124,28 +1095,23 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
 }
 
 fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
-    show_demo_page_with_mode(ui, stage, page, DemoThemeMode::Dark);
-}
-
-fn show_demo_page_with_mode(ui: &mut Ui, stage: ElementId, page: DemoPage, mode: DemoThemeMode) {
-    let palette = mode.palette();
     clear_children(ui, stage);
-    build_page_header(ui, stage, page, palette);
+    build_page_header(ui, stage, page);
     match page {
-        DemoPage::Overview => build_overview_page(ui, stage, palette),
-        DemoPage::Inputs => build_inputs_page(ui, stage, palette),
-        DemoPage::Systems => build_systems_page(ui, stage, palette),
-        DemoPage::Selection => build_selection_page(ui, stage, palette),
-        DemoPage::Layout => build_layout_page(ui, stage, palette),
-        DemoPage::Typography => build_typography_page(ui, stage, palette),
-        DemoPage::Motion => build_motion_page(ui, stage, palette),
+        DemoPage::Overview => build_overview_page(ui, stage),
+        DemoPage::Inputs => build_inputs_page(ui, stage),
+        DemoPage::Systems => build_systems_page(ui, stage),
+        DemoPage::Selection => build_selection_page(ui, stage),
+        DemoPage::Layout => build_layout_page(ui, stage),
+        DemoPage::Typography => build_typography_page(ui, stage),
+        DemoPage::Motion => build_motion_page(ui, stage),
     }
 }
 
-fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage, palette: DemoPalette) {
+fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
     let header = ui.append(
         stage,
-        Panel::row(18.0).layout(
+        Panel::row(18.0).class(CLASS_DEMO_HEADER).layout(
             Layout::row(18.0)
                 .size(
                     LayoutSize::new()
@@ -1155,13 +1121,13 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage, palette: Dem
                 .padding_all(18.0),
         ),
     );
-    style_surface(ui, header, palette.header_bg, palette.header_border, 16.0);
 
-    let accent = ui.append(
+    ui.append(
         header,
-        Panel::new().layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
+        Panel::new()
+            .class(CLASS_DEMO_HEADER_ACCENT)
+            .layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
     );
-    style_surface(ui, accent, palette.accent, palette.accent, 8.0);
 
     let copy = ui.append(
         header,
@@ -1172,13 +1138,13 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage, palette: Dem
                 .flex_shrink(1.0),
         ),
     );
-    ui.append(copy, page_heading(page.title(), palette));
-    ui.append(copy, caption(page.subtitle(), palette).wrap());
+    ui.append(copy, page_heading(page.title()));
+    ui.append(copy, caption(page.subtitle()).wrap());
 }
 
-fn build_overview_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let inputs = demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 222.0, palette);
+    let inputs = demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 222.0);
     ui.append(
         inputs,
         TextInput::new()
@@ -1196,11 +1162,11 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     ui.append(actions, Button::new("Preview").font_size(15.0));
     ui.append(inputs, CheckBox::new("Record diagnostics").checked(true));
 
-    let systems = demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0, palette);
+    let systems = demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0);
     let toggle_row = ui.append(systems, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
-    ui.append(toggle_row, control_label("Rendering enabled", palette));
-    ui.append(systems, caption("GPU Budget", palette));
+    ui.append(toggle_row, control_label("Rendering enabled"));
+    ui.append(systems, caption("GPU Budget"));
     let progress = ui.append(
         systems,
         ProgressBar::new()
@@ -1208,9 +1174,9 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
             .size(OVERVIEW_CONTROL_WIDTH, 18.0),
     );
     drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
-    append_tabular_counter(ui, systems, "Frames", "fps", 120_000_000, 7, palette);
+    append_tabular_counter(ui, systems, "Frames", "fps", 120_000_000, 7);
 
-    let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 222.0, palette);
+    let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 222.0);
     let renderer_scroll = ScrollState::with_offset_y(28.0);
     let renderer_row = ui.append(selection, Panel::row(8.0).align_center());
     let list = ui.append(
@@ -1231,9 +1197,9 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     );
 }
 
-fn build_inputs_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let forms = demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, palette);
+    let forms = demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 224.0);
     ui.append(
         forms,
         TextInput::new()
@@ -1249,13 +1215,10 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     );
     ui.append(
         forms,
-        caption(
-            "Focus rings, hover borders, selection, and read-only state",
-            palette,
-        ),
+        caption("Focus rings, hover borders, selection, and read-only state"),
     );
 
-    let actions = demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0, palette);
+    let actions = demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0);
     let action_row = ui.append(actions, Panel::row(10.0).align_center());
     let deploy = ui.append(
         action_row,
@@ -1280,14 +1243,14 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     ui.append(actions, CheckBox::new("Send diagnostics").disabled());
 }
 
-fn build_systems_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_systems_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let controls = demo_card(ui, row, "CONTROL SURFACE", PAGE_CARD_WIDTH, 322.0, palette);
+    let controls = demo_card(ui, row, "CONTROL SURFACE", PAGE_CARD_WIDTH, 322.0);
     let toggle_row = ui.append(controls, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
-    ui.append(toggle_row, control_label("Rendering enabled", palette));
+    ui.append(toggle_row, control_label("Rendering enabled"));
     ui.append(controls, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-    ui.append(controls, caption("GPU Budget", palette));
+    ui.append(controls, caption("GPU Budget"));
     let progress = ui.append(
         controls,
         ProgressBar::new()
@@ -1299,7 +1262,7 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
         Tooltip::new("Animated by the retained timer queue"),
     );
     drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
-    ui.append(controls, caption("Volume", palette));
+    ui.append(controls, caption("Volume"));
     let volume = ui.append(controls, Slider::new().value(0.42));
     ui.set_tooltip(
         volume,
@@ -1307,30 +1270,22 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     );
     let spinner_row = ui.append(controls, Panel::row(12.0).align_center());
     ui.append(spinner_row, Spinner::new());
-    ui.append(spinner_row, caption("Streaming updates", palette));
+    ui.append(spinner_row, caption("Streaming updates"));
 
-    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 218.0, palette);
-    append_large_counter(
-        ui,
-        telemetry,
-        "Throughput",
-        "events / min",
-        90_000_000,
-        137,
-        palette,
-    );
+    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 218.0);
+    append_large_counter(ui, telemetry, "Throughput", "events / min", 90_000_000, 137);
 }
 
-fn build_selection_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0, palette);
+    let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0);
     let renderer_scroll = ScrollState::with_offset_y(34.0);
     let renderer_row = ui.append(list_card, Panel::row(10.0).align_center());
     let initial_summary = format!(
         "Selected: {}",
         renderer_queue_label(INITIAL_RENDERER_SELECTION)
     );
-    let summary = ui.append(list_card, caption(&initial_summary, palette));
+    let summary = ui.append(list_card, caption(&initial_summary));
     let renderer_list = ui.append(
         renderer_row,
         ListBox::new()
@@ -1356,32 +1311,28 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
         Tooltip::new("Multi-select list with viewport clipping"),
     );
 
-    let detail = demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 326.0, palette);
-    ui.append(detail, page_heading("Virtualized by default", palette));
+    let detail = demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 326.0);
+    ui.append(detail, page_heading("Virtualized by default"));
     ui.append(
         detail,
-        body_text(
-            "Only visible rows are realized. Selection stays in item indices, and the scrollbar shares viewport metrics with the list.",
-            palette,
-        ),
+        body_text("Only visible rows are realized. Selection stays in item indices, and the scrollbar shares viewport metrics with the list."),
     );
 }
 
-fn build_layout_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_layout_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0, palette);
+    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0);
     let split_row = ui.append(panes, Panel::row(8.0).align_center());
     let left_pane = ui.append(
         split_row,
-        Panel::column(8.0).layout(
+        Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
             Layout::column(8.0)
                 .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
                 .padding_all(14.0),
         ),
     );
-    style_split_pane(ui, left_pane, palette.split_scene_bg, palette.split_border);
-    ui.append(left_pane, control_label("Scene", palette));
-    ui.append(left_pane, caption("Retained graph", palette));
+    ui.append(left_pane, control_label("Scene"));
+    ui.append(left_pane, caption("Retained graph"));
 
     let right_pane_slot = Rc::new(Cell::new(None));
     let right_pane_for_splitter = Rc::clone(&right_pane_slot);
@@ -1398,27 +1349,18 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     ui.set_tooltip(splitter, Tooltip::new("Drag or focus and use arrow keys"));
     let right_pane = ui.append(
         split_row,
-        Panel::column(8.0).layout(
+        Panel::column(8.0).class(CLASS_DEMO_SPLIT_INSPECTOR).layout(
             Layout::column(8.0)
                 .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
                 .padding_all(14.0),
         ),
     );
     right_pane_slot.set(Some(right_pane));
-    style_split_pane(
-        ui,
-        right_pane,
-        palette.split_inspector_bg,
-        palette.split_border,
-    );
-    ui.append(right_pane, control_label("Inspector", palette));
-    ui.append(right_pane, caption("Keyboard resize", palette));
+    ui.append(right_pane, control_label("Inspector"));
+    ui.append(right_pane, caption("Keyboard resize"));
 
-    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 326.0, palette);
-    ui.append(
-        ruler,
-        caption("Slider ticks come from understory_axis", palette),
-    );
+    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 326.0);
+    ui.append(ruler, caption("Slider ticks come from understory_axis"));
     ui.append(
         ruler,
         Slider::new()
@@ -1431,16 +1373,13 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     ui.append(ruler, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(
         ruler,
-        body_text(
-            "Longhand layout properties keep slider ticks, labels, and thumbs independently positioned without replacing the rest of the style.",
-            palette,
-        ),
+        body_text("Longhand layout properties keep slider ticks, labels, and thumbs independently positioned without replacing the rest of the style."),
     );
 }
 
-fn build_typography_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_typography_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0, palette);
+    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0);
     append_large_counter(
         ui,
         counter,
@@ -1448,22 +1387,18 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
         "events / min",
         85_000_000,
         257,
-        palette,
     );
     ui.append(
         counter,
-        body_text(
-            "The number text uses the OpenType tabular-figures feature, so its measured width stays steady as digits change.",
-            palette,
-        ),
+        body_text("The number text uses the OpenType tabular-figures feature, so its measured width stays steady as digits change."),
     );
 
-    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 326.0, palette);
+    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 326.0);
     ui.append(
         text,
         Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
             .font_size(16.0)
-            .foreground(rgb_color(palette.text))
+            .class(CLASS_DEMO_BODY)
             .wrap(),
     );
     ui.append(text, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
@@ -1481,10 +1416,10 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     );
 }
 
-fn build_motion_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
+fn build_motion_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
 
-    let color = demo_card(ui, row, "COLOR MOTION", PAGE_CARD_WIDTH, 326.0, palette);
+    let color = demo_card(ui, row, "COLOR MOTION", PAGE_CARD_WIDTH, 326.0);
     let color_lanes = ui.append(
         color,
         Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
@@ -1505,25 +1440,15 @@ fn build_motion_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
         color,
         Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 16.0)),
     );
-    motion_lane_label(ui, labels, "OKLab", palette);
-    motion_lane_label(ui, labels, "sRGB", palette);
+    motion_lane_label(ui, labels, "OKLab");
+    motion_lane_label(ui, labels, "sRGB");
     ui.append(
         color,
-        body_text(
-            "Both lanes share endpoints. The middle of the journey exposes the interpolation policy.",
-            palette,
-        ),
+        body_text("Both lanes share endpoints. The middle of the journey exposes the interpolation policy."),
     );
     schedule_pair_toggle(ui, [oklab, srgb], PSEUDO_SELECTED, millis(5_200));
 
-    let composition = demo_card(
-        ui,
-        row,
-        "COMPOSITION MOTION",
-        PAGE_CARD_WIDTH,
-        326.0,
-        palette,
-    );
+    let composition = demo_card(ui, row, "COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0);
     let strip = ui.append(
         composition,
         Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
@@ -1538,19 +1463,12 @@ fn build_motion_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
 
     let motion_stage = ui.append(
         composition,
-        Panel::new().layout(
+        Panel::new().class(CLASS_DEMO_MOTION_STAGE).layout(
             Layout::new()
                 .relative()
                 .logical_size(PAGE_CONTROL_WIDTH, 102.0)
                 .padding_all(0.0),
         ),
-    );
-    style_surface(
-        ui,
-        motion_stage,
-        palette.motion_stage_bg,
-        palette.motion_stage_bg,
-        14.0,
     );
     let mover = ui.append(
         motion_stage,
@@ -1560,11 +1478,8 @@ fn build_motion_page(ui: &mut Ui, stage: ElementId, palette: DemoPalette) {
     );
     ui.append(
         composition,
-        caption(
-            "Opacity, border, retargeting, and layer offset all sample presentation values.",
-            palette,
-        )
-        .wrap(),
+        caption("Opacity, border, retargeting, and layer offset all sample presentation values.")
+            .wrap(),
     );
 
     schedule_toggle(ui, opacity, PSEUDO_PRESSED, millis(1_100));
@@ -1582,18 +1497,8 @@ fn motion_tile(ui: &mut Ui, parent: ElementId, class: ClassId) -> ElementId {
     )
 }
 
-fn motion_lane_label(
-    ui: &mut Ui,
-    parent: ElementId,
-    text: &str,
-    palette: DemoPalette,
-) -> ElementId {
-    let id = ui.append(
-        parent,
-        Text::new(text)
-            .font_size(12.0)
-            .foreground(rgb_color(palette.muted)),
-    );
+fn motion_lane_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
+    let id = ui.append(parent, Text::new(text).class(CLASS_DEMO_CARD_TITLE));
     ui.set_layout(id, Layout::new().logical_size(158.0, 16.0));
     id
 }
@@ -1617,17 +1522,16 @@ fn append_tabular_counter(
     suffix: &str,
     interval: u64,
     step: u32,
-    palette: DemoPalette,
 ) -> ElementId {
-    ui.append(parent, caption(label, palette));
+    ui.append(parent, caption(label));
     let row = ui.append(parent, Panel::row(8.0).align_center());
-    let counter = ui.append(row, number_text("0000", palette));
+    let counter = ui.append(row, number_text("0000"));
     ui.set_local(
         counter,
         ui.properties().font_features,
         tabular_number_features(),
     );
-    ui.append(row, caption(suffix, palette));
+    ui.append(row, caption(suffix));
     ui.set_tooltip(
         counter,
         Tooltip::new("Tabular figures keep neighboring text steady"),
@@ -1643,17 +1547,16 @@ fn append_large_counter(
     suffix: &str,
     interval: u64,
     step: u32,
-    palette: DemoPalette,
 ) -> ElementId {
-    ui.append(parent, caption(label, palette));
+    ui.append(parent, caption(label));
     let row = ui.append(parent, Panel::row(12.0).align_center());
-    let counter = ui.append(row, large_number_text("0000", palette));
+    let counter = ui.append(row, large_number_text("0000"));
     ui.set_local(
         counter,
         ui.properties().font_features,
         tabular_number_features(),
     );
-    ui.append(row, caption(suffix, palette));
+    ui.append(row, caption(suffix));
     ui.set_tooltip(
         counter,
         Tooltip::new("Tabular figures keep neighboring text steady"),
@@ -1738,23 +1641,12 @@ fn selection_summary(event: &overstory::ListSelectionChangedEvent) -> String {
     }
 }
 
-fn style_split_pane(ui: &mut Ui, pane: ElementId, background: (u8, u8, u8), border: (u8, u8, u8)) {
-    ui.set_local(
-        pane,
-        ui.properties().background,
-        opt_solid(background.0, background.1, background.2, 0xff),
-    );
-    ui.set_local(
-        pane,
-        ui.properties().border_brush,
-        opt_solid(border.0, border.1, border.2, 0xff),
-    );
-    ui.set_local(pane, ui.properties().border_width, 1.0_f64);
-    ui.set_local(pane, ui.properties().corner_radius, 8.0_f64);
-}
-
 fn class_selector(class: ClassId) -> Selector {
     Selector::single(SelectorStep::type_tag(TYPE_GENERIC).with_class(class))
+}
+
+fn text_class_selector(class: ClassId) -> Selector {
+    Selector::single(SelectorStep::type_tag(TYPE_TEXT).with_class(class))
 }
 
 fn class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {
@@ -1763,6 +1655,15 @@ fn class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {
             .with_class(class)
             .with_pseudo(pseudo),
     )
+}
+
+fn selected_nav_label_selector() -> Selector {
+    Selector::from([
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(CLASS_DEMO_NAV_ROW)
+            .with_pseudo(PSEUDO_SELECTED),
+        SelectorStep::type_tag(TYPE_TEXT).with_class(CLASS_DEMO_NAV_LABEL),
+    ])
 }
 
 fn color_transition_rules(
