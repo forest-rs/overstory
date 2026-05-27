@@ -13,5 +13,8 @@ overstory.workspace = true
 overstory_host_winit.workspace = true
 peniko.workspace = true
 
+[dev-dependencies]
+kurbo.workspace = true
+
 [lints]
 workspace = true

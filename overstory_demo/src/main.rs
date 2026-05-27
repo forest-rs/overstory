@@ -13,17 +13,21 @@ use alloc::vec::Vec;
 use core::cell::Cell;
 
 use overstory::{
-    Button, CheckBox, Divider, ElementId, FontFeature, Layout, ListBox, Panel, Popup, ProgressBar,
-    ScrollBar, ScrollState, Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui,
-    layouts, set_progress_value, theme,
+    Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign, LayoutAlignment,
+    LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar, ScrollState,
+    Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
+    set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
+const ROOT_GAP: f32 = 24.0;
+const ROOT_PADDING: f32 = 28.0;
 const NAV_WIDTH: f32 = 276.0;
-const STAGE_WIDTH: f32 = 1092.0;
-const SHELL_HEIGHT: f32 = 720.0;
+const NAV_PADDING: f32 = 20.0;
+const NAV_CONTENT_WIDTH: f32 = NAV_WIDTH - (NAV_PADDING * 2.0);
+const PAGE_HEADER_HEIGHT: f32 = 112.0;
 
 const PIPELINE_ITEMS: [&str; 7] = [
     "Vello scene graph",
@@ -277,17 +281,22 @@ fn build_ui() -> Ui {
 
     ui.set_layout(
         root,
-        layouts::row_with_gap(24.0)
+        layouts::row_with_gap(ROOT_GAP)
             .percent_size(1.0, 1.0)
-            .padding_all(28.0),
+            .padding_all(ROOT_PADDING)
+            .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
     );
 
     let nav = ui.append(
         root,
         Panel::column(18.0).layout(
             Layout::column(18.0)
-                .logical_size(NAV_WIDTH, SHELL_HEIGHT)
-                .padding_all(20.0)
+                .size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Logical(NAV_WIDTH))
+                        .height(LayoutDimension::Percent(1.0)),
+                )
+                .padding_all(NAV_PADDING)
                 .flex_shrink(0.0),
         ),
     );
@@ -298,8 +307,9 @@ fn build_ui() -> Ui {
         root,
         Panel::column(18.0).layout(
             Layout::column(18.0)
-                .logical_size(STAGE_WIDTH, SHELL_HEIGHT)
-                .flex_grow(1.0),
+                .size(LayoutSize::new().height(LayoutDimension::Percent(1.0)))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
         ),
     );
     style_surface(&mut ui, stage, (0x1b, 0x1c, 0x23), (0x2f, 0x32, 0x3d), 18.0);
@@ -308,7 +318,7 @@ fn build_ui() -> Ui {
         nav,
         ListBox::new()
             .items(DemoPage::ALL.iter().map(|page| page.nav_label()))
-            .size(236.0, 244.0)
+            .size(NAV_CONTENT_WIDTH, 244.0)
             .item_extent(36.0)
             .selected_index(0)
             .on_selection_changed(move |ui, event| {
@@ -336,13 +346,13 @@ fn build_nav(ui: &mut Ui, nav: ElementId) {
 
     let marker = ui.append(
         nav,
-        Panel::new().layout(Layout::new().logical_size(68.0, 4.0)),
+        Panel::new().layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
     );
     style_fill(ui, marker, (0x59, 0x75, 0xe6));
 }
 
 fn build_nav_footer(ui: &mut Ui, nav: ElementId) {
-    ui.append(nav, Divider::horizontal().length(236.0));
+    ui.append(nav, Divider::horizontal().length(NAV_CONTENT_WIDTH));
     ui.append(nav, quiet_caption("Runtime"));
     let stats = ui.append(nav, Panel::row(10.0).align_center());
     let dot = ui.append(
@@ -383,7 +393,11 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         stage,
         Panel::row(18.0).layout(
             Layout::row(18.0)
-                .logical_size(STAGE_WIDTH, 112.0)
+                .size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Percent(1.0))
+                        .height(LayoutDimension::Logical(PAGE_HEADER_HEIGHT)),
+                )
                 .padding_all(22.0),
         ),
     );
@@ -400,7 +414,7 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         Panel::column(8.0).layout(Layout::column(8.0).flex_grow(1.0)),
     );
     ui.append(copy, page_heading(page.title()));
-    ui.append(copy, caption(page.subtitle()));
+    ui.append(copy, caption(page.subtitle()).wrap());
 
     let status = ui.append(header, Panel::row(10.0).align_center());
     ui.append(status, Spinner::new());
@@ -794,4 +808,54 @@ fn style_split_pane(ui: &mut Ui, pane: ElementId, r: u8, g: u8, b: u8) {
     );
     ui.set_local(pane, ui.properties().border_width, 1.0_f64);
     ui.set_local(pane, ui.properties().corner_radius, 8.0_f64);
+}
+
+#[cfg(test)]
+mod tests {
+    use kurbo::Size;
+
+    use super::*;
+
+    fn assert_close(actual: f64, expected: f64, label: &str) {
+        assert!(
+            (actual - expected).abs() < 0.01,
+            "{label}: expected {expected}, got {actual}",
+        );
+    }
+
+    #[test]
+    fn gallery_shell_fills_window_content_and_nav_accent() {
+        let mut ui = build_ui();
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let root = ui.root();
+        let root_children = ui.get(root).expect("root should exist").children();
+        let [nav, stage] = *root_children else {
+            panic!("gallery root should contain nav and stage");
+        };
+
+        let nav_bounds = ui.effective_bounds(nav);
+        let stage_bounds = ui.effective_bounds(stage);
+        let expected_content_height = f64::from(INITIAL_SIZE.1) - (2.0 * f64::from(ROOT_PADDING));
+        assert_close(nav_bounds.height(), expected_content_height, "nav height");
+        assert_close(
+            stage_bounds.height(),
+            expected_content_height,
+            "stage height",
+        );
+
+        let nav_children = ui.get(nav).expect("nav should exist").children();
+        let marker = nav_children
+            .get(2)
+            .copied()
+            .expect("nav marker should be third child");
+        assert_close(
+            ui.effective_bounds(marker).width(),
+            f64::from(NAV_CONTENT_WIDTH),
+            "nav marker width",
+        );
+    }
 }

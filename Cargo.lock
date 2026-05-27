@@ -1741,6 +1741,7 @@ dependencies = [
 name = "overstory_demo"
 version = "0.0.1"
 dependencies = [
+ "kurbo",
  "overstory",
  "overstory_host_winit",
  "peniko",
