@@ -20,7 +20,7 @@ use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     BuiltInProperties, Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign,
     LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar,
-    ScrollState, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
+    ScrollState, Select, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
     TimerDuration, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
@@ -1316,6 +1316,24 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     ui.append(
         detail,
         body_text("Only visible rows are realized. Selection stays in item indices, and the scrollbar shares viewport metrics with the list."),
+    );
+    ui.append(detail, control_label("Inspection target"));
+    let select = ui.append(
+        detail,
+        Select::new()
+            .items([
+                "Renderer queue",
+                "Layer composition",
+                "Text shaping",
+                "Input routing",
+            ])
+            .selected_index(1)
+            .width(PAGE_CONTROL_WIDTH)
+            .popup_height(124.0),
+    );
+    ui.set_tooltip(
+        select,
+        Tooltip::new("Popup-backed select using the ListBox path"),
     );
 }
 

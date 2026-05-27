@@ -67,6 +67,7 @@ use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
 };
 use crate::controls::scroll::{PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR};
+use crate::controls::select::{PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT};
 use crate::controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
@@ -78,7 +79,8 @@ use crate::controls::text_input::{
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::controls::tooltip::TYPE_TOOLTIP;
 use crate::layouts::{
-    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutJustify, LayoutSize, LayoutSpacing,
+    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutSize,
+    LayoutSpacing,
 };
 use crate::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
@@ -499,6 +501,56 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.corner_radius, 3.0_f64)
         .build();
 
+    let select_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.font_size, 14.0_f64)
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::logical(220.0, 38.0))
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(12.0, 8.0),
+        )
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new()
+                .align_items(LayoutAlign::Center)
+                .justify_content(LayoutJustify::Start),
+        )
+        .build();
+    let select_hover = StyleBuilder::new()
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .build();
+    let select_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let select_disabled = StyleBuilder::new()
+        .set_resource(properties.background, TRACK_BG)
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
+    let select_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let select_indicator = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 12.0_f64)
+        .build();
+
     let list_box_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
@@ -815,6 +867,36 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
                 PART_TEXT_INPUT_CARET,
             ),
             text_input_caret,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_SELECT),
+            select_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SELECT, PSEUDO_HOVER),
+            select_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SELECT, PSEUDO_FOCUS_VISIBLE),
+            select_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SELECT, PSEUDO_DISABLED),
+            select_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_SELECT, PART_SELECT_LABEL),
+            select_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_SELECT, PART_SELECT_INDICATOR),
+            select_indicator,
         )
         .push_rule(
             StyleOrigin::Base,

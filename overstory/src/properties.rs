@@ -164,6 +164,11 @@ pub struct BuiltInProperties {
     /// reject text insertion and deletion.
     pub is_read_only: Property<bool>,
 
+    /// Primary selected item index for single-selection controls. Default
+    /// `None`. Controls with richer selection state, such as multi-select
+    /// lists, may expose more detailed selection through control-specific APIs.
+    pub selected_index: Property<Option<usize>>,
+
     /// Numeric value for value-bearing controls (`Slider`,
     /// `ProgressBar`, …). Default `0.0`. The semantic range is
     /// `[Self::minimum, Self::maximum]`; consumers should clamp
@@ -416,6 +421,10 @@ impl BuiltInProperties {
             ),
             is_read_only: registry
                 .register("IsReadOnly", PropertyMetadataBuilder::new(false).build()),
+            selected_index: registry.register(
+                "SelectedIndex",
+                PropertyMetadataBuilder::new(None::<usize>).build(),
+            ),
             value: registry.register(
                 "Value",
                 PropertyMetadataBuilder::new(0.0_f64)

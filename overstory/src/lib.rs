@@ -109,6 +109,11 @@ pub use controls::scroll::{
     TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_view_offset_y, scroll_view_state,
     set_scroll_view_offset_y,
 };
+pub use controls::select::{
+    PART_SELECT_INDICATOR, PART_SELECT_LABEL, SLOT_SELECT_INDICATOR, SLOT_SELECT_LABEL, Select,
+    SelectSelectionChangedEvent, TYPE_SELECT, clear_select_selection, selected_select_index,
+    selected_select_item, set_select_index,
+};
 pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
     PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,

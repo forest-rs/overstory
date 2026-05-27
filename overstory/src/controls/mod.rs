@@ -42,6 +42,7 @@ pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress;
 pub(crate) mod scroll;
+pub(crate) mod select;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
