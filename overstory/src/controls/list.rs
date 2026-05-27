@@ -45,14 +45,16 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `ListBox`.
 pub const TYPE_LIST_BOX: TypeTag = TypeTag(11);
 /// Selector identity for realized `ListBox` item containers.
 pub const TYPE_LIST_ITEM: TypeTag = TypeTag(12);
+/// Owner-local part identity for the styled list item content surface.
+pub const PART_LIST_ITEM_CONTENT: PartTag = PartTag(1);
 /// Owner-local part identity for the visible item label.
-pub const PART_LIST_ITEM_LABEL: PartTag = PartTag(1);
+pub const PART_LIST_ITEM_LABEL: PartTag = PartTag(2);
 /// Semantic slot for item content.
 pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
@@ -743,12 +745,23 @@ const LIST_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
     ),
 ];
 
-const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
+const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] =
     &[
         TemplateNode::widget(TemplateWidgetFactory::new(list_item_label_widget))
             .with_slot(SLOT_LIST_ITEM_CONTENT)
             .with_bindings(LIST_ITEM_LABEL_BINDINGS),
     ];
+
+const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
+    &[
+        TemplateNode::widget(TemplateWidgetFactory::new(list_item_content_widget))
+            .with_part(PART_LIST_ITEM_CONTENT)
+            .with_children(LIST_ITEM_CONTENT_CHILDREN),
+    ];
+
+fn list_item_content_widget() -> Box<dyn Widget> {
+    Box::new(SurfacePartWidget)
+}
 
 fn list_item_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
@@ -1183,6 +1196,34 @@ mod tests {
         assert_eq!(
             background,
             Some(Brush::Solid(Color::from_rgba8(0x3a, 0x69, 0xd6, 0xff)))
+        );
+    }
+
+    #[test]
+    fn realized_list_item_label_is_inset_and_centered() {
+        let mut ui = Ui::new();
+        ui.set_theme(crate::theme::default_theme());
+        ui.set_cascade(crate::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        let listbox = ui.append(root, test_list_box());
+
+        realize(&mut ui);
+
+        let item = realized_list_item(&ui, listbox, 0).unwrap();
+        let content = ui.part(item, PART_LIST_ITEM_CONTENT).unwrap();
+        let label = ui.slot(item, SLOT_LIST_ITEM_CONTENT).unwrap();
+        let item_bounds = ui.effective_bounds(item);
+        let content_bounds = ui.effective_bounds(content);
+        let label_bounds = ui.effective_bounds(label);
+
+        assert_eq!(content_bounds, item_bounds);
+        assert!(
+            label_bounds.x0 >= item_bounds.x0 + 8.0,
+            "label should be inset from item edge; item={item_bounds:?}, label={label_bounds:?}"
+        );
+        assert!(
+            (label_bounds.center().y - item_bounds.center().y).abs() <= 1.0,
+            "label should be vertically centered; item={item_bounds:?}, label={label_bounds:?}"
         );
     }
 

@@ -61,7 +61,7 @@ use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
 };
 use crate::controls::divider::TYPE_DIVIDER;
-use crate::controls::list::{TYPE_LIST_BOX, TYPE_LIST_ITEM};
+use crate::controls::list::{PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM};
 use crate::controls::popup::TYPE_POPUP;
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
@@ -437,14 +437,16 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             background_transition_rules(properties),
         )
         .set(properties.font_size, 14.0_f64)
+        .set(properties.corner_radius, 6.0_f64)
+        .build();
+    let list_item_content = StyleBuilder::new()
         .set(
             properties.layout,
             Layout::row(0.0)
+                .percent_size(1.0, 1.0)
                 .align_center()
-                .align_self_stretch()
                 .padding_xy(10.0, 7.0),
         )
-        .set(properties.corner_radius, 6.0_f64)
         .build();
     let list_item_hover = StyleBuilder::new()
         .set(properties.background, opt_solid(0x36, 0x36, 0x42, 0xff))
@@ -747,6 +749,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             selectors::type_tag(TYPE_LIST_ITEM),
             list_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_LIST_ITEM, PART_LIST_ITEM_CONTENT),
+            list_item_content,
         )
         .push_rule(
             StyleOrigin::Base,
