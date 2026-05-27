@@ -3422,6 +3422,15 @@ fn add_class_restyles_subtree() {
     assert!(ui.get(root).unwrap().classes().contains(&ClassId(1)));
 }
 
+#[test]
+fn text_builder_attaches_classes() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let text = ui.append(root, crate::Text::new("Styled").class(ClassId(42)));
+
+    assert!(ui.get(text).unwrap().classes().contains(&ClassId(42)));
+}
+
 fn slider_value(ui: &Ui, slider: ElementId) -> Option<f64> {
     ui.get(slider)
         .and_then(|el| el.get_local_value(ui.properties().value).copied())

@@ -20,13 +20,14 @@
 
 use alloc::boxed::Box;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use kurbo::Size;
 use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, TextContent, TextStyle, TextWrapMode};
 use understory_property::Property;
-use understory_style::TypeTag;
+use understory_style::{ClassId, TypeTag};
 
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext};
 use crate::element::{Element, ElementId};
@@ -46,6 +47,7 @@ pub struct Text {
     font_size: Option<f64>,
     foreground: Option<Brush>,
     wrap_mode: Option<TextWrapMode>,
+    classes: Vec<ClassId>,
 }
 
 impl core::fmt::Debug for Text {
@@ -65,6 +67,7 @@ impl Text {
             font_size: None,
             foreground: None,
             wrap_mode: None,
+            classes: Vec::new(),
         }
     }
 
@@ -98,6 +101,17 @@ impl Text {
     pub fn wrap(self) -> Self {
         self.wrap_mode(TextWrapMode::Wrap)
     }
+
+    /// Attaches a class id to the resulting text element.
+    ///
+    /// Style rules keyed on this class can provide foreground, font size,
+    /// wrapping policy, or future text style properties without writing local
+    /// values into each label.
+    #[must_use]
+    pub fn class(mut self, class: ClassId) -> Self {
+        self.classes.push(class);
+        self
+    }
 }
 
 impl AppendSpec for Text {
@@ -122,6 +136,9 @@ impl AppendSpec for Text {
         }
         if let Some(wrap_mode) = self.wrap_mode {
             ui.set_local(id, wrap_mode_prop, wrap_mode);
+        }
+        for class in self.classes {
+            ui.add_class(id, class);
         }
         id
     }

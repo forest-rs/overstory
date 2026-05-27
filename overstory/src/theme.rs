@@ -160,6 +160,21 @@ pub fn default_theme() -> Theme {
 /// Builds Overstory's default dark palette.
 #[must_use]
 pub fn dark_theme() -> Theme {
+    dark_theme_builder().build()
+}
+
+/// Builds a [`ThemeBuilder`] preloaded with Overstory's default dark palette.
+///
+/// Apps can use this to add app-specific resource keys while preserving the
+/// built-in control tokens:
+///
+/// ```ignore
+/// let theme = overstory::theme::dark_theme_builder()
+///     .set(APP_CARD_BG, my_card_brush)
+///     .build();
+/// ```
+#[must_use]
+pub fn dark_theme_builder() -> ThemeBuilder {
     finish_motion_tokens(
         ThemeBuilder::new()
             .set(SURFACE_BG, opt_solid(0x1e, 0x1e, 0x24, 0xff))
@@ -183,12 +198,20 @@ pub fn dark_theme() -> Theme {
             .set(SLIDER_MAJOR_TICK_BG, opt_solid(0xc8, 0xc8, 0xd2, 0xff))
             .set(SLIDER_MINOR_TICK_BG, opt_solid(0x78, 0x78, 0x84, 0xff)),
     )
-    .build()
 }
 
 /// Builds Overstory's default light palette.
 #[must_use]
 pub fn light_theme() -> Theme {
+    light_theme_builder().build()
+}
+
+/// Builds a [`ThemeBuilder`] preloaded with Overstory's default light palette.
+///
+/// Apps can use this to add app-specific resource keys while preserving the
+/// built-in control tokens.
+#[must_use]
+pub fn light_theme_builder() -> ThemeBuilder {
     finish_motion_tokens(
         ThemeBuilder::new()
             .set(SURFACE_BG, opt_solid(0xf3, 0xf5, 0xfa, 0xff))
@@ -212,7 +235,6 @@ pub fn light_theme() -> Theme {
             .set(SLIDER_MAJOR_TICK_BG, opt_solid(0x61, 0x68, 0x78, 0xff))
             .set(SLIDER_MINOR_TICK_BG, opt_solid(0xa2, 0xa9, 0xb7, 0xff)),
     )
-    .build()
 }
 
 fn finish_motion_tokens(builder: ThemeBuilder) -> ThemeBuilder {
@@ -975,5 +997,18 @@ mod tests {
         assert!(light.contains(CONTROL_HOVER_BG));
         assert!(light.contains(TEXT_SELECTION_BG));
         assert!(light.contains(SLIDER_MAJOR_TICK_BG));
+    }
+
+    #[test]
+    fn theme_builders_can_be_extended_with_app_tokens() {
+        const APP_TOKEN: ResourceKey = ResourceKey::new(9_000);
+
+        let theme = dark_theme_builder().set(APP_TOKEN, 42_u32).build();
+
+        assert_eq!(theme.get::<u32>(APP_TOKEN), Some(&42));
+        assert_eq!(
+            theme.get::<Brush>(ON_SURFACE_FG),
+            dark_theme().get::<Brush>(ON_SURFACE_FG),
+        );
     }
 }
