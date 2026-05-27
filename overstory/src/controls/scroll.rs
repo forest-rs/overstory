@@ -20,7 +20,6 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use core::cell::Cell;
 
-use cursor_icon::CursorIcon;
 use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
 
@@ -458,10 +457,6 @@ impl Widget for ScrollBarWidget {
         Some(&SCROLL_BAR_TEMPLATE)
     }
 
-    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
-        Some(CursorIcon::AllScroll)
-    }
-
     fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
@@ -586,10 +581,13 @@ pub(crate) fn wheel_scroll_delta(
     }
     let bounds = ui.effective_bounds(viewport);
     let page = Vec2::new(bounds.width(), bounds.height());
-    let delta = event.logical_delta(
+    let raw_delta = event.logical_delta(
         Vec2::new(DEFAULT_SCROLL_LINE_Y, DEFAULT_SCROLL_LINE_Y),
         page,
     );
+    // Wheel deltas describe device movement; scroll offsets move content in
+    // the opposite direction.
+    let delta = -raw_delta;
     if delta == Vec2::ZERO {
         None
     } else {
@@ -700,12 +698,16 @@ fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 
     if viewport_bounds.width() <= 0.0 || viewport_bounds.height() <= 0.0 {
         return Vec2::ZERO;
     }
-    if let Some(element) = ui.get(viewport) {
-        let child_bounds = element
-            .children()
-            .iter()
-            .map(|child| ui.effective_bounds(*child));
-        update_scroll_metrics_from_bounds(viewport_bounds, state, child_bounds);
+    if let Some(element) = ui.get(viewport)
+        && element
+            .widget()
+            .and_then(|widget| widget.downcast_ref::<ScrollViewWidget>())
+            .is_some()
+    {
+        // `ScrollView` derives its extent from child geometry. Virtualized
+        // controls, such as `ListBox`, own their metrics and must not be
+        // clamped to only the currently realized children.
+        update_scroll_view_metrics_from_ui_bounds(ui, state, viewport_bounds, element);
     }
     state.max_offset()
 }
@@ -722,6 +724,19 @@ fn update_scroll_metrics_from_layout(
         .children()
         .iter()
         .filter_map(|child| ctx.effective_bounds(*child));
+    update_scroll_metrics_from_bounds(viewport_bounds, state, child_bounds);
+}
+
+fn update_scroll_view_metrics_from_ui_bounds(
+    ui: &Ui,
+    state: &ScrollState,
+    viewport_bounds: kurbo::Rect,
+    element: &Element,
+) {
+    let child_bounds = element
+        .children()
+        .iter()
+        .map(|child| ui.effective_bounds(*child));
     update_scroll_metrics_from_bounds(viewport_bounds, state, child_bounds);
 }
 
@@ -861,7 +876,7 @@ fn normalize_scroll_axis(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{pointer_down, pointer_move};
+    use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
     use ui_events::ScrollDelta;
 
     #[test]
@@ -894,9 +909,41 @@ mod tests {
         }
 
         ui.compute_layout(Size::new(180.0, 120.0));
-        let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, 1.0));
+        let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
         assert!(result.handled);
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn pointer_wheel_scroll_uses_content_direction() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 120.0));
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 120.0));
+        let position = ui.effective_bounds(scroll).center();
+        let result = ui.dispatch_pointer_event(&pointer_scroll(
+            position,
+            1,
+            ScrollDelta::LineDelta(0.0, -1.0),
+        ));
+
+        assert!(result.handled);
+        assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+
+        let before = scroll_view_offset_y(&ui, scroll).unwrap();
+        let result = ui.dispatch_pointer_event(&pointer_scroll(
+            position,
+            2,
+            ScrollDelta::LineDelta(0.0, 1.0),
+        ));
+
+        assert!(result.handled);
+        assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset < before));
     }
 
     #[test]
@@ -984,6 +1031,39 @@ mod tests {
     }
 
     #[test]
+    fn scroll_bar_track_pointer_click_pages_viewport() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
+        let state = ScrollState::new();
+        let scroll = ui.append(
+            root,
+            ScrollView::new().size(100.0, 48.0).state(state.clone()),
+        );
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+        let bar = ui.append(
+            root,
+            ScrollBar::vertical(scroll, state)
+                .length(48.0)
+                .thickness(8.0)
+                .thumb_extent(12.0),
+        );
+
+        ui.compute_layout(Size::new(180.0, 80.0));
+        let bar_bounds = ui.effective_bounds(bar);
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
+
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
     fn scroll_bar_thumb_drag_updates_viewport_offset() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1016,6 +1096,35 @@ mod tests {
         );
 
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn scroll_bar_uses_default_cursor() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
+        let state = ScrollState::new();
+        let scroll = ui.append(
+            root,
+            ScrollView::new().size(100.0, 48.0).state(state.clone()),
+        );
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+        let bar = ui.append(
+            root,
+            ScrollBar::vertical(scroll, state)
+                .length(48.0)
+                .thickness(8.0)
+                .thumb_extent(12.0),
+        );
+
+        ui.compute_layout(Size::new(180.0, 80.0));
+        let bar_bounds = ui.effective_bounds(bar);
+        let result = ui.dispatch_pointer_event(&pointer_move(bar_bounds.center(), 1, false));
+
+        assert!(result.hover_changed);
+        assert_eq!(ui.cursor_icon(), None);
     }
 
     fn append_scroll_test_child(ui: &mut Ui, scroll: ElementId) -> ElementId {

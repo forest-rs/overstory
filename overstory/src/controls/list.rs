@@ -435,6 +435,8 @@ impl ListBoxWidget {
 
         self.virtual_list.set_len(self.items.len());
         self.virtual_list.set_viewport_extent(viewport.height);
+        self.virtual_list
+            .set_scroll_offset(self.scroll_state.offset_y());
         self.virtual_list.clamp_scroll_to_content();
         let offset_changed = self
             .scroll_state
@@ -962,7 +964,10 @@ fn sizes_nearly_equal(a: Size, b: Size) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
+    use crate::test_support::{pointer_down, pointer_move, pointer_up};
+    use kurbo::Point;
     use peniko::{Brush, Color};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
 
@@ -985,11 +990,11 @@ mod tests {
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let second = realized_list_item(&ui, listbox, 1).unwrap();
 
-        ui.synthesize_click(first, kurbo::Point::ZERO);
+        ui.synthesize_click(first, Point::ZERO);
         assert_eq!(selected_list_index(&ui, listbox), Some(0));
         assert!(ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
 
-        ui.synthesize_click(second, kurbo::Point::ZERO);
+        ui.synthesize_click(second, Point::ZERO);
         assert_eq!(selected_list_index(&ui, listbox), Some(1));
         assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
         assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
@@ -1004,11 +1009,11 @@ mod tests {
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let second = realized_list_item(&ui, listbox, 1).unwrap();
 
-        ui.synthesize_click(first, kurbo::Point::ZERO);
-        ui.synthesize_click_with_modifiers(second, kurbo::Point::ZERO, Modifiers::CONTROL);
+        ui.synthesize_click(first, Point::ZERO);
+        ui.synthesize_click_with_modifiers(second, Point::ZERO, Modifiers::CONTROL);
         assert_eq!(selected_list_indices(&ui, listbox), vec![0, 1]);
 
-        ui.synthesize_click_with_modifiers(first, kurbo::Point::ZERO, Modifiers::CONTROL);
+        ui.synthesize_click_with_modifiers(first, Point::ZERO, Modifiers::CONTROL);
         assert_eq!(selected_list_indices(&ui, listbox), vec![1]);
     }
 
@@ -1040,8 +1045,8 @@ mod tests {
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let third = realized_list_item(&ui, listbox, 2).unwrap();
 
-        ui.synthesize_click(first, kurbo::Point::ZERO);
-        ui.synthesize_click_with_modifiers(third, kurbo::Point::ZERO, Modifiers::SHIFT);
+        ui.synthesize_click(first, Point::ZERO);
+        ui.synthesize_click_with_modifiers(third, Point::ZERO, Modifiers::SHIFT);
         assert_eq!(selected_list_indices(&ui, listbox), vec![0, 1, 2]);
         assert_eq!(selected_list_index(&ui, listbox), Some(2));
     }
@@ -1153,6 +1158,67 @@ mod tests {
     }
 
     #[test]
+    fn external_scrollbar_track_click_scrolls_virtualized_listbox() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
+        let state = ScrollState::new();
+        let listbox = ui.append(root, scrolling_test_list_box().scroll_state(state.clone()));
+        let bar = ui.append(
+            root,
+            ScrollBar::vertical(listbox, state)
+                .length(56.0)
+                .thickness(8.0)
+                .thumb_extent(12.0),
+        );
+
+        realize(&mut ui);
+        let bar_bounds = ui.effective_bounds(bar);
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
+
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        realize(&mut ui);
+
+        assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
+        assert!(realized_list_item(&ui, listbox, 0).is_none());
+    }
+
+    #[test]
+    fn external_scrollbar_thumb_drag_scrolls_virtualized_listbox() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
+        let state = ScrollState::new();
+        let listbox = ui.append(root, scrolling_test_list_box().scroll_state(state.clone()));
+        let bar = ui.append(
+            root,
+            ScrollBar::vertical(listbox, state)
+                .length(56.0)
+                .thickness(8.0)
+                .thumb_extent(12.0),
+        );
+        let thumb = ui
+            .slot(bar, SLOT_SCROLL_BAR_THUMB)
+            .expect("scrollbar template should create a thumb slot");
+
+        realize(&mut ui);
+        let start = ui.effective_bounds(thumb).center();
+        assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)).changed());
+        assert!(
+            ui.dispatch_pointer_event(&pointer_move(Point::new(start.x, start.y + 30.0), 2, true))
+                .changed()
+        );
+        realize(&mut ui);
+
+        assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
+        assert!(realized_list_item(&ui, listbox, 0).is_none());
+    }
+
+    #[test]
     fn keyboard_selection_scrolls_item_into_view() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1237,6 +1303,14 @@ mod tests {
             .items(TEST_ITEMS)
             .size(180.0, 128.0)
             .item_extent(24.0)
+            .overscan(0.0)
+    }
+
+    fn scrolling_test_list_box() -> ListBox {
+        ListBox::new()
+            .items((0..100).map(|index| format!("Item {index}")))
+            .size(140.0, 56.0)
+            .item_extent(20.0)
             .overscan(0.0)
     }
 
