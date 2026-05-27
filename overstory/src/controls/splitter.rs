@@ -26,7 +26,7 @@ use crate::behavior::WidgetEventContext;
 use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt, f32_from_logical};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutSize};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
 
@@ -429,15 +429,13 @@ pub fn resize_split_pair(
         return false;
     }
 
-    let before_layout = ui.effective_layout(before);
-    let after_layout = ui.effective_layout(after);
-    ui.set_layout(
+    ui.set_layout_size(
         before,
-        resized_layout(orientation, before_bounds, next_before, before_layout),
+        resized_layout_size(orientation, before_bounds, next_before),
     );
-    ui.set_layout(
+    ui.set_layout_size(
         after,
-        resized_layout(orientation, after_bounds, next_after, after_layout),
+        resized_layout_size(orientation, after_bounds, next_after),
     );
     true
 }
@@ -446,18 +444,17 @@ fn movement_size(orientation: SplitterOrientation, bounds: kurbo::Rect) -> f64 {
     bounds.size_along(orientation.movement_axis())
 }
 
-fn resized_layout(
+fn resized_layout_size(
     orientation: SplitterOrientation,
     bounds: kurbo::Rect,
     movement_size: f64,
-    layout: Layout,
-) -> Layout {
+) -> LayoutSize {
     match orientation {
-        SplitterOrientation::Horizontal => layout.logical_size(
+        SplitterOrientation::Horizontal => LayoutSize::logical(
             f32_from_logical(bounds.width()),
             f32_from_logical(movement_size),
         ),
-        SplitterOrientation::Vertical => layout.logical_size(
+        SplitterOrientation::Vertical => LayoutSize::logical(
             f32_from_logical(movement_size),
             f32_from_logical(bounds.height()),
         ),

@@ -2314,6 +2314,49 @@ fn set_layout_without_placement_keeps_styled_placement() {
 }
 
 #[test]
+fn set_layout_size_does_not_replace_styled_spacing() {
+    use crate::Panel;
+
+    const PADDED: ClassId = ClassId(0x35);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(200.0, 100.0));
+    let row = ui.append(
+        root,
+        Panel::new()
+            .class(PADDED)
+            .layout(Layout::row(0.0).logical_size(80.0, 40.0)),
+    );
+    let child = ui.append(
+        row,
+        Panel::new().layout(Layout::new().logical_size(20.0, 10.0)),
+    );
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(PADDED)).build(),
+            StyleBuilder::new()
+                .set(
+                    ui.properties().layout,
+                    Layout::new().padding_all(10.0).justify_center(),
+                )
+                .build(),
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    ui.set_layout_size(row, crate::LayoutSize::logical(120.0, 40.0));
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    assert_eq!(ui.effective_bounds(row), Rect::new(0.0, 0.0, 120.0, 40.0));
+    assert_eq!(
+        ui.effective_bounds(child),
+        Rect::new(50.0, 10.0, 70.0, 20.0)
+    );
+}
+
+#[test]
 fn composition_layers_track_layout_geometry() {
     let mut ui = Ui::new();
     let root = ui.root();

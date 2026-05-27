@@ -26,7 +26,10 @@ use understory_presentation::{
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{COMPOSE, LAYOUT, PAINT};
-use crate::layouts::{Layout, LayoutPlacement};
+use crate::layouts::{
+    Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
+    LayoutSpacing,
+};
 use crate::motion::TransitionRules;
 
 /// Handles to the dependency properties Overstory registers in every
@@ -48,14 +51,30 @@ pub struct BuiltInProperties {
     /// Corner radius for the background fill. Default `0.0` (rectangular).
     pub corner_radius: Property<f64>,
 
-    /// Layout contribution for this element. Writes mark the
-    /// `LAYOUT` channel so the next `Ui::compute_layout` picks them
-    /// up.
+    /// Shorthand layout contribution for this element. Prefer the
+    /// [`Self::layout_container`], [`Self::layout_size`],
+    /// [`Self::layout_spacing`], [`Self::layout_alignment`],
+    /// [`Self::layout_overflow`], and [`Self::layout_placement`] longhands for
+    /// independent styling.
     pub layout: Property<Layout>,
 
+    /// Container-layout contribution for this element.
+    pub layout_container: Property<LayoutContainer>,
+
+    /// Size and flex item contribution for this element.
+    pub layout_size: Property<LayoutSize>,
+
+    /// Padding and child-gap contribution for this element.
+    pub layout_spacing: Property<LayoutSpacing>,
+
+    /// Child and self-alignment contribution for this element.
+    pub layout_alignment: Property<LayoutAlignment>,
+
+    /// Overflow contribution for this element.
+    pub layout_overflow: Property<LayoutOverflow>,
+
     /// Placement contribution for this element. This covers the element's
-    /// own flow/absolute positioning, while [`Self::layout`] covers sizing,
-    /// container layout, padding, and alignment.
+    /// own flow/absolute positioning.
     pub layout_placement: Property<LayoutPlacement>,
 
     /// Textual content for elements that render strings (e.g. [`crate::Text`]).
@@ -187,6 +206,36 @@ impl BuiltInProperties {
             layout: registry.register(
                 "Layout",
                 PropertyMetadataBuilder::new(Layout::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_container: registry.register(
+                "LayoutContainer",
+                PropertyMetadataBuilder::new(LayoutContainer::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_size: registry.register(
+                "LayoutSize",
+                PropertyMetadataBuilder::new(LayoutSize::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_spacing: registry.register(
+                "LayoutSpacing",
+                PropertyMetadataBuilder::new(LayoutSpacing::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_alignment: registry.register(
+                "LayoutAlignment",
+                PropertyMetadataBuilder::new(LayoutAlignment::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_overflow: registry.register(
+                "LayoutOverflow",
+                PropertyMetadataBuilder::new(LayoutOverflow::default())
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

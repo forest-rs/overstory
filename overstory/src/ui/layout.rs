@@ -11,7 +11,10 @@ use understory_box_tree::NodeId;
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::LAYOUT;
 use crate::element::ElementId;
-use crate::layouts::{Layout, LayoutPlacement};
+use crate::layouts::{
+    Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
+    LayoutSpacing,
+};
 use crate::timeline_runtime::{TimelineTarget, VisualOutput};
 
 use super::Ui;
@@ -26,20 +29,54 @@ fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
 impl Ui {
     /// Sets an element's layout contribution.
     ///
-    /// This is the app-facing shortcut for writing
-    /// [`BuiltInProperties::layout`](crate::BuiltInProperties::layout). If the
-    /// `Layout` carries explicit placement through [`Layout::relative`],
-    /// [`Layout::absolute`], or [`Layout::absolute_at`], this also writes
-    /// [`BuiltInProperties::layout_placement`](crate::BuiltInProperties::layout_placement).
-    /// A layout without explicit placement leaves any styled placement intact.
+    /// This is the app-facing shortcut for writing layout longhands. Only
+    /// contributions explicitly carried by `layout` are written, so a size
+    /// update does not shadow styled padding, alignment, or placement.
     pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
-        let layout_prop = self.properties.layout;
-        let (layout, placement) = layout.into().into_parts();
-        self.set_local(id, layout_prop, layout);
-        if let Some(placement) = placement {
-            let placement_prop = self.properties.layout_placement;
-            self.set_local(id, placement_prop, placement);
+        let parts = layout.into().into_parts();
+        if let Some(container) = parts.container {
+            self.set_layout_container(id, container);
         }
+        if let Some(size) = parts.size {
+            self.set_layout_size(id, size);
+        }
+        if let Some(spacing) = parts.spacing {
+            self.set_layout_spacing(id, spacing);
+        }
+        if let Some(alignment) = parts.alignment {
+            self.set_layout_alignment(id, alignment);
+        }
+        if let Some(overflow) = parts.overflow {
+            self.set_layout_overflow(id, overflow);
+        }
+        if let Some(placement) = parts.placement {
+            self.set_layout_placement(id, placement);
+        }
+    }
+
+    /// Sets an element's container-layout contribution.
+    pub fn set_layout_container(&mut self, id: ElementId, container: impl Into<LayoutContainer>) {
+        self.set_local(id, self.properties.layout_container, container.into());
+    }
+
+    /// Sets an element's size and flex-item contribution.
+    pub fn set_layout_size(&mut self, id: ElementId, size: impl Into<LayoutSize>) {
+        self.set_local(id, self.properties.layout_size, size.into());
+    }
+
+    /// Sets an element's padding and child-gap contribution.
+    pub fn set_layout_spacing(&mut self, id: ElementId, spacing: impl Into<LayoutSpacing>) {
+        self.set_local(id, self.properties.layout_spacing, spacing.into());
+    }
+
+    /// Sets an element's child and self-alignment contribution.
+    pub fn set_layout_alignment(&mut self, id: ElementId, alignment: impl Into<LayoutAlignment>) {
+        self.set_local(id, self.properties.layout_alignment, alignment.into());
+    }
+
+    /// Sets an element's overflow contribution.
+    pub fn set_layout_overflow(&mut self, id: ElementId, overflow: impl Into<LayoutOverflow>) {
+        self.set_local(id, self.properties.layout_overflow, overflow.into());
     }
 
     /// Sets an element's layout placement contribution.
@@ -89,22 +126,26 @@ impl Ui {
         self.resolve_value_for(element, self.properties.bounds)
     }
 
-    /// Resolves the effective `Layout` for `id` through the cascade.
+    /// Resolves the complete effective `Layout` for `id` through the cascade.
     #[must_use]
     pub fn effective_layout(&self, id: ElementId) -> Layout {
         let Some(element) = self.get(id) else {
             return Layout::default();
         };
-        self.resolve_value_for(element, self.properties.layout)
+        let mut layout = self.resolve_value_for(element, self.properties.layout);
+        layout.merge_container(self.resolve_value_for(element, self.properties.layout_container));
+        layout.merge_size(self.resolve_value_for(element, self.properties.layout_size));
+        layout.merge_spacing(self.resolve_value_for(element, self.properties.layout_spacing));
+        layout.merge_alignment(self.resolve_value_for(element, self.properties.layout_alignment));
+        layout.merge_overflow(self.resolve_value_for(element, self.properties.layout_overflow));
+        layout.merge_placement(self.resolve_value_for(element, self.properties.layout_placement));
+        layout
     }
 
     /// Resolves the effective `LayoutPlacement` for `id` through the cascade.
     #[must_use]
     pub fn effective_layout_placement(&self, id: ElementId) -> LayoutPlacement {
-        let Some(element) = self.get(id) else {
-            return LayoutPlacement::default();
-        };
-        self.resolve_value_for(element, self.properties.layout_placement)
+        self.effective_layout(id).placement()
     }
 
     /// Computes layout for the tree against the given viewport size and
@@ -148,9 +189,7 @@ impl Ui {
             .into_iter()
             .filter_map(|id| {
                 let taffy_node = self.layout.node_for(id)?;
-                let style = self
-                    .effective_layout(id)
-                    .to_taffy(self.effective_layout_placement(id));
+                let style = self.effective_layout(id).to_taffy();
                 Some((taffy_node, style))
             })
             .collect();

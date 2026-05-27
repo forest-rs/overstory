@@ -437,14 +437,28 @@ impl<'a> TemplateContext<'a> {
 
     /// Writes a generated element's layout contribution.
     ///
-    /// Explicit placement carried by the layout is split into the generated
-    /// element's placement property; layouts without explicit placement leave
-    /// styled placement intact.
+    /// Only longhand contributions explicitly carried by the layout are
+    /// written, so size/placement updates do not shadow styled spacing,
+    /// alignment, or overflow.
     pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
+        let parts = layout.into().into_parts();
         let props = *self.properties();
-        let (layout, placement) = layout.into().into_parts();
-        self.set_local(id, props.layout, layout);
-        if let Some(placement) = placement {
+        if let Some(container) = parts.container {
+            self.set_local(id, props.layout_container, container);
+        }
+        if let Some(size) = parts.size {
+            self.set_local(id, props.layout_size, size);
+        }
+        if let Some(spacing) = parts.spacing {
+            self.set_local(id, props.layout_spacing, spacing);
+        }
+        if let Some(alignment) = parts.alignment {
+            self.set_local(id, props.layout_alignment, alignment);
+        }
+        if let Some(overflow) = parts.overflow {
+            self.set_local(id, props.layout_overflow, overflow);
+        }
+        if let Some(placement) = parts.placement {
             self.set_local(id, props.layout_placement, placement);
         }
     }
@@ -737,6 +751,16 @@ pub enum TemplateBuiltInProperty {
     CornerRadius,
     /// `Layout`.
     Layout,
+    /// `LayoutContainer`.
+    LayoutContainer,
+    /// `LayoutSize`.
+    LayoutSize,
+    /// `LayoutSpacing`.
+    LayoutSpacing,
+    /// `LayoutAlignment`.
+    LayoutAlignment,
+    /// `LayoutOverflow`.
+    LayoutOverflow,
     /// `LayoutPlacement`.
     LayoutPlacement,
     /// `Content`.
@@ -853,7 +877,8 @@ fn apply_template_binding(
     use TemplateBuiltInProperty::{
         Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontFamily, FontSize,
         FontStyle, FontWeight, FontWidth, Foreground, IsChecked, IsEnabled, Layout,
-        LayoutPlacement, LetterSpacing, LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage,
+        LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
+        LayoutSpacing, LetterSpacing, LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage,
         TextWrapMode, Value, WordBreak, WordSpacing,
     };
 
@@ -870,6 +895,21 @@ fn apply_template_binding(
             .map(|_| ()),
         (Layout, Layout) => cx
             .bind_owner_to_part(props.layout, target, props.layout)
+            .map(|_| ()),
+        (LayoutContainer, LayoutContainer) => cx
+            .bind_owner_to_part(props.layout_container, target, props.layout_container)
+            .map(|_| ()),
+        (LayoutSize, LayoutSize) => cx
+            .bind_owner_to_part(props.layout_size, target, props.layout_size)
+            .map(|_| ()),
+        (LayoutSpacing, LayoutSpacing) => cx
+            .bind_owner_to_part(props.layout_spacing, target, props.layout_spacing)
+            .map(|_| ()),
+        (LayoutAlignment, LayoutAlignment) => cx
+            .bind_owner_to_part(props.layout_alignment, target, props.layout_alignment)
+            .map(|_| ()),
+        (LayoutOverflow, LayoutOverflow) => cx
+            .bind_owner_to_part(props.layout_overflow, target, props.layout_overflow)
             .map(|_| ()),
         (LayoutPlacement, LayoutPlacement) => cx
             .bind_owner_to_part(props.layout_placement, target, props.layout_placement)

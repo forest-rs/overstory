@@ -138,7 +138,11 @@ pub use event_runtime::{
     RoutedEventContext, RoutedEventKind, RoutedHandlerOptions, ScrollEvent,
 };
 pub use generic::present_surface;
-pub use layouts::{Layout, LayoutPlacement};
+pub use layouts::{
+    Layout, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutDirection,
+    LayoutDisplay, LayoutEdges, LayoutGap, LayoutJustify, LayoutOverflow, LayoutOverflowMode,
+    LayoutPlacement, LayoutSize, LayoutSpacing,
+};
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
