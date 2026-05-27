@@ -815,6 +815,10 @@ pub enum TemplateBuiltInProperty {
     FontWeight,
     /// `FontStyle`.
     FontStyle,
+    /// `FontVariations`.
+    FontVariations,
+    /// `FontFeatures`.
+    FontFeatures,
     /// `TextLanguage`.
     TextLanguage,
     /// `LineHeight`.
@@ -913,11 +917,11 @@ fn apply_template_binding(
     binding: TemplateBinding,
 ) {
     use TemplateBuiltInProperty::{
-        Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontFamily, FontSize,
-        FontStyle, FontWeight, FontWidth, Foreground, IsChecked, IsEnabled, Layout,
-        LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
-        LayoutSpacing, LetterSpacing, LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage,
-        TextWrapMode, Value, WordBreak, WordSpacing,
+        Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontFamily,
+        FontFeatures, FontSize, FontStyle, FontVariations, FontWeight, FontWidth, Foreground,
+        IsChecked, IsEnabled, Layout, LayoutAlignment, LayoutContainer, LayoutOverflow,
+        LayoutPlacement, LayoutSize, LayoutSpacing, LetterSpacing, LineHeight, Maximum, Minimum,
+        OverflowWrap, TextLanguage, TextWrapMode, Value, WordBreak, WordSpacing,
     };
 
     let props = *cx.properties();
@@ -972,6 +976,12 @@ fn apply_template_binding(
             .map(|_| ()),
         (FontStyle, FontStyle) => cx
             .bind_owner_to_part(props.font_style, target, props.font_style)
+            .map(|_| ()),
+        (FontVariations, FontVariations) => cx
+            .bind_owner_to_part(props.font_variations, target, props.font_variations)
+            .map(|_| ()),
+        (FontFeatures, FontFeatures) => cx
+            .bind_owner_to_part(props.font_features, target, props.font_features)
             .map(|_| ()),
         (TextLanguage, TextLanguage) => cx
             .bind_owner_to_part(props.text_language, target, props.text_language)

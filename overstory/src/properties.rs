@@ -15,9 +15,11 @@
 //! - Avoid turning this into a mirror of WPF dependency properties; Overstory
 //!   should expose calm primitives backed by Understory registries.
 
+use alloc::boxed::Box;
 use alloc::string::String;
 
 use kurbo::Rect;
+use parley::{FontFeature, FontVariation};
 use peniko::Brush;
 use understory_presentation::{
     FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
@@ -99,6 +101,12 @@ pub struct BuiltInProperties {
 
     /// Font style. Default [`FontStyle::Normal`].
     pub font_style: Property<FontStyle>,
+
+    /// Additional OpenType font variation settings. Default empty.
+    pub font_variations: Property<Box<[FontVariation]>>,
+
+    /// OpenType font feature settings. Default empty.
+    pub font_features: Property<Box<[FontFeature]>>,
 
     /// Optional content language used for text shaping. Default `None`.
     pub text_language: Property<Option<Language>>,
@@ -301,6 +309,20 @@ impl BuiltInProperties {
             font_style: registry.register(
                 "FontStyle",
                 PropertyMetadataBuilder::new(text_defaults.font_style)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            font_variations: registry.register(
+                "FontVariations",
+                PropertyMetadataBuilder::new(text_defaults.font_variations)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            font_features: registry.register(
+                "FontFeatures",
+                PropertyMetadataBuilder::new(text_defaults.font_features)
                     .affects_channels(LAYOUT.into_set())
                     .inherits(true)
                     .build(),

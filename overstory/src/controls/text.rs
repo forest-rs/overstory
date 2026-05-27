@@ -257,6 +257,8 @@ fn text_style_from_source(element: &Element, source: &impl ResolvedPropertySourc
     style.font_width = source.resolve_value(element, properties.font_width);
     style.font_weight = source.resolve_value(element, properties.font_weight);
     style.font_style = source.resolve_value(element, properties.font_style);
+    style.font_variations = source.resolve_value(element, properties.font_variations);
+    style.font_features = source.resolve_value(element, properties.font_features);
     style.language = source.resolve_value(element, properties.text_language);
     style.line_height = source.resolve_value(element, properties.line_height);
     style.letter_spacing = source.resolve_value(element, properties.letter_spacing);

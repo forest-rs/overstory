@@ -160,6 +160,7 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 // Re-export the responder's `Phase` so callers can read
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
+pub use parley::{FontFeature, FontVariation};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
     FontFamily, FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily, Language,

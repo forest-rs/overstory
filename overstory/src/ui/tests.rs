@@ -12,6 +12,7 @@ use crate::{
     Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
     TemplateSlot, UiResolveLookup,
 };
+use alloc::boxed::Box;
 use alloc::string::String;
 use imaging::record::{Command, Scene};
 use kurbo::{Point, Rect, Size, Vec2};
@@ -734,6 +735,30 @@ fn control_row_labels_keep_single_line_widths() {
         max_span < 20.0,
         "control row labels should paint on one line; max glyph y span was {max_span}"
     );
+}
+
+#[test]
+fn text_style_resolution_carries_font_feature_settings() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let text = ui.append(root, crate::Text::new("Variable"));
+    let variations: Box<[parley::FontVariation]> = Box::from([parley::FontVariation::new(
+        parley::setting::Tag::new(b"opsz"),
+        12.0,
+    )]);
+    let features: Box<[parley::FontFeature]> = Box::from([parley::FontFeature::new(
+        parley::setting::Tag::new(b"kern"),
+        0,
+    )]);
+
+    ui.set_local(text, ui.properties().font_variations, variations.clone());
+    ui.set_local(text, ui.properties().font_features, features.clone());
+
+    let element = ui.get(text).unwrap();
+    let style = crate::controls::text::text_style(element, &ui);
+
+    assert_eq!(style.font_variations.as_ref(), variations.as_ref());
+    assert_eq!(style.font_features.as_ref(), features.as_ref());
 }
 
 #[test]

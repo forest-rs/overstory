@@ -25,8 +25,8 @@ use hashbrown::{Equivalent, HashMap};
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
 use parley::{
-    Alignment, AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PlainEditor,
-    PlainEditorDriver, PositionedLayoutItem, StyleProperty,
+    Alignment, AlignmentOptions, FontContext, FontFeatures, FontVariations, Layout, LayoutContext,
+    LineHeight, PlainEditor, PlainEditorDriver, PositionedLayoutItem, StyleProperty,
 };
 use peniko::{Brush, Fill, Style};
 use understory_presentation::{TextLineHeight, TextStyle as PresentationTextStyle};
@@ -185,6 +185,12 @@ impl TextEngine {
         builder.push_default(StyleProperty::FontWidth(style.font_width));
         builder.push_default(StyleProperty::FontStyle(style.font_style));
         builder.push_default(StyleProperty::FontWeight(style.font_weight));
+        builder.push_default(StyleProperty::FontVariations(FontVariations::from(
+            style.font_variations.as_ref(),
+        )));
+        builder.push_default(StyleProperty::FontFeatures(FontFeatures::from(
+            style.font_features.as_ref(),
+        )));
         builder.push_default(StyleProperty::Locale(style.language));
         builder.push_default(StyleProperty::LineHeight(parley_line_height(
             style.line_height,

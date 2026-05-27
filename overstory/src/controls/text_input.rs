@@ -15,10 +15,10 @@
 //! - Revisit rendering so editable text can use the editor's cached layout via
 //!   the presentation model instead of reshaping through a `TextWidget` part.
 
-use alloc::{boxed::Box, string::String};
+use alloc::{borrow::Cow, boxed::Box, string::String};
 
 use kurbo::Rect;
-use parley::{PlainEditor, StyleProperty};
+use parley::{FontFeatures, FontVariations, PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
 use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
@@ -714,6 +714,8 @@ fn apply_editor_style(editor: &mut PlainEditor<Brush>, style: &TextStyle) {
     styles.insert(StyleProperty::FontWidth(style.font_width));
     styles.insert(StyleProperty::FontStyle(style.font_style));
     styles.insert(StyleProperty::FontWeight(style.font_weight));
+    styles.insert(StyleProperty::FontVariations(editor_font_variations(style)));
+    styles.insert(StyleProperty::FontFeatures(editor_font_features(style)));
     styles.insert(StyleProperty::Locale(style.language));
     styles.insert(StyleProperty::LineHeight(crate::text::parley_line_height(
         style.line_height,
@@ -733,6 +735,22 @@ fn initial_text_input_style(font_size: f64) -> TextStyle {
         font_size: f32_from_logical(font_size),
         line_height: TextLineHeight::FontSizeRelative(1.2),
         ..TextStyle::default()
+    }
+}
+
+fn editor_font_variations(style: &TextStyle) -> FontVariations<'static> {
+    if style.font_variations.is_empty() {
+        FontVariations::empty()
+    } else {
+        FontVariations::List(Cow::Owned(style.font_variations.to_vec()))
+    }
+}
+
+fn editor_font_features(style: &TextStyle) -> FontFeatures<'static> {
+    if style.font_features.is_empty() {
+        FontFeatures::empty()
+    } else {
+        FontFeatures::List(Cow::Owned(style.font_features.to_vec()))
     }
 }
 
