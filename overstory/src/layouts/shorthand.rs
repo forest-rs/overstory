@@ -3,7 +3,7 @@
 
 use super::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutOverflow,
-    LayoutPlacement, LayoutSize, LayoutSpacing,
+    LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
 };
 
 /// Layout contribution for an element.
@@ -204,6 +204,23 @@ impl Layout {
     #[must_use]
     pub fn flex_shrink(mut self, shrink: f32) -> Self {
         self.size.merge_from(LayoutSize::new().flex_shrink(shrink));
+        self
+    }
+
+    /// Allows flex children to wrap onto additional lines.
+    #[must_use]
+    pub fn wrap(mut self) -> Self {
+        self.container
+            .merge_from(LayoutContainer::new().wrap(LayoutWrap::Wrap));
+        self
+    }
+
+    /// Allows flex children to wrap onto additional lines in reverse
+    /// cross-axis order.
+    #[must_use]
+    pub fn wrap_reverse(mut self) -> Self {
+        self.container
+            .merge_from(LayoutContainer::new().wrap(LayoutWrap::WrapReverse));
         self
     }
 

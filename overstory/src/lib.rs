@@ -141,7 +141,7 @@ pub use generic::present_surface;
 pub use layouts::{
     Layout, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutDirection,
     LayoutDisplay, LayoutEdges, LayoutGap, LayoutJustify, LayoutOverflow, LayoutOverflowMode,
-    LayoutPlacement, LayoutSize, LayoutSpacing,
+    LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
 };
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;

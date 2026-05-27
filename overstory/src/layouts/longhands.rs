@@ -39,6 +39,28 @@ impl LayoutDirection {
     }
 }
 
+/// Flex line-wrapping behavior for a container.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutWrap {
+    /// Keep all flex items on one line.
+    NoWrap,
+    /// Wrap items onto additional lines in the container's cross-axis
+    /// direction.
+    Wrap,
+    /// Wrap items onto additional lines in the reverse cross-axis direction.
+    WrapReverse,
+}
+
+impl LayoutWrap {
+    fn to_taffy(self) -> taffy::FlexWrap {
+        match self {
+            Self::NoWrap => taffy::FlexWrap::NoWrap,
+            Self::Wrap => taffy::FlexWrap::Wrap,
+            Self::WrapReverse => taffy::FlexWrap::WrapReverse,
+        }
+    }
+}
+
 /// Cross-axis alignment mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutAlign {
@@ -110,12 +132,13 @@ impl LayoutOverflowMode {
 
 /// Container-layout contribution for an element.
 ///
-/// This covers the layout algorithm and its main-axis direction. Size, spacing,
-/// placement, alignment, and overflow are separate longhands.
+/// This covers the layout algorithm, main-axis direction, and line wrapping.
+/// Size, spacing, placement, alignment, and overflow are separate longhands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LayoutContainer {
     display: Option<LayoutDisplay>,
     direction: Option<LayoutDirection>,
+    wrap: Option<LayoutWrap>,
 }
 
 impl LayoutContainer {
@@ -125,6 +148,7 @@ impl LayoutContainer {
         Self {
             display: None,
             direction: None,
+            wrap: None,
         }
     }
 
@@ -160,6 +184,13 @@ impl LayoutContainer {
         self
     }
 
+    /// Sets whether flex items wrap onto additional lines.
+    #[must_use]
+    pub const fn wrap(mut self, wrap: LayoutWrap) -> Self {
+        self.wrap = Some(wrap);
+        self
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self == &Self::default()
     }
@@ -171,6 +202,9 @@ impl LayoutContainer {
         if other.direction.is_some() {
             self.direction = other.direction;
         }
+        if other.wrap.is_some() {
+            self.wrap = other.wrap;
+        }
     }
 
     pub(super) fn apply_to(&self, style: &mut taffy::Style) {
@@ -179,6 +213,9 @@ impl LayoutContainer {
         }
         if let Some(direction) = self.direction {
             style.flex_direction = direction.to_taffy();
+        }
+        if let Some(wrap) = self.wrap {
+            style.flex_wrap = wrap.to_taffy();
         }
     }
 }

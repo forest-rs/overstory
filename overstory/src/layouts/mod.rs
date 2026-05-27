@@ -41,6 +41,7 @@ pub use dimension::LayoutDimension;
 pub use longhands::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutDisplay, LayoutEdges,
     LayoutGap, LayoutJustify, LayoutOverflow, LayoutOverflowMode, LayoutSize, LayoutSpacing,
+    LayoutWrap,
 };
 pub use placement::LayoutPlacement;
 pub use shorthand::{Layout, column_with_gap, row_with_gap};

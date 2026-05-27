@@ -2419,6 +2419,29 @@ fn layout_longhands_extend_size_and_spacing_without_taffy_leakage() {
 }
 
 #[test]
+fn layout_wrap_places_children_on_additional_lines() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::row(0.0).wrap().logical_size(100.0, 40.0));
+    let first = ui.append(
+        root,
+        crate::Panel::new().layout(Layout::new().logical_size(70.0, 20.0)),
+    );
+    let second = ui.append(
+        root,
+        crate::Panel::new().layout(Layout::new().logical_size(70.0, 20.0)),
+    );
+
+    ui.compute_layout(Size::new(100.0, 80.0));
+
+    assert_eq!(ui.effective_bounds(first), Rect::new(0.0, 0.0, 70.0, 20.0));
+    assert_eq!(
+        ui.effective_bounds(second),
+        Rect::new(0.0, 20.0, 70.0, 40.0)
+    );
+}
+
+#[test]
 fn composition_layers_track_layout_geometry() {
     let mut ui = Ui::new();
     let root = ui.root();
