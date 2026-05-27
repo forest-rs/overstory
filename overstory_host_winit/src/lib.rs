@@ -12,6 +12,9 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::error::Error;
 
+use accesskit_winit::{
+    Adapter as AccessKitAdapter, Event as AccessKitEvent, WindowEvent as AccessKitWindowEvent,
+};
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use overstory::Ui;
@@ -21,7 +24,7 @@ use web_time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 const DEFAULT_INITIAL_SIZE: (u32, u32) = (1024, 768);
@@ -112,16 +115,29 @@ pub fn run<F>(options: WindowOptions, build_ui: F) -> HostResult<()>
 where
     F: FnOnce() -> Ui + 'static,
 {
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::<HostEvent>::with_user_event().build()?;
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+    let accesskit_proxy = event_loop.create_proxy();
 
     let mut app = App {
         options,
         build_ui: Some(build_ui),
+        accesskit_proxy,
         state: None,
     };
     event_loop.run_app(&mut app)?;
     Ok(())
+}
+
+#[derive(Debug)]
+enum HostEvent {
+    AccessKit(AccessKitEvent),
+}
+
+impl From<AccessKitEvent> for HostEvent {
+    fn from(event: AccessKitEvent) -> Self {
+        Self::AccessKit(event)
+    }
 }
 
 struct App<F>
@@ -130,10 +146,11 @@ where
 {
     options: WindowOptions,
     build_ui: Option<F>,
+    accesskit_proxy: EventLoopProxy<HostEvent>,
     state: Option<WindowState>,
 }
 
-impl<F> ApplicationHandler for App<F>
+impl<F> ApplicationHandler<HostEvent> for App<F>
 where
     F: FnOnce() -> Ui + 'static,
 {
@@ -147,7 +164,12 @@ where
             return;
         };
 
-        match init_window(event_loop, &self.options, build_ui) {
+        match init_window(
+            event_loop,
+            &self.options,
+            build_ui,
+            self.accesskit_proxy.clone(),
+        ) {
             Ok(state) => {
                 state.window.request_redraw();
                 self.state = Some(state);
@@ -164,6 +186,7 @@ where
             return;
         };
 
+        state.accesskit.process_event(&state.window, &event);
         state.host.pump_timers_now();
 
         if let Some(translation) = state
@@ -205,6 +228,19 @@ where
         state.arm_next_wakeup(event_loop);
     }
 
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: HostEvent) {
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+        match event {
+            HostEvent::AccessKit(event) if event.window_id == state.window.id() => {
+                state.handle_accesskit_event(event.window_event);
+            }
+            HostEvent::AccessKit(_) => {}
+        }
+        state.arm_next_wakeup(event_loop);
+    }
+
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
         if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. })
             && let Some(state) = self.state.as_mut()
@@ -217,6 +253,7 @@ where
 
 struct WindowState {
     window: Arc<Window>,
+    accesskit: AccessKitAdapter,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
@@ -242,6 +279,28 @@ impl WindowState {
     fn sync_cursor(&mut self) {
         if let Some(next) = self.host.cursor_update() {
             self.window.set_cursor(next);
+        }
+    }
+
+    fn sync_accessibility(&mut self) {
+        let host = &self.host;
+        self.accesskit
+            .update_if_active(|| host.accesskit_tree_update());
+    }
+
+    fn handle_accesskit_event(&mut self, event: AccessKitWindowEvent) {
+        match event {
+            AccessKitWindowEvent::InitialTreeRequested => {
+                self.sync_accessibility();
+            }
+            AccessKitWindowEvent::ActionRequested(request) => {
+                if self.host.handle_accesskit_action(&request).needs_redraw {
+                    self.window.request_redraw();
+                }
+                self.sync_accessibility();
+                self.sync_cursor();
+            }
+            AccessKitWindowEvent::AccessibilityDeactivated => {}
         }
     }
 
@@ -274,6 +333,7 @@ impl WindowState {
         let target = TextureViewTarget::new(offscreen_view, width, height);
         self.renderer
             .render_source_into_texture(&mut scaled_scene, target)?;
+        self.sync_accessibility();
 
         let output = match self.surface.get_current_texture() {
             Ok(output) => output,
@@ -296,6 +356,7 @@ fn init_window<F>(
     event_loop: &ActiveEventLoop,
     options: &WindowOptions,
     build_ui: F,
+    accesskit_proxy: EventLoopProxy<HostEvent>,
 ) -> HostResult<WindowState>
 where
     F: FnOnce() -> Ui,
@@ -303,11 +364,13 @@ where
     let (width, height) = options.size();
     let window_attributes = Window::default_attributes()
         .with_title(options.title())
+        .with_visible(false)
         .with_inner_size(winit::dpi::LogicalSize::new(
             f64::from(width),
             f64::from(height),
         ));
     let window = Arc::new(event_loop.create_window(window_attributes)?);
+    let accesskit = AccessKitAdapter::with_event_loop_proxy(event_loop, &window, accesskit_proxy);
 
     let instance = wgpu::Instance::default();
     let surface = instance.create_surface(window.clone())?;
@@ -357,9 +420,11 @@ where
     let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
     let blit = BlitState::new(&device, surface_config.format);
     let host = UiHost::new(build_ui());
+    window.set_visible(true);
 
     Ok(WindowState {
         window,
+        accesskit,
         surface,
         surface_config,
         device,

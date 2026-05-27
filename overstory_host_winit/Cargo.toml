@@ -9,6 +9,7 @@ description = "Winit, wgpu, and vello native host for Overstory applications."
 publish = false
 
 [dependencies]
+accesskit_winit.workspace = true
 imaging_vello.workspace = true
 imaging_wgpu.workspace = true
 overstory.workspace = true

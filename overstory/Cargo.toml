@@ -28,6 +28,7 @@ std = [
 system-fonts = ["std", "parley/system"]
 
 [dependencies]
+accesskit.workspace = true
 hashbrown.workspace = true
 invalidation.workspace = true
 kurbo.workspace = true

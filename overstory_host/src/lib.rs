@@ -11,8 +11,11 @@
 //! loop ownership, and GPU presentation are intentionally left to backend
 //! crates such as `overstory_host_winit`.
 
+extern crate alloc;
+
 use core::{fmt, time::Duration};
 
+use accesskit::{ActionRequest, TreeUpdate};
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use kurbo::{Affine, Size};
@@ -124,6 +127,26 @@ impl UiHost {
         Some(next)
     }
 
+    /// Builds a full AccessKit tree update for the hosted UI.
+    ///
+    /// This is intentionally a pass-through to core Overstory. Platform hosts
+    /// own adapter activation and scheduling; the UI owns semantic lowering.
+    pub fn accesskit_tree_update(&self) -> TreeUpdate {
+        self.ui.accesskit_tree_update()
+    }
+
+    /// Dispatches an AccessKit action request into the hosted UI.
+    pub fn handle_accesskit_action(&mut self, request: &ActionRequest) -> HostDispatchResult {
+        let focused_before = self.ui.focused();
+        let handled = self.ui.handle_accesskit_action(request);
+        let focus_changed = focused_before != self.ui.focused();
+        HostDispatchResult {
+            handled,
+            focus_changed,
+            needs_redraw: handled || focus_changed,
+        }
+    }
+
     /// Lays out and paints the hosted UI, then returns a scene scaled for a
     /// physical render target.
     ///
@@ -207,6 +230,10 @@ pub fn logical_viewport(width: u32, height: u32, scale_factor: f64) -> Size {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use accesskit::{Action, ActionRequest, NodeId, TreeId};
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use overstory::{Button, ElementId};
 
     #[test]
     fn logical_viewport_divides_physical_size_by_scale_factor() {
@@ -228,5 +255,42 @@ mod tests {
 
         assert!(!frame.is_empty());
         assert!(!host.surface_scenes.is_empty());
+    }
+
+    #[test]
+    fn accesskit_focus_and_click_actions_dispatch_into_ui() {
+        let clicks = Rc::new(Cell::new(0_u32));
+        let clicks_for_handler = Rc::clone(&clicks);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(
+            root,
+            Button::new("Deploy").on_click(move |_ui, _event| {
+                clicks_for_handler.set(clicks_for_handler.get() + 1);
+            }),
+        );
+        ui.compute_layout(Size::new(160.0, 80.0));
+
+        let mut host = UiHost::new(ui);
+        let focus = host.handle_accesskit_action(&action(Action::Focus, button));
+        assert!(focus.handled);
+        assert_eq!(host.ui().focused(), Some(button));
+
+        let click = host.handle_accesskit_action(&action(Action::Click, button));
+        assert!(click.handled);
+        assert_eq!(clicks.get(), 1);
+    }
+
+    fn action(action: Action, element: ElementId) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: node_id(element),
+            data: None,
+        }
+    }
+
+    fn node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

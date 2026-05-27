@@ -9,6 +9,7 @@ description = "Reusable host-side runtime helpers for Overstory UI trees."
 publish = false
 
 [dependencies]
+accesskit.workspace = true
 hashbrown.workspace = true
 imaging.workspace = true
 kurbo.workspace = true

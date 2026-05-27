@@ -25,6 +25,7 @@ overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 
 # Core data deps
+accesskit = { default-features = false, version = "0.24.0" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
@@ -77,6 +78,7 @@ taffy = { default-features = false, features = [
 parley = { default-features = false, features = ["libm"], version = "0.9" }
 
 # Host runtime for the demo binary.
+accesskit_winit = { version = "0.32.2" }
 pollster = { version = "0.4.0" }
 wgpu = { default-features = false, features = ["std"], version = "28.0.0" }
 winit = { default-features = true, version = "0.30" }
