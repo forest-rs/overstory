@@ -30,7 +30,7 @@ use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_loca
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
@@ -388,18 +388,15 @@ impl Template for SliderTemplate {
             Box::new(SurfacePartWidget),
         ));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
-        cx.set_layout(
-            track,
-            Layout::new()
-                .absolute_at(0.0, track_inset_y)
-                .logical_size(SLIDER_WIDTH, TRACK_HEIGHT),
-        );
+        cx.set_layout_placement(track, LayoutPlacement::absolute_at(0.0, track_inset_y));
+        cx.set_layout_size(track, LayoutSize::logical(SLIDER_WIDTH, TRACK_HEIGHT));
 
         let axis = cx.insert(TemplateChild::slot(
             SLOT_SLIDER_AXIS,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_layout(axis, axis_layout());
+        cx.set_layout_placement(axis, LayoutPlacement::absolute());
+        cx.set_layout_size(axis, LayoutSize::logical(SLIDER_WIDTH, SLIDER_HEIGHT));
         let min = cx.read_local_or(owner, min_prop, 0.0);
         let max = cx.read_local_or(owner, max_prop, 1.0);
         let ruler = slider_ruler(min, max);
@@ -416,7 +413,8 @@ impl Template for SliderTemplate {
                 TemplateChild::slot(SLOT_SLIDER_TICK, Box::new(SurfacePartWidget)).with_key(key),
             );
             cx.add_class(tick, class);
-            cx.set_layout(tick, tick_layout(mark));
+            cx.set_layout_placement(tick, tick_placement(mark));
+            cx.set_layout_size(tick, tick_size(mark));
 
             if mark.labeled {
                 let label = cx.insert(
@@ -424,7 +422,8 @@ impl Template for SliderTemplate {
                 );
                 cx.add_class(label, class);
                 let content = format_tick_value(mark.value);
-                cx.set_layout(label, tick_label_layout(mark, &content));
+                cx.set_layout_placement(label, tick_label_placement(mark, &content));
+                cx.set_layout_size(label, tick_label_size(&content));
                 cx.set_local(label, content_prop, content);
             }
         }
@@ -440,7 +439,8 @@ impl Template for SliderTemplate {
             cx.read_local_or(owner, min_prop, 0.0),
             cx.read_local_or(owner, max_prop, 1.0),
         );
-        cx.set_layout(thumb, thumb_layout(initial_left, thumb_top));
+        cx.set_layout_placement(thumb, thumb_placement(initial_left, thumb_top));
+        cx.set_layout_size(thumb, thumb_size());
     }
 }
 
@@ -514,16 +514,12 @@ fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
     t * travel
 }
 
-fn thumb_layout(left: f32, top: f32) -> Layout {
-    Layout::new()
-        .absolute_at(left, top)
-        .logical_size(THUMB_DIAMETER, THUMB_DIAMETER)
+fn thumb_placement(left: f32, top: f32) -> LayoutPlacement {
+    LayoutPlacement::absolute_at(left, top)
 }
 
-fn axis_layout() -> Layout {
-    Layout::new()
-        .absolute()
-        .logical_size(SLIDER_WIDTH, SLIDER_HEIGHT)
+fn thumb_size() -> LayoutSize {
+    LayoutSize::logical(THUMB_DIAMETER, THUMB_DIAMETER)
 }
 
 fn slider_ruler(min: f64, max: f64) -> AxisRuler1D {
@@ -555,17 +551,21 @@ fn ruler_mark_in_view(ruler: &AxisRuler1D, mark: AxisRulerMark) -> bool {
     mark.view_position >= span.start - EPSILON && mark.view_position <= span.end + EPSILON
 }
 
-fn tick_layout(mark: AxisRulerMark) -> Layout {
-    Layout::new()
-        .absolute_at(tick_left(mark.view_position, TICK_WIDTH), TICK_TOP)
-        .logical_size(TICK_WIDTH, f32_from_logical(mark.mark_extent))
+fn tick_placement(mark: AxisRulerMark) -> LayoutPlacement {
+    LayoutPlacement::absolute_at(tick_left(mark.view_position, TICK_WIDTH), TICK_TOP)
 }
 
-fn tick_label_layout(mark: AxisRulerMark, label: &str) -> Layout {
+fn tick_size(mark: AxisRulerMark) -> LayoutSize {
+    LayoutSize::logical(TICK_WIDTH, f32_from_logical(mark.mark_extent))
+}
+
+fn tick_label_placement(mark: AxisRulerMark, label: &str) -> LayoutPlacement {
     let width = label_width(label);
-    Layout::new()
-        .absolute_at(tick_left(mark.view_position, width), LABEL_TOP)
-        .logical_size(width, SLIDER_HEIGHT - LABEL_TOP)
+    LayoutPlacement::absolute_at(tick_left(mark.view_position, width), LABEL_TOP)
+}
+
+fn tick_label_size(label: &str) -> LayoutSize {
+    LayoutSize::logical(label_width(label), SLIDER_HEIGHT - LABEL_TOP)
 }
 
 fn label_width(label: &str) -> f32 {
@@ -614,7 +614,8 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
             ui.remove_class(tick, CLASS_SLIDER_MAJOR_TICK);
             ui.remove_class(tick, CLASS_SLIDER_MINOR_TICK);
             ui.add_class(tick, tick_class(mark.kind));
-            ui.set_layout(tick, tick_layout(mark));
+            ui.set_layout_placement(tick, tick_placement(mark));
+            ui.set_layout_size(tick, tick_size(mark));
         }
         let Some(label) = ui
             .template_instance(slider)
@@ -626,7 +627,8 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
         ui.remove_class(label, CLASS_SLIDER_MINOR_TICK);
         ui.add_class(label, tick_class(mark.kind));
         let content = format_tick_value(mark.value);
-        ui.set_layout(label, tick_label_layout(mark, &content));
+        ui.set_layout_placement(label, tick_label_placement(mark, &content));
+        ui.set_layout_size(label, tick_label_size(&content));
         ui.set_local(label, content_prop, content);
     }
 }
@@ -650,7 +652,7 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-    ui.set_layout(thumb, thumb_layout(left, top));
+    ui.set_layout_placement(thumb, thumb_placement(left, top));
 }
 
 fn set_value_from_position(

@@ -22,7 +22,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::controls::support::read_local_or;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -196,10 +196,8 @@ impl Template for ProgressTemplate {
             SLOT_PROGRESS_BAR_FILL,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_layout(
-            fill,
-            Layout::new().absolute_at(0.0, 0.0).percent_size(0.0, 1.0),
-        );
+        cx.set_layout_placement(fill, LayoutPlacement::absolute_at(0.0, 0.0));
+        cx.set_layout_size(fill, LayoutSize::percent(0.0, 1.0));
 
         let label = cx.insert(TemplateChild::slot(
             SLOT_PROGRESS_BAR_LABEL,
@@ -219,11 +217,9 @@ pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
 
     let fraction = progress_fraction(clamped, min, max);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
-        ui.set_layout(
+        ui.set_layout_size(
             fill,
-            Layout::new()
-                .absolute_at(0.0, 0.0)
-                .percent_size(f32_from_unit_fraction(fraction), 1.0),
+            LayoutSize::percent(f32_from_unit_fraction(fraction), 1.0),
         );
     }
     if let Some(label) = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL) {

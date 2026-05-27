@@ -34,7 +34,10 @@ use alloc::vec::Vec;
 
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
-use crate::layouts::Layout;
+use crate::layouts::{
+    Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
+    LayoutSpacing,
+};
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
 use crate::widget::{SurfacePartWidget, Widget};
@@ -442,25 +445,60 @@ impl<'a> TemplateContext<'a> {
     /// alignment, or overflow.
     pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
         let parts = layout.into().into_parts();
-        let props = *self.properties();
         if let Some(container) = parts.container {
-            self.set_local(id, props.layout_container, container);
+            self.set_layout_container(id, container);
         }
         if let Some(size) = parts.size {
-            self.set_local(id, props.layout_size, size);
+            self.set_layout_size(id, size);
         }
         if let Some(spacing) = parts.spacing {
-            self.set_local(id, props.layout_spacing, spacing);
+            self.set_layout_spacing(id, spacing);
         }
         if let Some(alignment) = parts.alignment {
-            self.set_local(id, props.layout_alignment, alignment);
+            self.set_layout_alignment(id, alignment);
         }
         if let Some(overflow) = parts.overflow {
-            self.set_local(id, props.layout_overflow, overflow);
+            self.set_layout_overflow(id, overflow);
         }
         if let Some(placement) = parts.placement {
-            self.set_local(id, props.layout_placement, placement);
+            self.set_layout_placement(id, placement);
         }
+    }
+
+    /// Writes a generated element's container-layout contribution.
+    pub fn set_layout_container(&mut self, id: ElementId, container: impl Into<LayoutContainer>) {
+        let property = self.properties().layout_container;
+        self.set_local(id, property, container.into());
+    }
+
+    /// Writes a generated element's size contribution.
+    pub fn set_layout_size(&mut self, id: ElementId, size: impl Into<LayoutSize>) {
+        let property = self.properties().layout_size;
+        self.set_local(id, property, size.into());
+    }
+
+    /// Writes a generated element's spacing contribution.
+    pub fn set_layout_spacing(&mut self, id: ElementId, spacing: impl Into<LayoutSpacing>) {
+        let property = self.properties().layout_spacing;
+        self.set_local(id, property, spacing.into());
+    }
+
+    /// Writes a generated element's alignment contribution.
+    pub fn set_layout_alignment(&mut self, id: ElementId, alignment: impl Into<LayoutAlignment>) {
+        let property = self.properties().layout_alignment;
+        self.set_local(id, property, alignment.into());
+    }
+
+    /// Writes a generated element's overflow contribution.
+    pub fn set_layout_overflow(&mut self, id: ElementId, overflow: impl Into<LayoutOverflow>) {
+        let property = self.properties().layout_overflow;
+        self.set_local(id, property, overflow.into());
+    }
+
+    /// Writes a generated element's placement contribution.
+    pub fn set_layout_placement(&mut self, id: ElementId, placement: impl Into<LayoutPlacement>) {
+        let property = self.properties().layout_placement;
+        self.set_local(id, property, placement.into());
     }
 
     /// Reads a local property value or returns `default`.

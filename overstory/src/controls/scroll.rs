@@ -32,7 +32,7 @@ use crate::controls::support::{
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -528,9 +528,10 @@ impl Template for ScrollBarTemplate {
             SLOT_SCROLL_BAR_THUMB,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_layout(
+        cx.set_layout_placement(thumb, LayoutPlacement::absolute_at(0.0, 0.0));
+        cx.set_layout_size(
             thumb,
-            scroll_bar_thumb_layout(
+            scroll_bar_thumb_size(
                 Axis::Vertical,
                 DEFAULT_SCROLL_BAR_THICKNESS,
                 DEFAULT_SCROLL_BAR_THUMB_EXTENT,
@@ -766,14 +767,10 @@ fn scroll_bar_layout(axis: Axis, length: f32, thickness: f32) -> Layout {
     }
 }
 
-fn scroll_bar_thumb_layout(axis: Axis, thickness: f32, extent: f32) -> Layout {
+fn scroll_bar_thumb_size(axis: Axis, thickness: f32, extent: f32) -> LayoutSize {
     match axis {
-        Axis::Horizontal => Layout::new()
-            .absolute_at(0.0, 0.0)
-            .logical_size(extent, thickness),
-        Axis::Vertical => Layout::new()
-            .absolute_at(0.0, 0.0)
-            .logical_size(thickness, extent),
+        Axis::Horizontal => LayoutSize::logical(extent, thickness),
+        Axis::Vertical => LayoutSize::logical(thickness, extent),
     }
 }
 
@@ -784,9 +781,9 @@ fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) {
     let Some(thumb) = ui.slot(scroll_bar, SLOT_SCROLL_BAR_THUMB) else {
         return;
     };
-    ui.set_layout(
+    ui.set_layout_size(
         thumb,
-        scroll_bar_thumb_layout(widget.axis, widget.thickness, widget.thumb_extent),
+        scroll_bar_thumb_size(widget.axis, widget.thickness, widget.thumb_extent),
     );
 }
 

@@ -29,7 +29,7 @@ use crate::controls::support::{f32_from_logical, read_local_or};
 use crate::controls::text::{TextWidget, text_style};
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -361,7 +361,10 @@ impl Template for TextInputTemplate {
             SLOT_TEXT_INPUT_SELECTION,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_layout(selection, editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE));
+        let (selection_placement, selection_size) =
+            editor_rect_parts(Rect::ZERO, DEFAULT_FONT_SIZE);
+        cx.set_layout_placement(selection, selection_placement);
+        cx.set_layout_size(selection, selection_size);
 
         // TODO(text): Editable text is still rendered through a `TextWidget`
         // template part, while `PlainEditor` owns editing, caret, and selection
@@ -377,13 +380,12 @@ impl Template for TextInputTemplate {
             SLOT_TEXT_INPUT_CARET,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_layout(
-            caret,
-            editor_rect_layout(
-                Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
-                DEFAULT_FONT_SIZE,
-            ),
+        let (caret_placement, caret_size) = editor_rect_parts(
+            Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
+            DEFAULT_FONT_SIZE,
         );
+        cx.set_layout_placement(caret, caret_placement);
+        cx.set_layout_size(caret, caret_size);
     }
 }
 
@@ -602,20 +604,21 @@ fn refresh_text_input_parts(
         text
     };
     ui.set_local(text_part, ui.properties().content, String::from(display));
-    ui.set_layout(
+    ui.set_layout_placement(
         text_part,
-        Layout::new().absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
+        LayoutPlacement::absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
     );
     if text.is_empty() && !display.is_empty() {
         ui.add_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
     } else {
         ui.remove_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
     }
-    ui.set_layout(
-        selection_part,
-        selection_layout(ui, &mut state.editor, &style),
-    );
-    ui.set_layout(caret_part, caret_layout(ui, &mut state.editor, &style));
+    let (selection_placement, selection_size) = selection_layout(ui, &mut state.editor, &style);
+    ui.set_layout_placement(selection_part, selection_placement);
+    ui.set_layout_size(selection_part, selection_size);
+    let (caret_placement, caret_size) = caret_layout(ui, &mut state.editor, &style);
+    ui.set_layout_placement(caret_part, caret_placement);
+    ui.set_layout_size(caret_part, caret_size);
 }
 
 fn editable_character(s: &str) -> bool {
@@ -648,17 +651,25 @@ fn editor_local_point(
     (f32_from_logical(local_x), f32_from_logical(local_y))
 }
 
-fn caret_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, style: &TextStyle) -> Layout {
+fn caret_layout(
+    ui: &Ui,
+    editor: &mut PlainEditor<Brush>,
+    style: &TextStyle,
+) -> (LayoutPlacement, LayoutSize) {
     refresh_editor_layout(ui, editor);
     let font_size = f64::from(style.font_size);
     let rect = editor
         .cursor_geometry(1.5)
         .map(rect_from_bounding_box)
         .unwrap_or_else(|| Rect::new(0.0, 0.0, 1.5, font_size * 1.25));
-    editor_rect_layout(rect, style.font_size)
+    editor_rect_parts(rect, style.font_size)
 }
 
-fn selection_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, style: &TextStyle) -> Layout {
+fn selection_layout(
+    ui: &Ui,
+    editor: &mut PlainEditor<Brush>,
+    style: &TextStyle,
+) -> (LayoutPlacement, LayoutSize) {
     refresh_editor_layout(ui, editor);
     let mut selection = None::<Rect>;
     editor.selection_geometry_with(|bounds, _| {
@@ -672,7 +683,7 @@ fn selection_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, style: &TextStyle)
             .unwrap_or(Rect::ZERO);
         Rect::new(cursor.x0, cursor.y0, cursor.x0, cursor.y1)
     });
-    editor_rect_layout(rect, style.font_size)
+    editor_rect_parts(rect, style.font_size)
 }
 
 fn refresh_editor_layout(ui: &Ui, editor: &mut PlainEditor<Brush>) {
@@ -683,16 +694,17 @@ fn rect_from_bounding_box(bounds: parley::BoundingBox) -> Rect {
     Rect::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
-fn editor_rect_layout(rect: Rect, font_size: f32) -> Layout {
-    Layout::new()
-        .absolute_at(
+fn editor_rect_parts(rect: Rect, font_size: f32) -> (LayoutPlacement, LayoutSize) {
+    (
+        LayoutPlacement::absolute_at(
             f32_from_logical(f64::from(TEXT_INPUT_PADDING_X) + rect.x0),
             f32_from_logical(f64::from(text_top(font_size)) + rect.y0),
-        )
-        .logical_size(
+        ),
+        LayoutSize::logical(
             f32_from_logical(rect.width()),
             f32_from_logical(rect.height()),
-        )
+        ),
+    )
 }
 
 fn apply_editor_style(editor: &mut PlainEditor<Brush>, style: &TextStyle) {

@@ -77,7 +77,9 @@ use crate::controls::text_input::{
 };
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::controls::tooltip::TYPE_TOOLTIP;
-use crate::layouts::Layout;
+use crate::layouts::{
+    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutJustify, LayoutSize, LayoutSpacing,
+};
 use crate::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
     TransitionTarget, millis,
@@ -188,7 +190,12 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.transitions, button_transition_rules(properties))
         .set(properties.font_size, 22.0_f64)
         .set(properties.corner_radius, 10.0_f64)
-        .set(properties.layout, button_layout())
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(32.0, 18.0),
+        )
+        .set(properties.layout_alignment, centered_alignment())
         .build();
     let button_hover = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_HOVER_BG)
@@ -206,26 +213,18 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
 
-    let toggle_layout = |checked: bool| {
-        let layout = Layout::row(0.0)
-            .align_center()
-            .logical_size(64.0, 32.0)
-            .padding_all(4.0);
-        if checked {
-            layout.justify_end()
-        } else {
-            layout.justify_start()
-        }
-    };
     let toggle_idle = StyleBuilder::new()
         .set_resource(properties.background, TRACK_BG)
         .set(properties.transitions, surface_transition_rules(properties))
         .set(properties.corner_radius, 16.0_f64)
-        .set(properties.layout, toggle_layout(false))
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::logical(64.0, 32.0))
+        .set(properties.layout_spacing, LayoutSpacing::padding_all(4.0))
+        .set(properties.layout_alignment, toggle_alignment(false))
         .build();
     let toggle_checked = StyleBuilder::new()
         .set_resource(properties.background, SUCCESS_BG)
-        .set(properties.layout, toggle_layout(true))
+        .set(properties.layout_alignment, toggle_alignment(true))
         .build();
     let toggle_focused = StyleBuilder::new()
         .set_resource(properties.border_brush, FOCUS_RING_BORDER)
@@ -241,7 +240,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             ),
         )
         .set(properties.corner_radius, 12.0_f64)
-        .set(properties.layout, Layout::new().logical_size(24.0, 24.0))
+        .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
         .build();
 
     let slider_idle = StyleBuilder::new()
@@ -323,7 +322,12 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     let checkbox_idle = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.font_size, 15.0_f64)
-        .set(properties.layout, Layout::row(10.0).align_center())
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_spacing, LayoutSpacing::gap(10.0))
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
         .build();
     let checkbox_disabled = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
@@ -333,13 +337,9 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set(properties.border_width, 1.0_f64)
         .set(properties.corner_radius, 5.0_f64)
-        .set(
-            properties.layout,
-            Layout::row(0.0)
-                .justify_center()
-                .align_center()
-                .logical_size(22.0, 22.0),
-        )
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
+        .set(properties.layout_alignment, centered_alignment())
         .build();
     let checkbox_box_hover = StyleBuilder::new()
         .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
@@ -440,12 +440,15 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .set(properties.corner_radius, 6.0_f64)
         .build();
     let list_item_content = StyleBuilder::new()
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::percent(1.0, 1.0))
         .set(
-            properties.layout,
-            Layout::row(0.0)
-                .percent_size(1.0, 1.0)
-                .align_center()
-                .padding_xy(10.0, 7.0),
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(10.0, 7.0),
+        )
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
         )
         .build();
     let list_item_hover = StyleBuilder::new()
@@ -778,11 +781,21 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
         .build()
 }
 
-fn button_layout() -> Layout {
-    Layout::row(0.0)
-        .padding_xy(32.0, 18.0)
-        .justify_center()
-        .align_center()
+fn centered_alignment() -> LayoutAlignment {
+    LayoutAlignment::new()
+        .justify_content(LayoutJustify::Center)
+        .align_items(LayoutAlign::Center)
+}
+
+fn toggle_alignment(checked: bool) -> LayoutAlignment {
+    let justify = if checked {
+        LayoutJustify::End
+    } else {
+        LayoutJustify::Start
+    };
+    LayoutAlignment::new()
+        .align_items(LayoutAlign::Center)
+        .justify_content(justify)
 }
 
 fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
