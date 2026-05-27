@@ -2357,6 +2357,43 @@ fn set_layout_size_does_not_replace_styled_spacing() {
 }
 
 #[test]
+fn layout_longhands_extend_size_and_spacing_without_taffy_leakage() {
+    use crate::{LayoutDimension, LayoutSize};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::row(0.0).logical_size(160.0, 80.0));
+    let a = ui.append(
+        root,
+        crate::Panel::new().layout(
+            Layout::new()
+                .logical_size(20.0, 20.0)
+                .margin_all(5.0)
+                .min_logical_size(40.0, 30.0),
+        ),
+    );
+    let b = ui.append(
+        root,
+        crate::Panel::new().layout(
+            Layout::new()
+                .logical_size(90.0, 30.0)
+                .max_logical_size(50.0, 20.0)
+                .flex_basis(LayoutDimension::Logical(60.0)),
+        ),
+    );
+
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    assert_eq!(ui.effective_bounds(a), Rect::new(5.0, 5.0, 45.0, 35.0));
+    assert_eq!(ui.effective_bounds(b), Rect::new(50.0, 0.0, 100.0, 20.0));
+
+    ui.set_layout_size(b, LayoutSize::logical(30.0, 10.0));
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    assert_eq!(ui.effective_bounds(b), Rect::new(50.0, 0.0, 80.0, 10.0));
+}
+
+#[test]
 fn composition_layers_track_layout_geometry() {
     let mut ui = Ui::new();
     let root = ui.root();
