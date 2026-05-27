@@ -185,7 +185,7 @@ impl Ui {
     #[must_use]
     pub fn is_enabled(&self, id: ElementId) -> bool {
         self.get(id)
-            .map(|element| self.effective_value_for(element, self.properties.is_enabled))
+            .map(|element| self.resolve_value_for(element, self.properties.is_enabled))
             .unwrap_or(false)
     }
 

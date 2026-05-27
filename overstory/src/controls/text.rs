@@ -24,11 +24,13 @@ use alloc::string::String;
 use kurbo::Size;
 use peniko::Brush;
 use understory_box_tree::NodeId;
-use understory_presentation::{PresentationStore, TextContent, TextWrapMode};
+use understory_presentation::{PresentationStore, TextContent, TextStyle, TextWrapMode};
+use understory_property::Property;
 use understory_style::TypeTag;
 
-use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
+use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext};
 use crate::element::{Element, ElementId};
+use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
 
@@ -144,17 +146,14 @@ impl Widget for TextWidget {
     ) {
         let content: String = ctx.get_value(element, ctx.properties.content);
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let wrap_mode: TextWrapMode = ctx.get_value(element, ctx.properties.text_wrap_mode);
+        let style = text_style(element, ctx);
 
         let Some(text) = store.plain_text_mut(node) else {
             return;
         };
         text.content = TextContent::plain(content);
         text.foreground = Some(foreground);
-        text.style.font_size = font_size;
-        text.style.text_wrap_mode = wrap_mode;
+        text.style = style;
     }
 
     fn measure(
@@ -167,16 +166,103 @@ impl Widget for TextWidget {
         if content.is_empty() {
             return Some(Size::ZERO);
         }
-        #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let wrap_mode: TextWrapMode = ctx.get_value(element, ctx.properties.text_wrap_mode);
-        let wrap_width = match wrap_mode {
+        let style = text_style(element, ctx);
+        let wrap_width = match style.text_wrap_mode {
             TextWrapMode::NoWrap => None,
             TextWrapMode::Wrap => constraints.known.width,
         };
-        let layout = ctx.text.borrow_mut().shape(&content, font_size, wrap_width);
+        let layout = ctx.text.borrow_mut().shape(&content, &style, wrap_width);
         let width = f64::from(layout.width());
         let height = f64::from(layout.height());
         Some(Size::new(width, height))
     }
+}
+
+pub(crate) fn text_style(element: &Element, source: &impl ResolvedPropertySource) -> TextStyle {
+    text_style_from_source(element, source)
+}
+
+// TODO(style): Move this out of text once another subsystem needs the same
+// resolved-property source abstraction.
+pub(crate) trait ResolvedPropertySource {
+    fn properties(&self) -> &BuiltInProperties;
+
+    /// Resolves a typed property for `element` through this source's cascade,
+    /// match state, theme, inheritance lookup, and local/animation stores.
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static;
+}
+
+impl ResolvedPropertySource for PresentContext<'_> {
+    fn properties(&self) -> &BuiltInProperties {
+        self.properties
+    }
+
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        PresentContext::get_value(self, element, property)
+    }
+}
+
+impl ResolvedPropertySource for MeasureContext<'_> {
+    fn properties(&self) -> &BuiltInProperties {
+        self.properties
+    }
+
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        MeasureContext::get_value(self, element, property)
+    }
+}
+
+impl ResolvedPropertySource for WidgetEventContext<'_> {
+    fn properties(&self) -> &BuiltInProperties {
+        self.ui().properties()
+    }
+
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.ui().resolve_value_for(element, property)
+    }
+}
+
+impl ResolvedPropertySource for Ui {
+    fn properties(&self) -> &BuiltInProperties {
+        self.properties()
+    }
+
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.resolve_value_for(element, property)
+    }
+}
+
+fn text_style_from_source(element: &Element, source: &impl ResolvedPropertySource) -> TextStyle {
+    let properties = source.properties();
+    let mut style = TextStyle::default();
+    #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
+    {
+        style.font_size = source.resolve_value::<f64>(element, properties.font_size) as f32;
+    }
+    style.font_family = source.resolve_value(element, properties.font_family);
+    style.font_width = source.resolve_value(element, properties.font_width);
+    style.font_weight = source.resolve_value(element, properties.font_weight);
+    style.font_style = source.resolve_value(element, properties.font_style);
+    style.language = source.resolve_value(element, properties.text_language);
+    style.line_height = source.resolve_value(element, properties.line_height);
+    style.letter_spacing = source.resolve_value(element, properties.letter_spacing);
+    style.word_spacing = source.resolve_value(element, properties.word_spacing);
+    style.word_break = source.resolve_value(element, properties.word_break);
+    style.overflow_wrap = source.resolve_value(element, properties.overflow_wrap);
+    style.text_wrap_mode = source.resolve_value(element, properties.text_wrap_mode);
+    style
 }

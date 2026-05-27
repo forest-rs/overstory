@@ -18,14 +18,15 @@
 use alloc::{boxed::Box, string::String};
 
 use kurbo::Rect;
-use parley::{FontFamily, FontWeight, LineHeight, PlainEditor, StyleProperty};
+use parley::{PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
+use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::{f32_from_logical, read_local_or};
-use crate::controls::text::TextWidget;
+use crate::controls::text::{TextWidget, text_style};
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::Layout;
@@ -55,7 +56,7 @@ pub const SLOT_TEXT_INPUT_SELECTION: TemplateSlot =
 const TEXT_INPUT_WIDTH: f32 = 280.0;
 const TEXT_INPUT_HEIGHT: f32 = 40.0;
 const TEXT_INPUT_PADDING_X: f32 = 12.0;
-const DEFAULT_FONT_SIZE: f64 = 15.0;
+const DEFAULT_FONT_SIZE: f32 = 15.0;
 
 /// Builder + spec for a single-line text input.
 pub struct TextInput {
@@ -182,8 +183,10 @@ impl AppendSpec for TextInput {
             state,
             template,
         } = self;
-        let mut edit =
-            TextInputEditState::new(text.clone(), font_size.unwrap_or(DEFAULT_FONT_SIZE));
+        let mut edit = TextInputEditState::new(
+            text.clone(),
+            initial_text_input_style(font_size.unwrap_or(f64::from(DEFAULT_FONT_SIZE))),
+        );
         ui.with_plain_editor(&mut edit.editor, |driver| driver.move_to_text_end());
         let input_widget = TextInputWidget {
             placeholder,
@@ -257,9 +260,12 @@ impl Widget for TextInputWidget {
             event.mark_handled();
             return;
         }
-        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
-        self.edit.sync_style(font_size);
-        move_editor_to_point(ctx, input, event.position, font_size, &mut self.edit.editor);
+        let Some(element) = ctx.element() else {
+            return;
+        };
+        let style = text_style(element, ctx);
+        self.edit.sync_style(&style);
+        move_editor_to_point(ctx, input, event.position, &style, &mut self.edit.editor);
         self.refresh_parts(ctx, input);
         event.mark_handled();
     }
@@ -272,17 +278,20 @@ impl Widget for TextInputWidget {
         if !ctx.is_enabled(input) {
             return;
         }
-        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
-        self.edit.sync_style(font_size);
+        let Some(element) = ctx.element() else {
+            return;
+        };
+        let style = text_style(element, ctx);
+        self.edit.sync_style(&style);
         if !self.pointer.dragging {
-            let (x, y) = editor_local_point(ctx, input, event.press_position, font_size);
+            let (x, y) = editor_local_point(ctx, input, event.press_position, &style);
             ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                 driver.move_to_point(x, y);
             });
             self.pointer.dragging = true;
         }
         self.pointer.dragged = true;
-        let (x, y) = editor_local_point(ctx, input, event.position, font_size);
+        let (x, y) = editor_local_point(ctx, input, event.position, &style);
         ctx.with_plain_editor(&mut self.edit.editor, |driver| {
             driver.extend_selection_to_point(x, y);
         });
@@ -302,9 +311,12 @@ impl Widget for TextInputWidget {
         if !ctx.is_enabled(input) {
             return;
         }
-        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
+        let Some(element) = ctx.element() else {
+            return;
+        };
+        let style = text_style(element, ctx);
         let read_only = read_local_or(ctx, input, ctx.properties().is_read_only, false);
-        self.edit.sync_style(font_size);
+        self.edit.sync_style(&style);
         let edit = self.edit.edit_from_key(ctx, event.key, read_only);
         if edit.handled {
             if edit.changed {
@@ -375,7 +387,7 @@ impl Template for TextInputTemplate {
             caret,
             cx.properties().layout,
             editor_rect_layout(
-                Rect::new(0.0, 0.0, 1.5, DEFAULT_FONT_SIZE * 1.25),
+                Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
                 DEFAULT_FONT_SIZE,
             ),
         );
@@ -399,25 +411,25 @@ impl TextInputPointerState {
 
 struct TextInputEditState {
     editor: PlainEditor<Brush>,
-    font_size: f64,
+    style: TextStyle,
 }
 
 impl TextInputEditState {
-    fn new(text: String, font_size: f64) -> Self {
-        let mut editor = PlainEditor::new(f32_from_logical(font_size));
-        apply_editor_style(&mut editor, font_size);
+    fn new(text: String, style: TextStyle) -> Self {
+        let mut editor = PlainEditor::new(style.font_size);
+        apply_editor_style(&mut editor, &style);
         editor.set_text(&text);
-        Self { editor, font_size }
+        Self { editor, style }
     }
 
     fn text(&self) -> &str {
         self.editor.raw_text()
     }
 
-    fn sync_style(&mut self, font_size: f64) {
-        if (self.font_size - font_size).abs() > f64::EPSILON {
-            self.font_size = font_size;
-            apply_editor_style(&mut self.editor, font_size);
+    fn sync_style(&mut self, style: &TextStyle) {
+        if self.style != *style {
+            self.style = style.clone();
+            apply_editor_style(&mut self.editor, style);
         }
     }
 
@@ -585,8 +597,11 @@ fn refresh_text_input_parts(
     state: &mut TextInputEditState,
     placeholder: Option<&str>,
 ) {
-    let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-    state.sync_style(font_size);
+    let Some(element) = ui.get(input) else {
+        return;
+    };
+    let style = text_style(element, &*ui);
+    state.sync_style(&style);
     let text = state.text();
     let display = if text.is_empty() {
         placeholder.unwrap_or("")
@@ -594,11 +609,10 @@ fn refresh_text_input_parts(
         text
     };
     ui.set_local(text_part, ui.properties().content, String::from(display));
-    ui.set_local(text_part, ui.properties().font_size, font_size);
     ui.set_local(
         text_part,
         ui.properties().layout,
-        Layout::new().absolute_at(TEXT_INPUT_PADDING_X, text_top(font_size)),
+        Layout::new().absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
     );
     if text.is_empty() && !display.is_empty() {
         ui.add_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
@@ -608,12 +622,12 @@ fn refresh_text_input_parts(
     ui.set_local(
         selection_part,
         ui.properties().layout,
-        selection_layout(ui, &mut state.editor, font_size),
+        selection_layout(ui, &mut state.editor, &style),
     );
     ui.set_local(
         caret_part,
         ui.properties().layout,
-        caret_layout(ui, &mut state.editor, font_size),
+        caret_layout(ui, &mut state.editor, &style),
     );
 }
 
@@ -625,10 +639,10 @@ fn move_editor_to_point(
     ui: &Ui,
     input: ElementId,
     position: kurbo::Point,
-    font_size: f64,
+    style: &TextStyle,
     editor: &mut PlainEditor<Brush>,
 ) -> usize {
-    let (local_x, local_y) = editor_local_point(ui, input, position, font_size);
+    let (local_x, local_y) = editor_local_point(ui, input, position, style);
     ui.with_plain_editor(editor, |driver| {
         driver.move_to_point(local_x, local_y);
     });
@@ -639,24 +653,25 @@ fn editor_local_point(
     ui: &Ui,
     input: ElementId,
     position: kurbo::Point,
-    font_size: f64,
+    style: &TextStyle,
 ) -> (f32, f32) {
     let bounds = ui.effective_bounds(input);
     let local_x = (position.x - bounds.x0 - f64::from(TEXT_INPUT_PADDING_X)).max(0.0);
-    let local_y = (position.y - bounds.y0 - f64::from(text_top(font_size))).max(0.0);
+    let local_y = (position.y - bounds.y0 - f64::from(text_top(style.font_size))).max(0.0);
     (f32_from_logical(local_x), f32_from_logical(local_y))
 }
 
-fn caret_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, font_size: f64) -> Layout {
+fn caret_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, style: &TextStyle) -> Layout {
     refresh_editor_layout(ui, editor);
+    let font_size = f64::from(style.font_size);
     let rect = editor
         .cursor_geometry(1.5)
         .map(rect_from_bounding_box)
         .unwrap_or_else(|| Rect::new(0.0, 0.0, 1.5, font_size * 1.25));
-    editor_rect_layout(rect, font_size)
+    editor_rect_layout(rect, style.font_size)
 }
 
-fn selection_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, font_size: f64) -> Layout {
+fn selection_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, style: &TextStyle) -> Layout {
     refresh_editor_layout(ui, editor);
     let mut selection = None::<Rect>;
     editor.selection_geometry_with(|bounds, _| {
@@ -670,7 +685,7 @@ fn selection_layout(ui: &Ui, editor: &mut PlainEditor<Brush>, font_size: f64) ->
             .unwrap_or(Rect::ZERO);
         Rect::new(cursor.x0, cursor.y0, cursor.x0, cursor.y1)
     });
-    editor_rect_layout(rect, font_size)
+    editor_rect_layout(rect, style.font_size)
 }
 
 fn refresh_editor_layout(ui: &Ui, editor: &mut PlainEditor<Brush>) {
@@ -681,7 +696,7 @@ fn rect_from_bounding_box(bounds: parley::BoundingBox) -> Rect {
     Rect::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
-fn editor_rect_layout(rect: Rect, font_size: f64) -> Layout {
+fn editor_rect_layout(rect: Rect, font_size: f32) -> Layout {
     Layout::new()
         .absolute_at(
             f32_from_logical(f64::from(TEXT_INPUT_PADDING_X) + rect.x0),
@@ -693,21 +708,37 @@ fn editor_rect_layout(rect: Rect, font_size: f64) -> Layout {
         )
 }
 
-fn apply_editor_style(editor: &mut PlainEditor<Brush>, font_size: f64) {
+fn apply_editor_style(editor: &mut PlainEditor<Brush>, style: &TextStyle) {
     let styles = editor.edit_styles();
-    styles.insert(StyleProperty::FontFamily(FontFamily::Source(
-        "system-ui, sans-serif".into(),
+    styles.insert(StyleProperty::FontFamily(style.font_family.clone()));
+    styles.insert(StyleProperty::FontSize(style.font_size));
+    styles.insert(StyleProperty::FontWidth(style.font_width));
+    styles.insert(StyleProperty::FontStyle(style.font_style));
+    styles.insert(StyleProperty::FontWeight(style.font_weight));
+    styles.insert(StyleProperty::Locale(style.language));
+    styles.insert(StyleProperty::LineHeight(crate::text::parley_line_height(
+        style.line_height,
     )));
-    styles.insert(StyleProperty::FontWeight(FontWeight::NORMAL));
-    styles.insert(StyleProperty::FontSize(f32_from_logical(font_size)));
-    styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.2)));
+    styles.insert(StyleProperty::LetterSpacing(style.letter_spacing));
+    styles.insert(StyleProperty::WordSpacing(style.word_spacing));
+    styles.insert(StyleProperty::WordBreak(style.word_break));
+    styles.insert(StyleProperty::OverflowWrap(style.overflow_wrap));
+    styles.insert(StyleProperty::TextWrapMode(style.text_wrap_mode));
     styles.insert(StyleProperty::Brush(Brush::Solid(Color::from_rgba8(
         0, 0, 0, 0xff,
     ))));
 }
 
-fn text_top(font_size: f64) -> f32 {
-    f32_from_logical((f64::from(TEXT_INPUT_HEIGHT) - font_size * 1.35) * 0.5)
+fn initial_text_input_style(font_size: f64) -> TextStyle {
+    TextStyle {
+        font_size: f32_from_logical(font_size),
+        line_height: TextLineHeight::FontSizeRelative(1.2),
+        ..TextStyle::default()
+    }
+}
+
+fn text_top(font_size: f32) -> f32 {
+    (TEXT_INPUT_HEIGHT - font_size * 1.35) * 0.5
 }
 
 /// Sets `IsReadOnly` on `input` and keeps the `:read-only` pseudoclass in sync.

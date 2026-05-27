@@ -728,6 +728,28 @@ pub enum TemplateBuiltInProperty {
     Foreground,
     /// `FontSize`.
     FontSize,
+    /// `FontFamily`.
+    FontFamily,
+    /// `FontWidth`.
+    FontWidth,
+    /// `FontWeight`.
+    FontWeight,
+    /// `FontStyle`.
+    FontStyle,
+    /// `TextLanguage`.
+    TextLanguage,
+    /// `LineHeight`.
+    LineHeight,
+    /// `LetterSpacing`.
+    LetterSpacing,
+    /// `WordSpacing`.
+    WordSpacing,
+    /// `WordBreak`.
+    WordBreak,
+    /// `OverflowWrap`.
+    OverflowWrap,
+    /// `TextWrapMode`.
+    TextWrapMode,
     /// `BorderBrush`.
     BorderBrush,
     /// `BorderWidth`.
@@ -812,8 +834,10 @@ fn apply_template_binding(
     binding: TemplateBinding,
 ) {
     use TemplateBuiltInProperty::{
-        Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontSize, Foreground,
-        IsChecked, IsEnabled, Layout, Maximum, Minimum, Value,
+        Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontFamily, FontSize,
+        FontStyle, FontWeight, FontWidth, Foreground, IsChecked, IsEnabled, Layout, LetterSpacing,
+        LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage, TextWrapMode, Value, WordBreak,
+        WordSpacing,
     };
 
     let props = *cx.properties();
@@ -838,6 +862,39 @@ fn apply_template_binding(
             .map(|_| ()),
         (FontSize, FontSize) => cx
             .bind_owner_to_part(props.font_size, target, props.font_size)
+            .map(|_| ()),
+        (FontFamily, FontFamily) => cx
+            .bind_owner_to_part(props.font_family, target, props.font_family)
+            .map(|_| ()),
+        (FontWidth, FontWidth) => cx
+            .bind_owner_to_part(props.font_width, target, props.font_width)
+            .map(|_| ()),
+        (FontWeight, FontWeight) => cx
+            .bind_owner_to_part(props.font_weight, target, props.font_weight)
+            .map(|_| ()),
+        (FontStyle, FontStyle) => cx
+            .bind_owner_to_part(props.font_style, target, props.font_style)
+            .map(|_| ()),
+        (TextLanguage, TextLanguage) => cx
+            .bind_owner_to_part(props.text_language, target, props.text_language)
+            .map(|_| ()),
+        (LineHeight, LineHeight) => cx
+            .bind_owner_to_part(props.line_height, target, props.line_height)
+            .map(|_| ()),
+        (LetterSpacing, LetterSpacing) => cx
+            .bind_owner_to_part(props.letter_spacing, target, props.letter_spacing)
+            .map(|_| ()),
+        (WordSpacing, WordSpacing) => cx
+            .bind_owner_to_part(props.word_spacing, target, props.word_spacing)
+            .map(|_| ()),
+        (WordBreak, WordBreak) => cx
+            .bind_owner_to_part(props.word_break, target, props.word_break)
+            .map(|_| ()),
+        (OverflowWrap, OverflowWrap) => cx
+            .bind_owner_to_part(props.overflow_wrap, target, props.overflow_wrap)
+            .map(|_| ()),
+        (TextWrapMode, TextWrapMode) => cx
+            .bind_owner_to_part(props.text_wrap_mode, target, props.text_wrap_mode)
             .map(|_| ()),
         (BorderBrush, BorderBrush) => cx
             .bind_owner_to_part(props.border_brush, target, props.border_brush)

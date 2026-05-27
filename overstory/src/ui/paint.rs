@@ -79,7 +79,7 @@ fn lower_presentation(
                     };
                     let layout = text.borrow_mut().shape(
                         plain.content.as_str(),
-                        plain.style.font_size,
+                        &plain.style,
                         if plain_text_wraps(plain) {
                             Some(bounds.width())
                         } else {

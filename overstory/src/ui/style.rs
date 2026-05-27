@@ -66,7 +66,9 @@ impl Ui {
         self.style.match_state(id)
     }
 
-    pub(crate) fn effective_value_for<T: Clone + 'static>(
+    /// Resolves `property` for `element` through the active property stores,
+    /// style cascade, theme resources, and inherited ancestor values.
+    pub(crate) fn resolve_value_for<T: Clone + 'static>(
         &self,
         element: &Element,
         property: Property<T>,

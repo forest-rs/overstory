@@ -70,7 +70,7 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return Rect::ZERO;
         };
-        self.effective_value_for(element, self.properties.bounds)
+        self.resolve_value_for(element, self.properties.bounds)
     }
 
     /// Resolves the effective `Layout` for `id` through the cascade.
@@ -79,7 +79,7 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return Layout::default();
         };
-        self.effective_value_for(element, self.properties.layout)
+        self.resolve_value_for(element, self.properties.layout)
     }
 
     /// Computes layout for the tree against the given viewport size and

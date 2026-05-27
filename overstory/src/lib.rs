@@ -157,6 +157,9 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
 pub use understory_focus::Navigation;
-pub use understory_presentation::TextWrapMode;
+pub use understory_presentation::{
+    FontFamily, FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily, Language,
+    OverflowWrap, TextLineHeight, TextWrapMode, WordBreak,
+};
 pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};

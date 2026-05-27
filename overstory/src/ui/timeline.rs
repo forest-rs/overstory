@@ -147,7 +147,7 @@ impl Ui {
             ChangeCause::Other => return None,
         };
         let element = self.get(element)?;
-        self.effective_value_for(element, self.properties.transitions)
+        self.resolve_value_for(element, self.properties.transitions)
             .rule_for(target.transition_target(), trigger)
             .map(|rule| rule.spec().resolve(self.theme()))
     }
@@ -156,7 +156,7 @@ impl Ui {
         let property = self.properties.opacity;
         let target = self
             .get(element)
-            .map(|el| self.effective_value_for(el, property))
+            .map(|el| self.resolve_value_for(el, property))
             .unwrap_or(1.0);
         let key = TimelineTrackKey::new(element, TimelineTarget::Property(property.id()));
         self.timeline.sample(key, target, self.now())

@@ -19,7 +19,10 @@ use alloc::string::String;
 
 use kurbo::Rect;
 use peniko::Brush;
-use understory_presentation::TextWrapMode;
+use understory_presentation::{
+    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
+    TextStyle, TextWrapMode, WordBreak,
+};
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{COMPOSE, LAYOUT, PAINT};
@@ -60,6 +63,36 @@ pub struct BuiltInProperties {
 
     /// Font size in pixels per em. Default `14.0`.
     pub font_size: Property<f64>,
+
+    /// Preferred font family list. Default system UI.
+    pub font_family: Property<FontFamily<'static>>,
+
+    /// Font width. Default [`FontWidth::NORMAL`].
+    pub font_width: Property<FontWidth>,
+
+    /// Font weight. Default [`FontWeight::NORMAL`].
+    pub font_weight: Property<FontWeight>,
+
+    /// Font style. Default [`FontStyle::Normal`].
+    pub font_style: Property<FontStyle>,
+
+    /// Optional content language used for text shaping. Default `None`.
+    pub text_language: Property<Option<Language>>,
+
+    /// Line height policy. Default [`TextLineHeight::FontSizeRelative`] at `1.2`.
+    pub line_height: Property<TextLineHeight>,
+
+    /// Extra letter spacing in logical pixels. Default `0.0`.
+    pub letter_spacing: Property<f32>,
+
+    /// Extra word spacing in logical pixels. Default `0.0`.
+    pub word_spacing: Property<f32>,
+
+    /// Word-breaking policy. Default [`WordBreak::Normal`].
+    pub word_break: Property<WordBreak>,
+
+    /// Emergency line-breaking policy. Default [`OverflowWrap::Normal`].
+    pub overflow_wrap: Property<OverflowWrap>,
 
     /// Text line wrapping policy. Default [`TextWrapMode::NoWrap`].
     /// Writes mark `LAYOUT`, which cascades through paint because wrapping
@@ -126,6 +159,7 @@ impl BuiltInProperties {
     /// Registers every built-in property into `registry` and returns their
     /// type-safe handles.
     pub(crate) fn register(registry: &mut PropertyRegistry) -> Self {
+        let text_defaults = TextStyle::default();
         Self {
             background: registry.register(
                 "Background",
@@ -183,10 +217,81 @@ impl BuiltInProperties {
                     .inherits(true)
                     .build(),
             ),
+            font_family: registry.register(
+                "FontFamily",
+                PropertyMetadataBuilder::new(text_defaults.font_family)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            font_width: registry.register(
+                "FontWidth",
+                PropertyMetadataBuilder::new(text_defaults.font_width)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            font_weight: registry.register(
+                "FontWeight",
+                PropertyMetadataBuilder::new(text_defaults.font_weight)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            font_style: registry.register(
+                "FontStyle",
+                PropertyMetadataBuilder::new(text_defaults.font_style)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            text_language: registry.register(
+                "TextLanguage",
+                PropertyMetadataBuilder::new(text_defaults.language)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            line_height: registry.register(
+                "LineHeight",
+                PropertyMetadataBuilder::new(TextLineHeight::FontSizeRelative(1.2))
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            letter_spacing: registry.register(
+                "LetterSpacing",
+                PropertyMetadataBuilder::new(text_defaults.letter_spacing)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            word_spacing: registry.register(
+                "WordSpacing",
+                PropertyMetadataBuilder::new(text_defaults.word_spacing)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            word_break: registry.register(
+                "WordBreak",
+                PropertyMetadataBuilder::new(text_defaults.word_break)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            overflow_wrap: registry.register(
+                "OverflowWrap",
+                PropertyMetadataBuilder::new(text_defaults.overflow_wrap)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
             text_wrap_mode: registry.register(
                 "TextWrapMode",
-                PropertyMetadataBuilder::new(TextWrapMode::NoWrap)
+                PropertyMetadataBuilder::new(text_defaults.text_wrap_mode)
                     .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
                     .build(),
             ),
             border_brush: registry.register(

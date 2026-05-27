@@ -29,6 +29,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
 use crate::composition::CompositionPolicy;
+use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
@@ -184,15 +185,14 @@ impl Widget for TooltipLabelWidget {
     ) {
         let content: String = ctx.get_value(element, ctx.properties.content);
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
+        let style = text_style(element, ctx);
 
         let Some(text) = store.plain_text_mut(node) else {
             return;
         };
         text.content = TextContent::plain(content);
         text.foreground = Some(foreground);
-        text.style.font_size = font_size;
+        text.style = style;
     }
 
     fn measure(
@@ -206,9 +206,8 @@ impl Widget for TooltipLabelWidget {
         if content.is_empty() {
             return Some(Size::ZERO);
         }
-        #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-        let font_size = ctx.get_value(element, ctx.properties.font_size) as f32;
-        let layout = ctx.text.borrow_mut().shape(&content, font_size, None);
+        let style = text_style(element, ctx);
+        let layout = ctx.text.borrow_mut().shape(&content, &style, None);
         Some(Size::new(
             f64::from(layout.width()),
             f64::from(layout.height()),

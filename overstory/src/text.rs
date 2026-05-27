@@ -25,10 +25,11 @@ use hashbrown::{Equivalent, HashMap};
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
 use parley::{
-    Alignment, AlignmentOptions, FontContext, FontFamily, FontWeight, Layout, LayoutContext,
-    LineHeight, PlainEditor, PlainEditorDriver, PositionedLayoutItem, StyleProperty,
+    Alignment, AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PlainEditor,
+    PlainEditorDriver, PositionedLayoutItem, StyleProperty,
 };
 use peniko::{Brush, Fill, Style};
+use understory_presentation::{TextLineHeight, TextStyle as PresentationTextStyle};
 
 const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
 const MAX_ADVANCE_COMPATIBILITY_EPSILON: f32 = 0.01;
@@ -127,7 +128,7 @@ impl TextEngine {
         }
     }
 
-    /// Shapes `text` with the given font size.
+    /// Shapes `text` with the given single-run text style.
     ///
     /// If `wrap_width` is `Some`, it is treated as a logical-pixel line width.
     /// The conversion to Parley's `f32` max advance stays inside the text
@@ -135,17 +136,21 @@ impl TextEngine {
     /// details. Returns the built parley [`Layout`] ready for rendering or
     /// measuring.
     ///
-    /// Phase 1f-4 uses platform-default UI font, normal weight, and normal
-    /// spacing. Apps will eventually be able to override these via per-element
-    /// style properties; for now the defaults are baked in here.
-    pub fn shape(&mut self, text: &str, font_size: f32, wrap_width: Option<f64>) -> TextLayout {
+    /// The cache key includes geometry-affecting typography so repeated labels
+    /// share work without reusing a layout shaped for a different style.
+    pub fn shape(
+        &mut self,
+        text: &str,
+        style: &PresentationTextStyle,
+        wrap_width: Option<f64>,
+    ) -> TextLayout {
         let max_advance = parley_max_advance(wrap_width);
-        let lookup = TextLayoutLookupKey::new(text, font_size, max_advance);
+        let lookup = TextLayoutLookupKey::new(text, style, max_advance);
         if let Some(layout) = self.layout_cache.get(&lookup) {
             return layout;
         }
-        let layout = self.shape_uncached(text, font_size, max_advance);
-        let key = TextLayoutKey::new(text, font_size, max_advance);
+        let layout = self.shape_uncached(text, style, max_advance);
+        let key = TextLayoutKey::new(text, style, max_advance);
         self.layout_cache.insert(key, layout)
     }
 
@@ -169,16 +174,26 @@ impl TextEngine {
     fn shape_uncached(
         &mut self,
         text: &str,
-        font_size: f32,
+        style: &PresentationTextStyle,
         max_advance: Option<f32>,
     ) -> Layout<Brush> {
         let mut builder =
             self.layout_context
                 .ranged_builder(&mut self.font_context, text, 1.0, true);
-        builder.push_default(FontFamily::from("system-ui, sans-serif"));
-        builder.push_default(StyleProperty::FontWeight(FontWeight::NORMAL));
-        builder.push_default(StyleProperty::FontSize(font_size));
-        builder.push_default(LineHeight::FontSizeRelative(1.2));
+        builder.push_default(style.font_family.clone());
+        builder.push_default(StyleProperty::FontSize(style.font_size));
+        builder.push_default(StyleProperty::FontWidth(style.font_width));
+        builder.push_default(StyleProperty::FontStyle(style.font_style));
+        builder.push_default(StyleProperty::FontWeight(style.font_weight));
+        builder.push_default(StyleProperty::Locale(style.language));
+        builder.push_default(StyleProperty::LineHeight(parley_line_height(
+            style.line_height,
+        )));
+        builder.push_default(StyleProperty::LetterSpacing(style.letter_spacing));
+        builder.push_default(StyleProperty::WordSpacing(style.word_spacing));
+        builder.push_default(StyleProperty::WordBreak(style.word_break));
+        builder.push_default(StyleProperty::OverflowWrap(style.overflow_wrap));
+        builder.push_default(StyleProperty::TextWrapMode(style.text_wrap_mode));
         builder.push_default(StyleProperty::Brush(Brush::default()));
         let mut layout = builder.build(text);
         layout.break_all_lines(max_advance);
@@ -193,6 +208,14 @@ impl TextEngine {
     ) -> R {
         let mut driver = editor.driver(&mut self.font_context, &mut self.layout_context);
         f(&mut driver)
+    }
+}
+
+pub(crate) fn parley_line_height(line_height: TextLineHeight) -> LineHeight {
+    match line_height {
+        TextLineHeight::MetricsRelative(value) => LineHeight::MetricsRelative(value),
+        TextLineHeight::FontSizeRelative(value) => LineHeight::FontSizeRelative(value),
+        TextLineHeight::Absolute(value) => LineHeight::Absolute(value),
     }
 }
 
@@ -322,15 +345,15 @@ impl TextLayoutCache {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct TextLayoutKey {
     text: Rc<str>,
-    font_size: ScalarKey,
+    style: PresentationTextStyle,
     max_advance: Option<ScalarKey>,
 }
 
 impl TextLayoutKey {
-    fn new(text: &str, font_size: f32, max_advance: Option<f32>) -> Self {
+    fn new(text: &str, style: &PresentationTextStyle, max_advance: Option<f32>) -> Self {
         Self {
             text: Rc::from(text),
-            font_size: ScalarKey::new(font_size),
+            style: style.clone(),
             max_advance: max_advance.map(ScalarKey::new),
         }
     }
@@ -339,15 +362,15 @@ impl TextLayoutKey {
 #[derive(Debug, Eq, Hash, PartialEq)]
 struct TextLayoutLookupKey<'a> {
     text: &'a str,
-    font_size: ScalarKey,
+    style: PresentationTextStyle,
     max_advance: Option<ScalarKey>,
 }
 
 impl<'a> TextLayoutLookupKey<'a> {
-    fn new(text: &'a str, font_size: f32, max_advance: Option<f32>) -> Self {
+    fn new(text: &'a str, style: &PresentationTextStyle, max_advance: Option<f32>) -> Self {
         Self {
             text,
-            font_size: ScalarKey::new(font_size),
+            style: style.clone(),
             max_advance: max_advance.map(ScalarKey::new),
         }
     }
@@ -356,7 +379,7 @@ impl<'a> TextLayoutLookupKey<'a> {
 impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
     fn equivalent(&self, key: &TextLayoutKey) -> bool {
         self.text == key.text.as_ref()
-            && self.font_size == key.font_size
+            && self.style == key.style
             && self.max_advance == key.max_advance
     }
 }
@@ -364,7 +387,7 @@ impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
 impl TextLayoutLookupKey<'_> {
     fn is_satisfied_by(&self, key: &TextLayoutKey, layout: &Layout<Brush>) -> bool {
         self.text == key.text.as_ref()
-            && self.font_size == key.font_size
+            && self.style == key.style
             && max_advance_satisfies(self.max_advance, key.max_advance, layout.width())
     }
 }
@@ -460,14 +483,16 @@ pub(crate) fn render_text<S>(
 #[cfg(test)]
 mod tests {
     use super::{TextEngine, TextResources};
+    use understory_presentation::{FontWeight, TextStyle};
 
     #[test]
     fn shape_reuses_cached_layout_for_same_geometry_inputs() {
         let resources = TextResources::empty();
         let mut engine = TextEngine::from_resources(&resources);
+        let style = TextStyle::default();
 
-        let first = engine.shape("Shared label", 14.0, None);
-        let second = engine.shape("Shared label", 14.0, None);
+        let first = engine.shape("Shared label", &style, None);
+        let second = engine.shape("Shared label", &style, None);
 
         assert_eq!(first.width(), second.width());
         assert_eq!(engine.layout_cache_len(), 1);
@@ -479,9 +504,10 @@ mod tests {
     fn shape_wrap_width_participates_in_cache_key() {
         let resources = TextResources::empty();
         let mut engine = TextEngine::from_resources(&resources);
+        let style = TextStyle::default();
 
-        let _ = engine.shape("Shared label", 14.0, Some(80.0));
-        let _ = engine.shape("Shared label", 14.0, Some(120.0));
+        let _ = engine.shape("Shared label", &style, Some(80.0));
+        let _ = engine.shape("Shared label", &style, Some(120.0));
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
@@ -492,9 +518,10 @@ mod tests {
     fn shape_reuses_layout_for_compatible_narrower_wrap_width() {
         let resources = TextResources::empty();
         let mut engine = TextEngine::from_resources(&resources);
+        let style = TextStyle::default();
 
-        let wide = engine.shape("Label", 14.0, Some(120.0));
-        let narrower = engine.shape("Label", 14.0, Some(80.0));
+        let wide = engine.shape("Label", &style, Some(120.0));
+        let narrower = engine.shape("Label", &style, Some(80.0));
 
         assert_eq!(wide.width(), narrower.width());
         assert_eq!(engine.layout_cache_len(), 1);
@@ -506,9 +533,28 @@ mod tests {
     fn shape_does_not_use_constrained_layout_for_unbounded_width() {
         let resources = TextResources::empty();
         let mut engine = TextEngine::from_resources(&resources);
+        let style = TextStyle::default();
 
-        let _ = engine.shape("Shared label", 14.0, Some(120.0));
-        let _ = engine.shape("Shared label", 14.0, None);
+        let _ = engine.shape("Shared label", &style, Some(120.0));
+        let _ = engine.shape("Shared label", &style, None);
+
+        assert_eq!(engine.layout_cache_len(), 2);
+        assert_eq!(engine.layout_cache_stats().misses, 2);
+        assert_eq!(engine.layout_cache_stats().hits, 0);
+    }
+
+    #[test]
+    fn shape_style_participates_in_cache_key() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+        let normal = TextStyle::default();
+        let bold = TextStyle {
+            font_weight: FontWeight::BOLD,
+            ..TextStyle::default()
+        };
+
+        let _ = engine.shape("Shared label", &normal, None);
+        let _ = engine.shape("Shared label", &bold, None);
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);

@@ -291,12 +291,12 @@ fn styled_button_foreground_reaches_template_label() {
         .build();
     ui.set_cascade(cascade);
 
-    let button_fg = ui.effective_value_for(ui.get(button).unwrap(), ui.properties().foreground);
+    let button_fg = ui.resolve_value_for(ui.get(button).unwrap(), ui.properties().foreground);
     assert_eq!(
         button_fg, white,
         "button itself should resolve styled foreground"
     );
-    let label_fg = ui.effective_value_for(ui.get(label).unwrap(), ui.properties().foreground);
+    let label_fg = ui.resolve_value_for(ui.get(label).unwrap(), ui.properties().foreground);
     assert_eq!(
         label_fg, white,
         "label should inherit the button's styled foreground"
@@ -352,23 +352,23 @@ fn default_cascade_supplies_control_font_sizes() {
     }
 
     assert_eq!(
-        ui.effective_value_for(ui.get(button_label).unwrap(), font_size),
+        ui.resolve_value_for(ui.get(button_label).unwrap(), font_size),
         22.0
     );
     assert_eq!(
-        ui.effective_value_for(ui.get(checkbox_label).unwrap(), font_size),
+        ui.resolve_value_for(ui.get(checkbox_label).unwrap(), font_size),
         15.0
     );
     assert_eq!(
-        ui.effective_value_for(ui.get(list_item_label).unwrap(), font_size),
+        ui.resolve_value_for(ui.get(list_item_label).unwrap(), font_size),
         14.0
     );
     assert_eq!(
-        ui.effective_value_for(ui.get(text_input_label).unwrap(), font_size),
+        ui.resolve_value_for(ui.get(text_input_label).unwrap(), font_size),
         15.0
     );
     assert_eq!(
-        ui.effective_value_for(ui.get(tooltip_label).unwrap(), font_size),
+        ui.resolve_value_for(ui.get(tooltip_label).unwrap(), font_size),
         13.0
     );
 
@@ -677,16 +677,24 @@ fn control_row_labels_keep_single_line_widths() {
 
     ui.compute_layout(Size::new(320.0, 350.0));
 
+    let toggle_style = understory_presentation::TextStyle {
+        font_size: 15.0,
+        ..understory_presentation::TextStyle::default()
+    };
+    let spinner_style = understory_presentation::TextStyle {
+        font_size: 13.0,
+        ..understory_presentation::TextStyle::default()
+    };
     let toggle_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Live rendering", 15.0, None)
+            .shape("Live rendering", &toggle_style, None)
             .width(),
     );
     let spinner_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Streaming updates", 13.0, None)
+            .shape("Streaming updates", &spinner_style, None)
             .width(),
     );
 
@@ -1222,7 +1230,7 @@ fn element_background_color(ui: &Ui, id: ElementId) -> Option<Color> {
 
 fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
     let element = ui.get(id)?;
-    match ui.effective_value_for(element, ui.properties().border_brush) {
+    match ui.resolve_value_for(element, ui.properties().border_brush) {
         Some(Brush::Solid(color)) => Some(color),
         _ => None,
     }
@@ -1230,7 +1238,7 @@ fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
 
 fn element_border_width(ui: &Ui, id: ElementId) -> f64 {
     let element = ui.get(id).expect("element should exist");
-    ui.effective_value_for(element, ui.properties().border_width)
+    ui.resolve_value_for(element, ui.properties().border_width)
 }
 
 fn assert_close(actual: f64, expected: f64) {
@@ -1374,7 +1382,7 @@ fn surface_template_parts_do_not_match_generic_type_selector() {
         .build();
     ui.set_cascade(cascade);
 
-    let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
     assert_eq!(
         background, None,
         "surface-only template parts should not inherit TYPE_GENERIC as a fake type"
@@ -1410,7 +1418,7 @@ fn slider_template_parts_match_owner_local_part_selectors() {
         .build();
     ui.set_cascade(cascade);
 
-    let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
     assert_eq!(
         background, red,
         "owner-local part rule should match the nested slider track"
@@ -1578,9 +1586,9 @@ fn default_cascade_styles_template_parts_by_owner_part() {
         .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(0))
         .unwrap();
     let expected = Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff)));
-    let background = ui.effective_value_for(ui.get(track).unwrap(), ui.properties().background);
+    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
     let tick_background =
-        ui.effective_value_for(ui.get(major_tick).unwrap(), ui.properties().background);
+        ui.resolve_value_for(ui.get(major_tick).unwrap(), ui.properties().background);
 
     assert_eq!(background, expected);
     assert_eq!(

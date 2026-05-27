@@ -186,7 +186,7 @@ fn solid_optional_brush_color(
     property: Property<Option<Brush>>,
 ) -> Option<Color> {
     let element = ui.get(id)?;
-    match ui.effective_value_for(element, property) {
+    match ui.resolve_value_for(element, property) {
         Some(Brush::Solid(color)) => Some(color),
         _ => None,
     }
@@ -194,12 +194,12 @@ fn solid_optional_brush_color(
 
 fn border_width_target(ui: &Ui, id: ElementId) -> Option<f64> {
     let element = ui.get(id)?;
-    Some(ui.effective_value_for(element, ui.properties.border_width))
+    Some(ui.resolve_value_for(element, ui.properties.border_width))
 }
 
 fn opacity_target(ui: &Ui, id: ElementId) -> Option<f32> {
     let element = ui.get(id)?;
-    Some(ui.effective_value_for(element, ui.properties.opacity))
+    Some(ui.resolve_value_for(element, ui.properties.opacity))
 }
 
 fn interaction_pseudo_animates_background(pseudo: PseudoClassId) -> bool {
