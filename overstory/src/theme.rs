@@ -177,9 +177,20 @@ pub fn default_theme() -> Theme {
 ///
 /// The stylesheet uses control `TypeTag`s for owners and owner-local
 /// `PartTag`s for generated template parts. Apps can use it directly, layer
-/// additional rules after it, or replace it entirely.
+/// additional rules after it with [`default_cascade_builder`], or replace it
+/// entirely.
 #[must_use]
 pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
+    default_cascade_builder(properties).build()
+}
+
+/// Builds a mutable default control stylesheet builder.
+///
+/// Apps that want the built-in controls plus app-specific selectors can append
+/// their rules to this builder before calling
+/// [`StyleCascadeBuilder::build`].
+#[must_use]
+pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
     let backdrop = StyleBuilder::new()
         .set_resource(properties.background, SURFACE_BG)
         .build();
@@ -778,7 +789,6 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
             selectors::type_tag(TYPE_POPUP),
             popup_idle,
         )
-        .build()
 }
 
 fn centered_alignment() -> LayoutAlignment {
