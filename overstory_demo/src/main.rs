@@ -5,13 +5,14 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use core::cell::Cell;
 
 use overstory::{
-    Button, CheckBox, Divider, ListBox, Panel, Popup, ProgressBar, ScrollBar, ScrollState, Slider,
-    Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value,
-    theme,
+    Button, CheckBox, Divider, FontFeature, ListBox, Panel, Popup, ProgressBar, ScrollBar,
+    ScrollState, Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
+    set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -45,12 +46,18 @@ fn section_label(text: &str) -> Text {
         .foreground(Color::from_rgba8(0x96, 0x9a, 0xa8, 0xff))
 }
 
+fn number_text(text: &str) -> Text {
+    Text::new(text)
+        .font_size(18.0)
+        .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
+}
+
 fn card(ui: &mut Ui, parent: overstory::ElementId, title: &str) -> overstory::ElementId {
     let card = ui.append(
         parent,
         Panel::column(14.0).layout(
             overstory::Layout::column(14.0)
-                .logical_size(320.0, 350.0)
+                .logical_size(320.0, 390.0)
                 .padding_all(18.0),
         ),
     );
@@ -74,6 +81,14 @@ fn card(ui: &mut Ui, parent: overstory::ElementId, title: &str) -> overstory::El
 
 fn opt_solid(r: u8, g: u8, b: u8, a: u8) -> Option<Brush> {
     Some(Color::from_rgba8(r, g, b, a).into())
+}
+
+fn tabular_number_features() -> Box<[FontFeature]> {
+    let feature = FontFeature::parse_css_list("\"tnum\" on")
+        .next()
+        .expect("tabular-number feature should parse")
+        .expect("tabular-number feature should be valid");
+    Box::from([feature])
 }
 
 /// Builds a click handler that cycles the button's label each time
@@ -213,6 +228,30 @@ fn build_ui() -> Ui {
             progress_value = 0.08;
         }
         set_progress_value(ui, progress, progress_value);
+    });
+
+    ui.append(systems_card, caption("Throughput"));
+    let counter_row = ui.append(systems_card, Panel::row(8.0).align_center());
+    let counter = ui.append(counter_row, number_text("0000"));
+    ui.set_local(
+        counter,
+        ui.properties().font_features,
+        tabular_number_features(),
+    );
+    ui.append(counter_row, caption("events / min"));
+    ui.set_tooltip(
+        counter,
+        Tooltip::new("Tabular figures keep the suffix steady as digits change"),
+    );
+    let _ = ui.schedule_timer_repeating(counter, 90_000_000);
+    let mut counter_value = 0_u32;
+    ui.on_timer(counter, move |ui, _event| {
+        counter_value = (counter_value + 137) % 10_000;
+        ui.set_local(
+            counter,
+            ui.properties().content,
+            format!("{counter_value:04}"),
+        );
     });
 
     ui.append(systems_card, caption("Volume"));
