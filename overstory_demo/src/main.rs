@@ -28,6 +28,15 @@ const NAV_WIDTH: f32 = 276.0;
 const NAV_PADDING: f32 = 20.0;
 const NAV_CONTENT_WIDTH: f32 = NAV_WIDTH - (NAV_PADDING * 2.0);
 const PAGE_HEADER_HEIGHT: f32 = 112.0;
+const OVERVIEW_CARD_WIDTH: f32 = 342.0;
+const OVERVIEW_CONTROL_WIDTH: f32 = 292.0;
+const OVERVIEW_LIST_WIDTH: f32 = 284.0;
+const PAGE_CARD_WIDTH: f32 = 522.0;
+const PAGE_CONTROL_WIDTH: f32 = 464.0;
+const PAGE_LIST_WIDTH: f32 = 464.0;
+const MINI_STAT_WIDTH: f32 = 148.0;
+const SPLIT_PANE_WIDTH: f32 = 198.0;
+const SPLIT_PANE_HEIGHT: f32 = 164.0;
 
 const PIPELINE_ITEMS: [&str; 7] = [
     "Vello scene graph",
@@ -213,12 +222,39 @@ fn demo_card(ui: &mut Ui, parent: ElementId, title: &str, width: f32, height: f3
     card
 }
 
+fn demo_row(ui: &mut Ui, parent: ElementId) -> ElementId {
+    ui.append(
+        parent,
+        Panel::row(18.0).layout(
+            Layout::row(18.0).wrap().size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    )
+}
+
 fn stat_tile(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
+    stat_tile_sized(ui, parent, label, value, 158.0)
+}
+
+fn mini_stat_tile(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
+    stat_tile_sized(ui, parent, label, value, MINI_STAT_WIDTH)
+}
+
+fn stat_tile_sized(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    value: &str,
+    width: f32,
+) -> ElementId {
     let tile = ui.append(
         parent,
         Panel::column(6.0).layout(
             Layout::column(6.0)
-                .logical_size(158.0, 88.0)
+                .logical_size(width, 88.0)
                 .padding_all(14.0),
         ),
     );
@@ -307,7 +343,11 @@ fn build_ui() -> Ui {
         root,
         Panel::column(18.0).layout(
             Layout::column(18.0)
-                .size(LayoutSize::new().height(LayoutDimension::Percent(1.0)))
+                .size(
+                    LayoutSize::new()
+                        .height(LayoutDimension::Percent(1.0))
+                        .min_width(LayoutDimension::Logical(0.0)),
+                )
                 .flex_grow(1.0)
                 .flex_shrink(1.0),
         ),
@@ -422,11 +462,13 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
 }
 
 fn build_overview_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let inputs = demo_card(ui, row, "INPUTS", 342.0, 254.0);
+    let row = demo_row(ui, stage);
+    let inputs = demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 254.0);
     ui.append(
         inputs,
-        TextInput::new().placeholder("Search actions").width(292.0),
+        TextInput::new()
+            .placeholder("Search actions")
+            .width(OVERVIEW_CONTROL_WIDTH),
     );
     let actions = ui.append(inputs, Panel::row(10.0).align_center());
     let deploy = ui.append(
@@ -439,23 +481,28 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     ui.append(actions, Button::new("Preview").font_size(15.0));
     ui.append(inputs, CheckBox::new("Record diagnostics").checked(true));
 
-    let systems = demo_card(ui, row, "SYSTEMS", 342.0, 254.0);
+    let systems = demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 254.0);
     let toggle_row = ui.append(systems, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
     ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
     ui.append(systems, caption("GPU Budget"));
-    let progress = ui.append(systems, ProgressBar::new().value(0.62).size(292.0, 18.0));
+    let progress = ui.append(
+        systems,
+        ProgressBar::new()
+            .value(0.62)
+            .size(OVERVIEW_CONTROL_WIDTH, 18.0),
+    );
     drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
     append_tabular_counter(ui, systems, "Frames", "fps", 120_000_000, 7);
 
-    let selection = demo_card(ui, row, "SELECTION", 342.0, 254.0);
+    let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 254.0);
     let renderer_scroll = ScrollState::with_offset_y(28.0);
     let renderer_row = ui.append(selection, Panel::row(8.0).align_center());
     let list = ui.append(
         renderer_row,
         ListBox::new()
             .items(PIPELINE_ITEMS)
-            .size(284.0, 154.0)
+            .size(OVERVIEW_LIST_WIDTH, 154.0)
             .multiple_selection()
             .selected_index(2)
             .scroll_state(renderer_scroll.clone()),
@@ -470,27 +517,27 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
 }
 
 fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let forms = demo_card(ui, row, "TEXT INPUTS", 522.0, 272.0);
+    let row = demo_row(ui, stage);
+    let forms = demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 272.0);
     ui.append(
         forms,
         TextInput::new()
             .placeholder("Search command palette")
-            .width(464.0),
+            .width(PAGE_CONTROL_WIDTH),
     );
     ui.append(
         forms,
         TextInput::new()
             .text("Read-only selection")
             .read_only(true)
-            .width(464.0),
+            .width(PAGE_CONTROL_WIDTH),
     );
     ui.append(
         forms,
         caption("Focus rings, hover borders, selection, and read-only state"),
     );
 
-    let actions = demo_card(ui, row, "ACTIONS", 522.0, 272.0);
+    let actions = demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 272.0);
     let action_row = ui.append(actions, Panel::row(10.0).align_center());
     let deploy = ui.append(
         action_row,
@@ -506,7 +553,7 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
             .on_click(popup_click_handler()),
     );
     ui.set_tooltip(review, Tooltip::new("Toggle an anchored popup"));
-    ui.append(actions, Divider::horizontal().length(464.0));
+    ui.append(actions, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(
         actions,
         CheckBox::new("Enable staged rollout").checked(true),
@@ -521,14 +568,19 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
 }
 
 fn build_systems_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let controls = demo_card(ui, row, "CONTROL SURFACE", 522.0, 416.0);
+    let row = demo_row(ui, stage);
+    let controls = demo_card(ui, row, "CONTROL SURFACE", PAGE_CARD_WIDTH, 416.0);
     let toggle_row = ui.append(controls, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
     ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
-    ui.append(controls, Divider::horizontal().length(464.0));
+    ui.append(controls, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(controls, caption("GPU Budget"));
-    let progress = ui.append(controls, ProgressBar::new().value(0.62).size(464.0, 18.0));
+    let progress = ui.append(
+        controls,
+        ProgressBar::new()
+            .value(0.62)
+            .size(PAGE_CONTROL_WIDTH, 18.0),
+    );
     ui.set_tooltip(
         progress,
         Tooltip::new("Animated by the retained timer queue"),
@@ -544,18 +596,18 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId) {
     ui.append(spinner_row, Spinner::new());
     ui.append(spinner_row, caption("Streaming updates"));
 
-    let telemetry = demo_card(ui, row, "TELEMETRY", 522.0, 416.0);
+    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 416.0);
     append_large_counter(ui, telemetry, "Throughput", "events / min", 90_000_000, 137);
-    ui.append(telemetry, Divider::horizontal().length(464.0));
-    let stats = ui.append(telemetry, Panel::row(14.0));
-    stat_tile(ui, stats, "UI tree", "live");
-    stat_tile(ui, stats, "Style", "cascaded");
-    stat_tile(ui, stats, "Scene", "retained");
+    ui.append(telemetry, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+    let stats = ui.append(telemetry, Panel::row(10.0));
+    mini_stat_tile(ui, stats, "UI tree", "live");
+    mini_stat_tile(ui, stats, "Style", "cascaded");
+    mini_stat_tile(ui, stats, "Scene", "retained");
 }
 
 fn build_selection_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let list_card = demo_card(ui, row, "RENDERER QUEUE", 522.0, 420.0);
+    let row = demo_row(ui, stage);
+    let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 420.0);
     let renderer_scroll = ScrollState::with_offset_y(34.0);
     let renderer_row = ui.append(list_card, Panel::row(10.0).align_center());
     let summary = ui.append(list_card, caption("Selected: Text shaping pass"));
@@ -563,7 +615,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
         renderer_row,
         ListBox::new()
             .items(PIPELINE_ITEMS)
-            .size(464.0, 220.0)
+            .size(PAGE_LIST_WIDTH, 220.0)
             .multiple_selection()
             .selected_index(2)
             .scroll_state(renderer_scroll.clone())
@@ -584,7 +636,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
         Tooltip::new("Multi-select list with viewport clipping"),
     );
 
-    let detail = demo_card(ui, row, "DETAIL", 522.0, 420.0);
+    let detail = demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 420.0);
     ui.append(detail, page_heading("Virtualized by default"));
     ui.append(
         detail,
@@ -595,22 +647,22 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
         .foreground(Color::from_rgba8(0xd8, 0xd9, 0xe2, 0xff))
         .wrap(),
     );
-    ui.append(detail, Divider::horizontal().length(464.0));
-    let stats = ui.append(detail, Panel::row(14.0));
-    stat_tile(ui, stats, "Selection", "indices");
-    stat_tile(ui, stats, "Rows", "virtual");
-    stat_tile(ui, stats, "Scroll", "shared");
+    ui.append(detail, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+    let stats = ui.append(detail, Panel::row(10.0));
+    mini_stat_tile(ui, stats, "Selection", "indices");
+    mini_stat_tile(ui, stats, "Rows", "virtual");
+    mini_stat_tile(ui, stats, "Scroll", "shared");
 }
 
 fn build_layout_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let panes = demo_card(ui, row, "RESIZABLE PANES", 522.0, 420.0);
+    let row = demo_row(ui, stage);
+    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 420.0);
     let split_row = ui.append(panes, Panel::row(8.0).align_center());
     let left_pane = ui.append(
         split_row,
         Panel::column(8.0).layout(
             Layout::column(8.0)
-                .logical_size(198.0, 164.0)
+                .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
                 .padding_all(14.0),
         ),
     );
@@ -623,7 +675,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
     let splitter = ui.append(
         split_row,
         Splitter::vertical()
-            .length(164.0)
+            .length(SPLIT_PANE_HEIGHT)
             .on_resize(move |ui, event| {
                 if let Some(right_pane) = right_pane_for_splitter.get() {
                     event.resize_pair(ui, left_pane, right_pane, 88.0, 88.0);
@@ -635,7 +687,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
         split_row,
         Panel::column(8.0).layout(
             Layout::column(8.0)
-                .logical_size(198.0, 164.0)
+                .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
                 .padding_all(14.0),
         ),
     );
@@ -644,7 +696,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
     ui.append(right_pane, Text::new("Inspector").font_size(15.0));
     ui.append(right_pane, caption("Keyboard resize"));
 
-    let ruler = demo_card(ui, row, "AXIS RULER", 522.0, 420.0);
+    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 420.0);
     ui.append(ruler, caption("Slider ticks come from understory_axis"));
     ui.append(
         ruler,
@@ -655,7 +707,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
             .small_change(1.0)
             .large_change(8.0),
     );
-    ui.append(ruler, Divider::horizontal().length(464.0));
+    ui.append(ruler, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(
         ruler,
         Text::new(
@@ -668,8 +720,8 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
 }
 
 fn build_typography_page(ui: &mut Ui, stage: ElementId) {
-    let row = ui.append(stage, Panel::row(18.0));
-    let counter = demo_card(ui, row, "TABULAR NUMBERS", 522.0, 420.0);
+    let row = demo_row(ui, stage);
+    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 420.0);
     append_large_counter(
         ui,
         counter,
@@ -688,7 +740,7 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId) {
         .wrap(),
     );
 
-    let text = demo_card(ui, row, "TEXT SURFACES", 522.0, 420.0);
+    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 420.0);
     ui.append(
         text,
         Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
@@ -696,18 +748,18 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId) {
             .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
             .wrap(),
     );
-    ui.append(text, Divider::horizontal().length(464.0));
+    ui.append(text, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(
         text,
         TextInput::new()
             .text("PlainEditor-backed editing")
-            .width(464.0),
+            .width(PAGE_CONTROL_WIDTH),
     );
     ui.append(
         text,
         TextInput::new()
             .placeholder("IME, clipboard, accessibility next")
-            .width(464.0),
+            .width(PAGE_CONTROL_WIDTH),
     );
 }
 
@@ -857,5 +909,62 @@ mod tests {
             f64::from(NAV_CONTENT_WIDTH),
             "nav marker width",
         );
+    }
+
+    #[test]
+    fn gallery_pages_stay_inside_initial_window_width() {
+        for page in DemoPage::ALL {
+            let mut ui = build_ui();
+            let stage = stage_element(&ui);
+            show_demo_page(&mut ui, stage, page);
+            ui.compute_layout(Size::new(
+                f64::from(INITIAL_SIZE.0),
+                f64::from(INITIAL_SIZE.1),
+            ));
+
+            assert_subtree_inside_width(&ui, ui.root(), f64::from(INITIAL_SIZE.0));
+        }
+    }
+
+    #[test]
+    fn gallery_pages_stay_inside_narrow_window_width() {
+        const NARROW_WIDTH: f64 = 1180.0;
+
+        for page in DemoPage::ALL {
+            let mut ui = build_ui();
+            let stage = stage_element(&ui);
+            show_demo_page(&mut ui, stage, page);
+            ui.compute_layout(Size::new(NARROW_WIDTH, f64::from(INITIAL_SIZE.1)));
+
+            assert_subtree_inside_width(&ui, ui.root(), NARROW_WIDTH);
+        }
+    }
+
+    fn assert_subtree_inside_width(ui: &Ui, element: ElementId, max_x: f64) {
+        let bounds = ui.effective_bounds(element);
+        assert!(
+            bounds.x1 <= max_x + 0.01,
+            "{element:?} overflows window width: {bounds:?} > {max_x}",
+        );
+        let children = ui
+            .get(element)
+            .expect("element should exist")
+            .children()
+            .to_vec();
+        for child in children {
+            assert_subtree_inside_width(ui, child, max_x);
+        }
+    }
+
+    fn stage_element(ui: &Ui) -> ElementId {
+        let root_children = ui
+            .get(ui.root())
+            .expect("root should exist")
+            .children()
+            .to_vec();
+        let [_, stage] = *root_children else {
+            panic!("gallery root should contain nav and stage");
+        };
+        stage
     }
 }
