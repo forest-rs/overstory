@@ -90,7 +90,6 @@ use crate::pseudos::{
     PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
 use crate::selectors;
-use crate::widget::TYPE_GENERIC;
 use understory_timing::TimerDuration;
 
 /// Window-wide background surface.
@@ -191,10 +190,6 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 /// [`StyleCascadeBuilder::build`].
 #[must_use]
 pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
-    let backdrop = StyleBuilder::new()
-        .set_resource(properties.background, SURFACE_BG)
-        .build();
-
     let button_idle = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
@@ -485,11 +480,6 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.corner_radius, 8.0_f64)
         .build();
     StyleCascadeBuilder::new()
-        .push_rule(
-            StyleOrigin::Base,
-            selectors::type_tag(TYPE_GENERIC),
-            backdrop,
-        )
         .push_rule(
             StyleOrigin::Base,
             selectors::type_tag(TYPE_BUTTON),

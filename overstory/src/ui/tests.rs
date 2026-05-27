@@ -1623,6 +1623,20 @@ fn default_cascade_styles_template_parts_by_owner_part() {
 }
 
 #[test]
+fn default_cascade_leaves_generic_panels_transparent() {
+    use crate::{Panel, theme};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+
+    let panel = ui.append(ui.root(), Panel::new());
+    let background = ui.resolve_value_for(ui.get(panel).unwrap(), ui.properties().background);
+
+    assert_eq!(background, None);
+}
+
+#[test]
 fn owner_pseudo_selector_can_style_template_descendant() {
     use crate::{Button, PART_BUTTON_LABEL, TYPE_BUTTON};
 

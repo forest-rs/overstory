@@ -479,6 +479,7 @@ fn build_ui() -> Ui {
     let mut ui = Ui::new();
     ui.set_theme(theme::default_theme());
     let root = ui.root();
+    style_fill(&mut ui, root, (0x1e, 0x1e, 0x24));
 
     ui.set_layout(
         root,
