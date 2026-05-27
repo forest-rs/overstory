@@ -290,6 +290,14 @@ impl Widget for ScrollViewWidget {
         Some(TYPE_SCROLL_VIEW)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ScrollView)
+    }
+
     fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
         update_scroll_metrics_from_layout(element, ctx, &self.state);
     }
@@ -451,6 +459,23 @@ pub(crate) struct ScrollBarWidget {
 impl Widget for ScrollBarWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_SCROLL_BAR)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ScrollBar)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.apply_numeric_range(element, node);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

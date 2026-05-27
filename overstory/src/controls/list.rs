@@ -329,6 +329,14 @@ impl Widget for ListBoxWidget {
         Some(TYPE_LIST_BOX)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ListBox)
+    }
+
     fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
@@ -695,6 +703,24 @@ pub(crate) struct ListItemWidget {
 impl Widget for ListItemWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_LIST_ITEM)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ListBoxOption)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.add_click_action(node);
+        ctx.apply_selected_state(element, node);
     }
 
     fn default_template(&self) -> Option<&'static dyn crate::Template> {

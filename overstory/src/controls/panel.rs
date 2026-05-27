@@ -26,7 +26,7 @@ use alloc::boxed::Box;
 use smallvec::SmallVec;
 use understory_style::{ClassId, TypeTag};
 
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::{self, Layout};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, TYPE_GENERIC, Widget};
@@ -130,5 +130,13 @@ pub(crate) struct PanelWidget;
 impl Widget for PanelWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_GENERIC)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::GenericContainer)
     }
 }

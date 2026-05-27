@@ -17,7 +17,7 @@ use alloc::boxed::Box;
 
 use understory_style::TypeTag;
 
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, Widget};
@@ -107,6 +107,14 @@ pub(crate) struct DividerWidget;
 impl Widget for DividerWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_DIVIDER)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Splitter)
     }
 }
 

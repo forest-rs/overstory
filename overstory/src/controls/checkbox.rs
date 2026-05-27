@@ -23,7 +23,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::text::TextWidget;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
@@ -156,6 +156,24 @@ pub(crate) struct CheckBoxWidget;
 impl Widget for CheckBoxWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_CHECK_BOX)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::CheckBox)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.add_click_action(node);
+        ctx.apply_checked_state(element, node);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

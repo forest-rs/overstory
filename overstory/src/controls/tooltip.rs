@@ -151,6 +151,14 @@ impl Widget for TooltipWidget {
         Some(TYPE_TOOLTIP)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Tooltip)
+    }
+
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TOOLTIP_TEMPLATE)
     }

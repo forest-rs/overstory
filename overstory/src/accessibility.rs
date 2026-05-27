@@ -12,35 +12,135 @@
 //! - Emit full-tree [`accesskit::TreeUpdate`] snapshots.
 //! - Use AccessKit's own role/action/value vocabulary directly.
 //! - Support focus, click, and coarse range actions for built-in controls.
-//! - Keep custom widget accessibility extensibility as a later widget-trait
-//!   concern once more custom-control needs are visible.
 
 use accesskit::{
-    Action, ActionRequest, Node, NodeId, Rect as AccessRect, Role, Toggled, Tree, TreeId,
+    Action, ActionRequest, Affine, Node, NodeId, Rect as AccessRect, Role, Toggled, Tree, TreeId,
     TreeUpdate,
 };
 use alloc::{string::String, vec::Vec};
 
-use crate::controls::button::TYPE_BUTTON;
-use crate::controls::checkbox::TYPE_CHECK_BOX;
-use crate::controls::divider::TYPE_DIVIDER;
-use crate::controls::list::{TYPE_LIST_BOX, TYPE_LIST_ITEM};
-use crate::controls::popup::TYPE_POPUP;
-use crate::controls::progress::TYPE_PROGRESS_BAR;
-use crate::controls::scroll::{TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW};
-use crate::controls::select::TYPE_SELECT;
-use crate::controls::slider::{TYPE_SLIDER, set_slider_value};
-use crate::controls::spinner::TYPE_SPINNER;
-use crate::controls::splitter::TYPE_SPLITTER;
-use crate::controls::text::TYPE_TEXT;
-use crate::controls::text_input::TYPE_TEXT_INPUT;
-use crate::controls::toggle::TYPE_TOGGLE;
-use crate::controls::tooltip::TYPE_TOOLTIP;
-use crate::controls::viewport::TYPE_VIEWPORT;
+use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::ui::Ui;
-use crate::widget::TYPE_GENERIC;
+
+/// Read-only context handed to widget accessibility hooks.
+///
+/// This context exposes resolved semantic state without requiring widgets to
+/// know where Overstory stores built-in dependency properties or pseudoclasses.
+#[derive(Copy, Clone)]
+pub struct AccessibilityContext<'a> {
+    ui: &'a Ui,
+    scale_factor: f64,
+}
+
+impl<'a> AccessibilityContext<'a> {
+    fn new(ui: &'a Ui, scale_factor: f64) -> Self {
+        Self {
+            ui,
+            scale_factor: sane_scale_factor(scale_factor),
+        }
+    }
+
+    /// Returns the device scale factor used for this tree snapshot.
+    #[must_use]
+    pub fn scale_factor(&self) -> f64 {
+        self.scale_factor
+    }
+
+    /// Resolves the textual content associated with `element`.
+    #[must_use]
+    pub fn content(&self, element: &Element) -> String {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().content)
+    }
+
+    /// Returns whether `id` is currently eligible for focus.
+    #[must_use]
+    pub fn is_focusable(&self, id: ElementId) -> bool {
+        self.ui.is_focusable(id)
+    }
+
+    /// Returns whether `id` is currently enabled.
+    #[must_use]
+    pub fn is_enabled(&self, id: ElementId) -> bool {
+        self.ui.is_enabled(id)
+    }
+
+    /// Resolves the checked state associated with `element`.
+    #[must_use]
+    pub fn is_checked(&self, element: &Element) -> bool {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().is_checked)
+    }
+
+    /// Resolves the numeric value associated with `element`.
+    #[must_use]
+    pub fn numeric_value(&self, element: &Element) -> f64 {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().value)
+    }
+
+    /// Resolves the minimum numeric value associated with `element`.
+    #[must_use]
+    pub fn minimum_value(&self, element: &Element) -> f64 {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().minimum)
+    }
+
+    /// Resolves the maximum numeric value associated with `element`.
+    #[must_use]
+    pub fn maximum_value(&self, element: &Element) -> f64 {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().maximum)
+    }
+
+    /// Resolves the small-change step associated with `element`.
+    #[must_use]
+    pub fn small_change(&self, element: &Element) -> f64 {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().small_change)
+    }
+
+    /// Returns whether `element` currently carries selected state.
+    #[must_use]
+    pub fn is_selected(&self, element: &Element) -> bool {
+        element.pseudos().contains(&PSEUDO_SELECTED)
+    }
+
+    /// Adds the standard click action to `node`.
+    pub fn add_click_action(&self, node: &mut Node) {
+        let _ = self;
+        node.add_action(Action::Click);
+    }
+
+    /// Applies checked state from Overstory's built-in checked property.
+    pub fn apply_checked_state(&self, element: &Element, node: &mut Node) {
+        node.set_toggled(Toggled::from(self.is_checked(element)));
+    }
+
+    /// Applies selected state from Overstory's selected pseudoclass.
+    pub fn apply_selected_state(&self, element: &Element, node: &mut Node) {
+        if self.is_selected(element) {
+            node.set_selected(true);
+        }
+    }
+
+    /// Applies numeric range state from Overstory's built-in range properties.
+    pub fn apply_numeric_range(&self, element: &Element, node: &mut Node) {
+        node.set_numeric_value(self.numeric_value(element));
+        node.set_min_numeric_value(self.minimum_value(element));
+        node.set_max_numeric_value(self.maximum_value(element));
+    }
+}
+
+impl core::fmt::Debug for AccessibilityContext<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AccessibilityContext")
+            .field("scale_factor", &self.scale_factor)
+            .finish_non_exhaustive()
+    }
+}
 
 impl Ui {
     /// Builds a full AccessKit tree update for the current retained UI tree.
@@ -50,9 +150,21 @@ impl Ui {
     /// and after frames that may have changed semantics, focus, or geometry.
     #[must_use]
     pub fn accesskit_tree_update(&self) -> TreeUpdate {
+        self.accesskit_tree_update_with_scale_factor(1.0)
+    }
+
+    /// Builds a full AccessKit tree update for a host scale factor.
+    ///
+    /// Overstory layout coordinates are logical pixels. AccessKit expects final
+    /// transformed coordinates to be physical pixels, so this records
+    /// `scale_factor` as the root node transform instead of rewriting every
+    /// element's logical bounds.
+    #[must_use]
+    pub fn accesskit_tree_update_with_scale_factor(&self, scale_factor: f64) -> TreeUpdate {
         let root = self.root();
+        let ctx = AccessibilityContext::new(self, scale_factor);
         let mut nodes = Vec::new();
-        self.push_accesskit_node(root, &mut nodes);
+        self.push_accesskit_node(root, &ctx, &mut nodes);
         TreeUpdate {
             nodes,
             tree: Some(accesskit_tree(root)),
@@ -84,19 +196,21 @@ impl Ui {
             Action::Focus => self.set_focus(Some(target)),
             Action::Blur if self.focused() == Some(target) => self.set_focus(None),
             Action::Blur => false,
-            Action::Click => self.perform_accesskit_click(target),
-            Action::Increment => self.step_accesskit_range(target, 1.0),
-            Action::Decrement => self.step_accesskit_range(target, -1.0),
-            _ => false,
+            _ => self.perform_accesskit_action(target, request),
         }
     }
 
-    fn push_accesskit_node(&self, id: ElementId, nodes: &mut Vec<(NodeId, Node)>) {
+    fn push_accesskit_node(
+        &self,
+        id: ElementId,
+        ctx: &AccessibilityContext<'_>,
+        nodes: &mut Vec<(NodeId, Node)>,
+    ) {
         let Some(element) = self.get(id) else {
             return;
         };
         let children = element.children().to_vec();
-        let mut node = self.accesskit_node_for(element);
+        let mut node = self.accesskit_node_for(element, ctx);
         node.set_children(
             children
                 .iter()
@@ -106,14 +220,17 @@ impl Ui {
         );
         nodes.push((accesskit_node_id(id), node));
         for child in children {
-            self.push_accesskit_node(child, nodes);
+            self.push_accesskit_node(child, ctx, nodes);
         }
     }
 
-    fn accesskit_node_for(&self, element: &Element) -> Node {
+    fn accesskit_node_for(&self, element: &Element, ctx: &AccessibilityContext<'_>) -> Node {
         let id = element.id();
-        let role = accesskit_role(element, id == self.root());
+        let role = accesskit_role(element, ctx, id == self.root());
         let mut node = Node::new(role);
+        if id == self.root() && ctx.scale_factor() != 1.0 {
+            node.set_transform(Affine::scale(ctx.scale_factor()));
+        }
         node.set_bounds(accesskit_bounds(self.effective_bounds(id)));
 
         if self.is_focusable(id) {
@@ -123,68 +240,34 @@ impl Ui {
             node.set_disabled();
         }
 
-        let content = self.accesskit_content(element);
+        let content = ctx.content(element);
         apply_accesskit_label_or_value(&mut node, role, content);
-        self.apply_accesskit_control_state(element, &mut node);
+        if let Some(widget) = element.widget() {
+            widget.configure_accessibility(element, ctx, &mut node);
+        }
         node
     }
 
-    fn accesskit_content(&self, element: &Element) -> String {
-        self.resolve_value_for(element, self.properties().content)
-    }
-
-    fn apply_accesskit_control_state(&self, element: &Element, node: &mut Node) {
-        let role = node.role();
-        if is_clickable_role(role) {
-            node.add_action(Action::Click);
-        }
-        if role == Role::CheckBox || role == Role::Switch {
-            let checked = self.resolve_value_for(element, self.properties().is_checked);
-            node.set_toggled(Toggled::from(checked));
-        }
-        if role == Role::ListBoxOption && element.pseudos().contains(&PSEUDO_SELECTED) {
-            node.set_selected(true);
-        }
-        if is_range_role(role) {
-            let value = self.resolve_value_for(element, self.properties().value);
-            let min = self.resolve_value_for(element, self.properties().minimum);
-            let max = self.resolve_value_for(element, self.properties().maximum);
-            node.set_numeric_value(value);
-            node.set_min_numeric_value(min);
-            node.set_max_numeric_value(max);
-            if role == Role::Slider {
-                node.add_action(Action::Increment);
-                node.add_action(Action::Decrement);
-            }
-        }
-    }
-
-    fn step_accesskit_range(&mut self, target: ElementId, direction: f64) -> bool {
-        let Some(element) = self.get(target) else {
-            return false;
-        };
-        if element.type_tag() != Some(TYPE_SLIDER) || !self.is_enabled(target) {
-            return false;
-        }
-
-        let min = self.resolve_value_for(element, self.properties().minimum);
-        let max = self.resolve_value_for(element, self.properties().maximum);
-        let current = self.resolve_value_for(element, self.properties().value);
-        let explicit_step = self.resolve_value_for(element, self.properties().small_change);
-        let fallback_step = ((max - min).abs() * 0.01).max(0.01);
-        let step = if explicit_step > 0.0 {
-            explicit_step
-        } else {
-            fallback_step
-        };
-        set_slider_value(self, target, current + (direction * step));
-        true
+    fn dispatch_accesskit_widget_action(
+        &mut self,
+        target: ElementId,
+        request: &ActionRequest,
+    ) -> bool {
+        let mut handled = false;
+        self.with_widget_mut(target, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(target, ui);
+            handled = widget.handle_accessibility_action(&mut ctx, request);
+        });
+        handled
     }
 
     fn perform_accesskit_click(&mut self, target: ElementId) -> bool {
         let clickable = self
             .get(target)
-            .map(|element| is_clickable_role(accesskit_role(element, target == self.root())))
+            .map(|element| {
+                let ctx = AccessibilityContext::new(self, 1.0);
+                is_clickable_role(accesskit_role(element, &ctx, target == self.root()))
+            })
             .unwrap_or(false);
         if !clickable || !self.is_enabled(target) {
             return false;
@@ -192,6 +275,16 @@ impl Ui {
         let point = self.effective_bounds(target).center();
         let _ = self.synthesize_click(target, point);
         true
+    }
+
+    fn perform_accesskit_action(&mut self, target: ElementId, request: &ActionRequest) -> bool {
+        if self.dispatch_accesskit_widget_action(target, request) {
+            return true;
+        }
+        match request.action {
+            Action::Click => self.perform_accesskit_click(target),
+            _ => false,
+        }
     }
 }
 
@@ -202,32 +295,14 @@ fn accesskit_tree(root: ElementId) -> Tree {
     tree
 }
 
-fn accesskit_role(element: &Element, is_root: bool) -> Role {
+fn accesskit_role(element: &Element, ctx: &AccessibilityContext<'_>, is_root: bool) -> Role {
     if is_root {
         return Role::Window;
     }
-    match element.type_tag() {
-        Some(tag) if tag == TYPE_TEXT => Role::Label,
-        Some(tag) if tag == TYPE_BUTTON => Role::Button,
-        Some(tag) if tag == TYPE_TOGGLE => Role::Switch,
-        Some(tag) if tag == TYPE_CHECK_BOX => Role::CheckBox,
-        Some(tag) if tag == TYPE_SLIDER => Role::Slider,
-        Some(tag) if tag == TYPE_PROGRESS_BAR => Role::ProgressIndicator,
-        Some(tag) if tag == TYPE_TEXT_INPUT => Role::TextInput,
-        Some(tag) if tag == TYPE_LIST_BOX => Role::ListBox,
-        Some(tag) if tag == TYPE_LIST_ITEM => Role::ListBoxOption,
-        Some(tag) if tag == TYPE_SELECT => Role::ComboBox,
-        Some(tag) if tag == TYPE_SCROLL_VIEW => Role::ScrollView,
-        Some(tag) if tag == TYPE_SCROLL_BAR => Role::ScrollBar,
-        Some(tag) if tag == TYPE_SPLITTER => Role::Splitter,
-        Some(tag) if tag == TYPE_SPINNER => Role::ProgressIndicator,
-        Some(tag) if tag == TYPE_DIVIDER => Role::Splitter,
-        Some(tag) if tag == TYPE_TOOLTIP => Role::Tooltip,
-        Some(tag) if tag == TYPE_POPUP => Role::Pane,
-        Some(tag) if tag == TYPE_VIEWPORT => Role::Pane,
-        Some(tag) if tag == TYPE_GENERIC => Role::GenericContainer,
-        Some(_) | None => Role::GenericContainer,
-    }
+    element
+        .widget()
+        .and_then(|widget| widget.accessibility_role(element, ctx))
+        .unwrap_or(Role::GenericContainer)
 }
 
 fn apply_accesskit_label_or_value(node: &mut Node, role: Role, content: String) {
@@ -253,15 +328,16 @@ fn is_clickable_role(role: Role) -> bool {
     )
 }
 
-fn is_range_role(role: Role) -> bool {
-    matches!(
-        role,
-        Role::Meter | Role::ProgressIndicator | Role::ScrollBar | Role::Slider | Role::SpinButton
-    )
-}
-
 fn accesskit_node_id(id: ElementId) -> NodeId {
     NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
+}
+
+fn sane_scale_factor(scale_factor: f64) -> f64 {
+    if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    }
 }
 
 fn element_id_from_accesskit_node_id(id: NodeId) -> Option<ElementId> {
@@ -283,7 +359,8 @@ fn accesskit_bounds(bounds: kurbo::Rect) -> AccessRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Button, CheckBox, Layout, Slider, Text};
+    use crate::{Button, CheckBox, Layout, Slider, Text, Widget};
+    use alloc::boxed::Box;
     use kurbo::Size;
 
     #[test]
@@ -336,6 +413,48 @@ mod tests {
         assert!(slider_node.supports_action(Action::Increment));
     }
 
+    #[test]
+    fn accesskit_role_comes_from_widget_hook_not_type_tag() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let custom = ui.append_widget(root, Box::new(SemanticOnlyWidget));
+        ui.set_local(
+            custom,
+            ui.properties().content,
+            String::from("Custom action"),
+        );
+        ui.compute_layout(Size::new(100.0, 40.0));
+
+        let update = ui.accesskit_tree_update();
+        let custom_node = node_for(&update, custom);
+
+        assert_eq!(custom_node.role(), Role::Button);
+        assert_eq!(custom_node.label(), Some("Custom action"));
+        assert!(custom_node.supports_action(Action::Click));
+    }
+
+    #[test]
+    fn accesskit_tree_records_device_scale_as_root_transform() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 40.0));
+        ui.compute_layout(Size::new(100.0, 40.0));
+
+        let update = ui.accesskit_tree_update_with_scale_factor(2.0);
+        let root_node = node_for(&update, root);
+
+        assert_eq!(root_node.transform(), Some(&Affine::scale(2.0)));
+        assert_eq!(
+            root_node.bounds(),
+            Some(AccessRect {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 100.0,
+                y1: 40.0
+            })
+        );
+    }
+
     fn node_for(update: &TreeUpdate, element: ElementId) -> &Node {
         update
             .nodes
@@ -343,5 +462,27 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
+    }
+
+    #[derive(Debug)]
+    struct SemanticOnlyWidget;
+
+    impl Widget for SemanticOnlyWidget {
+        fn accessibility_role(
+            &self,
+            _element: &Element,
+            _ctx: &AccessibilityContext<'_>,
+        ) -> Option<Role> {
+            Some(Role::Button)
+        }
+
+        fn configure_accessibility(
+            &self,
+            _element: &Element,
+            ctx: &AccessibilityContext<'_>,
+            node: &mut Node,
+        ) {
+            ctx.add_click_action(node);
+        }
     }
 }

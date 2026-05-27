@@ -47,7 +47,7 @@ extern crate std;
 #[cfg_attr(test, macro_use)]
 extern crate alloc;
 
-mod accessibility;
+pub mod accessibility;
 mod behavior;
 mod binding_runtime;
 pub mod channels;
@@ -82,6 +82,7 @@ mod timer_runtime;
 mod ui;
 mod widget;
 
+pub use accessibility::AccessibilityContext;
 pub use accesskit;
 pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,

@@ -24,7 +24,7 @@ use crate::behavior::WidgetEventContext;
 use crate::controls::list::{ListBox, ListSelectionChangedEvent};
 use crate::controls::popup::Popup;
 use crate::controls::text::TextWidget;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
@@ -256,6 +256,23 @@ impl core::fmt::Debug for SelectWidget {
 impl Widget for SelectWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_SELECT)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ComboBox)
+    }
+
+    fn configure_accessibility(
+        &self,
+        _element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.add_click_action(node);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

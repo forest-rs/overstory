@@ -288,6 +288,14 @@ impl Widget for SplitterWidget {
         Some(TYPE_SPLITTER)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Splitter)
+    }
+
     fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         Some(match self.orientation {
             SplitterOrientation::Horizontal => CursorIcon::RowResize,

@@ -30,7 +30,7 @@ use kurbo::{Point, Vec2};
 use understory_style::TypeTag;
 
 use crate::composition::CompositionPolicy;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
 use crate::ui::Ui;
@@ -165,6 +165,14 @@ pub(crate) struct PopupWidget;
 impl Widget for PopupWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_POPUP)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Pane)
     }
 
     fn composition_policy(&self) -> CompositionPolicy {

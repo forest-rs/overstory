@@ -21,7 +21,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::controls::support::read_local_or;
 use crate::controls::text::TextWidget;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -178,6 +178,23 @@ pub(crate) struct ProgressBarWidget;
 impl Widget for ProgressBarWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_PROGRESS_BAR)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ProgressIndicator)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.apply_numeric_range(element, node);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

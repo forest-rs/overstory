@@ -86,6 +86,14 @@ impl Widget for ViewportWidget {
         Some(TYPE_VIEWPORT)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Pane)
+    }
+
     fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         self.cursor_icon
     }

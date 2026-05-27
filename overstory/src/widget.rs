@@ -28,6 +28,8 @@
 //! Roadmap:
 //! - Keep `Widget` small: identity, presentation, optional measure/layout hooks,
 //!   template discovery, cursor policy, hit testing, and input callbacks.
+//! - Let widgets describe their accessibility role and semantic state directly;
+//!   selector type tags are for styling, not for accessibility lowering.
 //! - Prefer routed events, properties, templates, and runtimes over adding a
 //!   hook for every new behavior.
 //! - Keep visual output going through presentation primitives rather than
@@ -39,12 +41,14 @@
 
 use core::any::Any;
 
+use accesskit::{ActionRequest, Node, Role};
 use cursor_icon::CursorIcon;
 use kurbo::{Size, Vec2};
 use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
 use understory_style::TypeTag;
 
+use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
     LayoutContext, MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
 };
@@ -82,6 +86,32 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// from becoming accidental app-wide control types.
     fn type_tag(&self) -> Option<TypeTag> {
         None
+    }
+
+    /// Returns this widget's AccessKit role, if it should contribute one.
+    ///
+    /// The default produces a generic container. Controls should override this
+    /// instead of asking the accessibility lowering pass to infer semantics from
+    /// selector type tags.
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &AccessibilityContext<'_>,
+    ) -> Option<Role> {
+        None
+    }
+
+    /// Adds widget-specific AccessKit state and supported actions to `node`.
+    ///
+    /// The accessibility lowering pass handles common bounds, focus, enabled,
+    /// and content labeling. Widgets use this hook for control semantics such
+    /// as checked, selected, range, popup, or custom actions.
+    fn configure_accessibility(
+        &self,
+        _element: &Element,
+        _ctx: &AccessibilityContext<'_>,
+        _node: &mut Node,
+    ) {
     }
 
     /// Resolves drawing intent into the presentation store. The
@@ -232,6 +262,19 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         _event: PointerRoutedEvent<'_>,
     ) {
     }
+
+    /// Handles an AccessKit action request targeting this widget's element.
+    ///
+    /// The default leaves actions to the generic accessibility dispatcher.
+    /// Widgets override this when an action needs widget-specific state, such as
+    /// a slider increment that must respect its configured step size.
+    fn handle_accessibility_action(
+        &mut self,
+        _ctx: &mut WidgetEventContext<'_>,
+        _request: &ActionRequest,
+    ) -> bool {
+        false
+    }
 }
 
 impl dyn Widget {
@@ -268,6 +311,23 @@ impl<W: core::fmt::Debug> core::fmt::Debug for TemplateOverrideWidget<W> {
 impl<W: Widget> Widget for TemplateOverrideWidget<W> {
     fn type_tag(&self) -> Option<TypeTag> {
         self.widget.type_tag()
+    }
+
+    fn accessibility_role(
+        &self,
+        element: &Element,
+        ctx: &AccessibilityContext<'_>,
+    ) -> Option<Role> {
+        self.widget.accessibility_role(element, ctx)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &AccessibilityContext<'_>,
+        node: &mut Node,
+    ) {
+        self.widget.configure_accessibility(element, ctx, node);
     }
 
     fn present(
@@ -309,6 +369,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.cursor_icon(element)
     }
 
+    fn is_hit_test_visible(&self, element: &Element) -> bool {
+        self.widget.is_hit_test_visible(element)
+    }
+
     fn clips_subtree(&self, element: &Element) -> bool {
         self.widget.clips_subtree(element)
     }
@@ -343,6 +407,14 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn handle_pointer(&mut self, ctx: &mut WidgetEventContext<'_>, event: PointerRoutedEvent<'_>) {
         self.widget.handle_pointer(ctx, event);
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &ActionRequest,
+    ) -> bool {
+        self.widget.handle_accessibility_action(ctx, request)
     }
 }
 

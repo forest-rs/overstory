@@ -28,7 +28,7 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
 use crate::controls::text::TextWidget;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
@@ -263,6 +263,25 @@ impl Widget for SliderWidget {
         Some(TYPE_SLIDER)
     }
 
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Slider)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.apply_numeric_range(element, node);
+        node.add_action(accesskit::Action::Increment);
+        node.add_action(accesskit::Action::Decrement);
+    }
+
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SLIDER_TEMPLATE)
     }
@@ -366,6 +385,37 @@ impl Widget for SliderWidget {
 
     fn post_layout(&mut self, slider: ElementId, ui: &mut Ui) -> bool {
         sync_slider_thumb_offset_target(ui, slider)
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let direction = match request.action {
+            accesskit::Action::Increment => 1.0,
+            accesskit::Action::Decrement => -1.0,
+            _ => return false,
+        };
+        let slider = ctx.id();
+        if !ctx.is_enabled(slider) {
+            return false;
+        }
+        let Some(element) = ctx.element() else {
+            return false;
+        };
+        let min = ctx.resolve_value_for(element, ctx.properties().minimum);
+        let max = ctx.resolve_value_for(element, ctx.properties().maximum);
+        let current = ctx.resolve_value_for(element, ctx.properties().value);
+        let explicit_step = ctx.resolve_value_for(element, ctx.properties().small_change);
+        let fallback_step = ((max - min).abs() * 0.01).max(0.01);
+        let step = if explicit_step > 0.0 {
+            explicit_step
+        } else {
+            fallback_step
+        };
+        set_slider_value(ctx, slider, current + (direction * step));
+        true
     }
 }
 

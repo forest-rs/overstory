@@ -284,8 +284,9 @@ impl WindowState {
 
     fn sync_accessibility(&mut self) {
         let host = &self.host;
+        let scale_factor = self.window.scale_factor();
         self.accesskit
-            .update_if_active(|| host.accesskit_tree_update());
+            .update_if_active(|| host.accesskit_tree_update(scale_factor));
     }
 
     fn handle_accesskit_event(&mut self, event: AccessKitWindowEvent) {

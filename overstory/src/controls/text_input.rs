@@ -27,7 +27,7 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::{f32_from_logical, read_local_or};
 use crate::controls::text::{TextWidget, text_style};
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
@@ -236,6 +236,14 @@ impl core::fmt::Debug for TextInputWidget {
 impl Widget for TextInputWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_TEXT_INPUT)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::TextInput)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

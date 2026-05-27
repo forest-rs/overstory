@@ -22,7 +22,7 @@ use understory_style::TypeTag;
 use understory_timing::TimerDuration;
 
 use crate::controls::panel::Panel;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::motion::millis;
 use crate::ui::Ui;
@@ -123,6 +123,14 @@ pub(crate) struct SpinnerWidget;
 impl Widget for SpinnerWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_SPINNER)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::ProgressIndicator)
     }
 }
 

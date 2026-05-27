@@ -131,8 +131,9 @@ impl UiHost {
     ///
     /// This is intentionally a pass-through to core Overstory. Platform hosts
     /// own adapter activation and scheduling; the UI owns semantic lowering.
-    pub fn accesskit_tree_update(&self) -> TreeUpdate {
-        self.ui.accesskit_tree_update()
+    pub fn accesskit_tree_update(&self, scale_factor: f64) -> TreeUpdate {
+        self.ui
+            .accesskit_tree_update_with_scale_factor(scale_factor)
     }
 
     /// Dispatches an AccessKit action request into the hosted UI.
@@ -230,7 +231,7 @@ pub fn logical_viewport(width: u32, height: u32, scale_factor: f64) -> Size {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use accesskit::{Action, ActionRequest, NodeId, TreeId};
+    use accesskit::{Action, ActionRequest, Affine, NodeId, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
     use overstory::{Button, ElementId};
@@ -279,6 +280,28 @@ mod tests {
         let click = host.handle_accesskit_action(&action(Action::Click, button));
         assert!(click.handled);
         assert_eq!(clicks.get(), 1);
+    }
+
+    #[test]
+    fn accesskit_tree_update_applies_host_scale_factor() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(
+            root,
+            overstory::Layout::column(0.0).logical_size(100.0, 40.0),
+        );
+        ui.compute_layout(Size::new(100.0, 40.0));
+
+        let host = UiHost::new(ui);
+        let update = host.accesskit_tree_update(2.0);
+        let root_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(root))
+            .map(|(_, node)| node)
+            .expect("root node should be emitted");
+
+        assert_eq!(root_node.transform(), Some(&Affine::scale(2.0)));
     }
 
     fn action(action: Action, element: ElementId) -> ActionRequest {
