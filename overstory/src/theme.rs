@@ -122,16 +122,26 @@ pub const CONTROL_BG: ResourceKey = ResourceKey::new(12);
 pub const CONTROL_BORDER: ResourceKey = ResourceKey::new(13);
 /// Hovered control border.
 pub const CONTROL_HOVER_BORDER: ResourceKey = ResourceKey::new(14);
+/// Hovered control surface.
+pub const CONTROL_HOVER_BG: ResourceKey = ResourceKey::new(15);
+/// Text caret brush.
+pub const TEXT_CARET_BG: ResourceKey = ResourceKey::new(16);
+/// Text selection brush.
+pub const TEXT_SELECTION_BG: ResourceKey = ResourceKey::new(17);
+/// Slider major tick brush.
+pub const SLIDER_MAJOR_TICK_BG: ResourceKey = ResourceKey::new(18);
+/// Slider minor tick brush.
+pub const SLIDER_MINOR_TICK_BG: ResourceKey = ResourceKey::new(19);
 /// Fast interaction motion duration.
-pub const MOTION_FAST_DURATION: ResourceKey = ResourceKey::new(15);
+pub const MOTION_FAST_DURATION: ResourceKey = ResourceKey::new(20);
 /// Default interaction motion duration.
-pub const MOTION_NORMAL_DURATION: ResourceKey = ResourceKey::new(16);
+pub const MOTION_NORMAL_DURATION: ResourceKey = ResourceKey::new(21);
 /// Emphasized motion duration for larger visual movement.
-pub const MOTION_EMPHASIZED_DURATION: ResourceKey = ResourceKey::new(17);
+pub const MOTION_EMPHASIZED_DURATION: ResourceKey = ResourceKey::new(22);
 /// Default easing curve for interaction motion.
-pub const MOTION_STANDARD_EASING: ResourceKey = ResourceKey::new(18);
+pub const MOTION_STANDARD_EASING: ResourceKey = ResourceKey::new(23);
 /// Default color interpolation policy for color transitions.
-pub const MOTION_COLOR_INTERPOLATION: ResourceKey = ResourceKey::new(19);
+pub const MOTION_COLOR_INTERPOLATION: ResourceKey = ResourceKey::new(24);
 
 const DEFAULT_MOTION_FAST_DURATION: TimerDuration = millis(70);
 const DEFAULT_MOTION_NORMAL_DURATION: TimerDuration = millis(90);
@@ -139,28 +149,74 @@ const DEFAULT_MOTION_EMPHASIZED_DURATION: TimerDuration = millis(120);
 const DEFAULT_MOTION_STANDARD_EASING: TimingFunction =
     TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
 
-/// Builds the default Overstory theme — a single dark palette that
-/// matches the demo's pre-token look. Apps can call
-/// [`crate::Ui::set_theme`] with this directly, or use it as a
-/// starting point for their own [`ThemeBuilder`] chains.
+/// Builds the default Overstory theme.
+///
+/// This currently aliases [`dark_theme`].
 #[must_use]
 pub fn default_theme() -> Theme {
-    ThemeBuilder::new()
-        .set(SURFACE_BG, opt_solid(0x1e, 0x1e, 0x24, 0xff))
-        .set(ACCENT_BG, opt_solid(0x3a, 0x69, 0xd6, 0xff))
-        .set(ACCENT_HOVER_BG, opt_solid(0x4d, 0x81, 0xf2, 0xff))
-        .set(ACCENT_PRESSED_BG, opt_solid(0x29, 0x4d, 0xa3, 0xff))
-        .set(SUCCESS_BG, opt_solid(0x3a, 0xa3, 0x6d, 0xff))
-        .set(TRACK_BG, opt_solid(0x44, 0x44, 0x4a, 0xff))
-        .set(THUMB_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
-        .set(ON_ACCENT_FG, solid(0xff, 0xff, 0xff, 0xff))
-        .set(ON_SURFACE_MUTED_FG, solid(0xc8, 0xc8, 0xd2, 0xff))
-        .set(FOCUS_RING_BORDER, opt_solid(0xff, 0xff, 0xff, 0xff))
-        .set(ON_SURFACE_FG, solid(0xf4, 0xf4, 0xf7, 0xff))
-        .set(PANEL_BG, opt_solid(0x28, 0x28, 0x31, 0xff))
-        .set(CONTROL_BG, opt_solid(0x2c, 0x2c, 0x35, 0xff))
-        .set(CONTROL_BORDER, opt_solid(0x62, 0x62, 0x70, 0xff))
-        .set(CONTROL_HOVER_BORDER, opt_solid(0x86, 0x91, 0xaa, 0xff))
+    dark_theme()
+}
+
+/// Builds Overstory's default dark palette.
+#[must_use]
+pub fn dark_theme() -> Theme {
+    finish_motion_tokens(
+        ThemeBuilder::new()
+            .set(SURFACE_BG, opt_solid(0x1e, 0x1e, 0x24, 0xff))
+            .set(ACCENT_BG, opt_solid(0x3a, 0x69, 0xd6, 0xff))
+            .set(ACCENT_HOVER_BG, opt_solid(0x4d, 0x81, 0xf2, 0xff))
+            .set(ACCENT_PRESSED_BG, opt_solid(0x29, 0x4d, 0xa3, 0xff))
+            .set(SUCCESS_BG, opt_solid(0x3a, 0xa3, 0x6d, 0xff))
+            .set(TRACK_BG, opt_solid(0x44, 0x44, 0x4a, 0xff))
+            .set(THUMB_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+            .set(ON_ACCENT_FG, solid(0xff, 0xff, 0xff, 0xff))
+            .set(ON_SURFACE_MUTED_FG, solid(0xc8, 0xc8, 0xd2, 0xff))
+            .set(FOCUS_RING_BORDER, opt_solid(0xff, 0xff, 0xff, 0xff))
+            .set(ON_SURFACE_FG, solid(0xf4, 0xf4, 0xf7, 0xff))
+            .set(PANEL_BG, opt_solid(0x28, 0x28, 0x31, 0xff))
+            .set(CONTROL_BG, opt_solid(0x2c, 0x2c, 0x35, 0xff))
+            .set(CONTROL_BORDER, opt_solid(0x62, 0x62, 0x70, 0xff))
+            .set(CONTROL_HOVER_BORDER, opt_solid(0x86, 0x91, 0xaa, 0xff))
+            .set(CONTROL_HOVER_BG, opt_solid(0x36, 0x36, 0x42, 0xff))
+            .set(TEXT_CARET_BG, opt_solid(0xf4, 0xf4, 0xf7, 0xff))
+            .set(TEXT_SELECTION_BG, opt_solid(0x4d, 0x81, 0xf2, 0x66))
+            .set(SLIDER_MAJOR_TICK_BG, opt_solid(0xc8, 0xc8, 0xd2, 0xff))
+            .set(SLIDER_MINOR_TICK_BG, opt_solid(0x78, 0x78, 0x84, 0xff)),
+    )
+    .build()
+}
+
+/// Builds Overstory's default light palette.
+#[must_use]
+pub fn light_theme() -> Theme {
+    finish_motion_tokens(
+        ThemeBuilder::new()
+            .set(SURFACE_BG, opt_solid(0xf3, 0xf5, 0xfa, 0xff))
+            .set(ACCENT_BG, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+            .set(ACCENT_HOVER_BG, opt_solid(0x46, 0x76, 0xe7, 0xff))
+            .set(ACCENT_PRESSED_BG, opt_solid(0x24, 0x4a, 0xa8, 0xff))
+            .set(SUCCESS_BG, opt_solid(0x2f, 0x9b, 0x6b, 0xff))
+            .set(TRACK_BG, opt_solid(0xd9, 0xdd, 0xe7, 0xff))
+            .set(THUMB_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+            .set(ON_ACCENT_FG, solid(0xff, 0xff, 0xff, 0xff))
+            .set(ON_SURFACE_MUTED_FG, solid(0x61, 0x68, 0x78, 0xff))
+            .set(FOCUS_RING_BORDER, opt_solid(0x1e, 0x53, 0xc8, 0xff))
+            .set(ON_SURFACE_FG, solid(0x16, 0x1a, 0x24, 0xff))
+            .set(PANEL_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
+            .set(CONTROL_BG, opt_solid(0xf9, 0xfa, 0xfd, 0xff))
+            .set(CONTROL_BORDER, opt_solid(0xb5, 0xbb, 0xc9, 0xff))
+            .set(CONTROL_HOVER_BORDER, opt_solid(0x76, 0x82, 0x98, 0xff))
+            .set(CONTROL_HOVER_BG, opt_solid(0xe8, 0xec, 0xf5, 0xff))
+            .set(TEXT_CARET_BG, opt_solid(0x16, 0x1a, 0x24, 0xff))
+            .set(TEXT_SELECTION_BG, opt_solid(0x2f, 0x62, 0xd6, 0x44))
+            .set(SLIDER_MAJOR_TICK_BG, opt_solid(0x61, 0x68, 0x78, 0xff))
+            .set(SLIDER_MINOR_TICK_BG, opt_solid(0xa2, 0xa9, 0xb7, 0xff)),
+    )
+    .build()
+}
+
+fn finish_motion_tokens(builder: ThemeBuilder) -> ThemeBuilder {
+    builder
         .set(MOTION_FAST_DURATION, DEFAULT_MOTION_FAST_DURATION)
         .set(MOTION_NORMAL_DURATION, DEFAULT_MOTION_NORMAL_DURATION)
         .set(
@@ -169,7 +225,6 @@ pub fn default_theme() -> Theme {
         )
         .set(MOTION_STANDARD_EASING, DEFAULT_MOTION_STANDARD_EASING)
         .set(MOTION_COLOR_INTERPOLATION, ColorInterpolation::SRGB)
-        .build()
 }
 
 /// Builds Overstory's default control stylesheet for the built-in controls.
@@ -268,11 +323,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.corner_radius, 11.0_f64)
         .build();
     let slider_major_tick_style = StyleBuilder::new()
-        .set(properties.background, opt_solid(0xc8, 0xc8, 0xd2, 0xff))
+        .set_resource(properties.background, SLIDER_MAJOR_TICK_BG)
         .set(properties.corner_radius, 1.0_f64)
         .build();
     let slider_minor_tick_style = StyleBuilder::new()
-        .set(properties.background, opt_solid(0x78, 0x78, 0x84, 0xff))
+        .set_resource(properties.background, SLIDER_MINOR_TICK_BG)
         .set(properties.corner_radius, 1.0_f64)
         .build();
     let slider_major_tick_label_style = StyleBuilder::new()
@@ -414,11 +469,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let text_input_caret = StyleBuilder::new()
-        .set(properties.background, opt_solid(0xf4, 0xf4, 0xf7, 0xff))
+        .set_resource(properties.background, TEXT_CARET_BG)
         .set(properties.corner_radius, 0.75_f64)
         .build();
     let text_input_selection = StyleBuilder::new()
-        .set(properties.background, opt_solid(0x4d, 0x81, 0xf2, 0x66))
+        .set_resource(properties.background, TEXT_SELECTION_BG)
         .set(properties.corner_radius, 3.0_f64)
         .build();
 
@@ -458,7 +513,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let list_item_hover = StyleBuilder::new()
-        .set(properties.background, opt_solid(0x36, 0x36, 0x42, 0xff))
+        .set_resource(properties.background, CONTROL_HOVER_BG)
         .build();
     let list_item_selected = StyleBuilder::new()
         .set_resource(properties.background, ACCENT_BG)
@@ -890,4 +945,35 @@ fn nested_check_mark_selector(checked: bool) -> Selector {
         SelectorStep::part_tag(PART_CHECK_BOX_BOX),
         SelectorStep::part_tag(PART_CHECK_BOX_MARK),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_theme_aliases_dark_palette() {
+        let default = default_theme();
+        let dark = dark_theme();
+        assert_eq!(
+            default.get::<Brush>(ON_SURFACE_FG),
+            dark.get::<Brush>(ON_SURFACE_FG)
+        );
+        assert_eq!(
+            default.get::<Option<Brush>>(TEXT_CARET_BG),
+            dark.get::<Option<Brush>>(TEXT_CARET_BG)
+        );
+    }
+
+    #[test]
+    fn light_theme_provides_state_tokens() {
+        let light = light_theme();
+        assert_eq!(
+            light.get::<Brush>(ON_SURFACE_FG),
+            Some(&Brush::from(Color::from_rgba8(0x16, 0x1a, 0x24, 0xff))),
+        );
+        assert!(light.contains(CONTROL_HOVER_BG));
+        assert!(light.contains(TEXT_SELECTION_BG));
+        assert!(light.contains(SLIDER_MAJOR_TICK_BG));
+    }
 }
