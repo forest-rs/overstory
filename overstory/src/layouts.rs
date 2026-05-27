@@ -32,6 +32,76 @@
 //! - Coordinate layout vocabulary with `kurbo::Axis`, scrolling, splitters, and
 //!   viewport controls so axis-specific code stays small.
 
+/// Placement contribution for an element.
+///
+/// `LayoutPlacement` covers how the element itself is positioned in its
+/// parent. It is deliberately separate from [`Layout`], which describes sizing
+/// and child layout. That lets virtualized controls own scroll-relative row
+/// placement without overwriting themed padding or alignment.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum LayoutPlacement {
+    /// No placement opinion. Lowering falls back to placement carried by
+    /// [`Layout`], then to [`Self::Relative`]. [`crate::Ui::set_layout`] does
+    /// not write this variant when the layout carries no explicit placement,
+    /// so styled placement can still contribute independently.
+    #[default]
+    Auto,
+    /// Normal in-flow positioning. This is Taffy's relative positioning mode.
+    Relative,
+    /// Removed from normal flow with automatic insets.
+    Absolute,
+    /// Removed from normal flow and placed by its top-left corner.
+    AbsoluteAt {
+        /// Left inset in logical pixels.
+        left: f32,
+        /// Top inset in logical pixels.
+        top: f32,
+    },
+}
+
+impl LayoutPlacement {
+    /// Creates normal in-flow placement.
+    #[must_use]
+    pub const fn relative() -> Self {
+        Self::Relative
+    }
+
+    /// Creates absolute placement with automatic insets.
+    #[must_use]
+    pub const fn absolute() -> Self {
+        Self::Absolute
+    }
+
+    /// Creates absolute placement with a fixed top-left inset.
+    #[must_use]
+    pub const fn absolute_at(left: f32, top: f32) -> Self {
+        Self::AbsoluteAt { left, top }
+    }
+
+    fn apply_to(self, style: &mut taffy::Style) {
+        match self {
+            Self::Auto => Self::Relative.apply_to(style),
+            Self::Relative => {
+                style.position = taffy::Position::Relative;
+                style.inset = auto_insets();
+            }
+            Self::Absolute => {
+                style.position = taffy::Position::Absolute;
+                style.inset = auto_insets();
+            }
+            Self::AbsoluteAt { left, top } => {
+                style.position = taffy::Position::Absolute;
+                style.inset = taffy::Rect {
+                    left: taffy::LengthPercentageAuto::length(left),
+                    top: taffy::LengthPercentageAuto::length(top),
+                    right: taffy::LengthPercentageAuto::auto(),
+                    bottom: taffy::LengthPercentageAuto::auto(),
+                };
+            }
+        }
+    }
+}
+
 /// Layout contribution for an element.
 ///
 /// `Layout` is the boundary between Overstory controls and the layout engine:
@@ -40,6 +110,7 @@
 #[derive(Clone, Debug, PartialEq)]
 pub struct Layout {
     style: taffy::Style,
+    placement: LayoutPlacement,
 }
 
 impl Default for Layout {
@@ -54,6 +125,7 @@ impl Layout {
     pub fn new() -> Self {
         Self {
             style: taffy::Style::default(),
+            placement: LayoutPlacement::default(),
         }
     }
 
@@ -84,21 +156,22 @@ impl Layout {
     /// Uses normal in-flow positioning and anchors absolute descendants.
     #[must_use]
     pub fn relative(mut self) -> Self {
-        self.style.position = taffy::Position::Relative;
+        self.placement = LayoutPlacement::Relative;
         self
     }
 
     /// Removes this element from normal flow.
     #[must_use]
     pub fn absolute(mut self) -> Self {
-        self.style.position = taffy::Position::Absolute;
+        self.placement = LayoutPlacement::Absolute;
         self
     }
 
     /// Removes this element from normal flow and places its top-left corner.
     #[must_use]
-    pub fn absolute_at(self, left: f32, top: f32) -> Self {
-        self.absolute().inset_left_top(left, top)
+    pub fn absolute_at(mut self, left: f32, top: f32) -> Self {
+        self.placement = LayoutPlacement::AbsoluteAt { left, top };
+        self
     }
 
     /// Sets a fixed logical-pixel width and height.
@@ -187,8 +260,23 @@ impl Layout {
         self
     }
 
-    pub(crate) fn to_taffy(&self) -> taffy::Style {
-        self.style.clone()
+    pub(crate) fn to_taffy(&self, placement: LayoutPlacement) -> taffy::Style {
+        let mut style = self.style.clone();
+        match placement {
+            LayoutPlacement::Auto => self.placement.apply_to(&mut style),
+            placement => placement.apply_to(&mut style),
+        }
+        style
+    }
+
+    pub(crate) fn into_parts(mut self) -> (Self, Option<LayoutPlacement>) {
+        let placement = self.placement;
+        self.placement = LayoutPlacement::default();
+        let placement = match placement {
+            LayoutPlacement::Auto => None,
+            placement => Some(placement),
+        };
+        (self, placement)
     }
 
     fn flex_direction(mut self, direction: taffy::FlexDirection) -> Self {
@@ -201,16 +289,6 @@ impl Layout {
         self.style.gap = taffy::Size {
             width: gap,
             height: gap,
-        };
-        self
-    }
-
-    fn inset_left_top(mut self, left: f32, top: f32) -> Self {
-        self.style.inset = taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(left),
-            top: taffy::LengthPercentageAuto::length(top),
-            right: taffy::LengthPercentageAuto::auto(),
-            bottom: taffy::LengthPercentageAuto::auto(),
         };
         self
     }
@@ -234,5 +312,14 @@ fn rect_lp(left: f32, right: f32, top: f32, bottom: f32) -> taffy::Rect<taffy::L
         right: taffy::LengthPercentage::length(right),
         top: taffy::LengthPercentage::length(top),
         bottom: taffy::LengthPercentage::length(bottom),
+    }
+}
+
+fn auto_insets() -> taffy::Rect<taffy::LengthPercentageAuto> {
+    taffy::Rect {
+        left: taffy::LengthPercentageAuto::auto(),
+        right: taffy::LengthPercentageAuto::auto(),
+        top: taffy::LengthPercentageAuto::auto(),
+        bottom: taffy::LengthPercentageAuto::auto(),
     }
 }

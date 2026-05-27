@@ -69,7 +69,7 @@ impl AppendSpec for Viewport {
             }),
         );
         if let Some(layout) = self.layout {
-            ui.set_local(id, ui.properties().layout, layout);
+            ui.set_layout(id, layout);
         }
         id
     }

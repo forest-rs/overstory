@@ -26,7 +26,7 @@ use understory_presentation::{
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{COMPOSE, LAYOUT, PAINT};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement};
 use crate::motion::TransitionRules;
 
 /// Handles to the dependency properties Overstory registers in every
@@ -52,6 +52,11 @@ pub struct BuiltInProperties {
     /// `LAYOUT` channel so the next `Ui::compute_layout` picks them
     /// up.
     pub layout: Property<Layout>,
+
+    /// Placement contribution for this element. This covers the element's
+    /// own flow/absolute positioning, while [`Self::layout`] covers sizing,
+    /// container layout, padding, and alignment.
+    pub layout_placement: Property<LayoutPlacement>,
 
     /// Textual content for elements that render strings (e.g. [`crate::Text`]).
     /// Default `String::new()`. Writes mark both `LAYOUT` (text size depends on
@@ -182,6 +187,12 @@ impl BuiltInProperties {
             layout: registry.register(
                 "Layout",
                 PropertyMetadataBuilder::new(Layout::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            layout_placement: registry.register(
+                "LayoutPlacement",
+                PropertyMetadataBuilder::new(LayoutPlacement::default())
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

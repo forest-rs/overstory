@@ -528,9 +528,8 @@ impl Template for ScrollBarTemplate {
             SLOT_SCROLL_BAR_THUMB,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_local(
+        cx.set_layout(
             thumb,
-            cx.properties().layout,
             scroll_bar_thumb_layout(
                 Axis::Vertical,
                 DEFAULT_SCROLL_BAR_THICKNESS,
@@ -785,9 +784,8 @@ fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) {
     let Some(thumb) = ui.slot(scroll_bar, SLOT_SCROLL_BAR_THUMB) else {
         return;
     };
-    ui.set_local(
+    ui.set_layout(
         thumb,
-        ui.properties().layout,
         scroll_bar_thumb_layout(widget.axis, widget.thickness, widget.thumb_extent),
     );
 }

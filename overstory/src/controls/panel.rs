@@ -112,8 +112,7 @@ impl AppendSpec for Panel {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(PanelWidget));
         if let Some(layout) = self.layout {
-            let layout_prop = ui.properties().layout;
-            ui.set_local(id, layout_prop, layout);
+            ui.set_layout(id, layout);
         }
         for class in self.classes {
             ui.add_class(id, class);

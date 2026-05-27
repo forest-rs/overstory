@@ -216,7 +216,6 @@ impl AppendSpec for Slider {
             None => Box::new(SliderWidget::default()),
         };
         let id = ui.append_widget_deferred_template(parent, widget);
-        let layout_prop = ui.properties().layout;
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
         let small_change_prop = ui.properties().small_change;
@@ -229,9 +228,8 @@ impl AppendSpec for Slider {
         if let Some(large_change) = self.large_change {
             ui.set_local(id, large_change_prop, large_change);
         }
-        ui.set_local(
+        ui.set_layout(
             id,
-            layout_prop,
             Layout::new()
                 .relative()
                 .logical_size(SLIDER_WIDTH, SLIDER_HEIGHT),
@@ -379,7 +377,6 @@ struct SliderTemplate;
 impl Template for SliderTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
         let owner = cx.owner();
-        let layout_prop = cx.properties().layout;
         let value_prop = cx.properties().value;
         let min_prop = cx.properties().minimum;
         let max_prop = cx.properties().maximum;
@@ -391,9 +388,8 @@ impl Template for SliderTemplate {
             Box::new(SurfacePartWidget),
         ));
         let track_inset_y = (SLIDER_HEIGHT - TRACK_HEIGHT) / 2.0;
-        cx.set_local(
+        cx.set_layout(
             track,
-            layout_prop,
             Layout::new()
                 .absolute_at(0.0, track_inset_y)
                 .logical_size(SLIDER_WIDTH, TRACK_HEIGHT),
@@ -403,7 +399,7 @@ impl Template for SliderTemplate {
             SLOT_SLIDER_AXIS,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_local(axis, layout_prop, axis_layout());
+        cx.set_layout(axis, axis_layout());
         let min = cx.read_local_or(owner, min_prop, 0.0);
         let max = cx.read_local_or(owner, max_prop, 1.0);
         let ruler = slider_ruler(min, max);
@@ -420,7 +416,7 @@ impl Template for SliderTemplate {
                 TemplateChild::slot(SLOT_SLIDER_TICK, Box::new(SurfacePartWidget)).with_key(key),
             );
             cx.add_class(tick, class);
-            cx.set_local(tick, layout_prop, tick_layout(mark));
+            cx.set_layout(tick, tick_layout(mark));
 
             if mark.labeled {
                 let label = cx.insert(
@@ -428,7 +424,7 @@ impl Template for SliderTemplate {
                 );
                 cx.add_class(label, class);
                 let content = format_tick_value(mark.value);
-                cx.set_local(label, layout_prop, tick_label_layout(mark, &content));
+                cx.set_layout(label, tick_label_layout(mark, &content));
                 cx.set_local(label, content_prop, content);
             }
         }
@@ -444,7 +440,7 @@ impl Template for SliderTemplate {
             cx.read_local_or(owner, min_prop, 0.0),
             cx.read_local_or(owner, max_prop, 1.0),
         );
-        cx.set_local(thumb, layout_prop, thumb_layout(initial_left, thumb_top));
+        cx.set_layout(thumb, thumb_layout(initial_left, thumb_top));
     }
 }
 
@@ -603,7 +599,6 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let content_prop = ui.properties().content;
-    let layout_prop = ui.properties().layout;
     let ruler = slider_ruler(min, max);
     for (index, mark) in ruler
         .marks()
@@ -619,7 +614,7 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
             ui.remove_class(tick, CLASS_SLIDER_MAJOR_TICK);
             ui.remove_class(tick, CLASS_SLIDER_MINOR_TICK);
             ui.add_class(tick, tick_class(mark.kind));
-            ui.set_local(tick, layout_prop, tick_layout(mark));
+            ui.set_layout(tick, tick_layout(mark));
         }
         let Some(label) = ui
             .template_instance(slider)
@@ -631,7 +626,7 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
         ui.remove_class(label, CLASS_SLIDER_MINOR_TICK);
         ui.add_class(label, tick_class(mark.kind));
         let content = format_tick_value(mark.value);
-        ui.set_local(label, layout_prop, tick_label_layout(mark, &content));
+        ui.set_layout(label, tick_label_layout(mark, &content));
         ui.set_local(label, content_prop, content);
     }
 }
@@ -646,7 +641,6 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let clamped = value.clamp(min, max);
     let value_prop = ui.properties().value;
-    let layout_prop = ui.properties().layout;
     ui.set_local(slider, value_prop, clamped);
     if motion == ThumbMotion::Animate {
         ui.request_styled_presentation_transition(
@@ -656,7 +650,7 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-    ui.set_local(thumb, layout_prop, thumb_layout(left, top));
+    ui.set_layout(thumb, thumb_layout(left, top));
 }
 
 fn set_value_from_position(

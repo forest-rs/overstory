@@ -34,6 +34,7 @@ use alloc::vec::Vec;
 
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
+use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
 use crate::widget::{SurfacePartWidget, Widget};
@@ -434,6 +435,20 @@ impl<'a> TemplateContext<'a> {
         self.ui.set_local(id, property, value);
     }
 
+    /// Writes a generated element's layout contribution.
+    ///
+    /// Explicit placement carried by the layout is split into the generated
+    /// element's placement property; layouts without explicit placement leave
+    /// styled placement intact.
+    pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
+        let props = *self.properties();
+        let (layout, placement) = layout.into().into_parts();
+        self.set_local(id, props.layout, layout);
+        if let Some(placement) = placement {
+            self.set_local(id, props.layout_placement, placement);
+        }
+    }
+
     /// Reads a local property value or returns `default`.
     ///
     /// This is intentionally local-only; template setup should not
@@ -722,6 +737,8 @@ pub enum TemplateBuiltInProperty {
     CornerRadius,
     /// `Layout`.
     Layout,
+    /// `LayoutPlacement`.
+    LayoutPlacement,
     /// `Content`.
     Content,
     /// `Foreground`.
@@ -835,9 +852,9 @@ fn apply_template_binding(
 ) {
     use TemplateBuiltInProperty::{
         Background, BorderBrush, BorderWidth, Bounds, Content, CornerRadius, FontFamily, FontSize,
-        FontStyle, FontWeight, FontWidth, Foreground, IsChecked, IsEnabled, Layout, LetterSpacing,
-        LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage, TextWrapMode, Value, WordBreak,
-        WordSpacing,
+        FontStyle, FontWeight, FontWidth, Foreground, IsChecked, IsEnabled, Layout,
+        LayoutPlacement, LetterSpacing, LineHeight, Maximum, Minimum, OverflowWrap, TextLanguage,
+        TextWrapMode, Value, WordBreak, WordSpacing,
     };
 
     let props = *cx.properties();
@@ -853,6 +870,9 @@ fn apply_template_binding(
             .map(|_| ()),
         (Layout, Layout) => cx
             .bind_owner_to_part(props.layout, target, props.layout)
+            .map(|_| ()),
+        (LayoutPlacement, LayoutPlacement) => cx
+            .bind_owner_to_part(props.layout_placement, target, props.layout_placement)
             .map(|_| ()),
         (Content, Content) => cx
             .bind_owner_to_part(props.content, target, props.content)

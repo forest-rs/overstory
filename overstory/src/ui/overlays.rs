@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use kurbo::{Point, Size};
 
 use crate::element::ElementId;
+use crate::layouts::LayoutPlacement;
 
 use super::Ui;
 
@@ -48,8 +49,7 @@ impl Ui {
                 reason = "overlay coordinates fit the layout engine"
             )]
             let top = origin.y as f32;
-            let layout = self.effective_layout(entry.element).absolute_at(left, top);
-            self.set_layout(entry.element, layout);
+            self.set_layout_placement(entry.element, LayoutPlacement::absolute_at(left, top));
             changed = true;
         }
         changed

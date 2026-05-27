@@ -11,7 +11,7 @@ use understory_box_tree::NodeId;
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::LAYOUT;
 use crate::element::ElementId;
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement};
 use crate::timeline_runtime::{TimelineTarget, VisualOutput};
 
 use super::Ui;
@@ -27,12 +27,28 @@ impl Ui {
     /// Sets an element's layout contribution.
     ///
     /// This is the app-facing shortcut for writing
-    /// [`BuiltInProperties::layout`](crate::BuiltInProperties::layout);
-    /// custom controls may still use [`Self::set_local`] when they are
-    /// working generically with dependency properties.
+    /// [`BuiltInProperties::layout`](crate::BuiltInProperties::layout). If the
+    /// `Layout` carries explicit placement through [`Layout::relative`],
+    /// [`Layout::absolute`], or [`Layout::absolute_at`], this also writes
+    /// [`BuiltInProperties::layout_placement`](crate::BuiltInProperties::layout_placement).
+    /// A layout without explicit placement leaves any styled placement intact.
     pub fn set_layout(&mut self, id: ElementId, layout: impl Into<Layout>) {
         let layout_prop = self.properties.layout;
-        self.set_local(id, layout_prop, layout.into());
+        let (layout, placement) = layout.into().into_parts();
+        self.set_local(id, layout_prop, layout);
+        if let Some(placement) = placement {
+            let placement_prop = self.properties.layout_placement;
+            self.set_local(id, placement_prop, placement);
+        }
+    }
+
+    /// Sets an element's layout placement contribution.
+    ///
+    /// This controls flow-vs-absolute positioning independently from the
+    /// element's sizing, padding, and child layout.
+    pub fn set_layout_placement(&mut self, id: ElementId, placement: impl Into<LayoutPlacement>) {
+        let placement_prop = self.properties.layout_placement;
+        self.set_local(id, placement_prop, placement.into());
     }
 
     /// Hit-tests `point` against the box tree and returns the topmost,
@@ -82,6 +98,15 @@ impl Ui {
         self.resolve_value_for(element, self.properties.layout)
     }
 
+    /// Resolves the effective `LayoutPlacement` for `id` through the cascade.
+    #[must_use]
+    pub fn effective_layout_placement(&self, id: ElementId) -> LayoutPlacement {
+        let Some(element) = self.get(id) else {
+            return LayoutPlacement::default();
+        };
+        self.resolve_value_for(element, self.properties.layout_placement)
+    }
+
     /// Computes layout for the tree against the given viewport size and
     /// writes each element's `Bounds` (via the cascade-resolved `Layout`).
     ///
@@ -123,7 +148,9 @@ impl Ui {
             .into_iter()
             .filter_map(|id| {
                 let taffy_node = self.layout.node_for(id)?;
-                let style = self.effective_layout(id).to_taffy();
+                let style = self
+                    .effective_layout(id)
+                    .to_taffy(self.effective_layout_placement(id));
                 Some((taffy_node, style))
             })
             .collect();

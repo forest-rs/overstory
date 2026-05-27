@@ -200,14 +200,12 @@ impl AppendSpec for TextInput {
         let id = ui.append_widget_deferred_template(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
-        let layout_prop = ui.properties().layout;
         ui.set_local(id, content_prop, text);
         if let Some(font_size) = font_size {
             ui.set_local(id, font_size_prop, font_size);
         }
-        ui.set_local(
+        ui.set_layout(
             id,
-            layout_prop,
             Layout::new()
                 .relative()
                 .logical_size(width, TEXT_INPUT_HEIGHT),
@@ -363,11 +361,7 @@ impl Template for TextInputTemplate {
             SLOT_TEXT_INPUT_SELECTION,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_local(
-            selection,
-            cx.properties().layout,
-            editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE),
-        );
+        cx.set_layout(selection, editor_rect_layout(Rect::ZERO, DEFAULT_FONT_SIZE));
 
         // TODO(text): Editable text is still rendered through a `TextWidget`
         // template part, while `PlainEditor` owns editing, caret, and selection
@@ -383,9 +377,8 @@ impl Template for TextInputTemplate {
             SLOT_TEXT_INPUT_CARET,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_local(
+        cx.set_layout(
             caret,
-            cx.properties().layout,
             editor_rect_layout(
                 Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
                 DEFAULT_FONT_SIZE,
@@ -609,9 +602,8 @@ fn refresh_text_input_parts(
         text
     };
     ui.set_local(text_part, ui.properties().content, String::from(display));
-    ui.set_local(
+    ui.set_layout(
         text_part,
-        ui.properties().layout,
         Layout::new().absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
     );
     if text.is_empty() && !display.is_empty() {
@@ -619,16 +611,11 @@ fn refresh_text_input_parts(
     } else {
         ui.remove_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
     }
-    ui.set_local(
+    ui.set_layout(
         selection_part,
-        ui.properties().layout,
         selection_layout(ui, &mut state.editor, &style),
     );
-    ui.set_local(
-        caret_part,
-        ui.properties().layout,
-        caret_layout(ui, &mut state.editor, &style),
-    );
+    ui.set_layout(caret_part, caret_layout(ui, &mut state.editor, &style));
 }
 
 fn editable_character(s: &str) -> bool {

@@ -226,7 +226,7 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
     if let Some(font_size) = tooltip.font_size {
         ui.set_local(id, properties.font_size, font_size);
     }
-    ui.set_local(id, properties.layout, tooltip.layout_for(origin));
+    ui.set_layout(id, tooltip.layout_for(origin));
     id
 }
 

@@ -66,13 +66,11 @@ impl Spinner {
 impl AppendSpec for Spinner {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(SpinnerWidget));
-        let layout_prop = ui.properties().layout;
 
         // Pin the spinner to a fixed square. Position relative so the
         // dots' absolute inset is anchored here.
-        ui.set_local(
+        ui.set_layout(
             id,
-            layout_prop,
             Layout::new()
                 .relative()
                 .logical_size(SPINNER_SIZE, SPINNER_SIZE),

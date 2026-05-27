@@ -8,8 +8,8 @@ use crate::pseudos::{
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
-    CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, Navigation, Phase,
-    PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
+    CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
+    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
     TemplateSlot, UiResolveLookup,
 };
 use alloc::string::String;
@@ -2246,6 +2246,74 @@ fn compute_layout_writes_bounds() {
 }
 
 #[test]
+fn layout_placement_does_not_replace_content_layout() {
+    use crate::Panel;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(200.0, 100.0));
+    let row = ui.append(
+        root,
+        Panel::new().layout(Layout::row(0.0).padding_all(10.0).logical_size(80.0, 40.0)),
+    );
+    let child = ui.append(
+        row,
+        Panel::new().layout(Layout::new().logical_size(20.0, 10.0)),
+    );
+
+    ui.set_layout_placement(row, LayoutPlacement::absolute_at(30.0, 20.0));
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    assert_eq!(ui.effective_bounds(row), Rect::new(30.0, 20.0, 110.0, 60.0));
+    assert_eq!(
+        ui.effective_bounds(child),
+        Rect::new(40.0, 30.0, 60.0, 40.0)
+    );
+}
+
+#[test]
+fn set_layout_without_placement_keeps_styled_placement() {
+    use crate::Panel;
+
+    const FLOATING: ClassId = ClassId(0x34);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(200.0, 100.0));
+    let row = ui.append(
+        root,
+        Panel::new()
+            .class(FLOATING)
+            .layout(Layout::row(0.0).padding_all(10.0).logical_size(80.0, 40.0)),
+    );
+    let child = ui.append(
+        row,
+        Panel::new().layout(Layout::new().logical_size(20.0, 10.0)),
+    );
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(FLOATING)).build(),
+            StyleBuilder::new()
+                .set(
+                    ui.properties().layout_placement,
+                    LayoutPlacement::absolute_at(30.0, 20.0),
+                )
+                .build(),
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    assert_eq!(ui.effective_bounds(row), Rect::new(30.0, 20.0, 110.0, 60.0));
+    assert_eq!(
+        ui.effective_bounds(child),
+        Rect::new(40.0, 30.0, 60.0, 40.0)
+    );
+}
+
+#[test]
 fn composition_layers_track_layout_geometry() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -2312,7 +2380,6 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
     const MOVING: ClassId = ClassId(90);
 
     let mut ui = Ui::new();
-    let layout = ui.properties().layout;
     let transitions = ui.properties().transitions;
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
@@ -2352,9 +2419,8 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
 
     ui.set_now(0);
     assert!(ui.request_layer_offset_transition(mover));
-    ui.set_local(
+    ui.set_layout(
         mover,
-        layout,
         Layout::new()
             .absolute_at(130.0, 20.0)
             .logical_size(24.0, 24.0),

@@ -38,7 +38,7 @@ use crate::controls::support::f32_from_logical;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutPlacement};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
     TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
@@ -490,15 +490,20 @@ impl ListBoxWidget {
         let height = f32_from_logical(self.item_extent);
         for item in &self.realized {
             let top = f32_from_logical(self.virtual_list.offset_of(item.index));
-            let layout = Layout::new()
-                .absolute_at(0.0, top)
-                .logical_size(width, height);
-            if ui
+            let layout = Layout::new().logical_size(width, height);
+            let placement = LayoutPlacement::absolute_at(0.0, top);
+            let layout_changed = ui
                 .get(item.element)
                 .and_then(|element| element.get_local_value(ui.properties().layout))
-                != Some(&layout)
-            {
-                ui.set_layout(item.element, layout);
+                != Some(&layout);
+            let placement_changed = ui
+                .get(item.element)
+                .and_then(|element| element.get_local_value(ui.properties().layout_placement))
+                != Some(&placement);
+            if layout_changed || placement_changed {
+                let props = *ui.properties();
+                ui.set_local(item.element, props.layout, layout);
+                ui.set_local(item.element, props.layout_placement, placement);
                 changed = true;
             }
         }

@@ -153,12 +153,10 @@ impl AppendSpec for ProgressBar {
         let id = ui.append_widget_deferred_template(parent, widget);
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
-        let layout_prop = ui.properties().layout;
         ui.set_local(id, min_prop, self.min);
         ui.set_local(id, max_prop, self.max);
-        ui.set_local(
+        ui.set_layout(
             id,
-            layout_prop,
             Layout::row(0.0)
                 .relative()
                 .justify_center()
@@ -198,9 +196,8 @@ impl Template for ProgressTemplate {
             SLOT_PROGRESS_BAR_FILL,
             Box::new(SurfacePartWidget),
         ));
-        cx.set_local(
+        cx.set_layout(
             fill,
-            cx.properties().layout,
             Layout::new().absolute_at(0.0, 0.0).percent_size(0.0, 1.0),
         );
 
@@ -222,9 +219,8 @@ pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
 
     let fraction = progress_fraction(clamped, min, max);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
-        ui.set_local(
+        ui.set_layout(
             fill,
-            ui.properties().layout,
             Layout::new()
                 .absolute_at(0.0, 0.0)
                 .percent_size(f32_from_unit_fraction(fraction), 1.0),

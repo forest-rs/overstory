@@ -178,7 +178,6 @@ pub(crate) fn append_overlay_popup(ui: &mut Ui, popup: &Popup, origin: Point) ->
 
 fn append_popup(ui: &mut Ui, parent: ElementId, popup: &Popup, origin: Point) -> ElementId {
     let id = ui.append_widget(parent, Box::new(PopupWidget));
-    let layout = ui.properties().layout;
-    ui.set_local(id, layout, popup.layout_for(origin));
+    ui.set_layout(id, popup.layout_for(origin));
     id
 }
