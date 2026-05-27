@@ -12,14 +12,22 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
+use overstory::motion::{
+    ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
+    TransitionTarget, millis,
+};
+use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
-    Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign, LayoutAlignment,
-    LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar, ScrollState,
-    Slider, Spinner, Splitter, Text, TextInput, ToggleSwitch, Tooltip, Ui, layouts,
-    set_progress_value, theme,
+    BuiltInProperties, Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign,
+    LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar,
+    ScrollState, Slider, Spinner, Splitter, TYPE_GENERIC, Text, TextInput, TimerDuration,
+    ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
+use understory_style::{
+    ClassId, PseudoClassId, Selector, SelectorStep, StyleBuilder, StyleCascade, StyleOrigin,
+};
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
 const ROOT_GAP: f32 = 24.0;
@@ -54,6 +62,17 @@ const RENDERER_STAGES: [&str; 12] = [
     "GPU submission",
 ];
 
+const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
+const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
+const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
+const CLASS_RETARGET_SWATCH: ClassId = ClassId(103);
+const CLASS_MOVER_SWATCH: ClassId = ClassId(104);
+const CLASS_SRGB_SWATCH: ClassId = ClassId(105);
+
+const EASE_OUT: TimingFunction = TimingFunction::cubic_bezier(0.16, 1.0, 0.3, 1.0);
+const EASE_IN_OUT: TimingFunction = TimingFunction::cubic_bezier(0.65, 0.0, 0.35, 1.0);
+const MID_SLOW: TimingFunction = TimingFunction::cubic_bezier(0.2, 0.48, 0.8, 0.52);
+
 fn main() -> overstory_host_winit::HostResult<()> {
     overstory_host_winit::run(
         WindowOptions::new("overstory_demo").initial_size(INITIAL_SIZE.0, INITIAL_SIZE.1),
@@ -69,16 +88,18 @@ enum DemoPage {
     Selection,
     Layout,
     Typography,
+    Motion,
 }
 
 impl DemoPage {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Overview,
         Self::Inputs,
         Self::Systems,
         Self::Selection,
         Self::Layout,
         Self::Typography,
+        Self::Motion,
     ];
 
     fn from_index(index: usize) -> Option<Self> {
@@ -93,6 +114,7 @@ impl DemoPage {
             Self::Selection => 3,
             Self::Layout => 4,
             Self::Typography => 5,
+            Self::Motion => 6,
         }
     }
 
@@ -104,6 +126,7 @@ impl DemoPage {
             Self::Selection => "Selection",
             Self::Layout => "Layout",
             Self::Typography => "Typography",
+            Self::Motion => "Motion",
         }
     }
 
@@ -115,6 +138,7 @@ impl DemoPage {
             Self::Selection => "Selection and Virtualization",
             Self::Layout => "Layout and Resizing",
             Self::Typography => "Typography and Text Features",
+            Self::Motion => "Presentation Motion",
         }
     }
 
@@ -137,6 +161,9 @@ impl DemoPage {
             }
             Self::Typography => {
                 "Font features, wrapping, editable text, and dynamic numbers shaped through Parley."
+            }
+            Self::Motion => {
+                "Style-authored transitions for color, opacity, border, retargeting, and composition offset."
             }
         }
     }
@@ -312,6 +339,140 @@ fn popup_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'st
     }
 }
 
+fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
+    theme::default_cascade_builder(properties)
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_OKLAB_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0xff, 0x2a, 0x78, 0xff))
+                .set(properties.corner_radius, 18.0_f64)
+                .set(
+                    properties.transitions,
+                    color_transition_rules(
+                        properties,
+                        millis(5_500),
+                        MID_SLOW,
+                        ColorInterpolation::OKLAB,
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_OKLAB_SWATCH, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0x26, 0xd9, 0x8e, 0xff))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_SRGB_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0xff, 0x2a, 0x78, 0xff))
+                .set(properties.corner_radius, 18.0_f64)
+                .set(
+                    properties.transitions,
+                    color_transition_rules(
+                        properties,
+                        millis(5_500),
+                        MID_SLOW,
+                        ColorInterpolation::SRGB,
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_SRGB_SWATCH, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0x26, 0xd9, 0x8e, 0xff))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_OPACITY_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0x6d, 0xf2, 0x96, 0xff))
+                .set(properties.corner_radius, 18.0_f64)
+                .set(properties.opacity, 1.0_f32)
+                .set(
+                    properties.transitions,
+                    scalar_transition_rules(
+                        TransitionTarget::property(properties.opacity.id()),
+                        TransitionSpec::timed(millis(780), EASE_IN_OUT),
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_OPACITY_SWATCH, PSEUDO_PRESSED),
+            StyleBuilder::new()
+                .set(properties.opacity, 0.16_f32)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_BORDER_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0x25, 0x29, 0x38, 0xff))
+                .set(properties.border_brush, opt_solid(0x79, 0x86, 0xff, 0xff))
+                .set(properties.border_width, 2.0_f64)
+                .set(properties.corner_radius, 18.0_f64)
+                .set(properties.transitions, border_transition_rules(properties))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_BORDER_SWATCH, PSEUDO_FOCUS_VISIBLE),
+            StyleBuilder::new()
+                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(properties.border_width, 12.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_MOVER_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0xff, 0x9f, 0x1c, 0xff))
+                .set(properties.corner_radius, 21.0_f64)
+                .set(
+                    properties.transitions,
+                    scalar_transition_rules(
+                        TransitionTarget::layer_offset(),
+                        TransitionSpec::timed(millis(920), EASE_IN_OUT),
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(CLASS_RETARGET_SWATCH),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0xd8, 0xb4, 0xfe, 0xff))
+                .set(properties.corner_radius, 18.0_f64)
+                .set(
+                    properties.transitions,
+                    color_transition_rules(
+                        properties,
+                        millis(780),
+                        EASE_OUT,
+                        ColorInterpolation::OKLAB,
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_state_selector(CLASS_RETARGET_SWATCH, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0xf9, 0xf8, 0x71, 0xff))
+                .build(),
+        )
+        .build()
+}
+
 /// Builds the demo tree as a focused gallery. The shell owns page selection;
 /// each page owns only its local controls and timers.
 fn build_ui() -> Ui {
@@ -362,7 +523,7 @@ fn build_ui() -> Ui {
     wire_nav_rows(&mut ui, &nav_rows, stage);
     show_demo_page(&mut ui, stage, DemoPage::Overview);
 
-    ui.set_cascade(theme::default_cascade(ui.properties()));
+    ui.set_cascade(demo_cascade(ui.properties()));
     ui
 }
 
@@ -380,7 +541,7 @@ fn build_nav(ui: &mut Ui, nav: ElementId) {
 fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
     let stack = ui.append(
         nav,
-        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 260.0)),
+        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 312.0)),
     );
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
     for page in DemoPage::ALL {
@@ -620,6 +781,7 @@ fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         DemoPage::Selection => build_selection_page(ui, stage),
         DemoPage::Layout => build_layout_page(ui, stage),
         DemoPage::Typography => build_typography_page(ui, stage),
+        DemoPage::Motion => build_motion_page(ui, stage),
     }
 }
 
@@ -943,6 +1105,110 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId) {
     );
 }
 
+fn build_motion_page(ui: &mut Ui, stage: ElementId) {
+    let row = demo_row(ui, stage);
+
+    let color = demo_card(ui, row, "COLOR MOTION", PAGE_CARD_WIDTH, 326.0);
+    let color_lanes = ui.append(
+        color,
+        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
+    );
+    let oklab = ui.append(
+        color_lanes,
+        Panel::new()
+            .class(CLASS_OKLAB_SWATCH)
+            .layout(Layout::new().logical_size(158.0, 128.0)),
+    );
+    let srgb = ui.append(
+        color_lanes,
+        Panel::new()
+            .class(CLASS_SRGB_SWATCH)
+            .layout(Layout::new().logical_size(158.0, 128.0)),
+    );
+    let labels = ui.append(
+        color,
+        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 16.0)),
+    );
+    motion_lane_label(ui, labels, "OKLab");
+    motion_lane_label(ui, labels, "sRGB");
+    ui.append(
+        color,
+        Text::new(
+            "Both lanes share endpoints. The middle of the journey exposes the interpolation policy.",
+        )
+        .font_size(14.0)
+        .foreground(Color::from_rgba8(0xd8, 0xd9, 0xe2, 0xff))
+        .wrap(),
+    );
+    schedule_pair_toggle(ui, [oklab, srgb], PSEUDO_SELECTED, millis(5_200));
+
+    let composition = demo_card(ui, row, "COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0);
+    let strip = ui.append(
+        composition,
+        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
+    );
+    let opacity = motion_tile(ui, strip, CLASS_OPACITY_SWATCH);
+    let border = motion_tile(ui, strip, CLASS_BORDER_SWATCH);
+    let retarget = motion_tile(ui, strip, CLASS_RETARGET_SWATCH);
+    ui.set_tooltip(
+        retarget,
+        Tooltip::new("Retargeting starts a new transition from the current sampled value"),
+    );
+
+    let motion_stage = ui.append(
+        composition,
+        Panel::new().layout(
+            Layout::new()
+                .relative()
+                .logical_size(PAGE_CONTROL_WIDTH, 102.0)
+                .padding_all(0.0),
+        ),
+    );
+    style_surface(
+        ui,
+        motion_stage,
+        (0x19, 0x19, 0x22),
+        (0x19, 0x19, 0x22),
+        14.0,
+    );
+    let mover = ui.append(
+        motion_stage,
+        Panel::new()
+            .class(CLASS_MOVER_SWATCH)
+            .layout(mover_layout(false)),
+    );
+    ui.append(
+        composition,
+        caption("Opacity, border, retargeting, and layer offset all sample presentation values.")
+            .wrap(),
+    );
+
+    schedule_toggle(ui, opacity, PSEUDO_PRESSED, millis(1_100));
+    schedule_toggle(ui, border, PSEUDO_FOCUS_VISIBLE, millis(1_450));
+    schedule_toggle(ui, retarget, PSEUDO_SELECTED, millis(180));
+    schedule_movement(ui, mover, millis(1_250));
+}
+
+fn motion_tile(ui: &mut Ui, parent: ElementId, class: ClassId) -> ElementId {
+    ui.append(
+        parent,
+        Panel::new()
+            .class(class)
+            .layout(Layout::new().logical_size(96.0, 74.0)),
+    )
+}
+
+fn motion_lane_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
+    let id = ui.append(
+        parent,
+        Text::new(text)
+            .font_size(12.0)
+            .foreground(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff)),
+    );
+    ui.set_layout(id, Layout::new().logical_size(158.0, 16.0));
+    id
+}
+
 fn drive_progress(ui: &mut Ui, progress: ElementId, initial: f64, step: f64, interval: u64) {
     let _ = ui.schedule_timer_repeating(progress, interval);
     let mut progress_value = initial;
@@ -1014,6 +1280,57 @@ fn drive_counter(ui: &mut Ui, counter: ElementId, interval: u64, step: u32) {
     });
 }
 
+fn schedule_toggle(ui: &mut Ui, target: ElementId, pseudo: PseudoClassId, interval: TimerDuration) {
+    let active = Cell::new(false);
+    let _ = ui.schedule_timer_repeating(target, interval);
+    ui.on_timer(target, move |ui, _event| {
+        let next = !active.get();
+        active.set(next);
+        set_pseudo(ui, target, pseudo, next);
+    });
+}
+
+fn schedule_pair_toggle(
+    ui: &mut Ui,
+    targets: [ElementId; 2],
+    pseudo: PseudoClassId,
+    interval: TimerDuration,
+) {
+    let active = Cell::new(false);
+    let _ = ui.schedule_timer_repeating(targets[0], interval);
+    ui.on_timer(targets[0], move |ui, _event| {
+        let next = !active.get();
+        active.set(next);
+        for target in targets {
+            set_pseudo(ui, target, pseudo, next);
+        }
+    });
+}
+
+fn schedule_movement(ui: &mut Ui, target: ElementId, interval: TimerDuration) {
+    let active = Cell::new(false);
+    let _ = ui.schedule_timer_repeating(target, interval);
+    ui.on_timer(target, move |ui, _event| {
+        let next = !active.get();
+        active.set(next);
+        let _ = ui.request_layer_offset_transition(target);
+        ui.set_layout(target, mover_layout(next));
+    });
+}
+
+fn mover_layout(active: bool) -> Layout {
+    let x = if active { 270.0 } else { 16.0 };
+    Layout::new().absolute_at(x, 30.0).logical_size(42.0, 42.0)
+}
+
+fn set_pseudo(ui: &mut Ui, target: ElementId, pseudo: PseudoClassId, active: bool) {
+    if active {
+        ui.add_pseudo(target, pseudo);
+    } else {
+        ui.remove_pseudo(target, pseudo);
+    }
+}
+
 fn selection_summary(event: &overstory::ListSelectionChangedEvent) -> String {
     if event.selected_indices.is_empty() {
         return "Selected: none".to_owned();
@@ -1039,6 +1356,47 @@ fn style_split_pane(ui: &mut Ui, pane: ElementId, r: u8, g: u8, b: u8) {
     );
     ui.set_local(pane, ui.properties().border_width, 1.0_f64);
     ui.set_local(pane, ui.properties().corner_radius, 8.0_f64);
+}
+
+fn class_selector(class: ClassId) -> Selector {
+    Selector::single(SelectorStep::type_tag(TYPE_GENERIC).with_class(class))
+}
+
+fn class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {
+    Selector::single(
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(class)
+            .with_pseudo(pseudo),
+    )
+}
+
+fn color_transition_rules(
+    properties: &BuiltInProperties,
+    duration: TimerDuration,
+    timing: TimingFunction,
+    interpolation: ColorInterpolation,
+) -> TransitionRules {
+    TransitionRules::single(TransitionRule::interaction(
+        TransitionTarget::property(properties.background.id()),
+        TransitionSpec::timed(duration, timing).with_color_interpolation(interpolation),
+    ))
+}
+
+fn border_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+    TransitionRules::new()
+        .with_rule(TransitionRule::interaction(
+            TransitionTarget::property(properties.border_brush.id()),
+            TransitionSpec::timed(millis(720), EASE_OUT)
+                .with_color_interpolation(ColorInterpolation::OKLAB),
+        ))
+        .with_rule(TransitionRule::interaction(
+            TransitionTarget::property(properties.border_width.id()),
+            TransitionSpec::timed(millis(520), EASE_IN_OUT),
+        ))
+}
+
+fn scalar_transition_rules(target: TransitionTarget, spec: TransitionSpec) -> TransitionRules {
+    TransitionRules::single(TransitionRule::interaction(target, spec))
 }
 
 #[cfg(test)]
@@ -1117,7 +1475,7 @@ mod tests {
             !ui.get(systems_row)
                 .expect("systems nav row should exist")
                 .pseudos()
-                .contains(&overstory::pseudos::PSEUDO_FOCUS_VISIBLE),
+                .contains(&PSEUDO_FOCUS_VISIBLE),
             "pointer focus should not show keyboard-visible focus styling",
         );
         let up = ui.dispatch_pointer_event(&pointer_up(point, 2));
@@ -1141,7 +1499,7 @@ mod tests {
             ui.get(nav_rows[1])
                 .expect("focused nav row should exist")
                 .pseudos()
-                .contains(&overstory::pseudos::PSEUDO_FOCUS_VISIBLE),
+                .contains(&PSEUDO_FOCUS_VISIBLE),
             "keyboard focus should show focus-visible styling",
         );
         let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
@@ -1177,6 +1535,33 @@ mod tests {
         assert_eq!(
             items.last().map(String::as_str),
             Some("Accessibility tree 084")
+        );
+    }
+
+    #[test]
+    fn motion_page_mover_timer_updates_layout_target() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Motion);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let mover = find_by_class(&ui, ui.root(), CLASS_MOVER_SWATCH)
+            .expect("motion page should contain the offset specimen");
+        let start = ui.effective_bounds(mover);
+
+        ui.pump_timers(millis(1_250));
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let after = ui.effective_bounds(mover);
+        assert!(
+            after.x0 > start.x0 + 100.0,
+            "mover target should advance after its timer fires: {start:?} -> {after:?}",
         );
     }
 
@@ -1289,6 +1674,17 @@ mod tests {
         ui.get(nav_stack)
             .expect("nav stack should exist")
             .children()
+    }
+
+    fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+        let current = ui.get(element)?;
+        if current.classes().contains(&class) {
+            return Some(element);
+        }
+        current
+            .children()
+            .iter()
+            .find_map(|child| find_by_class(ui, *child, class))
     }
 
     fn assert_first_page_card_height(ui: &mut Ui, height: f64, label: &str) {

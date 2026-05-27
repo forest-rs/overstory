@@ -15,8 +15,7 @@ top of explicit, measurable internals.
 | [`overstory`](overstory/) | Core retained UI tree, controls, styling, layout intent, routed events, presentation lowering, and compositor-neutral composition data. |
 | [`overstory_host`](overstory_host/) | Platform-neutral host runtime for driving a `Ui` from normalized input, timers, layout, and rendering preparation. |
 | [`overstory_host_winit`](overstory_host_winit/) | Native `winit` / `wgpu` / Vello host for running Overstory apps on desktop. |
-| [`overstory_demo`](overstory_demo/) | Control gallery used to exercise built-in controls, routed input, timers, focus, popups, overlays, and styling. |
-| [`overstory_motion_demo`](overstory_motion_demo/) | Focused motion showcase for style-authored transitions, retargeted tracks, focus affordances, and timer-driven animation. |
+| [`overstory_demo`](overstory_demo/) | Control and motion gallery used to exercise built-in controls, routed input, timers, focus, popups, overlays, styling, and presentation transitions. |
 | [`overstory_node_graph_demo`](overstory_node_graph_demo/) | Focused node graph showcase built with Overstory, `understory_node_graph`, and `understory_view2d`. |
 | [`overstory_wind_tunnel`](overstory_wind_tunnel/) | Benchmarks and profiler scenarios for Overstory runtime hot paths. |
 
@@ -26,7 +25,6 @@ Native demos require a working desktop windowing and GPU stack.
 
 ```sh
 cargo run -p overstory_demo
-cargo run -p overstory_motion_demo
 cargo run -p overstory_node_graph_demo
 cargo bench -p overstory_wind_tunnel
 ```

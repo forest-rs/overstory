@@ -3,7 +3,8 @@
 `overstory_demo` is a native control-gallery app for exercising the current
 Overstory control set. It is intentionally practical rather than minimal: the
 demo uses real controls, default templates, styled parts, routed input, timers,
-focus, popups, tooltips, scrolling, and overlays together.
+focus, popups, tooltips, scrolling, overlays, and presentation transitions
+together.
 
 Run it with:
 
@@ -17,6 +18,7 @@ The demo currently shows:
   spinners;
 - list selection and scrolling;
 - splitter-driven resizing;
+- style-authored color, opacity, border, retargeting, and layer-offset motion;
 - routed click, pointer, key, focus, drag, and timer behavior;
 - popup and tooltip overlays through the native host.
 

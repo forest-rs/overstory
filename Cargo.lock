@@ -1746,6 +1746,7 @@ dependencies = [
  "overstory_host_winit",
  "peniko",
  "ui-events",
+ "understory_style",
 ]
 
 [[package]]
@@ -1773,16 +1774,6 @@ dependencies = [
  "web-time",
  "wgpu",
  "winit",
-]
-
-[[package]]
-name = "overstory_motion_demo"
-version = "0.0.1"
-dependencies = [
- "overstory",
- "overstory_host_winit",
- "peniko",
- "understory_style",
 ]
 
 [[package]]
