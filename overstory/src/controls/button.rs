@@ -35,6 +35,7 @@ use peniko::Brush;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -226,15 +227,16 @@ impl Widget for ButtonWidget {
         Some(&BUTTON_TEMPLATE)
     }
 
-    fn handle_key(&mut self, button: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let button = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
         if event.key.state != KeyState::Down {
             return;
         }
-        if !button_enabled(ui, button) {
+        if !button_enabled(ctx, button) {
             return;
         }
         let activate = match &event.key.key {
@@ -246,8 +248,8 @@ impl Widget for ButtonWidget {
             // Synthesize a click. We use the focused element's world-
             // bounds origin so click handlers that care about position
             // get a sensible value.
-            let pos = ui.effective_bounds(button).origin();
-            ui.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
+            let pos = ctx.effective_bounds(button).origin();
+            ctx.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
             event.mark_handled();
         }
     }

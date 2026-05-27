@@ -25,7 +25,7 @@ use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::LayoutContext;
+use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
     PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, is_initial_drag_move,
@@ -303,8 +303,9 @@ impl Widget for ScrollViewWidget {
         -self.state.offset()
     }
 
-    fn handle_scroll(&mut self, viewport: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
-        handle_wheel_scroll(ui, viewport, &self.state, event);
+    fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
+        let viewport = ctx.id();
+        handle_wheel_scroll(ctx, viewport, &self.state, event);
     }
 }
 
@@ -469,18 +470,19 @@ impl Widget for ScrollBarWidget {
         scroll_bar_thumb_offset(self.axis, &self.state, self.length, self.thumb_extent)
     }
 
-    fn handle_click(&mut self, scroll_bar: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let scroll_bar = ctx.id();
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(scroll_bar) {
             return;
         }
-        if is_scroll_bar_thumb(ui, scroll_bar, event.source) {
+        if is_scroll_bar_thumb(ctx, scroll_bar, event.source) {
             return;
         }
         let page = scroll_bar_page(&self.state, self.axis);
         let current = state_axis_scroll_offset(&self.state, self.axis);
         let thumb_start = axis_thumb_start(
             self.axis,
-            ui.effective_bounds(scroll_bar).origin(),
+            ctx.effective_bounds(scroll_bar).origin(),
             self.state.offset(),
             self.state.max_offset(),
             self.length,
@@ -492,17 +494,18 @@ impl Widget for ScrollBarWidget {
         } else {
             current + page
         };
-        set_axis_scroll_offset(ui, self.viewport, &self.state, self.axis, next);
+        set_axis_scroll_offset(ctx, self.viewport, &self.state, self.axis, next);
         event.mark_handled();
     }
 
-    fn handle_drag(&mut self, scroll_bar: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(scroll_bar) {
+    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
+        let scroll_bar = ctx.id();
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(scroll_bar) {
             return;
         }
         let snapshot = ScrollBarSnapshot::from(&*self);
         self.drag.update(
-            ui,
+            ctx,
             scroll_bar,
             &snapshot,
             event.source,

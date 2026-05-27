@@ -21,6 +21,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -161,26 +162,28 @@ impl Widget for CheckBoxWidget {
         Some(&CHECK_BOX_TEMPLATE)
     }
 
-    fn handle_click(&mut self, checkbox: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let checkbox = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(checkbox) {
+        if !ctx.is_enabled(checkbox) {
             return;
         }
-        toggle_check_box(ui, checkbox);
+        toggle_check_box(ctx, checkbox);
         event.mark_handled();
     }
 
-    fn handle_key(&mut self, checkbox: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let checkbox = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
         if event.key.state != KeyState::Down {
             return;
         }
-        if !ui.is_enabled(checkbox) {
+        if !ctx.is_enabled(checkbox) {
             return;
         }
         let activate = match &event.key.key {
@@ -189,7 +192,7 @@ impl Widget for CheckBoxWidget {
             _ => false,
         };
         if activate {
-            toggle_check_box(ui, checkbox);
+            toggle_check_box(ctx, checkbox);
             event.mark_handled();
         }
     }

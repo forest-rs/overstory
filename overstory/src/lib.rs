@@ -83,6 +83,7 @@ mod widget;
 
 pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
+    WidgetEventContext,
 };
 pub use composition::{CompositionPolicy, CompositionSurface, SurfaceId};
 pub use controls::button::{Button, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON};

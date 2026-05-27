@@ -22,6 +22,7 @@ use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt, f32_from_logical};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
@@ -294,21 +295,23 @@ impl Widget for SplitterWidget {
         })
     }
 
-    fn handle_click(&mut self, splitter: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let splitter = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(splitter) {
+        if !ctx.is_enabled(splitter) {
             return;
         }
         event.mark_handled();
     }
 
-    fn handle_drag(&mut self, splitter: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
+        let splitter = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(splitter) {
+        if !ctx.is_enabled(splitter) {
             return;
         }
         let orientation = self.orientation;
@@ -317,7 +320,7 @@ impl Widget for SplitterWidget {
             && let Some(handler) = self.on_resize.as_mut()
         {
             handler(
-                ui,
+                ctx,
                 SplitterResizeEvent {
                     splitter,
                     orientation,
@@ -335,15 +338,16 @@ impl Widget for SplitterWidget {
         event.mark_handled();
     }
 
-    fn handle_key(&mut self, splitter: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let splitter = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
         if event.key.state != KeyState::Down {
             return;
         }
-        if !ui.is_enabled(splitter) {
+        if !ctx.is_enabled(splitter) {
             return;
         }
         let step = if event.key.modifiers.shift() {
@@ -360,9 +364,9 @@ impl Widget for SplitterWidget {
             _ => return,
         };
         if let Some(handler) = self.on_resize.as_mut() {
-            let position = ui.effective_bounds(splitter).origin();
+            let position = ctx.effective_bounds(splitter).origin();
             handler(
-                ui,
+                ctx,
                 SplitterResizeEvent {
                     splitter,
                     orientation,

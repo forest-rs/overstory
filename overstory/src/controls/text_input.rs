@@ -23,6 +23,7 @@ use peniko::{Brush, Color};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::controls::support::{f32_from_logical, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
@@ -244,73 +245,73 @@ impl Widget for TextInputWidget {
         self.refresh_parts(ui, input);
     }
 
-    fn handle_click(&mut self, input: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let input = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(input) {
+        if !ctx.is_enabled(input) {
             return;
         }
         if self.pointer.take_dragged() {
             event.mark_handled();
             return;
         }
-        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
         self.edit.sync_style(font_size);
-        move_editor_to_point(ui, input, event.position, font_size, &mut self.edit.editor);
-        self.refresh_parts(ui, input);
+        move_editor_to_point(ctx, input, event.position, font_size, &mut self.edit.editor);
+        self.refresh_parts(ctx, input);
         event.mark_handled();
     }
 
-    fn handle_drag(&mut self, input: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
+    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
+        let input = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(input) {
+        if !ctx.is_enabled(input) {
             return;
         }
-        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
+        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
         self.edit.sync_style(font_size);
         if !self.pointer.dragging {
-            let (x, y) = editor_local_point(ui, input, event.press_position, font_size);
-            ui.with_plain_editor(&mut self.edit.editor, |driver| {
+            let (x, y) = editor_local_point(ctx, input, event.press_position, font_size);
+            ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                 driver.move_to_point(x, y);
             });
             self.pointer.dragging = true;
         }
         self.pointer.dragged = true;
-        let (x, y) = editor_local_point(ui, input, event.position, font_size);
-        ui.with_plain_editor(&mut self.edit.editor, |driver| {
+        let (x, y) = editor_local_point(ctx, input, event.position, font_size);
+        ctx.with_plain_editor(&mut self.edit.editor, |driver| {
             driver.extend_selection_to_point(x, y);
         });
-        self.refresh_parts(ui, input);
+        self.refresh_parts(ctx, input);
         event.mark_handled();
     }
 
-    fn handle_key(&mut self, input: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::KeyState;
+        let input = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
         if event.key.state != KeyState::Down {
             return;
         }
-        if !ui.is_enabled(input) {
+        if !ctx.is_enabled(input) {
             return;
         }
-        let font_size = read_local_or(ui, input, ui.properties().font_size, DEFAULT_FONT_SIZE);
-        let read_only = read_local_or(ui, input, ui.properties().is_read_only, false);
+        let font_size = read_local_or(ctx, input, ctx.properties().font_size, DEFAULT_FONT_SIZE);
+        let read_only = read_local_or(ctx, input, ctx.properties().is_read_only, false);
         self.edit.sync_style(font_size);
-        let edit = self.edit.edit_from_key(ui, event.key, read_only);
+        let edit = self.edit.edit_from_key(ctx, event.key, read_only);
         if edit.handled {
             if edit.changed {
-                ui.set_local(
-                    input,
-                    ui.properties().content,
-                    String::from(self.edit.text()),
-                );
+                let content = ctx.properties().content;
+                ctx.set_local(input, content, String::from(self.edit.text()));
             }
-            self.refresh_parts(ui, input);
+            self.refresh_parts(ctx, input);
             event.mark_handled();
         }
     }

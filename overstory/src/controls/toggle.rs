@@ -23,6 +23,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
@@ -149,26 +150,28 @@ impl Widget for ToggleWidget {
         Some(&TOGGLE_TEMPLATE)
     }
 
-    fn handle_click(&mut self, toggle: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let toggle = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(toggle) {
+        if !ctx.is_enabled(toggle) {
             return;
         }
-        toggle_checked(ui, toggle);
+        toggle_checked(ctx, toggle);
         event.mark_handled();
     }
 
-    fn handle_key(&mut self, toggle: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let toggle = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
         if event.key.state != KeyState::Down {
             return;
         }
-        if !ui.is_enabled(toggle) {
+        if !ctx.is_enabled(toggle) {
             return;
         }
         let activate = match &event.key.key {
@@ -177,7 +180,7 @@ impl Widget for ToggleWidget {
             _ => false,
         };
         if activate {
-            toggle_checked(ui, toggle);
+            toggle_checked(ctx, toggle);
             event.mark_handled();
         }
     }

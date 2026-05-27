@@ -45,7 +45,9 @@ use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
 use understory_style::TypeTag;
 
-use crate::behavior::{LayoutContext, MeasureConstraints, MeasureContext, PresentContext};
+use crate::behavior::{
+    LayoutContext, MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
+};
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
@@ -194,37 +196,42 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_key(&mut self, _id: ElementId, _ui: &mut Ui, _event: KeyEvent<'_>) {}
+    fn handle_key(&mut self, _ctx: &mut WidgetEventContext<'_>, _event: KeyEvent<'_>) {}
 
     /// Handles the widget's built-in click behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_click(&mut self, _id: ElementId, _ui: &mut Ui, _event: ClickEvent<'_>) {}
+    fn handle_click(&mut self, _ctx: &mut WidgetEventContext<'_>, _event: ClickEvent<'_>) {}
 
     /// Handles the widget's built-in drag behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_drag(&mut self, _id: ElementId, _ui: &mut Ui, _event: DragEvent<'_>) {}
+    fn handle_drag(&mut self, _ctx: &mut WidgetEventContext<'_>, _event: DragEvent<'_>) {}
 
     /// Handles the widget's built-in scroll behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_scroll(&mut self, _id: ElementId, _ui: &mut Ui, _event: ScrollEvent<'_>) {}
+    fn handle_scroll(&mut self, _ctx: &mut WidgetEventContext<'_>, _event: ScrollEvent<'_>) {}
 
     /// Handles the widget's built-in focus behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_focus(&mut self, _id: ElementId, _ui: &mut Ui, _event: FocusEvent<'_>) {}
+    fn handle_focus(&mut self, _ctx: &mut WidgetEventContext<'_>, _event: FocusEvent<'_>) {}
 
     /// Handles the widget's built-in pointer behavior during routed dispatch.
     ///
     /// App handlers run first. If an app handler marks the event handled, this
     /// method is skipped for the remaining ordinary route.
-    fn handle_pointer(&mut self, _id: ElementId, _ui: &mut Ui, _event: PointerRoutedEvent<'_>) {}
+    fn handle_pointer(
+        &mut self,
+        _ctx: &mut WidgetEventContext<'_>,
+        _event: PointerRoutedEvent<'_>,
+    ) {
+    }
 }
 
 impl dyn Widget {
@@ -314,28 +321,28 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.composition_policy()
     }
 
-    fn handle_key(&mut self, id: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
-        self.widget.handle_key(id, ui, event);
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
+        self.widget.handle_key(ctx, event);
     }
 
-    fn handle_click(&mut self, id: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
-        self.widget.handle_click(id, ui, event);
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        self.widget.handle_click(ctx, event);
     }
 
-    fn handle_drag(&mut self, id: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
-        self.widget.handle_drag(id, ui, event);
+    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
+        self.widget.handle_drag(ctx, event);
     }
 
-    fn handle_scroll(&mut self, id: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
-        self.widget.handle_scroll(id, ui, event);
+    fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
+        self.widget.handle_scroll(ctx, event);
     }
 
-    fn handle_focus(&mut self, id: ElementId, ui: &mut Ui, event: FocusEvent<'_>) {
-        self.widget.handle_focus(id, ui, event);
+    fn handle_focus(&mut self, ctx: &mut WidgetEventContext<'_>, event: FocusEvent<'_>) {
+        self.widget.handle_focus(ctx, event);
     }
 
-    fn handle_pointer(&mut self, id: ElementId, ui: &mut Ui, event: PointerRoutedEvent<'_>) {
-        self.widget.handle_pointer(id, ui, event);
+    fn handle_pointer(&mut self, ctx: &mut WidgetEventContext<'_>, event: PointerRoutedEvent<'_>) {
+        self.widget.handle_pointer(ctx, event);
     }
 }
 

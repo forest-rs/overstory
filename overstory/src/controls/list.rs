@@ -29,6 +29,7 @@ use understory_style::{PartTag, TypeTag};
 use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
     ScrollState, normalize_scroll_offset_y, scroll_offset_y, wheel_scroll_delta,
@@ -338,23 +339,25 @@ impl Widget for ListBoxWidget {
         self.sync_virtual_items(listbox, ui)
     }
 
-    fn handle_scroll(&mut self, listbox: ElementId, ui: &mut Ui, event: ScrollEvent<'_>) {
-        let Some(delta) = wheel_scroll_delta(ui, listbox, event) else {
+    fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
+        let listbox = ctx.id();
+        let Some(delta) = wheel_scroll_delta(ctx, listbox, event) else {
             return;
         };
         if delta.y != 0.0 {
-            self.scroll_by(listbox, ui, delta.y);
+            self.scroll_by(listbox, ctx, delta.y);
             event.mark_handled();
         }
     }
 
-    fn handle_key(&mut self, listbox: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let listbox = ctx.id();
 
         if !matches!(event.phase, Phase::Target) {
             return;
         }
-        if event.key.state != KeyState::Down || !ui.is_enabled(listbox) {
+        if event.key.state != KeyState::Down || !ctx.is_enabled(listbox) {
             return;
         }
         if self.items.is_empty() {
@@ -369,7 +372,7 @@ impl Widget for ListBoxWidget {
             && action_mod
             && matches!(&event.key.key, Key::Character(s) if s.eq_ignore_ascii_case("a"))
         {
-            self.select_all(ui, listbox);
+            self.select_all(ctx, listbox);
             event.mark_handled();
             return;
         }
@@ -398,16 +401,16 @@ impl Widget for ListBoxWidget {
             return;
         };
         if self.selection_mode == ListSelectionMode::Multiple && shift {
-            self.select_range(ui, listbox, next, false);
+            self.select_range(ctx, listbox, next, false);
         } else if self.selection_mode == ListSelectionMode::Multiple
             && action_mod
             && is_activation_key(&event.key.key)
         {
-            self.toggle_index(ui, listbox, next);
+            self.toggle_index(ctx, listbox, next);
         } else {
-            self.select_index(ui, listbox, next);
+            self.select_index(ctx, listbox, next);
         }
-        self.scroll_index_into_view(listbox, ui, next);
+        self.scroll_index_into_view(listbox, ctx, next);
         event.mark_handled();
     }
 }
@@ -689,24 +692,25 @@ impl Widget for ListItemWidget {
         Some(&LIST_ITEM_TEMPLATE)
     }
 
-    fn handle_click(&mut self, item: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let item = ctx.id();
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(item) {
+        if !ctx.is_enabled(item) {
             return;
         }
-        let Some(listbox) = listbox_parent(ui, item) else {
+        let Some(listbox) = listbox_parent(ctx, item) else {
             return;
         };
         select_list_index_for_click(
-            ui,
+            ctx,
             listbox,
             self.index,
             event.modifiers.shift(),
             action_modifier(event.modifiers),
         );
-        let _ = ui.set_pointer_focus(Some(listbox));
+        let _ = ctx.set_pointer_focus(Some(listbox));
         event.mark_handled();
     }
 }

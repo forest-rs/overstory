@@ -21,6 +21,7 @@
 
 use core::cell::RefCell;
 use core::fmt;
+use core::ops::{Deref, DerefMut};
 
 use kurbo::{Rect, Size};
 use understory_property::{Property, PropertyRegistry};
@@ -70,6 +71,68 @@ impl LayoutContext<'_> {
 impl fmt::Debug for LayoutContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LayoutContext").finish_non_exhaustive()
+    }
+}
+
+/// Mutable context handed to a widget's built-in routed event handlers.
+///
+/// Routed event payloads such as [`crate::ClickEvent`] and
+/// [`crate::DragEvent`] describe the input event and route. `WidgetEventContext`
+/// carries the widget-side execution context: the element whose widget is
+/// handling the event, plus access to the owning [`Ui`].
+pub struct WidgetEventContext<'a> {
+    id: ElementId,
+    ui: &'a mut Ui,
+}
+
+impl<'a> WidgetEventContext<'a> {
+    pub(crate) fn new(id: ElementId, ui: &'a mut Ui) -> Self {
+        Self { id, ui }
+    }
+
+    /// Returns the element whose widget is handling the event.
+    #[must_use]
+    pub fn id(&self) -> ElementId {
+        self.id
+    }
+
+    /// Returns the handling element, if it is still live.
+    #[must_use]
+    pub fn element(&self) -> Option<&Element> {
+        self.ui.get(self.id)
+    }
+
+    /// Returns the owning UI.
+    #[must_use]
+    pub fn ui(&self) -> &Ui {
+        self.ui
+    }
+
+    /// Returns mutable access to the owning UI.
+    pub fn ui_mut(&mut self) -> &mut Ui {
+        self.ui
+    }
+}
+
+impl Deref for WidgetEventContext<'_> {
+    type Target = Ui;
+
+    fn deref(&self) -> &Self::Target {
+        self.ui
+    }
+}
+
+impl DerefMut for WidgetEventContext<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.ui
+    }
+}
+
+impl fmt::Debug for WidgetEventContext<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WidgetEventContext")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
     }
 }
 

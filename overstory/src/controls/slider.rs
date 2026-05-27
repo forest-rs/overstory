@@ -25,6 +25,7 @@ use understory_axis::{
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
+use crate::behavior::WidgetEventContext;
 use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
@@ -268,35 +269,37 @@ impl Widget for SliderWidget {
         Some(&SLIDER_TEMPLATE)
     }
 
-    fn handle_click(&mut self, slider: ElementId, ui: &mut Ui, event: ClickEvent<'_>) {
-        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let slider = ctx.id();
+        let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(slider) {
+        if !ctx.is_enabled(slider) {
             return;
         }
         if event.source == thumb {
             return;
         }
-        set_value_from_position(ui, slider, thumb, event.position, ThumbMotion::Animate);
+        set_value_from_position(ctx, slider, thumb, event.position, ThumbMotion::Animate);
         event.mark_handled();
     }
 
-    fn handle_drag(&mut self, slider: ElementId, ui: &mut Ui, event: DragEvent<'_>) {
-        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
+        let slider = ctx.id();
+        let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
         if !matches!(event.phase, Phase::Target | Phase::Bubble) {
             return;
         }
-        if !ui.is_enabled(slider) {
+        if !ctx.is_enabled(slider) {
             return;
         }
         self.drag.update(
-            ui,
+            ctx,
             slider,
             thumb,
             event.press_position,
@@ -306,9 +309,10 @@ impl Widget for SliderWidget {
         event.mark_handled();
     }
 
-    fn handle_key(&mut self, slider: ElementId, ui: &mut Ui, event: KeyEvent<'_>) {
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
-        let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+        let slider = ctx.id();
+        let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
         if !matches!(event.phase, Phase::Target) {
@@ -317,28 +321,28 @@ impl Widget for SliderWidget {
         if event.key.state != KeyState::Down {
             return;
         }
-        if !ui.is_enabled(slider) {
+        if !ctx.is_enabled(slider) {
             return;
         }
-        let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
-        let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
+        let min = read_local_or(ctx, slider, ctx.properties().minimum, 0.0);
+        let max = read_local_or(ctx, slider, ctx.properties().maximum, 1.0);
         let small = read_change_or(
-            ui,
+            ctx,
             slider,
-            ui.properties().small_change,
+            ctx.properties().small_change,
             min,
             max,
             DEFAULT_SMALL_CHANGE_FRACTION,
         );
         let large = read_change_or(
-            ui,
+            ctx,
             slider,
-            ui.properties().large_change,
+            ctx.properties().large_change,
             min,
             max,
             DEFAULT_LARGE_CHANGE_FRACTION,
         );
-        let current = read_local_or(ui, slider, ui.properties().value, min);
+        let current = read_local_or(ctx, slider, ctx.properties().value, min);
         let next = match &event.key.key {
             Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
                 current - keyboard_step(event.key.modifiers.shift(), small, large)
@@ -353,7 +357,7 @@ impl Widget for SliderWidget {
             _ => return,
         };
         set_value(
-            ui,
+            ctx,
             slider,
             thumb,
             next.clamp(min, max),

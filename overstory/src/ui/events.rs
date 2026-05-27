@@ -18,6 +18,7 @@ use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_timing::TimerInstant;
 
+use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
     ClickEvent, ClickHandlers, DragEvent, DragHandlers, FocusChangeReason, FocusEvent,
@@ -337,7 +338,8 @@ impl Ui {
     fn dispatch_widget_key<'a>(&mut self, route: RoutedEventContext<'a>, event: &'a KeyboardEvent) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
-            widget.handle_key(node, ui, KeyEvent { route, key: event });
+            let mut ctx = WidgetEventContext::new(node, ui);
+            widget.handle_key(&mut ctx, KeyEvent { route, key: event });
         });
     }
 
@@ -370,9 +372,9 @@ impl Ui {
     ) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_click(
-                node,
-                ui,
+                &mut ctx,
                 ClickEvent {
                     route,
                     position,
@@ -414,9 +416,9 @@ impl Ui {
     ) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_drag(
-                node,
-                ui,
+                &mut ctx,
                 DragEvent {
                     route,
                     position,
@@ -459,9 +461,9 @@ impl Ui {
     ) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_scroll(
-                node,
-                ui,
+                &mut ctx,
                 ScrollEvent {
                     route,
                     position,
@@ -507,9 +509,9 @@ impl Ui {
     ) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_focus(
-                node,
-                ui,
+                &mut ctx,
                 FocusEvent {
                     route,
                     previous,
@@ -547,7 +549,8 @@ impl Ui {
     ) {
         let node = route.current;
         self.with_widget_mut(node, |widget, ui| {
-            widget.handle_pointer(node, ui, data.event(route));
+            let mut ctx = WidgetEventContext::new(node, ui);
+            widget.handle_pointer(&mut ctx, data.event(route));
         });
     }
 
