@@ -158,10 +158,17 @@ impl Ui {
     /// `set_local_notifying` path so PAINT cascades naturally for elements
     /// whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
-        self.last_viewport = viewport;
-        self.compute_layout_until_stable(viewport);
-        if self.reposition_overlays(viewport) {
+        self.flush_bindings();
+        if self.last_viewport != viewport {
+            self.last_viewport = viewport;
+            self.mark_channels(self.root(), LAYOUT.into());
+        }
+        let needs_layout = self.invalidation.has_invalidated(LAYOUT);
+        if needs_layout {
             self.compute_layout_until_stable(viewport);
+            if self.reposition_overlays(viewport) {
+                self.compute_layout_until_stable(viewport);
+            }
         }
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree

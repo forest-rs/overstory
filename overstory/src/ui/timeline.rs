@@ -186,6 +186,7 @@ impl Ui {
         } else {
             self.set_timeline_property_sample(key, sample.value());
         }
+        self.set_timeline_composition_sample(key, sample.value());
         self.mark_timeline_target_channels(key.element(), key.target());
     }
 
@@ -221,6 +222,21 @@ impl Ui {
             return;
         };
         adapter.clear_sample(element, property);
+    }
+
+    fn set_timeline_composition_sample(&mut self, key: TimelineTrackKey, value: PresentationValue) {
+        if let (
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            PresentationValue::Offset2d(offset),
+        ) = (key.target(), value)
+        {
+            self.composition.set_layer_offset(key.element(), offset);
+        } else if let (TimelineTarget::Property(property), PresentationValue::Scalar32(opacity)) =
+            (key.target(), value)
+            && property == self.properties.opacity.id()
+        {
+            self.composition.set_opacity(key.element(), opacity);
+        }
     }
 
     fn mark_timeline_target_channels(&mut self, element: ElementId, target: TimelineTarget) {

@@ -374,6 +374,17 @@ impl CompositionRuntime {
         }
     }
 
+    /// Updates only the compositor-local offset for an element layer.
+    pub(crate) fn set_layer_offset(&mut self, id: ElementId, local_offset: Vec2) {
+        let Some(entry) = self.elements.get(id).copied() else {
+            return;
+        };
+        self.layers.set_transform(
+            entry.layer,
+            Transform3d::from(Affine::translate((local_offset.x, local_offset.y))),
+        );
+    }
+
     /// Updates compositor-local opacity for an element layer.
     pub(crate) fn set_opacity(&mut self, id: ElementId, opacity: f32) {
         let Some(entry) = self.elements.get(id).copied() else {

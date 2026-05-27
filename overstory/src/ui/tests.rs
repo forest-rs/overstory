@@ -874,12 +874,12 @@ fn toggle_thumb_transition_samples_composition_offset() {
     assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(millis(60));
-    ui.compute_layout(Size::new(200.0, 80.0));
+    ui.flush_composition();
     assert_close(layer_x(&ui, thumb), thumb_timing(start_x, target_x, 0.5));
     assert_close(layer_y(&ui, thumb), start_y);
 
     ui.set_now(millis(120));
-    ui.compute_layout(Size::new(200.0, 80.0));
+    ui.flush_composition();
     assert_close(layer_x(&ui, thumb), target_x);
     assert_close(layer_y(&ui, thumb), start_y);
 
@@ -2268,6 +2268,52 @@ fn compute_layout_writes_bounds() {
         ui.effective_bounds(child),
         Rect::new(10.0, 10.0, 190.0, 90.0)
     );
+}
+
+#[test]
+fn clean_compute_layout_skips_widget_layout_work() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    #[derive(Debug)]
+    struct LayoutProbe {
+        count: Rc<Cell<u32>>,
+    }
+
+    impl crate::Widget for LayoutProbe {
+        fn post_layout(&mut self, _element: ElementId, _ui: &mut Ui) -> bool {
+            self.count.set(self.count.get() + 1);
+            false
+        }
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let count = Rc::new(Cell::new(0));
+    let child = ui.append_widget(
+        root,
+        Box::new(LayoutProbe {
+            count: Rc::clone(&count),
+        }),
+    );
+    ui.set_layout(child, Layout::new().logical_size(10.0, 10.0));
+
+    ui.compute_layout(Size::new(100.0, 50.0));
+    assert_eq!(count.get(), 1);
+
+    ui.set_now(1);
+    ui.compute_layout(Size::new(100.0, 50.0));
+    assert_eq!(count.get(), 1);
+
+    ui.compute_layout(Size::new(120.0, 50.0));
+    assert_eq!(count.get(), 2);
+
+    ui.compute_layout(Size::new(120.0, 50.0));
+    assert_eq!(count.get(), 2);
+
+    ui.mark_channels(child, LAYOUT.into());
+    ui.compute_layout(Size::new(120.0, 50.0));
+    assert_eq!(count.get(), 3);
 }
 
 #[test]
