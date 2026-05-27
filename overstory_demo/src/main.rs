@@ -81,10 +81,6 @@ impl DemoPage {
         Self::Typography,
     ];
 
-    fn from_index(index: usize) -> Option<Self> {
-        Self::ALL.get(index).copied()
-    }
-
     fn nav_label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
@@ -341,25 +337,8 @@ fn build_ui() -> Ui {
     );
     style_surface(&mut ui, stage, (0x1b, 0x1c, 0x23), (0x2f, 0x32, 0x3d), 18.0);
 
-    let nav_list = ui.append(
-        nav,
-        ListBox::new()
-            .items(DemoPage::ALL.iter().map(|page| page.nav_label()))
-            .size(NAV_CONTENT_WIDTH, 244.0)
-            .item_extent(36.0)
-            .selected_index(0)
-            .on_selection_changed(move |ui, event| {
-                let Some(index) = event.primary_index else {
-                    return;
-                };
-                let Some(page) = DemoPage::from_index(index) else {
-                    return;
-                };
-                show_demo_page(ui, stage, page);
-            }),
-    );
-    ui.set_tooltip(nav_list, Tooltip::new("Choose a focused demo page"));
-
+    let nav_rows = build_nav_rows(&mut ui, nav);
+    wire_nav_rows(&mut ui, &nav_rows, stage);
     show_demo_page(&mut ui, stage, DemoPage::Overview);
 
     ui.set_cascade(theme::default_cascade(ui.properties()));
@@ -375,6 +354,76 @@ fn build_nav(ui: &mut Ui, nav: ElementId) {
         Panel::new().layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
     );
     style_fill(ui, marker, (0x59, 0x75, 0xe6));
+}
+
+fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
+    let stack = ui.append(
+        nav,
+        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 260.0)),
+    );
+    let mut rows = Vec::with_capacity(DemoPage::ALL.len());
+    for page in DemoPage::ALL {
+        rows.push(append_nav_row(ui, stack, page, page == DemoPage::Overview));
+    }
+    Rc::from(rows.into_boxed_slice())
+}
+
+fn append_nav_row(ui: &mut Ui, stack: ElementId, page: DemoPage, selected: bool) -> ElementId {
+    let row = ui.append(
+        stack,
+        Panel::row(0.0).layout(
+            Layout::row(0.0)
+                .logical_size(NAV_CONTENT_WIDTH, 40.0)
+                .padding_xy(14.0, 0.0)
+                .align_center(),
+        ),
+    );
+    style_nav_row(ui, row, selected);
+    ui.append(row, control_label(page.nav_label()));
+    row
+}
+
+fn wire_nav_rows(ui: &mut Ui, nav_rows: &Rc<[ElementId]>, stage: ElementId) {
+    for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
+        let nav_rows = Rc::clone(nav_rows);
+        ui.on_click(row, move |ui, event| {
+            if !matches!(
+                event.phase,
+                overstory::Phase::Target | overstory::Phase::Bubble
+            ) {
+                return;
+            }
+            select_nav_row(ui, &nav_rows, page);
+            show_demo_page(ui, stage, page);
+            event.mark_handled();
+        });
+    }
+}
+
+fn select_nav_row(ui: &mut Ui, nav_rows: &[ElementId], selected_page: DemoPage) {
+    for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
+        style_nav_row(ui, row, page == selected_page);
+    }
+}
+
+fn style_nav_row(ui: &mut Ui, row: ElementId, selected: bool) {
+    let background = if selected {
+        (0x4d, 0x6f, 0xdc)
+    } else {
+        (0x22, 0x23, 0x2b)
+    };
+    ui.set_local(
+        row,
+        ui.properties().background,
+        opt_solid(background.0, background.1, background.2, 0xff),
+    );
+    ui.set_local(
+        row,
+        ui.properties().border_brush,
+        opt_solid(background.0, background.1, background.2, 0xff),
+    );
+    ui.set_local(row, ui.properties().border_width, 1.0_f64);
+    ui.set_local(row, ui.properties().corner_radius, 8.0_f64);
 }
 
 fn clear_children(ui: &mut Ui, parent: ElementId) {
@@ -822,7 +871,7 @@ fn style_split_pane(ui: &mut Ui, pane: ElementId, r: u8, g: u8, b: u8) {
 
 #[cfg(test)]
 mod tests {
-    use kurbo::Size;
+    use kurbo::{Point, Size};
 
     use super::*;
 
@@ -866,6 +915,53 @@ mod tests {
             ui.effective_bounds(marker).width(),
             f64::from(NAV_CONTENT_WIDTH),
             "nav marker width",
+        );
+    }
+
+    #[test]
+    fn gallery_nav_uses_shell_rows_instead_of_a_list_box() {
+        let mut ui = build_ui();
+        let nav = nav_element(&ui);
+        let nav_children = ui.get(nav).expect("nav should exist").children();
+        let nav_stack = nav_children
+            .get(3)
+            .copied()
+            .expect("nav should contain a compact row stack");
+        let nav_rows = ui
+            .get(nav_stack)
+            .expect("nav stack should exist")
+            .children();
+
+        assert_eq!(nav_rows.len(), DemoPage::ALL.len());
+        for row in nav_rows {
+            assert_ne!(
+                ui.get(*row).and_then(|element| element.type_tag()),
+                Some(overstory::TYPE_LIST_BOX),
+                "navigation should not render as the listbox control demo",
+            );
+        }
+
+        let systems_row = nav_rows[2];
+        let result = ui.synthesize_click(systems_row, Point::ZERO);
+        assert!(result.handled, "nav row click should be handled");
+
+        let stage = stage_element(&ui);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+        let row = page_row(&ui, stage);
+        let first_card = ui
+            .get(row)
+            .expect("page row should exist")
+            .children()
+            .first()
+            .copied()
+            .expect("systems page should contain a first card");
+        assert_close(
+            ui.effective_bounds(first_card).height(),
+            322.0,
+            "nav row click should switch the page content",
         );
     }
 
@@ -972,6 +1068,18 @@ mod tests {
             panic!("gallery root should contain nav and stage");
         };
         stage
+    }
+
+    fn nav_element(ui: &Ui) -> ElementId {
+        let root_children = ui
+            .get(ui.root())
+            .expect("root should exist")
+            .children()
+            .to_vec();
+        let [nav, _] = *root_children else {
+            panic!("gallery root should contain nav and stage");
+        };
+        nav
     }
 
     fn page_row(ui: &Ui, stage: ElementId) -> ElementId {
