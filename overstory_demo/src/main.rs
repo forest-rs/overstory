@@ -27,18 +27,19 @@ const ROOT_PADDING: f32 = 28.0;
 const NAV_WIDTH: f32 = 276.0;
 const NAV_PADDING: f32 = 20.0;
 const NAV_CONTENT_WIDTH: f32 = NAV_WIDTH - (NAV_PADDING * 2.0);
-const PAGE_HEADER_HEIGHT: f32 = 112.0;
-const OVERVIEW_CARD_WIDTH: f32 = 342.0;
-const OVERVIEW_CONTROL_WIDTH: f32 = 292.0;
-const OVERVIEW_LIST_WIDTH: f32 = 284.0;
-const PAGE_CARD_WIDTH: f32 = 522.0;
-const PAGE_CONTROL_WIDTH: f32 = 464.0;
-const PAGE_LIST_WIDTH: f32 = 464.0;
-const MINI_STAT_WIDTH: f32 = 148.0;
-const SPLIT_PANE_WIDTH: f32 = 198.0;
-const SPLIT_PANE_HEIGHT: f32 = 164.0;
+const PAGE_HEADER_HEIGHT: f32 = 92.0;
+const OVERVIEW_CARD_WIDTH: f32 = 256.0;
+const OVERVIEW_CONTROL_WIDTH: f32 = 206.0;
+const OVERVIEW_LIST_WIDTH: f32 = 198.0;
+const PAGE_CARD_WIDTH: f32 = 390.0;
+const PAGE_CONTROL_WIDTH: f32 = 328.0;
+const PAGE_LIST_WIDTH: f32 = 316.0;
+const SPLIT_PANE_WIDTH: f32 = 148.0;
+const SPLIT_PANE_HEIGHT: f32 = 142.0;
 
-const PIPELINE_ITEMS: [&str; 7] = [
+const RENDERER_QUEUE_LEN: usize = 1_000;
+const INITIAL_RENDERER_SELECTION: usize = 2;
+const RENDERER_STAGES: [&str; 12] = [
     "Vello scene graph",
     "CPU fallback raster",
     "Text shaping pass",
@@ -46,6 +47,11 @@ const PIPELINE_ITEMS: [&str; 7] = [
     "Hit testing index",
     "Presentation cache",
     "Frame diagnostics",
+    "Layer compaction",
+    "Glyph atlas upload",
+    "Clip stack rebuild",
+    "Surface invalidation",
+    "GPU submission",
 ];
 
 fn main() -> overstory_host_winit::HostResult<()> {
@@ -94,7 +100,7 @@ impl DemoPage {
         match self {
             Self::Overview => "Overstory Control Gallery",
             Self::Inputs => "Inputs and Command Surfaces",
-            Self::Systems => "Live Systems Panel",
+            Self::Systems => "Controls and Values",
             Self::Selection => "Selection and Virtualization",
             Self::Layout => "Layout and Resizing",
             Self::Typography => "Typography and Text Features",
@@ -131,12 +137,6 @@ fn caption(text: &str) -> Text {
         .foreground(Color::from_rgba8(0xc8, 0xc8, 0xd2, 0xff))
 }
 
-fn quiet_caption(text: &str) -> Text {
-    Text::new(text)
-        .font_size(12.0)
-        .foreground(Color::from_rgba8(0x95, 0x99, 0xa8, 0xff))
-}
-
 fn heading(text: &str) -> Text {
     Text::new(text)
         .font_size(26.0)
@@ -145,7 +145,7 @@ fn heading(text: &str) -> Text {
 
 fn page_heading(text: &str) -> Text {
     Text::new(text)
-        .font_size(24.0)
+        .font_size(22.0)
         .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
 }
 
@@ -153,6 +153,12 @@ fn card_title(text: &str) -> Text {
     Text::new(text)
         .font_size(12.0)
         .foreground(Color::from_rgba8(0x96, 0x9a, 0xa8, 0xff))
+}
+
+fn control_label(text: &str) -> Text {
+    Text::new(text)
+        .font_size(15.0)
+        .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
 }
 
 fn number_text(text: &str) -> Text {
@@ -163,7 +169,7 @@ fn number_text(text: &str) -> Text {
 
 fn large_number_text(text: &str) -> Text {
     Text::new(text)
-        .font_size(38.0)
+        .font_size(34.0)
         .foreground(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff))
 }
 
@@ -177,6 +183,16 @@ fn tabular_number_features() -> Box<[FontFeature]> {
         .expect("tabular-number feature should parse")
         .expect("tabular-number feature should be valid");
     Box::from([feature])
+}
+
+fn renderer_queue_items() -> impl Iterator<Item = String> {
+    (0..RENDERER_QUEUE_LEN).map(renderer_queue_label)
+}
+
+fn renderer_queue_label(index: usize) -> String {
+    let stage = RENDERER_STAGES[index % RENDERER_STAGES.len()];
+    let batch = (index / RENDERER_STAGES.len()) + 1;
+    format!("{stage} {batch:03}")
 }
 
 fn style_surface(
@@ -233,35 +249,6 @@ fn demo_row(ui: &mut Ui, parent: ElementId) -> ElementId {
             ),
         ),
     )
-}
-
-fn stat_tile(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
-    stat_tile_sized(ui, parent, label, value, 158.0)
-}
-
-fn mini_stat_tile(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
-    stat_tile_sized(ui, parent, label, value, MINI_STAT_WIDTH)
-}
-
-fn stat_tile_sized(
-    ui: &mut Ui,
-    parent: ElementId,
-    label: &str,
-    value: &str,
-    width: f32,
-) -> ElementId {
-    let tile = ui.append(
-        parent,
-        Panel::column(6.0).layout(
-            Layout::column(6.0)
-                .logical_size(width, 88.0)
-                .padding_all(14.0),
-        ),
-    );
-    style_surface(ui, tile, (0x1b, 0x1c, 0x23), (0x36, 0x39, 0x46), 10.0);
-    ui.append(tile, quiet_caption(label));
-    ui.append(tile, number_text(value));
-    tile
 }
 
 /// Builds a click handler that cycles the button's label each time it fires.
@@ -373,7 +360,6 @@ fn build_ui() -> Ui {
     );
     ui.set_tooltip(nav_list, Tooltip::new("Choose a focused demo page"));
 
-    build_nav_footer(&mut ui, nav);
     show_demo_page(&mut ui, stage, DemoPage::Overview);
 
     ui.set_cascade(theme::default_cascade(ui.properties()));
@@ -389,18 +375,6 @@ fn build_nav(ui: &mut Ui, nav: ElementId) {
         Panel::new().layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
     );
     style_fill(ui, marker, (0x59, 0x75, 0xe6));
-}
-
-fn build_nav_footer(ui: &mut Ui, nav: ElementId) {
-    ui.append(nav, Divider::horizontal().length(NAV_CONTENT_WIDTH));
-    ui.append(nav, quiet_caption("Runtime"));
-    let stats = ui.append(nav, Panel::row(10.0).align_center());
-    let dot = ui.append(
-        stats,
-        Panel::new().layout(Layout::new().logical_size(10.0, 10.0)),
-    );
-    style_surface(ui, dot, (0x60, 0xb8, 0x78), (0x60, 0xb8, 0x78), 8.0);
-    ui.append(stats, caption("retained UI, live timers"));
 }
 
 fn clear_children(ui: &mut Ui, parent: ElementId) {
@@ -438,14 +412,14 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
                         .width(LayoutDimension::Percent(1.0))
                         .height(LayoutDimension::Logical(PAGE_HEADER_HEIGHT)),
                 )
-                .padding_all(22.0),
+                .padding_all(18.0),
         ),
     );
     style_surface(ui, header, (0x24, 0x25, 0x2e), (0x3b, 0x3e, 0x4c), 16.0);
 
     let accent = ui.append(
         header,
-        Panel::new().layout(Layout::new().logical_size(6.0, 68.0).flex_shrink(0.0)),
+        Panel::new().layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
     );
     style_surface(ui, accent, (0x59, 0x75, 0xe6), (0x59, 0x75, 0xe6), 8.0);
 
@@ -455,15 +429,11 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
     );
     ui.append(copy, page_heading(page.title()));
     ui.append(copy, caption(page.subtitle()).wrap());
-
-    let status = ui.append(header, Panel::row(10.0).align_center());
-    ui.append(status, Spinner::new());
-    ui.append(status, quiet_caption("live"));
 }
 
 fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let inputs = demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 254.0);
+    let inputs = demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 222.0);
     ui.append(
         inputs,
         TextInput::new()
@@ -481,10 +451,10 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     ui.append(actions, Button::new("Preview").font_size(15.0));
     ui.append(inputs, CheckBox::new("Record diagnostics").checked(true));
 
-    let systems = demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 254.0);
+    let systems = demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0);
     let toggle_row = ui.append(systems, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
-    ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
+    ui.append(toggle_row, control_label("Rendering enabled"));
     ui.append(systems, caption("GPU Budget"));
     let progress = ui.append(
         systems,
@@ -495,22 +465,22 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
     append_tabular_counter(ui, systems, "Frames", "fps", 120_000_000, 7);
 
-    let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 254.0);
+    let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 222.0);
     let renderer_scroll = ScrollState::with_offset_y(28.0);
     let renderer_row = ui.append(selection, Panel::row(8.0).align_center());
     let list = ui.append(
         renderer_row,
         ListBox::new()
-            .items(PIPELINE_ITEMS)
-            .size(OVERVIEW_LIST_WIDTH, 154.0)
+            .items(renderer_queue_items())
+            .size(OVERVIEW_LIST_WIDTH, 132.0)
             .multiple_selection()
-            .selected_index(2)
+            .selected_index(INITIAL_RENDERER_SELECTION)
             .scroll_state(renderer_scroll.clone()),
     );
     ui.append(
         renderer_row,
         ScrollBar::vertical(list, renderer_scroll)
-            .length(154.0)
+            .length(132.0)
             .thickness(10.0)
             .thumb_extent(34.0),
     );
@@ -518,7 +488,7 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
 
 fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let forms = demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 272.0);
+    let forms = demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 224.0);
     ui.append(
         forms,
         TextInput::new()
@@ -537,7 +507,7 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         caption("Focus rings, hover borders, selection, and read-only state"),
     );
 
-    let actions = demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 272.0);
+    let actions = demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0);
     let action_row = ui.append(actions, Panel::row(10.0).align_center());
     let deploy = ui.append(
         action_row,
@@ -560,19 +530,14 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
     );
     ui.append(actions, CheckBox::new("Collect timing traces"));
     ui.append(actions, CheckBox::new("Send diagnostics").disabled());
-
-    let strip = ui.append(stage, Panel::row(16.0));
-    stat_tile(ui, strip, "Template parts", "bound");
-    stat_tile(ui, strip, "Routed input", "ready");
-    stat_tile(ui, strip, "Tooltip layer", "above");
 }
 
 fn build_systems_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let controls = demo_card(ui, row, "CONTROL SURFACE", PAGE_CARD_WIDTH, 416.0);
+    let controls = demo_card(ui, row, "CONTROL SURFACE", PAGE_CARD_WIDTH, 322.0);
     let toggle_row = ui.append(controls, Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
-    ui.append(toggle_row, Text::new("Live rendering").font_size(15.0));
+    ui.append(toggle_row, control_label("Rendering enabled"));
     ui.append(controls, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
     ui.append(controls, caption("GPU Budget"));
     let progress = ui.append(
@@ -596,28 +561,27 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId) {
     ui.append(spinner_row, Spinner::new());
     ui.append(spinner_row, caption("Streaming updates"));
 
-    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 416.0);
+    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 218.0);
     append_large_counter(ui, telemetry, "Throughput", "events / min", 90_000_000, 137);
-    ui.append(telemetry, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-    let stats = ui.append(telemetry, Panel::row(10.0));
-    mini_stat_tile(ui, stats, "UI tree", "live");
-    mini_stat_tile(ui, stats, "Style", "cascaded");
-    mini_stat_tile(ui, stats, "Scene", "retained");
 }
 
 fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 420.0);
+    let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0);
     let renderer_scroll = ScrollState::with_offset_y(34.0);
     let renderer_row = ui.append(list_card, Panel::row(10.0).align_center());
-    let summary = ui.append(list_card, caption("Selected: Text shaping pass"));
+    let initial_summary = format!(
+        "Selected: {}",
+        renderer_queue_label(INITIAL_RENDERER_SELECTION)
+    );
+    let summary = ui.append(list_card, caption(&initial_summary));
     let renderer_list = ui.append(
         renderer_row,
         ListBox::new()
-            .items(PIPELINE_ITEMS)
-            .size(PAGE_LIST_WIDTH, 220.0)
+            .items(renderer_queue_items())
+            .size(PAGE_LIST_WIDTH, 178.0)
             .multiple_selection()
-            .selected_index(2)
+            .selected_index(INITIAL_RENDERER_SELECTION)
             .scroll_state(renderer_scroll.clone())
             .on_selection_changed(move |ui, event| {
                 let label = selection_summary(&event);
@@ -627,7 +591,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     ui.append(
         renderer_row,
         ScrollBar::vertical(renderer_list, renderer_scroll)
-            .length(220.0)
+            .length(178.0)
             .thickness(10.0)
             .thumb_extent(40.0),
     );
@@ -636,7 +600,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
         Tooltip::new("Multi-select list with viewport clipping"),
     );
 
-    let detail = demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 420.0);
+    let detail = demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 326.0);
     ui.append(detail, page_heading("Virtualized by default"));
     ui.append(
         detail,
@@ -647,16 +611,11 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
         .foreground(Color::from_rgba8(0xd8, 0xd9, 0xe2, 0xff))
         .wrap(),
     );
-    ui.append(detail, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-    let stats = ui.append(detail, Panel::row(10.0));
-    mini_stat_tile(ui, stats, "Selection", "indices");
-    mini_stat_tile(ui, stats, "Rows", "virtual");
-    mini_stat_tile(ui, stats, "Scroll", "shared");
 }
 
 fn build_layout_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 420.0);
+    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0);
     let split_row = ui.append(panes, Panel::row(8.0).align_center());
     let left_pane = ui.append(
         split_row,
@@ -696,7 +655,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
     ui.append(right_pane, Text::new("Inspector").font_size(15.0));
     ui.append(right_pane, caption("Keyboard resize"));
 
-    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 420.0);
+    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 326.0);
     ui.append(ruler, caption("Slider ticks come from understory_axis"));
     ui.append(
         ruler,
@@ -721,7 +680,7 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
 
 fn build_typography_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 420.0);
+    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0);
     append_large_counter(
         ui,
         counter,
@@ -740,7 +699,7 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId) {
         .wrap(),
     );
 
-    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 420.0);
+    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 326.0);
     ui.append(
         text,
         Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
@@ -841,9 +800,8 @@ fn selection_summary(event: &overstory::ListSelectionChangedEvent) -> String {
     let count = event.selected_indices.len();
     let primary = event
         .primary_index
-        .and_then(|index| PIPELINE_ITEMS.get(index))
-        .copied()
-        .unwrap_or("unknown");
+        .map(renderer_queue_label)
+        .unwrap_or_else(|| "unknown".to_owned());
     if count == 1 {
         format!("Selected: {primary}")
     } else {
@@ -912,6 +870,24 @@ mod tests {
     }
 
     #[test]
+    fn renderer_queue_demo_uses_large_generated_data_set() {
+        let items = renderer_queue_items().collect::<Vec<_>>();
+        assert_eq!(items.len(), RENDERER_QUEUE_LEN);
+        assert_eq!(
+            items.first().map(String::as_str),
+            Some("Vello scene graph 001")
+        );
+        assert_eq!(
+            items.get(INITIAL_RENDERER_SELECTION).map(String::as_str),
+            Some("Text shaping pass 001")
+        );
+        assert_eq!(
+            items.last().map(String::as_str),
+            Some("Accessibility tree 084")
+        );
+    }
+
+    #[test]
     fn gallery_pages_stay_inside_initial_window_width() {
         for page in DemoPage::ALL {
             let mut ui = build_ui();
@@ -937,6 +913,36 @@ mod tests {
             ui.compute_layout(Size::new(NARROW_WIDTH, f64::from(INITIAL_SIZE.1)));
 
             assert_subtree_inside_width(&ui, ui.root(), NARROW_WIDTH);
+        }
+    }
+
+    #[test]
+    fn gallery_pages_keep_primary_cards_on_one_line_at_narrow_width() {
+        const NARROW_WIDTH: f64 = 1180.0;
+
+        for page in DemoPage::ALL {
+            let mut ui = build_ui();
+            let stage = stage_element(&ui);
+            show_demo_page(&mut ui, stage, page);
+            ui.compute_layout(Size::new(NARROW_WIDTH, f64::from(INITIAL_SIZE.1)));
+
+            let row = page_row(&ui, stage);
+            let row_children = ui
+                .get(row)
+                .expect("page row should exist")
+                .children()
+                .to_vec();
+            let Some(first) = row_children.first().copied() else {
+                continue;
+            };
+            let expected_y = ui.effective_bounds(first).y0;
+            for child in row_children {
+                assert_close(
+                    ui.effective_bounds(child).y0,
+                    expected_y,
+                    "page card y position",
+                );
+            }
         }
     }
 
@@ -966,5 +972,14 @@ mod tests {
             panic!("gallery root should contain nav and stage");
         };
         stage
+    }
+
+    fn page_row(ui: &Ui, stage: ElementId) -> ElementId {
+        ui.get(stage)
+            .expect("stage should exist")
+            .children()
+            .get(1)
+            .copied()
+            .expect("stage should contain header and page row")
     }
 }
