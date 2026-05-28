@@ -113,18 +113,20 @@ impl Widget for DividerWidget {
         Some(TYPE_DIVIDER)
     }
 
-    fn accessibility_role(
+    fn configure_accessibility(
         &self,
         _element: &Element,
         _ctx: &crate::AccessibilityContext<'_>,
-    ) -> Option<accesskit::Role> {
-        Some(accesskit::Role::Splitter)
+        node: &mut accesskit::Node,
+    ) {
+        node.set_hidden();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use accesskit::{Node, NodeId, Role, TreeUpdate};
     use kurbo::Size;
 
     #[test]
@@ -139,5 +141,32 @@ mod tests {
         let bounds = ui.effective_bounds(divider);
         assert_eq!(bounds.width(), 3.0);
         assert_eq!(bounds.height(), 42.0);
+    }
+
+    #[test]
+    fn divider_accessibility_is_decorative_not_splitter() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let divider = ui.append(root, Divider::horizontal().length(42.0));
+        ui.compute_layout(Size::new(100.0, 100.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, divider);
+
+        assert_eq!(node.role(), Role::GenericContainer);
+        assert!(node.is_hidden());
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }
