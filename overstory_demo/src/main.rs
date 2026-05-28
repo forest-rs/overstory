@@ -10,8 +10,7 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::Cell;
-use std::path::Path;
+use core::cell::{Cell, RefCell};
 
 use overstory::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
@@ -19,18 +18,21 @@ use overstory::motion::{
 };
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
-    BuiltInProperties, Button, CheckBox, Divider, ElementId, FontFeature, Layout, LayoutAlign,
-    LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup, ProgressBar, ScrollBar,
-    ScrollState, Select, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
-    TimerDuration, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
+    Affine, BuiltInProperties, Button, CheckBox, CursorIcon, Divider, ElementId, FontFeature,
+    Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup,
+    ProgressBar, Rect, ScrollBar, ScrollState, Select, Slider, Spinner, Splitter, TYPE_GENERIC,
+    TYPE_TEXT, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+    layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{SvgElementTree, SvgImportOptions};
+use peniko::kurbo::{Point, Vec2};
 use peniko::{Brush, Color};
 use understory_style::{
     ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade,
     StyleOrigin,
 };
+use understory_view2d::{ClampMode, FitMode, Viewport2D};
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
 const ROOT_GAP: f32 = 24.0;
@@ -47,7 +49,11 @@ const PAGE_CONTROL_WIDTH: f32 = 328.0;
 const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
-const TIGER_SVG_FILE: &str = "Ghostscript_Tiger.svg";
+const SVG_VIEWPORT_WIDTH: f32 = PAGE_CONTROL_WIDTH;
+const SVG_VIEWPORT_HEIGHT: f32 = 202.0;
+const SVG_ZOOM_SENSITIVITY: f64 = 0.0015;
+const SVG_GRID_LIMIT: usize = 140;
+const TIGER_SVG: &[u8] = include_bytes!("../assets/Ghostscript_Tiger.svg");
 
 const DEMO_ROOT_BG: ResourceKey = ResourceKey::new(1_000);
 const DEMO_NAV_BG: ResourceKey = ResourceKey::new(1_001);
@@ -306,6 +312,56 @@ struct NavChrome {
 enum NavKeyAction {
     Activate(DemoPage),
     MoveTo(DemoPage),
+}
+
+#[derive(Clone, Debug)]
+struct SvgViewportDemo {
+    tree: SvgElementTree,
+    viewport: Viewport2D,
+    world_bounds: Rect,
+}
+
+impl SvgViewportDemo {
+    fn new(tree: SvgElementTree, view_width: f32, view_height: f32) -> Self {
+        let world_bounds = Rect::new(0.0, 0.0, f64::from(tree.width()), f64::from(tree.height()));
+        let mut viewport = Viewport2D::new(Rect::new(
+            0.0,
+            0.0,
+            f64::from(view_width),
+            f64::from(view_height),
+        ));
+        viewport.set_fit_mode(FitMode::Center);
+        viewport.set_clamp_mode(ClampMode::KeepSomeVisible);
+        viewport.set_zoom_limits(0.12, 18.0);
+        viewport.set_world_bounds(Some(padded_svg_bounds(world_bounds)));
+        viewport.fit_world();
+        Self {
+            tree,
+            viewport,
+            world_bounds,
+        }
+    }
+
+    fn reset_to_fit(&mut self) {
+        self.viewport.fit_rect(padded_svg_bounds(self.world_bounds));
+    }
+
+    fn zoom_about(&mut self, anchor: Point, factor: f64) {
+        self.viewport.zoom_about_view_point(anchor, factor);
+    }
+
+    fn zoom_center(&mut self, factor: f64) {
+        self.zoom_about(self.viewport.view_rect().center(), factor);
+    }
+
+    fn pan_by_view(&mut self, delta: Vec2) {
+        self.viewport.pan_by_view(delta);
+    }
+
+    fn status(&self) -> String {
+        let zoom = self.viewport.zoom() * 100.0;
+        format!("{} paths · {zoom:.0}%", self.tree.len())
+    }
 }
 
 fn caption(text: &str) -> Text {
@@ -1422,26 +1478,26 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
 
 fn build_svg_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
-    let specimen = demo_card(ui, row, "GHOSTSCRIPT TIGER", PAGE_CARD_WIDTH, 326.0);
-    match load_workspace_svg(TIGER_SVG_FILE)
-        .as_deref()
-        .and_then(|bytes| append_svg_specimen(ui, specimen, bytes).ok())
-    {
-        Some(imported_paths) => {
-            ui.append(
-                specimen,
-                caption(&format!("{imported_paths} retained vector paths")),
-            );
-        }
-        None => {
-            ui.append(
-                specimen,
-                body_text("Local SVG stress file was not found or used unsupported SVG features."),
-            );
-        }
+    let specimen = demo_card(ui, row, "GHOSTSCRIPT TIGER", PAGE_CARD_WIDTH, 382.0);
+    if let Ok(viewer) = append_svg_viewer(ui, specimen, TIGER_SVG) {
+        let controls = ui.append(specimen, Panel::row(8.0).align_center());
+        append_svg_view_button(ui, controls, "Fit", viewer.clone(), |state| {
+            state.reset_to_fit();
+        });
+        append_svg_view_button(ui, controls, "-", viewer.clone(), |state| {
+            state.zoom_center(0.82);
+        });
+        append_svg_view_button(ui, controls, "+", viewer, |state| {
+            state.zoom_center(1.22);
+        });
+    } else {
+        ui.append(
+            specimen,
+            body_text("The SVG stress asset did not import any supported vector paths."),
+        );
     }
 
-    let notes = demo_card(ui, row, "IMPORT SURFACE", PAGE_CARD_WIDTH, 326.0);
+    let notes = demo_card(ui, row, "IMPORT SURFACE", PAGE_CARD_WIDTH, 382.0);
     ui.append(notes, page_heading("Path-first lowering"));
     ui.append(
         notes,
@@ -1454,20 +1510,238 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
     );
 }
 
-fn append_svg_specimen(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<usize, ()> {
-    let svg = SvgElementTree::from_bytes(bytes, SvgImportOptions::default()).map_err(|_| ())?;
-    let imported_paths = svg.len();
-    if imported_paths == 0 {
-        return Err(());
-    }
-    ui.append(parent, svg);
-    Ok(imported_paths)
+#[derive(Clone)]
+struct SvgViewer {
+    host: ElementId,
+    status: ElementId,
+    state: Rc<RefCell<SvgViewportDemo>>,
 }
 
-fn load_workspace_svg(file_name: &str) -> Option<Vec<u8>> {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap_or(manifest_dir);
-    std::fs::read(workspace_root.join(file_name)).ok()
+fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<SvgViewer, ()> {
+    let svg = SvgElementTree::from_bytes(bytes, SvgImportOptions::default()).map_err(|_| ())?;
+    if svg.is_empty() {
+        return Err(());
+    }
+    let state = Rc::new(RefCell::new(SvgViewportDemo::new(
+        svg,
+        SVG_VIEWPORT_WIDTH,
+        SVG_VIEWPORT_HEIGHT,
+    )));
+    let host = ui.append(
+        parent,
+        Viewport::new().cursor_icon(CursorIcon::Grab).layout(
+            Layout::new()
+                .relative()
+                .logical_size(SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT),
+        ),
+    );
+    ui.set_local(
+        host,
+        ui.properties().background,
+        opt_solid(0x13, 0x13, 0x1b, 0xff),
+    );
+    ui.set_local(
+        host,
+        ui.properties().border_brush,
+        opt_solid(0x44, 0x46, 0x54, 0xff),
+    );
+    ui.set_local(host, ui.properties().border_width, 1.0_f64);
+    ui.set_local(host, ui.properties().corner_radius, 12.0_f64);
+
+    let status = ui.append(parent, caption(&state.borrow().status()));
+    let viewer = SvgViewer {
+        host,
+        status,
+        state,
+    };
+    install_svg_viewer_interaction(ui, &viewer);
+    refresh_svg_viewer(ui, &viewer);
+    Ok(viewer)
+}
+
+fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
+    let drag_viewer = viewer.clone();
+    ui.on_drag(viewer.host, move |ui, event| {
+        if !matches!(
+            event.phase,
+            overstory::Phase::Capture | overstory::Phase::Target
+        ) || event.delta.hypot() <= 0.0
+        {
+            return;
+        }
+        let _ = ui.capture_pointer(drag_viewer.host);
+        drag_viewer.state.borrow_mut().pan_by_view(event.delta);
+        refresh_svg_viewer(ui, &drag_viewer);
+        event.mark_handled();
+        event.stop_propagation();
+    });
+
+    let scroll_viewer = viewer.clone();
+    ui.on_scroll(viewer.host, move |ui, event| {
+        if !matches!(
+            event.phase,
+            overstory::Phase::Capture | overstory::Phase::Target
+        ) {
+            return;
+        }
+        let delta = event.logical_delta(Vec2::new(48.0, 48.0), Vec2::new(260.0, 260.0));
+        let amount = if delta.y.abs() >= delta.x.abs() {
+            delta.y
+        } else {
+            delta.x
+        };
+        if amount.abs() <= 0.01 {
+            return;
+        }
+        let anchor = local_point(ui, scroll_viewer.host, event.position);
+        let factor = (-amount * SVG_ZOOM_SENSITIVITY).exp().clamp(0.2, 5.0);
+        scroll_viewer.state.borrow_mut().zoom_about(anchor, factor);
+        refresh_svg_viewer(ui, &scroll_viewer);
+        event.mark_handled();
+        event.stop_propagation();
+    });
+}
+
+fn append_svg_view_button(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    viewer: SvgViewer,
+    action: impl Fn(&mut SvgViewportDemo) + 'static,
+) {
+    let button = ui.append(
+        parent,
+        Button::new(label)
+            .font_size(13.0)
+            .on_click(move |ui, event| {
+                if !matches!(
+                    event.phase,
+                    overstory::Phase::Target | overstory::Phase::Bubble
+                ) {
+                    return;
+                }
+                action(&mut viewer.state.borrow_mut());
+                refresh_svg_viewer(ui, &viewer);
+                event.mark_handled();
+            }),
+    );
+    ui.set_tooltip(button, Tooltip::new("Adjust the SVG viewport"));
+}
+
+fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
+    clear_children(ui, viewer.host);
+    let state = viewer.state.borrow();
+    append_svg_grid(ui, viewer.host, &state);
+    append_svg_paths(ui, viewer.host, &state);
+    ui.set_local(viewer.status, ui.properties().content, state.status());
+}
+
+fn append_svg_grid(ui: &mut Ui, parent: ElementId, state: &SvgViewportDemo) {
+    let viewport = &state.viewport;
+    let visible = viewport.visible_world_rect();
+    let spacing = viewport.suggest_grid_spacing(12.0).max(1.0);
+    append_svg_grid_axis(ui, parent, viewport, visible.x0, visible.x1, spacing, true);
+    append_svg_grid_axis(ui, parent, viewport, visible.y0, visible.y1, spacing, false);
+}
+
+fn append_svg_grid_axis(
+    ui: &mut Ui,
+    parent: ElementId,
+    viewport: &Viewport2D,
+    start: f64,
+    end: f64,
+    spacing: f64,
+    vertical: bool,
+) {
+    let view = viewport.view_rect();
+    let mut world = (start / spacing).floor() * spacing;
+    let mut count = 0;
+    while world <= end && count < SVG_GRID_LIMIT {
+        let index = (world / spacing).round();
+        let major = ((index / 5.0) - (index / 5.0).round()).abs() <= 0.001;
+        let color = if major {
+            Color::from_rgba8(0x40, 0x42, 0x50, 0x86)
+        } else {
+            Color::from_rgba8(0x2a, 0x2b, 0x35, 0x72)
+        };
+        let coordinate = if vertical {
+            viewport.world_to_view_point(Point::new(world, 0.0)).x
+        } else {
+            viewport.world_to_view_point(Point::new(0.0, world)).y
+        };
+        let rect = if vertical {
+            Rect::new(coordinate, view.y0, coordinate + 1.0, view.y1)
+        } else {
+            Rect::new(view.x0, coordinate, view.x1, coordinate + 1.0)
+        };
+        append_svg_rect(ui, parent, rect, color);
+        world += spacing;
+        count += 1;
+    }
+}
+
+fn append_svg_paths(ui: &mut Ui, parent: ElementId, state: &SvgViewportDemo) {
+    let viewport = &state.viewport;
+    let view_bounds = viewport.view_rect();
+    for path in state.tree.paths() {
+        let world_bounds = path.bounds();
+        let view_bounds_for_path = viewport.world_to_view_rect(world_bounds);
+        if !rects_intersect(view_bounds_for_path, view_bounds) {
+            continue;
+        }
+        let mut primitive = path.primitive().clone();
+        primitive.transform = Affine::scale(viewport.zoom()) * primitive.transform;
+        ui.append(
+            parent,
+            VectorPath::from_primitive(primitive).layout(
+                Layout::new()
+                    .absolute_at(
+                        f32_coord(view_bounds_for_path.x0),
+                        f32_coord(view_bounds_for_path.y0),
+                    )
+                    .logical_size(
+                        f32_coord(view_bounds_for_path.width()),
+                        f32_coord(view_bounds_for_path.height()),
+                    ),
+            ),
+        );
+    }
+}
+
+fn append_svg_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color) -> ElementId {
+    let element = ui.append(
+        parent,
+        Panel::new().layout(
+            Layout::new()
+                .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
+                .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
+        ),
+    );
+    ui.set_local(element, ui.properties().background, Some(color.into()));
+    element
+}
+
+fn padded_svg_bounds(bounds: Rect) -> Rect {
+    let pad_x = (bounds.width() * 0.08).max(8.0);
+    let pad_y = (bounds.height() * 0.08).max(8.0);
+    bounds.inflate(pad_x, pad_y)
+}
+
+fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
+    let bounds = ui.effective_bounds(parent);
+    Point::new(position.x - bounds.x0, position.y - bounds.y0)
+}
+
+fn rects_intersect(a: Rect, b: Rect) -> bool {
+    a.x1 >= b.x0 && a.x0 <= b.x1 && a.y1 >= b.y0 && a.y0 <= b.y1
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "demo logical coordinates fit f32 layout values"
+)]
+fn f32_coord(value: f64) -> f32 {
+    value as f32
 }
 
 fn build_typography_page(ui: &mut Ui, stage: ElementId) {
@@ -1987,18 +2261,44 @@ mod tests {
     }
 
     #[test]
-    fn local_tiger_svg_imports_when_available() {
-        let Some(bytes) = load_workspace_svg(TIGER_SVG_FILE) else {
-            return;
-        };
-
-        let svg = SvgElementTree::from_bytes(&bytes, SvgImportOptions::default())
-            .expect("local Tiger SVG should parse");
+    fn tiger_svg_asset_stresses_path_importer() {
+        let svg = SvgElementTree::from_bytes(TIGER_SVG, SvgImportOptions::default())
+            .expect("Tiger SVG asset should parse");
 
         assert!(
             svg.len() > 100,
-            "local Tiger SVG should stress the path importer, got {} paths",
+            "Tiger SVG should stress the path importer, got {} paths",
             svg.len(),
+        );
+    }
+
+    #[test]
+    fn svg_viewer_zoom_reprojects_vector_paths() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+              <rect x="25" y="25" width="50" height="50" fill="#ff8a00"/>
+            </svg>
+        "##;
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(360.0, 280.0));
+        let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
+        ui.compute_layout(Size::new(360.0, 280.0));
+
+        let path = find_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH)
+            .expect("viewer should contain a vector path");
+        let before = ui.effective_bounds(path);
+
+        viewer.state.borrow_mut().zoom_center(2.0);
+        refresh_svg_viewer(&mut ui, &viewer);
+        ui.compute_layout(Size::new(360.0, 280.0));
+
+        let path = find_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH)
+            .expect("viewer should still contain a vector path after zoom");
+        let after = ui.effective_bounds(path);
+        assert!(
+            after.width() > before.width() * 1.5,
+            "zoom should enlarge projected path bounds: {before:?} -> {after:?}",
         );
     }
 
@@ -2150,6 +2450,21 @@ mod tests {
                 .iter()
                 .map(|child| count_type(ui, *child, type_tag))
                 .sum::<usize>()
+    }
+
+    fn find_type(
+        ui: &Ui,
+        element: ElementId,
+        type_tag: understory_style::TypeTag,
+    ) -> Option<ElementId> {
+        let current = ui.get(element)?;
+        if current.type_tag() == Some(type_tag) {
+            return Some(element);
+        }
+        current
+            .children()
+            .iter()
+            .find_map(|child| find_type(ui, *child, type_tag))
     }
 
     fn assert_first_page_card_height(ui: &mut Ui, height: f64, label: &str) {

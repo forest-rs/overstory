@@ -14,6 +14,7 @@ overstory_host_winit.workspace = true
 overstory_svg.workspace = true
 peniko.workspace = true
 understory_style.workspace = true
+understory_view2d.workspace = true
 ui-events.workspace = true
 
 [dev-dependencies]

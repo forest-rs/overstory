@@ -2167,6 +2167,7 @@ dependencies = [
  "peniko",
  "ui-events",
  "understory_style",
+ "understory_view2d",
 ]
 
 [[package]]
