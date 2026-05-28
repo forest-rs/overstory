@@ -108,6 +108,13 @@ impl<'a> AccessibilityContext<'a> {
         element.pseudos().contains(&PSEUDO_SELECTED)
     }
 
+    /// Resolves read-only state associated with `element`.
+    #[must_use]
+    pub fn is_read_only(&self, element: &Element) -> bool {
+        self.ui
+            .resolve_value_for(element, self.ui.properties().is_read_only)
+    }
+
     /// Adds the standard click action to `node`.
     pub fn add_click_action(&self, node: &mut Node) {
         let _ = self;

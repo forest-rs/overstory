@@ -25,7 +25,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::{f32_from_logical, read_local_or};
+use crate::controls::support::f32_from_logical;
 use crate::controls::text::{TextWidget, text_style};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
@@ -246,6 +246,30 @@ impl Widget for TextInputWidget {
         Some(accesskit::Role::TextInput)
     }
 
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        let input = element.id();
+        node.clear_label();
+        node.set_value(String::from(self.edit.text()));
+        if let Some(placeholder) = self.placeholder.as_deref() {
+            node.set_placeholder(placeholder);
+        }
+
+        let read_only = ctx.is_read_only(element);
+        if read_only {
+            node.set_read_only();
+        }
+
+        if ctx.is_enabled(input) && !read_only {
+            node.add_action(accesskit::Action::ReplaceSelectedText);
+            node.add_action(accesskit::Action::SetValue);
+        }
+    }
+
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TEXT_INPUT_TEMPLATE)
     }
@@ -321,21 +345,64 @@ impl Widget for TextInputWidget {
             return;
         };
         let style = text_style(element, ctx);
-        let read_only = read_local_or(ctx, input, ctx.properties().is_read_only, false);
+        let read_only = read_only_from_ctx(ctx);
         self.edit.sync_style(&style);
         let edit = self.edit.edit_from_key(ctx, event.key, read_only);
         if edit.handled {
             if edit.changed {
-                let content = ctx.properties().content;
-                ctx.set_local(input, content, String::from(self.edit.text()));
+                self.commit_content(ctx, input);
             }
             self.refresh_parts(ctx, input);
             event.mark_handled();
         }
     }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let input = ctx.id();
+        let read_only = read_only_from_ctx(ctx);
+        if !ctx.is_enabled(input) || read_only {
+            return false;
+        }
+        let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
+            return false;
+        };
+
+        match request.action {
+            accesskit::Action::ReplaceSelectedText => {
+                ctx.with_plain_editor(&mut self.edit.editor, |driver| {
+                    driver.insert_or_replace_selection(value);
+                });
+            }
+            accesskit::Action::SetValue => {
+                ctx.with_plain_editor(&mut self.edit.editor, |driver| {
+                    driver.editor.set_text(value);
+                    driver.move_to_text_end();
+                });
+            }
+            _ => return false,
+        }
+
+        self.commit_content(ctx, input);
+        self.refresh_parts(ctx, input);
+        true
+    }
+}
+
+fn read_only_from_ctx(ctx: &WidgetEventContext<'_>) -> bool {
+    ctx.element()
+        .is_some_and(|element| ctx.get_value(element, ctx.properties().is_read_only))
 }
 
 impl TextInputWidget {
+    fn commit_content(&self, ui: &mut Ui, input: ElementId) {
+        let content = ui.properties().content;
+        ui.set_local(input, content, String::from(self.edit.text()));
+    }
+
     fn refresh_parts(&mut self, ui: &mut Ui, input: ElementId) {
         let Some(text_part) = ui.slot(input, SLOT_TEXT_INPUT_TEXT) else {
             return;
@@ -780,6 +847,7 @@ pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) 
 mod tests {
     use super::*;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
+    use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
     use understory_property::DependencyObjectExt;
@@ -956,6 +1024,103 @@ mod tests {
     }
 
     #[test]
+    fn text_input_accessibility_exposes_editable_value_and_placeholder() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new()
+                .text("George")
+                .placeholder("Character name"),
+        );
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, input);
+
+        assert_eq!(node.role(), Role::TextInput);
+        assert_eq!(node.value(), Some("George"));
+        assert_eq!(node.placeholder(), Some("Character name"));
+        assert_eq!(node.label(), None);
+        assert!(node.supports_action(Action::ReplaceSelectedText));
+        assert!(node.supports_action(Action::SetValue));
+        assert!(!node.is_read_only());
+    }
+
+    #[test]
+    fn read_only_text_input_accessibility_rejects_mutating_actions() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("locked").read_only(true));
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, input);
+        assert_eq!(node.value(), Some("locked"));
+        assert!(node.is_read_only());
+        assert!(!node.supports_action(Action::ReplaceSelectedText));
+        assert!(!node.supports_action(Action::SetValue));
+
+        let handled = ui.handle_accesskit_action(&text_action(input, Action::SetValue, "changed"));
+
+        assert!(!handled);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("locked")
+        );
+    }
+
+    #[test]
+    fn accesskit_set_value_updates_text_input_content_and_parts() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("old"));
+        let text = ui.slot(input, SLOT_TEXT_INPUT_TEXT).unwrap();
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let handled = ui.handle_accesskit_action(&text_action(input, Action::SetValue, "new"));
+
+        assert!(handled);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("new")
+        );
+        assert_eq!(
+            ui.get(text)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("new")
+        );
+    }
+
+    #[test]
+    fn accesskit_replace_selected_text_uses_plain_editor_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("old"));
+        ui.set_focus(Some(input));
+
+        let mut select_all = KeyboardEvent::key_down(Key::Character(String::from("a")), Code::KeyA);
+        select_all.modifiers = ui_events::keyboard::Modifiers::CONTROL;
+        assert!(ui.dispatch_key(&select_all).handled);
+
+        let handled =
+            ui.handle_accesskit_action(&text_action(input, Action::ReplaceSelectedText, "new"));
+
+        assert!(handled);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("new")
+        );
+    }
+
+    #[test]
     fn text_input_drag_extends_selection_and_ignores_trailing_click() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -976,5 +1141,27 @@ mod tests {
         ui.compute_layout(Size::new(360.0, 80.0));
 
         assert!(ui.effective_bounds(selection).width() > 0.0);
+    }
+
+    fn text_action(input: ElementId, action: Action, value: &str) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(input),
+            data: Some(ActionData::Value(String::from(value).into_boxed_str())),
+        }
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

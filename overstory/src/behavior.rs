@@ -112,6 +112,16 @@ impl<'a> WidgetEventContext<'a> {
     pub fn ui_mut(&mut self) -> &mut Ui {
         self.ui
     }
+
+    /// Resolves `property` for `element` through the active property stores,
+    /// style cascade, theme resources, and inherited ancestor values.
+    #[must_use]
+    pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.ui.resolve_value_for(element, property)
+    }
 }
 
 impl Deref for WidgetEventContext<'_> {
