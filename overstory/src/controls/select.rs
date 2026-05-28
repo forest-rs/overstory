@@ -268,11 +268,22 @@ impl Widget for SelectWidget {
 
     fn configure_accessibility(
         &self,
-        _element: &Element,
+        element: &Element,
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.add_click_action(node);
+        node.set_value(ctx.content(element));
+        node.set_has_popup(accesskit::HasPopup::Listbox);
+        let open = self.popup.get().is_some();
+        node.set_expanded(open);
+        if ctx.is_enabled(element.id()) {
+            ctx.add_click_action(node);
+            if open {
+                node.add_action(accesskit::Action::Collapse);
+            } else {
+                node.add_action(accesskit::Action::Expand);
+            }
+        }
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -344,6 +355,27 @@ impl Widget for SelectWidget {
                 event.mark_handled();
             }
             _ => {}
+        }
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let select = ctx.id();
+        if !ctx.is_enabled(select) {
+            return false;
+        }
+        match request.action {
+            accesskit::Action::Expand => {
+                if self.popup.get().is_none() {
+                    self.open_popup(ctx, select);
+                }
+                true
+            }
+            accesskit::Action::Collapse => self.close_popup(ctx),
+            _ => false,
         }
     }
 }
@@ -628,6 +660,7 @@ fn normalize_item_extent(extent: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::controls::list::{realized_list_item, selected_list_index};
+    use accesskit::{Action, ActionRequest, HasPopup, Node, NodeId, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
@@ -712,11 +745,65 @@ mod tests {
         );
     }
 
+    #[test]
+    fn select_accessibility_exposes_value_popup_state_and_expand_actions() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(1));
+        realize(&mut ui);
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, select);
+        assert_eq!(node.role(), Role::ComboBox);
+        assert_eq!(node.value(), Some("Review"));
+        assert_eq!(node.has_popup(), Some(HasPopup::Listbox));
+        assert_eq!(node.is_expanded(), Some(false));
+        assert!(node.supports_action(Action::Click));
+        assert!(node.supports_action(Action::Expand));
+
+        let expanded = ui.handle_accesskit_action(&action(select, Action::Expand));
+        realize(&mut ui);
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, select);
+        assert!(expanded);
+        assert_eq!(node.is_expanded(), Some(true));
+        assert!(node.supports_action(Action::Collapse));
+
+        let collapsed = ui.handle_accesskit_action(&action(select, Action::Collapse));
+        realize(&mut ui);
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, select);
+        assert!(collapsed);
+        assert_eq!(node.is_expanded(), Some(false));
+    }
+
     fn test_select() -> Select {
         Select::new().items(ITEMS).width(180.0).popup_height(92.0)
     }
 
     fn realize(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
+    }
+
+    fn action(element: ElementId, action: Action) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: None,
+        }
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

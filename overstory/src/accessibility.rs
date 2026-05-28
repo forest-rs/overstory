@@ -71,6 +71,12 @@ impl<'a> AccessibilityContext<'a> {
         self.ui.effective_bounds(id)
     }
 
+    /// Returns the AccessKit node id used for `id` in this tree.
+    #[must_use]
+    pub fn node_id(&self, id: ElementId) -> NodeId {
+        accesskit_node_id(id)
+    }
+
     /// Resolves the textual content associated with `element`.
     #[must_use]
     pub fn content(&self, element: &Element) -> String {

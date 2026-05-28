@@ -337,6 +337,23 @@ impl Widget for ListBoxWidget {
         Some(accesskit::Role::ListBox)
     }
 
+    fn configure_accessibility(
+        &self,
+        _element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        if self.selection_mode == ListSelectionMode::Multiple {
+            node.set_multiselectable();
+        }
+        node.set_size_of_set(self.items.len());
+        if let Some(primary) = self.selected_index()
+            && let Some(item) = self.realized.iter().find(|item| item.index == primary)
+        {
+            node.set_active_descendant(ctx.node_id(item.element));
+        }
+    }
+
     fn clips_subtree(&self, _element: &Element) -> bool {
         true
     }
@@ -721,6 +738,7 @@ impl Widget for ListItemWidget {
     ) {
         ctx.add_click_action(node);
         ctx.apply_selected_state(element, node);
+        node.set_position_in_set(self.index + 1);
     }
 
     fn default_template(&self) -> Option<&'static dyn crate::Template> {
@@ -993,6 +1011,7 @@ mod tests {
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
+    use accesskit::{Action, Node, NodeId, Role, TreeUpdate};
     use kurbo::Point;
     use peniko::{Brush, Color};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
@@ -1138,6 +1157,32 @@ mod tests {
             selected_list_indices(&ui, listbox),
             vec![0, 1, 2, 3, 4, 5, 6]
         );
+    }
+
+    #[test]
+    fn listbox_accessibility_exposes_item_set_and_selection_metadata() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, test_list_box().multiple_selection());
+        assert!(select_list_index(&mut ui, listbox, 2));
+        realize(&mut ui);
+        let item = realized_list_item(&ui, listbox, 2).unwrap();
+
+        let update = ui.accesskit_tree_update();
+        let listbox_node = accesskit_node_for(&update, listbox);
+        let item_node = accesskit_node_for(&update, item);
+
+        assert_eq!(listbox_node.role(), Role::ListBox);
+        assert!(listbox_node.is_multiselectable());
+        assert_eq!(listbox_node.size_of_set(), Some(TEST_ITEMS.len()));
+        assert_eq!(
+            listbox_node.active_descendant(),
+            Some(accesskit_node_id(item))
+        );
+        assert_eq!(item_node.role(), Role::ListBoxOption);
+        assert_eq!(item_node.is_selected(), Some(true));
+        assert_eq!(item_node.position_in_set(), Some(3));
+        assert!(item_node.supports_action(Action::Click));
     }
 
     #[test]
@@ -1342,5 +1387,18 @@ mod tests {
 
     fn realize(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }
