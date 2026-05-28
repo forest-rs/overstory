@@ -1563,7 +1563,7 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
     ui.add_class(inspector, CLASS_SVG_INSPECTOR_CARD);
     if let Some(viewer) = viewer {
         let inspector_state = append_svg_inspector(ui, inspector, &viewer);
-        *viewer.inspector.borrow_mut() = Some(inspector_state);
+        viewer.runtime.inspector.set(Some(inspector_state));
         refresh_svg_viewer(ui, &viewer);
     } else {
         append_svg_static_inspector(ui, inspector);
@@ -1626,7 +1626,7 @@ fn append_svg_static_inspector(ui: &mut Ui, parent: ElementId) {
 }
 
 fn append_svg_inspector(ui: &mut Ui, parent: ElementId, viewer: &SvgViewer) -> SvgInspector {
-    let state = viewer.state.borrow();
+    let state = viewer.runtime.state.borrow();
     ui.append(parent, caption("DOCUMENT"));
     append_svg_inspector_row(ui, parent, "Asset", "Ghostscript Tiger");
     let paths = append_svg_inspector_row(ui, parent, "Paths", &state.path_count_readout());
@@ -1759,13 +1759,35 @@ struct SvgViewer {
     host: ElementId,
     grid: ElementId,
     content: ElementId,
-    path_elements: Rc<Vec<ElementId>>,
+    path_elements: Rc<[ElementId]>,
     selection: ElementId,
     status: ElementId,
-    inspector: Rc<RefCell<Option<SvgInspector>>>,
-    state: Rc<RefCell<SvgViewportDemo>>,
-    wobble_generation: Rc<Cell<u32>>,
-    wobble_timers: Rc<RefCell<Vec<TimerId>>>,
+    runtime: Rc<SvgViewerRuntime>,
+}
+
+#[derive(Debug)]
+struct SvgViewerRuntime {
+    state: RefCell<SvgViewportDemo>,
+    inspector: Cell<Option<SvgInspector>>,
+    wobble_generation: Cell<u32>,
+    wobble_timers: RefCell<Vec<TimerId>>,
+}
+
+impl SvgViewerRuntime {
+    fn new(state: SvgViewportDemo) -> Self {
+        Self {
+            state: RefCell::new(state),
+            inspector: Cell::new(None),
+            wobble_generation: Cell::new(0),
+            wobble_timers: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn next_wobble_generation(&self) -> u32 {
+        let next = self.wobble_generation.get().wrapping_add(1);
+        self.wobble_generation.set(next);
+        next
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1784,11 +1806,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
         return Err(());
     }
     let tree = Rc::new(svg);
-    let state = Rc::new(RefCell::new(SvgViewportDemo::new(
-        &tree,
-        SVG_VIEWPORT_WIDTH,
-        SVG_VIEWPORT_HEIGHT,
-    )));
+    let state = SvgViewportDemo::new(&tree, SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT);
     let host = ui.append(
         parent,
         Viewport::new().cursor_icon(CursorIcon::Grab).layout(
@@ -1818,7 +1836,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
                 .logical_size(SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT),
         ),
     );
-    let world_bounds = state.borrow().world_bounds;
+    let world_bounds = state.world_bounds;
     let content = ui.append(
         host,
         Panel::new().layout(Layout::new().absolute_at(0.0, 0.0).logical_size(
@@ -1827,10 +1845,11 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
         )),
     );
     let svg_root = ui.append(content, (*tree).clone());
-    let path_elements = Rc::new(
+    let path_elements: Rc<[ElementId]> = Rc::from(
         ui.get(svg_root)
             .map(|element| element.children().to_vec())
-            .unwrap_or_default(),
+            .unwrap_or_default()
+            .into_boxed_slice(),
     );
     let selection = ui.append(
         host,
@@ -1844,7 +1863,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     ui.set_local(selection, ui.properties().border_width, 1.5_f64);
     ui.set_local(selection, ui.properties().corner_radius, 4.0_f64);
 
-    let status = ui.append(parent, caption(&state.borrow().status()));
+    let status = ui.append(parent, caption(&state.status()));
     let viewer = SvgViewer {
         tree,
         host,
@@ -1853,10 +1872,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
         path_elements,
         selection,
         status,
-        inspector: Rc::new(RefCell::new(None)),
-        state,
-        wobble_generation: Rc::new(Cell::new(0)),
-        wobble_timers: Rc::new(RefCell::new(Vec::new())),
+        runtime: Rc::new(SvgViewerRuntime::new(state)),
     };
     install_svg_viewer_interaction(ui, &viewer);
     refresh_svg_viewer(ui, &viewer);
@@ -1893,7 +1909,11 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
             return;
         }
         let _ = ui.capture_pointer(drag_viewer.host);
-        drag_viewer.state.borrow_mut().pan_by_view(event.delta);
+        drag_viewer
+            .runtime
+            .state
+            .borrow_mut()
+            .pan_by_view(event.delta);
         refresh_svg_viewer(ui, &drag_viewer);
         event.mark_handled();
         event.stop_propagation();
@@ -1918,7 +1938,11 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
         }
         let anchor = local_point(ui, scroll_viewer.host, event.position);
         let factor = (-amount * SVG_ZOOM_SENSITIVITY).exp().clamp(0.2, 5.0);
-        scroll_viewer.state.borrow_mut().zoom_about(anchor, factor);
+        scroll_viewer
+            .runtime
+            .state
+            .borrow_mut()
+            .zoom_about(anchor, factor);
         refresh_svg_viewer(ui, &scroll_viewer);
         event.mark_handled();
         event.stop_propagation();
@@ -1927,7 +1951,7 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
 
 fn select_svg_path_at_view_point(ui: &mut Ui, viewer: &SvgViewer, view_point: Point) {
     let (previous, selected) = {
-        let mut state = viewer.state.borrow_mut();
+        let mut state = viewer.runtime.state.borrow_mut();
         let previous = state.selected_path;
         let world_point = state.viewport.view_to_world_point(view_point);
         let params = svg_hit_params();
@@ -1955,13 +1979,13 @@ fn start_svg_path_wobble(ui: &mut Ui, viewer: &SvgViewer, path_index: usize) {
         return;
     };
     cancel_svg_wobble_timers(ui, viewer);
-    let generation = viewer.wobble_generation.get().wrapping_add(1);
-    viewer.wobble_generation.set(generation);
+    let generation = viewer.runtime.next_wobble_generation();
     let path_bounds = path.bounds();
     let center = local_svg_path_center(path_bounds);
     let selection = viewer.selection;
     let selection_center = local_svg_path_center(
         viewer
+            .runtime
             .state
             .borrow()
             .viewport
@@ -1969,13 +1993,12 @@ fn start_svg_path_wobble(ui: &mut Ui, viewer: &SvgViewer, path_index: usize) {
     );
     set_svg_selection_wobble(ui, element, center, selection, selection_center, 1.1);
     let first_timer = ui.schedule_timer_once(element, millis(SVG_SELECTION_WOBBLE_UP_MS));
-    viewer.wobble_timers.borrow_mut().push(first_timer);
+    viewer.runtime.wobble_timers.borrow_mut().push(first_timer);
 
-    let viewer_generation = Rc::clone(&viewer.wobble_generation);
-    let wobble_timers = Rc::clone(&viewer.wobble_timers);
-    let phase = Rc::new(Cell::new(0_u8));
+    let runtime = Rc::clone(&viewer.runtime);
+    let phase = Cell::new(0_u8);
     ui.on_timer(element, move |ui, _event| {
-        if viewer_generation.get() != generation {
+        if runtime.wobble_generation.get() != generation {
             ui.remove_timer_handler(element);
             return;
         }
@@ -1983,13 +2006,13 @@ fn start_svg_path_wobble(ui: &mut Ui, viewer: &SvgViewer, path_index: usize) {
             0 => {
                 phase.set(1);
                 set_svg_selection_wobble(ui, element, center, selection, selection_center, 0.985);
-                wobble_timers.borrow_mut().clear();
+                runtime.wobble_timers.borrow_mut().clear();
                 let second_timer =
                     ui.schedule_timer_once(element, millis(SVG_SELECTION_WOBBLE_DOWN_MS));
-                wobble_timers.borrow_mut().push(second_timer);
+                runtime.wobble_timers.borrow_mut().push(second_timer);
             }
             _ => {
-                wobble_timers.borrow_mut().clear();
+                runtime.wobble_timers.borrow_mut().clear();
                 ui.set_visual_transform(element, Affine::IDENTITY);
                 ui.set_visual_transform(selection, Affine::IDENTITY);
                 ui.remove_timer_handler(element);
@@ -2000,9 +2023,7 @@ fn start_svg_path_wobble(ui: &mut Ui, viewer: &SvgViewer, path_index: usize) {
 
 fn reset_svg_path_wobble(ui: &mut Ui, viewer: &SvgViewer, path_index: Option<usize>) {
     cancel_svg_wobble_timers(ui, viewer);
-    viewer
-        .wobble_generation
-        .set(viewer.wobble_generation.get().wrapping_add(1));
+    viewer.runtime.next_wobble_generation();
     ui.set_visual_transform(viewer.selection, Affine::IDENTITY);
     let Some(element) = path_index.and_then(|index| viewer.path_elements.get(index).copied())
     else {
@@ -2025,7 +2046,7 @@ fn set_svg_selection_wobble(
 }
 
 fn cancel_svg_wobble_timers(ui: &mut Ui, viewer: &SvgViewer) {
-    for timer in viewer.wobble_timers.borrow_mut().drain(..) {
+    for timer in viewer.runtime.wobble_timers.borrow_mut().drain(..) {
         let _ = ui.cancel_timer(timer);
     }
 }
@@ -2068,7 +2089,7 @@ fn append_svg_view_button(
                 ) {
                     return;
                 }
-                action(&mut viewer.state.borrow_mut());
+                action(&mut viewer.runtime.state.borrow_mut());
                 refresh_svg_viewer(ui, &viewer);
                 event.mark_handled();
             }),
@@ -2077,13 +2098,13 @@ fn append_svg_view_button(
 }
 
 fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
-    let state = viewer.state.borrow();
+    let state = viewer.runtime.state.borrow();
     clear_children(ui, viewer.grid);
     append_svg_grid(ui, viewer.grid, &state);
     ui.set_visual_transform(viewer.content, viewport_transform(&state.viewport));
     update_svg_selection_overlay(ui, viewer, &state);
     ui.set_local(viewer.status, ui.properties().content, state.status());
-    if let Some(inspector) = *viewer.inspector.borrow() {
+    if let Some(inspector) = viewer.runtime.inspector.get() {
         update_svg_inspector(ui, inspector, &state, &viewer.tree);
     }
 }
@@ -2735,7 +2756,7 @@ mod tests {
         ui.set_layout(root, Layout::column(0.0).logical_size(360.0, 280.0));
         let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
         let inspector = append_svg_inspector(&mut ui, root, &viewer);
-        *viewer.inspector.borrow_mut() = Some(inspector);
+        viewer.runtime.inspector.set(Some(inspector));
         refresh_svg_viewer(&mut ui, &viewer);
         ui.compute_layout(Size::new(360.0, 280.0));
 
@@ -2745,7 +2766,7 @@ mod tests {
         let before_grid_thickness =
             first_grid_line_thickness(&ui, viewer.grid).expect("viewer should contain grid lines");
 
-        viewer.state.borrow_mut().zoom_center(2.0);
+        viewer.runtime.state.borrow_mut().zoom_center(2.0);
         refresh_svg_viewer(&mut ui, &viewer);
         ui.compute_layout(Size::new(360.0, 280.0));
 
@@ -2776,18 +2797,19 @@ mod tests {
         ui.set_layout(root, Layout::column(0.0).logical_size(360.0, 300.0));
         let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
         let inspector = append_svg_inspector(&mut ui, root, &viewer);
-        *viewer.inspector.borrow_mut() = Some(inspector);
+        viewer.runtime.inspector.set(Some(inspector));
         refresh_svg_viewer(&mut ui, &viewer);
         ui.compute_layout(Size::new(360.0, 300.0));
 
         let hit = viewer
+            .runtime
             .state
             .borrow()
             .viewport
             .world_to_view_point(Point::new(2.0, 2.0));
         select_svg_path_at_view_point(&mut ui, &viewer, hit);
         ui.compute_layout(Size::new(360.0, 300.0));
-        assert_eq!(viewer.state.borrow().selected_path, Some(0));
+        assert_eq!(viewer.runtime.state.borrow().selected_path, Some(0));
         let selected_path = viewer.path_elements[0];
         assert!(
             transform_scale(ui.effective_visual_transform(selected_path)) > 1.05,
@@ -2825,13 +2847,14 @@ mod tests {
         );
 
         let miss_inside_bounds = viewer
+            .runtime
             .state
             .borrow()
             .viewport
             .world_to_view_point(Point::new(10.0, 10.0));
         select_svg_path_at_view_point(&mut ui, &viewer, miss_inside_bounds);
         ui.compute_layout(Size::new(360.0, 300.0));
-        assert_eq!(viewer.state.borrow().selected_path, None);
+        assert_eq!(viewer.runtime.state.borrow().selected_path, None);
         assert_close(
             ui.effective_bounds(viewer.selection).width(),
             0.0,
@@ -2853,27 +2876,28 @@ mod tests {
         ui.compute_layout(Size::new(360.0, 300.0));
 
         let local_hit = viewer
+            .runtime
             .state
             .borrow()
             .viewport
             .world_to_view_point(Point::new(2.0, 2.0));
         let host_bounds = ui.effective_bounds(viewer.host);
         let hit = Point::new(host_bounds.x0 + local_hit.x, host_bounds.y0 + local_hit.y);
-        let visible_before = viewer.state.borrow().viewport.visible_world_rect();
+        let visible_before = viewer.runtime.state.borrow().viewport.visible_world_rect();
 
         let down = ui.dispatch_pointer_event(&pointer_down(hit, 1));
         assert!(
             down.capture_changed,
             "selection pointer down should still start pointer capture for drag"
         );
-        assert_eq!(viewer.state.borrow().selected_path, Some(0));
+        assert_eq!(viewer.runtime.state.borrow().selected_path, Some(0));
 
         let moved = ui.dispatch_pointer_event(&pointer_move(
             Point::new(hit.x + 28.0, hit.y + 12.0),
             2,
             true,
         ));
-        let visible_after = viewer.state.borrow().viewport.visible_world_rect();
+        let visible_after = viewer.runtime.state.borrow().viewport.visible_world_rect();
         assert!(
             moved.handled,
             "pan drag should be handled by the SVG viewport"
