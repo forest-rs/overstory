@@ -17,6 +17,7 @@
 //!   host layer.
 
 use alloc::boxed::Box;
+use core::cell::Cell;
 
 use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
@@ -40,6 +41,8 @@ use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widge
 pub const TYPE_SCROLL_VIEW: TypeTag = TypeTag(13);
 /// Selector identity for `ScrollBar`.
 pub const TYPE_SCROLL_BAR: TypeTag = TypeTag(14);
+/// Selector identity for `ScrollArea`.
+pub const TYPE_SCROLL_AREA: TypeTag = TypeTag(20);
 /// Owner-local part identity for the draggable scrollbar thumb.
 pub const PART_SCROLL_BAR_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the draggable scrollbar thumb.
@@ -47,6 +50,9 @@ pub const SLOT_SCROLL_BAR_THUMB: TemplateSlot =
     TemplateSlot::new("scrollbar-thumb").with_part_tag(PART_SCROLL_BAR_THUMB);
 
 pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
+const DEFAULT_SCROLL_AREA_WIDTH: f32 = 220.0;
+const DEFAULT_SCROLL_AREA_HEIGHT: f32 = 160.0;
+const DEFAULT_SCROLL_AREA_GAP: f32 = 8.0;
 const DEFAULT_SCROLL_BAR_LENGTH: f32 = 146.0;
 const DEFAULT_SCROLL_BAR_THICKNESS: f32 = 10.0;
 const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
@@ -257,6 +263,289 @@ impl Widget for ScrollViewWidget {
             _ => false,
         }
     }
+}
+
+/// Builder + spec for a viewport with optional reserved scrollbars.
+///
+/// `ScrollArea` owns the scroll viewport and scrollbar elements. Append
+/// content to [`scroll_area_viewport`] after inserting the area.
+pub struct ScrollArea {
+    size: Option<(f32, f32)>,
+    vertical_scrollbar: bool,
+    horizontal_scrollbar: bool,
+    gap: f32,
+    scrollbar_thickness: f32,
+    thumb_extent: f32,
+    scroll_offset_y: f64,
+    control_state: ControlState,
+}
+
+impl core::fmt::Debug for ScrollArea {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ScrollArea")
+            .field("size", &self.size)
+            .field("vertical_scrollbar", &self.vertical_scrollbar)
+            .field("horizontal_scrollbar", &self.horizontal_scrollbar)
+            .field("gap", &self.gap)
+            .field("scrollbar_thickness", &self.scrollbar_thickness)
+            .field("thumb_extent", &self.thumb_extent)
+            .field("scroll_offset_y", &self.scroll_offset_y)
+            .field("control_state", &self.control_state)
+            .finish()
+    }
+}
+
+impl ScrollArea {
+    /// Starts a scroll area with a reserved vertical scrollbar.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            size: None,
+            vertical_scrollbar: true,
+            horizontal_scrollbar: false,
+            gap: DEFAULT_SCROLL_AREA_GAP,
+            scrollbar_thickness: DEFAULT_SCROLL_BAR_THICKNESS,
+            thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
+            scroll_offset_y: 0.0,
+            control_state: ControlState::interactive().focusable(false),
+        }
+    }
+
+    /// Sets the total fixed logical-pixel size of the area.
+    #[must_use]
+    pub fn size(mut self, width: f32, height: f32) -> Self {
+        self.size = Some((width.max(1.0), height.max(1.0)));
+        self
+    }
+
+    /// Enables or disables the reserved vertical scrollbar.
+    #[must_use]
+    pub fn vertical_scrollbar(mut self, enabled: bool) -> Self {
+        self.vertical_scrollbar = enabled;
+        self
+    }
+
+    /// Enables or disables the reserved horizontal scrollbar.
+    #[must_use]
+    pub fn horizontal_scrollbar(mut self, enabled: bool) -> Self {
+        self.horizontal_scrollbar = enabled;
+        self
+    }
+
+    /// Sets the gap between the viewport and any reserved scrollbars.
+    #[must_use]
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.gap = gap.max(0.0);
+        self
+    }
+
+    /// Sets the reserved scrollbar thickness.
+    #[must_use]
+    pub fn scrollbar_thickness(mut self, thickness: f32) -> Self {
+        self.scrollbar_thickness = thickness.max(1.0);
+        self
+    }
+
+    /// Sets the fixed scrollbar thumb extent.
+    #[must_use]
+    pub fn thumb_extent(mut self, extent: f32) -> Self {
+        self.thumb_extent = extent.max(1.0);
+        self
+    }
+
+    /// Sets the viewport's initial vertical scroll offset.
+    #[must_use]
+    pub fn scroll_offset_y(mut self, offset: f64) -> Self {
+        self.scroll_offset_y = normalize_scroll_offset_y(offset);
+        self
+    }
+
+    /// Sets whether the area starts enabled.
+    #[must_use]
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.control_state = self.control_state.enabled(enabled);
+        self
+    }
+
+    /// Convenience for [`Self::enabled`] with `false`.
+    #[must_use]
+    pub fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+}
+
+impl Default for ScrollArea {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppendSpec for ScrollArea {
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let widget = ScrollAreaWidget::default();
+        let area = ui.append_widget(parent, Box::new(widget));
+
+        let (width, height) = self
+            .size
+            .unwrap_or((DEFAULT_SCROLL_AREA_WIDTH, DEFAULT_SCROLL_AREA_HEIGHT));
+        let metrics = ScrollAreaMetrics::new(
+            width,
+            height,
+            self.gap,
+            self.scrollbar_thickness,
+            self.vertical_scrollbar,
+            self.horizontal_scrollbar,
+        );
+
+        ui.set_layout(area, Layout::row(self.gap).logical_size(width, height));
+        ui.set_control_state(area, self.control_state);
+
+        let body = if self.horizontal_scrollbar {
+            let body = ui.append_widget(area, Box::new(ScrollAreaBodyWidget));
+            ui.set_layout(
+                body,
+                Layout::column(self.gap)
+                    .logical_size(metrics.viewport_width, metrics.body_height)
+                    .flex_shrink(0.0),
+            );
+            body
+        } else {
+            area
+        };
+
+        let viewport = ui.append(
+            body,
+            ScrollView::new()
+                .size(metrics.viewport_width, metrics.viewport_height)
+                .scroll_offset_y(self.scroll_offset_y)
+                .enabled(self.control_state.enabled),
+        );
+        if self.horizontal_scrollbar {
+            let bar = ui.append(
+                body,
+                ScrollBar::horizontal(viewport)
+                    .length(metrics.viewport_width)
+                    .thickness(self.scrollbar_thickness)
+                    .thumb_extent(self.thumb_extent)
+                    .enabled(self.control_state.enabled),
+            );
+            set_scroll_area_horizontal_bar(ui, area, bar);
+        }
+        if self.vertical_scrollbar {
+            let bar = ui.append(
+                area,
+                ScrollBar::vertical(viewport)
+                    .length(metrics.viewport_height)
+                    .thickness(self.scrollbar_thickness)
+                    .thumb_extent(self.thumb_extent)
+                    .enabled(self.control_state.enabled),
+            );
+            set_scroll_area_vertical_bar(ui, area, bar);
+        }
+        set_scroll_area_viewport(ui, area, viewport);
+        area
+    }
+}
+
+/// Per-element widget for `ScrollArea`.
+#[derive(Debug, Default)]
+pub(crate) struct ScrollAreaWidget {
+    viewport: Cell<Option<ElementId>>,
+    vertical_bar: Cell<Option<ElementId>>,
+    horizontal_bar: Cell<Option<ElementId>>,
+}
+
+impl Widget for ScrollAreaWidget {
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_SCROLL_AREA)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::GenericContainer)
+    }
+}
+
+#[derive(Debug, Default)]
+struct ScrollAreaBodyWidget;
+
+impl Widget for ScrollAreaBodyWidget {}
+
+#[derive(Copy, Clone, Debug)]
+struct ScrollAreaMetrics {
+    viewport_width: f32,
+    viewport_height: f32,
+    body_height: f32,
+}
+
+impl ScrollAreaMetrics {
+    fn new(
+        width: f32,
+        height: f32,
+        gap: f32,
+        thickness: f32,
+        vertical_scrollbar: bool,
+        horizontal_scrollbar: bool,
+    ) -> Self {
+        let vertical_gutter = scrollbar_gutter(vertical_scrollbar, gap, thickness);
+        let horizontal_gutter = scrollbar_gutter(horizontal_scrollbar, gap, thickness);
+        let viewport_width = (width - vertical_gutter).max(1.0);
+        let viewport_height = (height - horizontal_gutter).max(1.0);
+        Self {
+            viewport_width,
+            viewport_height,
+            body_height: viewport_height + horizontal_gutter,
+        }
+    }
+}
+
+fn scrollbar_gutter(enabled: bool, gap: f32, thickness: f32) -> f32 {
+    if enabled { gap + thickness } else { 0.0 }
+}
+
+fn set_scroll_area_viewport(ui: &Ui, area: ElementId, viewport: ElementId) {
+    if let Some(widget) = scroll_area_widget(ui, area) {
+        widget.viewport.set(Some(viewport));
+    }
+}
+
+fn set_scroll_area_vertical_bar(ui: &Ui, area: ElementId, bar: ElementId) {
+    if let Some(widget) = scroll_area_widget(ui, area) {
+        widget.vertical_bar.set(Some(bar));
+    }
+}
+
+fn set_scroll_area_horizontal_bar(ui: &Ui, area: ElementId, bar: ElementId) {
+    if let Some(widget) = scroll_area_widget(ui, area) {
+        widget.horizontal_bar.set(Some(bar));
+    }
+}
+
+fn scroll_area_widget(ui: &Ui, area: ElementId) -> Option<&ScrollAreaWidget> {
+    ui.get(area)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ScrollAreaWidget>())
+}
+
+/// Returns the internal viewport for `area`, if it is a live [`ScrollArea`].
+#[must_use]
+pub fn scroll_area_viewport(ui: &Ui, area: ElementId) -> Option<ElementId> {
+    scroll_area_widget(ui, area).and_then(|widget| widget.viewport.get())
+}
+
+/// Returns the reserved vertical scrollbar for `area`, if it has one.
+#[must_use]
+pub fn scroll_area_vertical_bar(ui: &Ui, area: ElementId) -> Option<ElementId> {
+    scroll_area_widget(ui, area).and_then(|widget| widget.vertical_bar.get())
+}
+
+/// Returns the reserved horizontal scrollbar for `area`, if it has one.
+#[must_use]
+pub fn scroll_area_horizontal_bar(ui: &Ui, area: ElementId) -> Option<ElementId> {
+    scroll_area_widget(ui, area).and_then(|widget| widget.horizontal_bar.get())
 }
 
 /// Builder + spec for a scrollbar that controls a viewport's shared
@@ -1073,6 +1362,71 @@ mod tests {
             scroll_view_offset_y(&ui, scroll)
                 .is_some_and(|offset| { (offset - 12.0).abs() <= 0.01 })
         );
+    }
+
+    #[test]
+    fn scroll_area_creates_bound_viewport_and_vertical_bar() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(160.0, 100.0));
+        let area = ui.append(root, ScrollArea::new().size(120.0, 80.0));
+        let viewport = scroll_area_viewport(&ui, area).expect("scroll area should expose viewport");
+        let bar =
+            scroll_area_vertical_bar(&ui, area).expect("scroll area should expose vertical bar");
+        assert_eq!(scroll_area_horizontal_bar(&ui, area), None);
+
+        for _ in 0..5 {
+            append_scroll_test_child(&mut ui, viewport);
+        }
+
+        ui.compute_layout(Size::new(160.0, 100.0));
+        let viewport_bounds = ui.effective_bounds(viewport);
+        let bar_bounds = ui.effective_bounds(bar);
+
+        assert_eq!(
+            viewport_bounds.width(),
+            120.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+        );
+        assert_eq!(viewport_bounds.height(), 80.0);
+        assert!(bar_bounds.x0 > viewport_bounds.x1);
+
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        assert!(scroll_offset_y(&ui, viewport).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn scroll_area_can_reserve_horizontal_bar_only() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(160.0, 100.0));
+        let area = ui.append(
+            root,
+            ScrollArea::new()
+                .size(120.0, 80.0)
+                .vertical_scrollbar(false)
+                .horizontal_scrollbar(true),
+        );
+        let viewport = scroll_area_viewport(&ui, area).expect("scroll area should expose viewport");
+        let bar = scroll_area_horizontal_bar(&ui, area)
+            .expect("scroll area should expose horizontal bar");
+
+        assert_eq!(scroll_area_vertical_bar(&ui, area), None);
+
+        ui.compute_layout(Size::new(160.0, 100.0));
+        let viewport_bounds = ui.effective_bounds(viewport);
+        let bar_bounds = ui.effective_bounds(bar);
+
+        assert_eq!(viewport_bounds.width(), 120.0);
+        assert_eq!(
+            viewport_bounds.height(),
+            80.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+        );
+        assert!(bar_bounds.y0 > viewport_bounds.y1);
     }
 
     #[test]

@@ -109,9 +109,10 @@ pub use controls::progress::{
     SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
 pub use controls::scroll::{
-    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollBar, ScrollView, TYPE_SCROLL_BAR,
-    TYPE_SCROLL_VIEW, scroll_offset_y, scroll_view_offset_y, set_scroll_offset_y,
-    set_scroll_view_offset_y,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollView,
+    TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_area_horizontal_bar,
+    scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y, scroll_view_offset_y,
+    set_scroll_offset_y, set_scroll_view_offset_y,
 };
 pub use controls::select::{
     PART_SELECT_INDICATOR, PART_SELECT_LABEL, SLOT_SELECT_INDICATOR, SLOT_SELECT_LABEL, Select,
