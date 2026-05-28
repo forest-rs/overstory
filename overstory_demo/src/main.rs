@@ -49,8 +49,13 @@ const PAGE_CONTROL_WIDTH: f32 = 328.0;
 const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
-const SVG_VIEWPORT_WIDTH: f32 = PAGE_CONTROL_WIDTH;
-const SVG_VIEWPORT_HEIGHT: f32 = 202.0;
+const SVG_PAGE_WIDTH: f32 = 824.0;
+const SVG_INFO_HEIGHT: f32 = 132.0;
+const SVG_TIGER_CARD_WIDTH: f32 = 548.0;
+const SVG_TIGER_CARD_HEIGHT: f32 = 500.0;
+const SVG_INSPECTOR_CARD_WIDTH: f32 = 258.0;
+const SVG_VIEWPORT_WIDTH: f32 = 500.0;
+const SVG_VIEWPORT_HEIGHT: f32 = 328.0;
 const SVG_ZOOM_SENSITIVITY: f64 = 0.0015;
 const SVG_GRID_LIMIT: usize = 140;
 const TIGER_SVG: &[u8] = include_bytes!("../assets/Ghostscript_Tiger.svg");
@@ -97,6 +102,9 @@ const CLASS_DEMO_SPLIT_SCENE: ClassId = ClassId(18);
 const CLASS_DEMO_SPLIT_INSPECTOR: ClassId = ClassId(19);
 const CLASS_DEMO_MOTION_STAGE: ClassId = ClassId(20);
 const CLASS_SVG_GRID_LINE: ClassId = ClassId(21);
+const CLASS_SVG_INFO_CARD: ClassId = ClassId(22);
+const CLASS_SVG_TIGER_CARD: ClassId = ClassId(23);
+const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
 
 const RENDERER_QUEUE_LEN: usize = 1_000;
 const INITIAL_RENDERER_SELECTION: usize = 2;
@@ -1478,8 +1486,40 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
 }
 
 fn build_svg_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    let specimen = demo_card(ui, row, "GHOSTSCRIPT TIGER", PAGE_CARD_WIDTH, 382.0);
+    let page = ui.append(
+        stage,
+        Panel::column(18.0).layout(
+            Layout::column(18.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    );
+
+    let notes = demo_card(ui, page, "IMPORT SURFACE", SVG_PAGE_WIDTH, SVG_INFO_HEIGHT);
+    ui.add_class(notes, CLASS_SVG_INFO_CARD);
+    append_svg_import_summary(ui, notes);
+
+    let main = ui.append(
+        page,
+        Panel::row(18.0).layout(
+            Layout::row(18.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Logical(SVG_PAGE_WIDTH))
+                    .height(LayoutDimension::Logical(SVG_TIGER_CARD_HEIGHT)),
+            ),
+        ),
+    );
+
+    let specimen = demo_card(
+        ui,
+        main,
+        "GHOSTSCRIPT TIGER",
+        SVG_TIGER_CARD_WIDTH,
+        SVG_TIGER_CARD_HEIGHT,
+    );
+    ui.add_class(specimen, CLASS_SVG_TIGER_CARD);
     if let Ok(viewer) = append_svg_viewer(ui, specimen, TIGER_SVG) {
         let controls = ui.append(specimen, Panel::row(8.0).align_center());
         append_svg_view_button(ui, controls, "Fit", viewer.clone(), |state| {
@@ -1498,16 +1538,98 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
         );
     }
 
-    let notes = demo_card(ui, row, "IMPORT SURFACE", PAGE_CARD_WIDTH, 382.0);
-    ui.append(notes, page_heading("Path-first lowering"));
+    let inspector = demo_card(
+        ui,
+        main,
+        "INSPECTOR",
+        SVG_INSPECTOR_CARD_WIDTH,
+        SVG_TIGER_CARD_HEIGHT,
+    );
+    ui.add_class(inspector, CLASS_SVG_INSPECTOR_CARD);
+    append_svg_static_inspector(ui, inspector);
+}
+
+fn append_svg_import_summary(ui: &mut Ui, parent: ElementId) {
+    let row = ui.append(
+        parent,
+        Panel::row(18.0).layout(
+            Layout::row(18.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    );
+    let lowering = ui.append(
+        row,
+        Panel::column(6.0).layout(
+            Layout::column(6.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Logical(414.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    );
+    ui.append(lowering, page_heading("Path-first lowering"));
     ui.append(
-        notes,
+        lowering,
         body_text("The importer keeps SVG parsing outside the UI core, then appends ordinary elements that paint through the same presentation primitive path as hand-authored vector controls."),
     );
-    ui.append(notes, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+    let support = ui.append(
+        row,
+        Panel::column(6.0).layout(
+            Layout::column(6.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Logical(322.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    );
+    ui.append(support, caption("SUPPORTED NOW"));
     ui.append(
-        notes,
+        support,
         body_text("Current support is intentionally static: solid fills, strokes, transforms, opacity, fill rules, caps, joins, dashes, and paint order."),
+    );
+}
+
+fn append_svg_static_inspector(ui: &mut Ui, parent: ElementId) {
+    ui.append(parent, caption("DOCUMENT"));
+    append_svg_inspector_row(ui, parent, "Asset", "Ghostscript Tiger");
+    append_svg_inspector_row(ui, parent, "Lowering", "VectorPath tree");
+    append_svg_inspector_row(ui, parent, "Viewport", "Pan + zoom layer");
+    ui.append(parent, Divider::horizontal().length(200.0));
+    ui.append(parent, caption("NEXT"));
+    append_svg_inspector_row(ui, parent, "Outline", "SVG element tree");
+    append_svg_inspector_row(ui, parent, "Selection", "Path metadata");
+    append_svg_inspector_row(ui, parent, "Properties", "Fill, stroke, transform");
+}
+
+fn append_svg_inspector_row(ui: &mut Ui, parent: ElementId, label: &str, value: &str) {
+    let row = ui.append(
+        parent,
+        Panel::row(8.0).layout(
+            Layout::row(8.0).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            ),
+        ),
+    );
+    let label = ui.append(row, caption(label));
+    ui.set_layout(
+        label,
+        Layout::new()
+            .logical_size(78.0, 18.0)
+            .flex_grow(0.0)
+            .flex_shrink(0.0),
+    );
+    let value = ui.append(row, body_text(value));
+    ui.set_layout(
+        value,
+        Layout::new()
+            .size(LayoutSize::new().min_width(LayoutDimension::Logical(0.0)))
+            .flex_grow(1.0)
+            .flex_shrink(1.0),
     );
 }
 
@@ -2316,6 +2438,40 @@ mod tests {
     }
 
     #[test]
+    fn svg_page_puts_import_summary_above_large_tiger_and_inspector() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Svg);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let info = find_by_class(&ui, stage, CLASS_SVG_INFO_CARD)
+            .expect("SVG page should contain an import summary card");
+        let tiger = find_by_class(&ui, stage, CLASS_SVG_TIGER_CARD)
+            .expect("SVG page should contain the Tiger card");
+        let inspector = find_by_class(&ui, stage, CLASS_SVG_INSPECTOR_CARD)
+            .expect("SVG page should contain an inspector card");
+        let info_bounds = ui.effective_bounds(info);
+        let tiger_bounds = ui.effective_bounds(tiger);
+        let inspector_bounds = ui.effective_bounds(inspector);
+
+        assert!(
+            info_bounds.y1 <= tiger_bounds.y0 + 0.01,
+            "import summary should sit above Tiger: {info_bounds:?} then {tiger_bounds:?}",
+        );
+        assert!(
+            tiger_bounds.width() > inspector_bounds.width() * 1.8,
+            "Tiger should get most horizontal space: {tiger_bounds:?} vs {inspector_bounds:?}",
+        );
+        assert!(
+            tiger_bounds.height() > info_bounds.height() * 3.0,
+            "Tiger card should dominate vertical space: {tiger_bounds:?} vs {info_bounds:?}",
+        );
+    }
+
+    #[test]
     fn gallery_pages_stay_inside_initial_window_width() {
         for page in DemoPage::ALL {
             let mut ui = build_ui();
@@ -2349,6 +2505,9 @@ mod tests {
         const NARROW_WIDTH: f64 = 1180.0;
 
         for page in DemoPage::ALL {
+            if page == DemoPage::Svg {
+                continue;
+            }
             let mut ui = build_ui();
             let stage = stage_element(&ui);
             show_demo_page(&mut ui, stage, page);
