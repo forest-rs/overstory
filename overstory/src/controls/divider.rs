@@ -15,6 +15,7 @@
 
 use alloc::boxed::Box;
 
+use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::element::{Element, ElementId};
@@ -25,20 +26,10 @@ use crate::widget::{AppendSpec, Widget};
 /// Selector identity for `Divider`.
 pub const TYPE_DIVIDER: TypeTag = TypeTag(4);
 
-/// Orientation for a decorative divider.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum DividerAxis {
-    /// Horizontal rule separating stacked content.
-    #[default]
-    Horizontal,
-    /// Vertical rule separating side-by-side content.
-    Vertical,
-}
-
 /// Builder + spec for a simple separator.
 #[derive(Clone, Debug)]
 pub struct Divider {
-    axis: DividerAxis,
+    axis: Axis,
     thickness: f32,
     length: Option<f32>,
 }
@@ -46,7 +37,7 @@ pub struct Divider {
 impl Default for Divider {
     fn default() -> Self {
         Self {
-            axis: DividerAxis::Horizontal,
+            axis: Axis::Horizontal,
             thickness: 1.0,
             length: None,
         }
@@ -54,19 +45,32 @@ impl Default for Divider {
 }
 
 impl Divider {
+    /// Creates a divider along `axis`.
+    #[must_use]
+    pub fn new(axis: Axis) -> Self {
+        Self {
+            axis,
+            ..Self::default()
+        }
+    }
+
     /// Creates a horizontal divider.
     #[must_use]
     pub fn horizontal() -> Self {
-        Self::default()
+        Self::new(Axis::Horizontal)
     }
 
     /// Creates a vertical divider.
     #[must_use]
     pub fn vertical() -> Self {
-        Self {
-            axis: DividerAxis::Vertical,
-            ..Self::default()
-        }
+        Self::new(Axis::Vertical)
+    }
+
+    /// Sets the divider axis.
+    #[must_use]
+    pub fn axis(mut self, axis: Axis) -> Self {
+        self.axis = axis;
+        self
     }
 
     /// Sets the divider thickness in logical pixels.
@@ -86,8 +90,8 @@ impl Divider {
     fn layout(&self) -> Layout {
         let length = self.length.unwrap_or(1.0);
         match self.axis {
-            DividerAxis::Horizontal => Layout::new().logical_size(length, self.thickness),
-            DividerAxis::Vertical => Layout::new().logical_size(self.thickness, length),
+            Axis::Horizontal => Layout::new().logical_size(length, self.thickness),
+            Axis::Vertical => Layout::new().logical_size(self.thickness, length),
         }
     }
 }
