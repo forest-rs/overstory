@@ -280,6 +280,8 @@ impl Widget for SliderWidget {
         node: &mut accesskit::Node,
     ) {
         ctx.apply_numeric_range(element, node);
+        node.set_orientation(accesskit::Orientation::Horizontal);
+        node.set_value(format_tick_value(ctx.numeric_value(element)));
         if ctx.is_enabled(element.id()) {
             node.add_action(accesskit::Action::Increment);
             node.add_action(accesskit::Action::Decrement);

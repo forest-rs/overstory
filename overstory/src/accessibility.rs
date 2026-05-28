@@ -425,7 +425,7 @@ fn accesskit_bounds(bounds: kurbo::Rect) -> AccessRect {
 mod tests {
     use super::*;
     use crate::{Button, CheckBox, Layout, Slider, Text, ToggleSwitch, Widget};
-    use accesskit::ActionData;
+    use accesskit::{ActionData, Orientation};
     use alloc::boxed::Box;
     use kurbo::Size;
     use understory_property::DependencyObjectExt;
@@ -474,12 +474,28 @@ mod tests {
         assert_eq!(checkbox_node.role(), Role::CheckBox);
         assert_eq!(checkbox_node.toggled(), Some(Toggled::True));
         assert_eq!(slider_node.role(), Role::Slider);
+        assert_eq!(slider_node.orientation(), Some(Orientation::Horizontal));
+        assert_eq!(slider_node.value(), Some("0.4"));
         assert_eq!(slider_node.numeric_value(), Some(0.4));
         assert_eq!(slider_node.min_numeric_value(), Some(0.0));
         assert_eq!(slider_node.max_numeric_value(), Some(2.0));
         assert!(slider_node.supports_action(Action::Increment));
         assert!(slider_node.supports_action(Action::Decrement));
         assert!(slider_node.supports_action(Action::SetValue));
+    }
+
+    #[test]
+    fn slider_accessibility_value_text_matches_axis_labels() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let unit_slider = ui.append(root, Slider::new().value(0.42).min(0.0).max(1.0));
+        let axis_slider = ui.append(root, Slider::new().value(32.0).min(-16.0).max(64.0));
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        let update = ui.accesskit_tree_update();
+
+        assert_eq!(node_for(&update, unit_slider).value(), Some("0.42"));
+        assert_eq!(node_for(&update, axis_slider).value(), Some("32"));
     }
 
     #[test]
