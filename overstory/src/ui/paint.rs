@@ -10,7 +10,9 @@ use imaging::record::Scene;
 use kurbo::{Affine, Rect};
 use subduction_core::layer::SurfaceId;
 use understory_box_tree::NodeId;
-use understory_presentation::{PresentationStore, Primitive, TextPrimitive};
+use understory_presentation::{
+    PathPaintOrder, PathPrimitive, PresentationStore, Primitive, TextPrimitive,
+};
 
 use crate::behavior::PresentContext;
 use crate::channels::{COMPOSE, PAINT};
@@ -22,6 +24,47 @@ use super::Ui;
 
 fn plain_text_wraps(plain: &understory_presentation::PlainTextPrimitive) -> bool {
     plain.style.text_wrap_mode != understory_presentation::TextStyle::default().text_wrap_mode
+}
+
+fn lower_path<S: imaging::PaintSink + ?Sized>(
+    path: &PathPrimitive,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    match path.paint_order {
+        PathPaintOrder::FillThenStroke => {
+            lower_path_fill(path, painter);
+            lower_path_stroke(path, painter);
+        }
+        PathPaintOrder::StrokeThenFill => {
+            lower_path_stroke(path, painter);
+            lower_path_fill(path, painter);
+        }
+    }
+}
+
+fn lower_path_fill<S: imaging::PaintSink + ?Sized>(
+    path: &PathPrimitive,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    if let Some(fill) = path.fill.as_ref() {
+        painter
+            .fill(&path.path, &fill.brush)
+            .transform(path.transform)
+            .fill_rule(fill.rule)
+            .draw();
+    }
+}
+
+fn lower_path_stroke<S: imaging::PaintSink + ?Sized>(
+    path: &PathPrimitive,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    if let Some(stroke) = path.stroke.as_ref() {
+        painter
+            .stroke(&path.path, &stroke.stroke, &stroke.brush)
+            .transform(path.transform)
+            .draw();
+    }
 }
 
 /// Lowers a node's resolved presentation primitives into `output`,
@@ -94,6 +137,9 @@ fn lower_presentation(
                         fg,
                     );
                 }
+            }
+            Primitive::Path(path) => {
+                lower_path(path, &mut painter);
             }
             // Image / future primitives land when controls need them.
             _ => {}

@@ -137,6 +137,7 @@ pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, toggle_checked,
 };
 pub use controls::tooltip::{PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip};
+pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use cursor_icon::CursorIcon;
 pub use element::{Element, ElementId};
@@ -169,10 +170,13 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
+pub use peniko::kurbo::{Affine, BezPath, Stroke};
+pub use peniko::{Brush, Color, Fill};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
     FontFamily, FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily, Language,
-    OverflowWrap, TextLineHeight, TextWrapMode, WordBreak,
+    OverflowWrap, PathFill, PathPaintOrder, PathPrimitive, PathStroke, TextLineHeight,
+    TextWrapMode, WordBreak,
 };
 pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
