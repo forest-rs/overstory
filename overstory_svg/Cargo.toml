@@ -9,7 +9,9 @@ description = "SVG-to-Overstory element tree importer."
 publish = false
 
 [dependencies]
+kurbo.workspace = true
 overstory.workspace = true
+understory_precise_hit = { workspace = true, features = ["std"] }
 usvg.workspace = true
 
 [lints]

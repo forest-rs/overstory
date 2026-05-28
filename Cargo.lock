@@ -2215,7 +2215,9 @@ dependencies = [
 name = "overstory_svg"
 version = "0.0.1"
 dependencies = [
+ "kurbo",
  "overstory",
+ "understory_precise_hit",
  "usvg",
 ]
 

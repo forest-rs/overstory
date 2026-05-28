@@ -16,10 +16,13 @@
 use std::error::Error;
 use std::fmt;
 
+use kurbo::Point;
 use overstory::{
     Affine, AppendSpec, BezPath, Brush, Cap, Color, ElementId, Fill, Join, Layout, Panel, PathFill,
     PathPaintOrder, PathPrimitive, PathStroke, Rect, Stroke, Ui, VectorPath,
 };
+use understory_precise_hit::PreciseHitTest;
+pub use understory_precise_hit::{HitKind, HitParams, HitScore};
 use usvg::tiny_skia_path::PathSegment;
 
 /// Options controlling SVG import.
@@ -119,6 +122,31 @@ impl SvgElementTree {
     pub fn paths(&self) -> &[SvgPathElement] {
         &self.paths
     }
+
+    /// Returns the imported path at `index`.
+    #[must_use]
+    pub fn path(&self, index: usize) -> Option<&SvgPathElement> {
+        self.paths.get(index)
+    }
+
+    /// Precise-picks the topmost imported path at `point` in SVG document
+    /// coordinates.
+    ///
+    /// Candidates are considered in reverse SVG paint order. The current first
+    /// slice tests filled path interiors through [`understory_precise_hit`];
+    /// stroke-only path picking is intentionally left for a richer stroke
+    /// narrow-phase.
+    #[must_use]
+    pub fn hit_test_path(&self, point: Point, params: &HitParams) -> Option<SvgPathHit> {
+        self.paths
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(path_index, path)| {
+                let score = path.hit_test_document(point, params)?;
+                Some(SvgPathHit { path_index, score })
+            })
+    }
 }
 
 impl AppendSpec for SvgElementTree {
@@ -173,6 +201,47 @@ impl SvgPathElement {
     #[must_use]
     pub fn primitive(&self) -> &PathPrimitive {
         &self.primitive
+    }
+
+    fn hit_test_document(&self, point: Point, params: &HitParams) -> Option<HitScore> {
+        let bounds = self.bounds.to_rect();
+        let tolerance = params.fill_tolerance.max(params.stroke_tolerance);
+        let broad_bounds = if tolerance > 0.0 {
+            bounds.inflate(tolerance, tolerance)
+        } else {
+            bounds
+        };
+        if !broad_bounds.contains(point) || self.primitive.fill.is_none() {
+            return None;
+        }
+
+        let local = Point::new(point.x - bounds.x0, point.y - bounds.y0);
+        let path_point = self.primitive.transform.inverse() * local;
+        if !path_point.x.is_finite() || !path_point.y.is_finite() {
+            return None;
+        }
+        self.primitive.path.hit_test_local(path_point, params)
+    }
+}
+
+/// Result of precise-picking an imported SVG path.
+#[derive(Clone, Copy, Debug)]
+pub struct SvgPathHit {
+    path_index: usize,
+    score: HitScore,
+}
+
+impl SvgPathHit {
+    /// Returns the index into [`SvgElementTree::paths`].
+    #[must_use]
+    pub fn path_index(&self) -> usize {
+        self.path_index
+    }
+
+    /// Returns the geometric score from the narrow-phase hit test.
+    #[must_use]
+    pub fn score(&self) -> HitScore {
+        self.score
     }
 }
 
@@ -405,5 +474,50 @@ mod tests {
         let tree = SvgElementTree::from_bytes(svg, SvgImportOptions::default()).unwrap();
 
         assert!(tree.is_empty());
+    }
+
+    #[test]
+    fn precise_hit_uses_path_content_not_only_bounds() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+              <path id="triangle" d="M0 0 L12 0 L0 12 Z" fill="#00ff00"/>
+            </svg>
+        "##;
+
+        let tree = SvgElementTree::from_bytes(svg, SvgImportOptions::default()).unwrap();
+        let params = HitParams::default();
+
+        let hit = tree
+            .hit_test_path(Point::new(2.0, 2.0), &params)
+            .expect("point inside triangle should hit");
+        assert_eq!(
+            tree.path(hit.path_index()).unwrap().source_id(),
+            Some("triangle")
+        );
+        assert!(
+            tree.hit_test_path(Point::new(10.0, 10.0), &params)
+                .is_none(),
+            "point inside bounds but outside triangle should miss",
+        );
+    }
+
+    #[test]
+    fn precise_hit_returns_topmost_painted_path() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+              <rect id="back" x="0" y="0" width="16" height="16" fill="#00ff00"/>
+              <rect id="front" x="4" y="4" width="12" height="12" fill="#ff0000"/>
+            </svg>
+        "##;
+
+        let tree = SvgElementTree::from_bytes(svg, SvgImportOptions::default()).unwrap();
+        let hit = tree
+            .hit_test_path(Point::new(8.0, 8.0), &HitParams::default())
+            .expect("overlap point should hit");
+
+        assert_eq!(
+            tree.path(hit.path_index()).unwrap().source_id(),
+            Some("front")
+        );
     }
 }
