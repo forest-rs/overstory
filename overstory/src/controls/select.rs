@@ -13,7 +13,7 @@
 //!   async item sources, validation, accessibility roles, and explicit
 //!   open/closed routed events.
 
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::cell::{Cell, RefCell};
 
 use understory_property::DependencyObjectExt;
@@ -208,7 +208,7 @@ impl AppendSpec for Select {
         let widget = SelectWidget {
             items: self.items,
             placeholder: self.placeholder,
-            popup: Rc::new(Cell::new(None)),
+            popup: Cell::new(None),
             popup_height: self.popup_height,
             item_extent: self.item_extent,
             selection_changed: SharedSelectSelectionChangedHandler::new(self.on_selection_changed),
@@ -236,7 +236,7 @@ impl AppendSpec for Select {
 pub(crate) struct SelectWidget {
     items: Vec<String>,
     placeholder: String,
-    popup: Rc<Cell<Option<ElementId>>>,
+    popup: Cell<Option<ElementId>>,
     popup_height: f32,
     item_extent: f64,
     selection_changed: SharedSelectSelectionChangedHandler,
@@ -392,7 +392,6 @@ impl SelectWidget {
         if self.items.is_empty() || ui.get(select).is_none() {
             return;
         }
-        let popup_cell = Rc::clone(&self.popup);
         let popup_height = self.popup_list_height();
         let popup_width = self.popup_width(ui, select);
         let item_extent = self.item_extent;
@@ -410,7 +409,7 @@ impl SelectWidget {
                         .size(popup_width, popup_height)
                         .item_extent(item_extent)
                         .selected_index(selected_index.unwrap_or(usize::MAX))
-                        .on_selection_changed(select_commit_handler(select, popup_cell)),
+                        .on_selection_changed(select_commit_handler(select)),
                 );
             },
         );
@@ -577,20 +576,25 @@ pub fn selected_select_item(ui: &Ui, select: ElementId) -> Option<String> {
 
 fn select_commit_handler(
     select: ElementId,
-    popup_cell: Rc<Cell<Option<ElementId>>>,
 ) -> impl FnMut(&mut Ui, ListSelectionChangedEvent) + 'static {
     move |ui, event| {
         let Some(index) = event.primary_index else {
             return;
         };
-        if set_select_index(ui, select, index) {
-            if let Some(popup) = popup_cell.get() {
-                popup_cell.set(None);
-                let _ = ui.close_popup(popup);
-            }
+        commit_select_popup_selection(ui, select, index);
+    }
+}
+
+fn commit_select_popup_selection(ui: &mut Ui, select: ElementId, index: usize) -> bool {
+    with_select_widget_mut(ui, select, |widget, ui| {
+        let changed = widget.set_selected_index(ui, select, Some(index));
+        if changed {
+            let _ = widget.close_popup(ui);
             let _ = ui.set_focus(Some(select));
         }
-    }
+        changed
+    })
+    .unwrap_or(false)
 }
 
 fn dispatch_select_selection_changed(
