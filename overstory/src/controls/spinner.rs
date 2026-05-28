@@ -132,10 +132,53 @@ impl Widget for SpinnerWidget {
     ) -> Option<accesskit::Role> {
         Some(accesskit::Role::ProgressIndicator)
     }
+
+    fn configure_accessibility(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        node.set_busy();
+    }
 }
 
 fn dot_brush(dot_index: usize, phase: usize) -> Brush {
     let table_index = (DOT_COUNT + dot_index - phase) % DOT_COUNT;
     let alpha = DOT_ALPHAS[table_index];
     Brush::Solid(Color::from_rgba8(0xff, 0xff, 0xff, alpha))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use accesskit::{Node, NodeId, Role, TreeUpdate};
+    use kurbo::Size;
+
+    #[test]
+    fn spinner_accessibility_marks_indeterminate_busy_state() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let spinner = ui.append(root, Spinner::new());
+        ui.compute_layout(Size::new(80.0, 80.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, spinner);
+
+        assert_eq!(node.role(), Role::ProgressIndicator);
+        assert!(node.is_busy());
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
+    }
 }

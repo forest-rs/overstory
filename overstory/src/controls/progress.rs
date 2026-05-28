@@ -277,6 +277,7 @@ fn f32_from_unit_fraction(fraction: f64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use accesskit::{Node, NodeId, Role, TreeUpdate};
     use kurbo::Size;
     use understory_property::DependencyObjectExt;
 
@@ -298,5 +299,35 @@ mod tests {
                 .map(String::as_str),
             Some("25%")
         );
+    }
+
+    #[test]
+    fn progress_accessibility_exposes_determinate_range() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let progress = ui.append(root, ProgressBar::new().min(10.0).max(20.0).value(15.0));
+        ui.compute_layout(Size::new(300.0, 40.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, progress);
+
+        assert_eq!(node.role(), Role::ProgressIndicator);
+        assert_eq!(node.numeric_value(), Some(15.0));
+        assert_eq!(node.min_numeric_value(), Some(10.0));
+        assert_eq!(node.max_numeric_value(), Some(20.0));
+        assert!(!node.is_busy());
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }
