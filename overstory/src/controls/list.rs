@@ -736,7 +736,7 @@ impl Widget for ListItemWidget {
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.add_click_action(node);
+        ctx.add_click_action_if_enabled(element, node);
         ctx.apply_selected_state(element, node);
         node.set_position_in_set(self.index + 1);
     }

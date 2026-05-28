@@ -233,11 +233,11 @@ impl Widget for ButtonWidget {
 
     fn configure_accessibility(
         &self,
-        _element: &Element,
+        element: &Element,
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.add_click_action(node);
+        ctx.add_click_action_if_enabled(element, node);
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

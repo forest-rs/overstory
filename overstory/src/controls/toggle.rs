@@ -160,7 +160,7 @@ impl Widget for ToggleWidget {
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.add_click_action(node);
+        ctx.add_click_action_if_enabled(element, node);
         ctx.apply_checked_state(element, node);
     }
 

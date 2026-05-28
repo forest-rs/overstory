@@ -277,7 +277,7 @@ impl Widget for SelectWidget {
         let open = self.popup.get().is_some();
         node.set_expanded(open);
         if ctx.is_enabled(element.id()) {
-            ctx.add_click_action(node);
+            ctx.add_click_action_if_enabled(element, node);
             if open {
                 node.add_action(accesskit::Action::Collapse);
             } else {

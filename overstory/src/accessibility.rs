@@ -149,6 +149,13 @@ impl<'a> AccessibilityContext<'a> {
         node.add_action(Action::Click);
     }
 
+    /// Adds the standard click action to `node` when `element` is enabled.
+    pub fn add_click_action_if_enabled(&self, element: &Element, node: &mut Node) {
+        if self.is_enabled(element.id()) {
+            self.add_click_action(node);
+        }
+    }
+
     /// Applies checked state from Overstory's built-in checked property.
     pub fn apply_checked_state(&self, element: &Element, node: &mut Node) {
         node.set_toggled(Toggled::from(self.is_checked(element)));
@@ -417,7 +424,7 @@ fn accesskit_bounds(bounds: kurbo::Rect) -> AccessRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Button, CheckBox, Layout, Slider, Text, Widget};
+    use crate::{Button, CheckBox, Layout, Slider, Text, ToggleSwitch, Widget};
     use accesskit::ActionData;
     use alloc::boxed::Box;
     use kurbo::Size;
@@ -473,6 +480,29 @@ mod tests {
         assert!(slider_node.supports_action(Action::Increment));
         assert!(slider_node.supports_action(Action::Decrement));
         assert!(slider_node.supports_action(Action::SetValue));
+    }
+
+    #[test]
+    fn disabled_controls_do_not_advertise_click_actions() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(240.0, 160.0));
+        let button = ui.append(root, Button::new("Disabled button").disabled());
+        let checkbox = ui.append(root, CheckBox::new("Disabled check").disabled());
+        let toggle = ui.append(root, ToggleSwitch::new().disabled());
+        ui.compute_layout(Size::new(240.0, 160.0));
+
+        let update = ui.accesskit_tree_update();
+
+        assert!(!node_for(&update, button).supports_action(Action::Click));
+        assert!(!node_for(&update, checkbox).supports_action(Action::Click));
+        assert!(!node_for(&update, toggle).supports_action(Action::Click));
+        assert!(!ui.handle_accesskit_action(&ActionRequest {
+            action: Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(button),
+            data: None,
+        }));
     }
 
     #[test]
