@@ -21,8 +21,8 @@ use overstory::{
     Affine, BuiltInProperties, Button, CheckBox, CursorIcon, Divider, ElementId, FontFeature,
     Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup,
     ProgressBar, Rect, ScrollBar, ScrollState, Select, Slider, Spinner, Splitter, TYPE_GENERIC,
-    TYPE_TEXT, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
-    layouts, set_progress_value, theme,
+    TYPE_TEXT, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, Viewport, layouts,
+    set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{SvgElementTree, SvgImportOptions};
@@ -96,6 +96,7 @@ const CLASS_DEMO_BODY: ClassId = ClassId(17);
 const CLASS_DEMO_SPLIT_SCENE: ClassId = ClassId(18);
 const CLASS_DEMO_SPLIT_INSPECTOR: ClassId = ClassId(19);
 const CLASS_DEMO_MOTION_STAGE: ClassId = ClassId(20);
+const CLASS_SVG_GRID_LINE: ClassId = ClassId(21);
 
 const RENDERER_QUEUE_LEN: usize = 1_000;
 const INITIAL_RENDERER_SELECTION: usize = 2;
@@ -316,14 +317,14 @@ enum NavKeyAction {
 
 #[derive(Clone, Debug)]
 struct SvgViewportDemo {
-    tree: SvgElementTree,
+    path_count: usize,
     viewport: Viewport2D,
     world_bounds: Rect,
 }
 
 impl SvgViewportDemo {
-    fn new(tree: SvgElementTree, view_width: f32, view_height: f32) -> Self {
-        let world_bounds = Rect::new(0.0, 0.0, f64::from(tree.width()), f64::from(tree.height()));
+    fn new(svg: &SvgElementTree, view_width: f32, view_height: f32) -> Self {
+        let world_bounds = Rect::new(0.0, 0.0, f64::from(svg.width()), f64::from(svg.height()));
         let mut viewport = Viewport2D::new(Rect::new(
             0.0,
             0.0,
@@ -336,7 +337,7 @@ impl SvgViewportDemo {
         viewport.set_world_bounds(Some(padded_svg_bounds(world_bounds)));
         viewport.fit_world();
         Self {
-            tree,
+            path_count: svg.len(),
             viewport,
             world_bounds,
         }
@@ -360,7 +361,7 @@ impl SvgViewportDemo {
 
     fn status(&self) -> String {
         let zoom = self.viewport.zoom() * 100.0;
-        format!("{} paths · {zoom:.0}%", self.tree.len())
+        format!("{} paths · {zoom:.0}%", self.path_count)
     }
 }
 
@@ -1513,6 +1514,8 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
 #[derive(Clone)]
 struct SvgViewer {
     host: ElementId,
+    grid: ElementId,
+    content: ElementId,
     status: ElementId,
     state: Rc<RefCell<SvgViewportDemo>>,
 }
@@ -1523,7 +1526,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
         return Err(());
     }
     let state = Rc::new(RefCell::new(SvgViewportDemo::new(
-        svg,
+        &svg,
         SVG_VIEWPORT_WIDTH,
         SVG_VIEWPORT_HEIGHT,
     )));
@@ -1548,9 +1551,29 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     ui.set_local(host, ui.properties().border_width, 1.0_f64);
     ui.set_local(host, ui.properties().corner_radius, 12.0_f64);
 
+    let grid = ui.append(
+        host,
+        Panel::new().layout(
+            Layout::new()
+                .absolute_at(0.0, 0.0)
+                .logical_size(SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT),
+        ),
+    );
+    let world_bounds = state.borrow().world_bounds;
+    let content = ui.append(
+        host,
+        Panel::new().layout(Layout::new().absolute_at(0.0, 0.0).logical_size(
+            f32_coord(world_bounds.width()),
+            f32_coord(world_bounds.height()),
+        )),
+    );
+    ui.append(content, svg);
+
     let status = ui.append(parent, caption(&state.borrow().status()));
     let viewer = SvgViewer {
         host,
+        grid,
+        content,
         status,
         state,
     };
@@ -1629,11 +1652,25 @@ fn append_svg_view_button(
 }
 
 fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
-    clear_children(ui, viewer.host);
     let state = viewer.state.borrow();
-    append_svg_grid(ui, viewer.host, &state);
-    append_svg_paths(ui, viewer.host, &state);
+    clear_children(ui, viewer.grid);
+    append_svg_grid(ui, viewer.grid, &state);
+    ui.set_visual_transform(viewer.content, viewport_transform(&state.viewport));
     ui.set_local(viewer.status, ui.properties().content, state.status());
+}
+
+fn viewport_transform(viewport: &Viewport2D) -> Affine {
+    let origin = viewport.world_to_view_point(Point::ZERO);
+    let x = viewport.world_to_view_point(Point::new(1.0, 0.0));
+    let y = viewport.world_to_view_point(Point::new(0.0, 1.0));
+    Affine::new([
+        x.x - origin.x,
+        x.y - origin.y,
+        y.x - origin.x,
+        y.y - origin.y,
+        origin.x,
+        origin.y,
+    ])
 }
 
 fn append_svg_grid(ui: &mut Ui, parent: ElementId, state: &SvgViewportDemo) {
@@ -1674,44 +1711,16 @@ fn append_svg_grid_axis(
         } else {
             Rect::new(view.x0, coordinate, view.x1, coordinate + 1.0)
         };
-        append_svg_rect(ui, parent, rect, color);
+        append_svg_grid_rect(ui, parent, rect, color);
         world += spacing;
         count += 1;
     }
 }
 
-fn append_svg_paths(ui: &mut Ui, parent: ElementId, state: &SvgViewportDemo) {
-    let viewport = &state.viewport;
-    let view_bounds = viewport.view_rect();
-    for path in state.tree.paths() {
-        let world_bounds = path.bounds();
-        let view_bounds_for_path = viewport.world_to_view_rect(world_bounds);
-        if !rects_intersect(view_bounds_for_path, view_bounds) {
-            continue;
-        }
-        let mut primitive = path.primitive().clone();
-        primitive.transform = Affine::scale(viewport.zoom()) * primitive.transform;
-        ui.append(
-            parent,
-            VectorPath::from_primitive(primitive).layout(
-                Layout::new()
-                    .absolute_at(
-                        f32_coord(view_bounds_for_path.x0),
-                        f32_coord(view_bounds_for_path.y0),
-                    )
-                    .logical_size(
-                        f32_coord(view_bounds_for_path.width()),
-                        f32_coord(view_bounds_for_path.height()),
-                    ),
-            ),
-        );
-    }
-}
-
-fn append_svg_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color) -> ElementId {
+fn append_svg_grid_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color) -> ElementId {
     let element = ui.append(
         parent,
-        Panel::new().layout(
+        Panel::new().class(CLASS_SVG_GRID_LINE).layout(
             Layout::new()
                 .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
                 .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
@@ -1730,10 +1739,6 @@ fn padded_svg_bounds(bounds: Rect) -> Rect {
 fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
     let bounds = ui.effective_bounds(parent);
     Point::new(position.x - bounds.x0, position.y - bounds.y0)
-}
-
-fn rects_intersect(a: Rect, b: Rect) -> bool {
-    a.x1 >= b.x0 && a.x0 <= b.x1 && a.y1 >= b.y0 && a.y0 <= b.y1
 }
 
 #[expect(
@@ -2273,7 +2278,7 @@ mod tests {
     }
 
     #[test]
-    fn svg_viewer_zoom_reprojects_vector_paths() {
+    fn svg_viewer_zoom_updates_content_transform_without_rebuilding_paths() {
         let svg = br##"
             <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
               <rect x="25" y="25" width="50" height="50" fill="#ff8a00"/>
@@ -2285,20 +2290,28 @@ mod tests {
         let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
         ui.compute_layout(Size::new(360.0, 280.0));
 
-        let path = find_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH)
-            .expect("viewer should contain a vector path");
-        let before = ui.effective_bounds(path);
+        let before_count = count_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH);
+        let before_bounds = ui.effective_bounds(viewer.content);
+        let before_scale = transform_scale(ui.effective_visual_transform(viewer.content));
+        let before_grid_thickness =
+            first_grid_line_thickness(&ui, viewer.grid).expect("viewer should contain grid lines");
 
         viewer.state.borrow_mut().zoom_center(2.0);
         refresh_svg_viewer(&mut ui, &viewer);
         ui.compute_layout(Size::new(360.0, 280.0));
 
-        let path = find_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH)
-            .expect("viewer should still contain a vector path after zoom");
-        let after = ui.effective_bounds(path);
+        let after_count = count_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH);
+        let after_bounds = ui.effective_bounds(viewer.content);
+        let after_scale = transform_scale(ui.effective_visual_transform(viewer.content));
+        let after_grid_thickness =
+            first_grid_line_thickness(&ui, viewer.grid).expect("viewer should contain grid lines");
+        assert_eq!(after_count, before_count);
+        assert_eq!(after_bounds, before_bounds);
+        assert_close(before_grid_thickness, 1.0, "grid starts at 1px");
+        assert_close(after_grid_thickness, 1.0, "grid stays at 1px after zoom");
         assert!(
-            after.width() > before.width() * 1.5,
-            "zoom should enlarge projected path bounds: {before:?} -> {after:?}",
+            after_scale > before_scale * 1.5,
+            "zoom should enlarge the content presentation transform: {before_scale} -> {after_scale}",
         );
     }
 
@@ -2452,19 +2465,22 @@ mod tests {
                 .sum::<usize>()
     }
 
-    fn find_type(
-        ui: &Ui,
-        element: ElementId,
-        type_tag: understory_style::TypeTag,
-    ) -> Option<ElementId> {
+    fn transform_scale(transform: Affine) -> f64 {
+        let origin = transform * Point::ZERO;
+        let unit_x = transform * Point::new(1.0, 0.0);
+        (unit_x - origin).hypot()
+    }
+
+    fn first_grid_line_thickness(ui: &Ui, element: ElementId) -> Option<f64> {
         let current = ui.get(element)?;
-        if current.type_tag() == Some(type_tag) {
-            return Some(element);
+        if current.classes().contains(&CLASS_SVG_GRID_LINE) {
+            let bounds = ui.effective_bounds(element);
+            return Some(bounds.width().min(bounds.height()));
         }
         current
             .children()
             .iter()
-            .find_map(|child| find_type(ui, *child, type_tag))
+            .find_map(|child| first_grid_line_thickness(ui, *child))
     }
 
     fn assert_first_page_card_height(ui: &mut Ui, height: f64, label: &str) {
