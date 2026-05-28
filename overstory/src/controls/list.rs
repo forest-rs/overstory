@@ -31,7 +31,7 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
-    ScrollState, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
+    normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{action_scroll_unit, f32_from_logical};
 use crate::controls::text::TextWidget;
@@ -39,6 +39,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
+use crate::scroll_runtime::ScrollState;
 use crate::template::{
     TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
@@ -277,6 +278,7 @@ impl AppendSpec for ListBox {
         let (width, height) = self
             .size
             .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
+        ui.register_scroll_target(id, scroll_state);
         ui.set_layout(id, Layout::new().relative().logical_size(width, height));
         ui.set_control_state(id, self.state);
         id
@@ -464,10 +466,6 @@ impl Widget for ListBoxWidget {
 }
 
 impl ListBoxWidget {
-    pub(crate) fn scroll_state(&self) -> ScrollState {
-        self.scroll_state.clone()
-    }
-
     fn sync_virtual_items(&mut self, listbox: ElementId, ui: &mut Ui) -> bool {
         let sync = self.sync_virtual_metrics(listbox, ui);
         let mut changed = sync.changed;

@@ -46,6 +46,7 @@ use crate::layout_runtime::LayoutRuntime;
 use crate::overlay::OverlayRuntime;
 use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
+use crate::scroll_runtime::ScrollRuntime;
 use crate::style_runtime::StyleRuntime;
 use crate::template_runtime::TemplateRuntime;
 use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
@@ -59,6 +60,7 @@ mod layout;
 mod overlays;
 mod paint;
 mod popups;
+mod scroll;
 mod state;
 mod style;
 mod timeline;
@@ -117,6 +119,8 @@ pub struct Ui {
     timers: TimerRuntime,
     /// Tooltip and popup declarations plus currently active overlay stack.
     overlays: OverlayRuntime,
+    /// Scrollable target registry shared by scrollbars and semantic actions.
+    scrolling: ScrollRuntime,
     /// Last viewport size used during layout/paint.
     last_viewport: kurbo::Size,
 }
@@ -283,6 +287,7 @@ impl Ui {
             timeline_properties,
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
+            scrolling: ScrollRuntime::new(),
             last_viewport: kurbo::Size::ZERO,
         };
         me.mirror_allocated_element(root, None);

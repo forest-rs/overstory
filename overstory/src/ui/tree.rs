@@ -187,6 +187,7 @@ impl Ui {
         self.events.remove_target(id);
         self.timeline.remove_element(id);
         self.timers.remove_target(id);
+        self.scrolling.remove_target(id);
         self.focus.remove_target(id);
         self.layout.remove_element(id);
         for node in self.geometry.remove_element(id) {

@@ -17,8 +17,6 @@
 //!   host layer.
 
 use alloc::boxed::Box;
-use alloc::rc::Rc;
-use core::cell::Cell;
 
 use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
@@ -26,7 +24,6 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
-use crate::controls::list::ListBoxWidget;
 use crate::controls::support::{
     PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, action_scroll_unit,
     is_initial_drag_move,
@@ -34,6 +31,7 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
+use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
@@ -52,143 +50,6 @@ pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
 const DEFAULT_SCROLL_BAR_LENGTH: f32 = 146.0;
 const DEFAULT_SCROLL_BAR_THICKNESS: f32 = 10.0;
 const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
-
-/// Shared scroll offset state for viewport-like controls.
-#[derive(Clone)]
-pub(crate) struct ScrollState {
-    inner: Rc<ScrollStateInner>,
-}
-
-struct ScrollStateInner {
-    offset: Cell<Vec2>,
-    metrics: Cell<ScrollMetrics>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct ScrollMetrics {
-    viewport: Size,
-    content: Size,
-}
-
-impl ScrollMetrics {
-    fn new(viewport: Size, content: Size) -> Self {
-        Self {
-            viewport: Size::new(
-                normalize_scroll_axis(viewport.width),
-                normalize_scroll_axis(viewport.height),
-            ),
-            content: Size::new(
-                normalize_scroll_axis(content.width),
-                normalize_scroll_axis(content.height),
-            ),
-        }
-    }
-
-    fn max_offset(self) -> Vec2 {
-        Vec2::new(
-            (self.content.width - self.viewport.width).max(0.0),
-            (self.content.height - self.viewport.height).max(0.0),
-        )
-    }
-}
-
-impl core::fmt::Debug for ScrollState {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ScrollState")
-            .field("offset", &self.offset())
-            .finish()
-    }
-}
-
-impl Default for ScrollState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ScrollState {
-    /// Creates shared scroll state with a zero offset.
-    #[must_use]
-    pub(crate) fn new() -> Self {
-        Self {
-            inner: Rc::new(ScrollStateInner {
-                offset: Cell::new(Vec2::ZERO),
-                metrics: Cell::new(ScrollMetrics::default()),
-            }),
-        }
-    }
-
-    /// Creates shared scroll state with an initial vertical offset.
-    #[must_use]
-    pub(crate) fn with_offset_y(offset_y: f64) -> Self {
-        let state = Self::new();
-        state.set_offset_y_raw(offset_y);
-        state
-    }
-
-    /// Returns the current scroll offset in logical pixels.
-    #[must_use]
-    pub(crate) fn offset(&self) -> Vec2 {
-        self.inner.offset.get()
-    }
-
-    /// Returns the current vertical scroll offset in logical pixels.
-    #[must_use]
-    pub(crate) fn offset_y(&self) -> f64 {
-        self.inner.offset.get().y
-    }
-
-    /// Returns the current maximum scroll offset in logical pixels.
-    #[must_use]
-    pub(crate) fn max_offset(&self) -> Vec2 {
-        self.inner.metrics.get().max_offset()
-    }
-
-    /// Returns the current maximum vertical scroll offset in logical pixels.
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) fn max_offset_y(&self) -> f64 {
-        self.max_offset().y
-    }
-
-    /// Returns the latest viewport size in logical pixels.
-    #[must_use]
-    pub(crate) fn viewport_size(&self) -> Size {
-        self.inner.metrics.get().viewport
-    }
-
-    /// Returns the latest scrollable content size in logical pixels.
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) fn content_size(&self) -> Size {
-        self.inner.metrics.get().content
-    }
-
-    pub(crate) fn set_offset_raw(&self, offset: Vec2) -> bool {
-        let offset = Vec2::new(
-            normalize_scroll_axis(offset.x),
-            normalize_scroll_axis(offset.y),
-        );
-        let current = self.inner.offset.get();
-        if (current.x - offset.x).abs() <= f64::EPSILON
-            && (current.y - offset.y).abs() <= f64::EPSILON
-        {
-            return false;
-        }
-        self.inner.offset.set(offset);
-        true
-    }
-
-    pub(crate) fn set_offset_y_raw(&self, offset_y: f64) -> bool {
-        self.set_offset_raw(Vec2::new(self.inner.offset.get().x, offset_y))
-    }
-
-    pub(crate) fn set_metrics(&self, viewport: Size, content: Size) {
-        self.inner
-            .metrics
-            .set(ScrollMetrics::new(viewport, content));
-    }
-}
 
 pub(crate) fn normalize_scroll_offset_y(offset_y: f64) -> f64 {
     normalize_scroll_axis(offset_y)
@@ -270,6 +131,7 @@ impl AppendSpec for ScrollView {
         if let Some((width, height)) = self.size {
             layout = layout.logical_size(width, height);
         }
+        ui.register_scroll_target(id, state);
         ui.set_layout(id, layout);
         ui.set_control_state(id, self.control_state);
         id
@@ -500,7 +362,7 @@ impl AppendSpec for ScrollBar {
         let widget = ScrollBarWidget {
             axis: self.axis,
             viewport: self.viewport,
-            state: scroll_target_state(ui, self.viewport).unwrap_or_default(),
+            state: ui.scroll_target_state(self.viewport).unwrap_or_default(),
             length: self.length,
             thickness: self.thickness,
             thumb_extent: self.thumb_extent,
@@ -691,26 +553,15 @@ pub fn set_scroll_view_offset_y(ui: &mut Ui, scroll_view: ElementId, offset: f64
 /// Returns the current vertical scroll offset for a scrollable target.
 #[must_use]
 pub fn scroll_offset_y(ui: &Ui, target: ElementId) -> Option<f64> {
-    scroll_target_state(ui, target).map(|state| state.offset_y())
+    ui.scroll_target_state(target).map(|state| state.offset_y())
 }
 
 /// Sets the vertical scroll offset for a scrollable target.
 pub fn set_scroll_offset_y(ui: &mut Ui, target: ElementId, offset: f64) -> bool {
-    let Some(state) = scroll_target_state(ui, target) else {
+    let Some(state) = ui.scroll_target_state(target) else {
         return false;
     };
     set_scroll_state_offset_y(ui, target, &state, offset)
-}
-
-pub(crate) fn scroll_target_state(ui: &Ui, target: ElementId) -> Option<ScrollState> {
-    let widget = ui.get(target)?.widget()?;
-    if let Some(scroll_view) = widget.downcast_ref::<ScrollViewWidget>() {
-        return Some(scroll_view.state.clone());
-    }
-    if let Some(listbox) = widget.downcast_ref::<ListBoxWidget>() {
-        return Some(listbox.scroll_state());
-    }
-    None
 }
 
 pub(crate) fn handle_wheel_scroll(
@@ -1051,14 +902,6 @@ fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
     }
 }
 
-fn normalize_scroll_axis(value: f64) -> f64 {
-    if value.is_finite() {
-        value.max(0.0)
-    } else {
-        0.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1146,11 +989,26 @@ mod tests {
         }
 
         ui.compute_layout(Size::new(180.0, 120.0));
-        let state = scroll_target_state(&ui, scroll).expect("scroll view should own scroll state");
+        let state = ui
+            .scroll_target_state(scroll)
+            .expect("scroll view should own scroll state");
 
         assert_eq!(state.viewport_size(), Size::new(120.0, 48.0));
         assert!(state.content_size().height > state.viewport_size().height);
         assert!(state.max_offset_y() > 0.0);
+    }
+
+    #[test]
+    fn removing_scroll_view_clears_scroll_target_registration() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+
+        assert!(ui.scroll_target_state(scroll).is_some());
+
+        ui.remove(scroll);
+
+        assert!(ui.scroll_target_state(scroll).is_none());
     }
 
     #[test]
