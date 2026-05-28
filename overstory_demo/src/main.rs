@@ -371,6 +371,35 @@ impl SvgViewportDemo {
         let zoom = self.viewport.zoom() * 100.0;
         format!("{} paths · {zoom:.0}%", self.path_count)
     }
+
+    fn path_count_readout(&self) -> String {
+        format!("{}", self.path_count)
+    }
+
+    fn zoom_readout(&self) -> String {
+        format!("{:.0}%", self.viewport.zoom() * 100.0)
+    }
+
+    fn visible_rect_readout(&self) -> String {
+        let visible = self.viewport.visible_world_rect();
+        format!(
+            "{:.0},{:.0} / {:.0}x{:.0}",
+            visible.x0,
+            visible.y0,
+            visible.width(),
+            visible.height(),
+        )
+    }
+
+    fn transform_readout(&self) -> String {
+        let origin = self.viewport.world_to_view_point(Point::ZERO);
+        format!(
+            "scale {:.2}\noffset {:.0},{:.0}",
+            self.viewport.zoom(),
+            origin.x,
+            origin.y,
+        )
+    }
 }
 
 fn caption(text: &str) -> Text {
@@ -1520,7 +1549,7 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
         SVG_TIGER_CARD_HEIGHT,
     );
     ui.add_class(specimen, CLASS_SVG_TIGER_CARD);
-    if let Ok(viewer) = append_svg_viewer(ui, specimen, TIGER_SVG) {
+    let viewer = if let Ok(viewer) = append_svg_viewer(ui, specimen, TIGER_SVG) {
         let controls = ui.append(specimen, Panel::row(8.0).align_center());
         append_svg_view_button(ui, controls, "Fit", viewer.clone(), |state| {
             state.reset_to_fit();
@@ -1528,15 +1557,17 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
         append_svg_view_button(ui, controls, "-", viewer.clone(), |state| {
             state.zoom_center(0.82);
         });
-        append_svg_view_button(ui, controls, "+", viewer, |state| {
+        append_svg_view_button(ui, controls, "+", viewer.clone(), |state| {
             state.zoom_center(1.22);
         });
+        Some(viewer)
     } else {
         ui.append(
             specimen,
             body_text("The SVG stress asset did not import any supported vector paths."),
         );
-    }
+        None
+    };
 
     let inspector = demo_card(
         ui,
@@ -1546,7 +1577,13 @@ fn build_svg_page(ui: &mut Ui, stage: ElementId) {
         SVG_TIGER_CARD_HEIGHT,
     );
     ui.add_class(inspector, CLASS_SVG_INSPECTOR_CARD);
-    append_svg_static_inspector(ui, inspector);
+    if let Some(viewer) = viewer {
+        let inspector_state = append_svg_inspector(ui, inspector, &viewer);
+        *viewer.inspector.borrow_mut() = Some(inspector_state);
+        refresh_svg_viewer(ui, &viewer);
+    } else {
+        append_svg_static_inspector(ui, inspector);
+    }
 }
 
 fn append_svg_import_summary(ui: &mut Ui, parent: ElementId) {
@@ -1604,13 +1641,78 @@ fn append_svg_static_inspector(ui: &mut Ui, parent: ElementId) {
     append_svg_inspector_row(ui, parent, "Properties", "Fill, stroke, transform");
 }
 
-fn append_svg_inspector_row(ui: &mut Ui, parent: ElementId, label: &str, value: &str) {
+fn append_svg_inspector(ui: &mut Ui, parent: ElementId, viewer: &SvgViewer) -> SvgInspector {
+    let state = viewer.state.borrow();
+    ui.append(parent, caption("DOCUMENT"));
+    append_svg_inspector_row(ui, parent, "Asset", "Ghostscript Tiger");
+    let paths = append_svg_inspector_row(ui, parent, "Paths", &state.path_count_readout());
+    let zoom = append_svg_inspector_row(ui, parent, "Zoom", &state.zoom_readout());
+    let visible = append_svg_inspector_row(ui, parent, "Visible", &state.visible_rect_readout());
+    let transform =
+        append_svg_inspector_multiline_row(ui, parent, "Layer", &state.transform_readout());
+    ui.append(parent, Divider::horizontal().length(200.0));
+    ui.append(parent, caption("PIPELINE"));
+    append_svg_inspector_row(ui, parent, "Lowering", "VectorPath tree");
+    append_svg_inspector_row(ui, parent, "Grid", "Viewport overlay");
+    append_svg_inspector_row(ui, parent, "Next", "Outline + properties");
+    SvgInspector {
+        paths,
+        zoom,
+        visible,
+        transform,
+    }
+}
+
+fn update_svg_inspector(ui: &mut Ui, inspector: SvgInspector, state: &SvgViewportDemo) {
+    ui.set_local(
+        inspector.paths,
+        ui.properties().content,
+        state.path_count_readout(),
+    );
+    ui.set_local(
+        inspector.zoom,
+        ui.properties().content,
+        state.zoom_readout(),
+    );
+    ui.set_local(
+        inspector.visible,
+        ui.properties().content,
+        state.visible_rect_readout(),
+    );
+    ui.set_local(
+        inspector.transform,
+        ui.properties().content,
+        state.transform_readout(),
+    );
+}
+
+fn append_svg_inspector_row(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
+    append_svg_inspector_row_with_height(ui, parent, label, value, 18.0)
+}
+
+fn append_svg_inspector_multiline_row(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    value: &str,
+) -> ElementId {
+    append_svg_inspector_row_with_height(ui, parent, label, value, 38.0)
+}
+
+fn append_svg_inspector_row_with_height(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    value: &str,
+    height: f32,
+) -> ElementId {
     let row = ui.append(
         parent,
         Panel::row(8.0).layout(
             Layout::row(8.0).size(
                 LayoutSize::new()
                     .width(LayoutDimension::Percent(1.0))
+                    .height(LayoutDimension::Logical(height))
                     .min_width(LayoutDimension::Logical(0.0)),
             ),
         ),
@@ -1619,7 +1721,7 @@ fn append_svg_inspector_row(ui: &mut Ui, parent: ElementId, label: &str, value: 
     ui.set_layout(
         label,
         Layout::new()
-            .logical_size(78.0, 18.0)
+            .logical_size(78.0, height)
             .flex_grow(0.0)
             .flex_shrink(0.0),
     );
@@ -1627,10 +1729,15 @@ fn append_svg_inspector_row(ui: &mut Ui, parent: ElementId, label: &str, value: 
     ui.set_layout(
         value,
         Layout::new()
-            .size(LayoutSize::new().min_width(LayoutDimension::Logical(0.0)))
+            .size(
+                LayoutSize::new()
+                    .height(LayoutDimension::Logical(height))
+                    .min_width(LayoutDimension::Logical(0.0)),
+            )
             .flex_grow(1.0)
             .flex_shrink(1.0),
     );
+    value
 }
 
 #[derive(Clone)]
@@ -1639,7 +1746,16 @@ struct SvgViewer {
     grid: ElementId,
     content: ElementId,
     status: ElementId,
+    inspector: Rc<RefCell<Option<SvgInspector>>>,
     state: Rc<RefCell<SvgViewportDemo>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SvgInspector {
+    paths: ElementId,
+    zoom: ElementId,
+    visible: ElementId,
+    transform: ElementId,
 }
 
 fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<SvgViewer, ()> {
@@ -1697,6 +1813,7 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
         grid,
         content,
         status,
+        inspector: Rc::new(RefCell::new(None)),
         state,
     };
     install_svg_viewer_interaction(ui, &viewer);
@@ -1779,6 +1896,9 @@ fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
     append_svg_grid(ui, viewer.grid, &state);
     ui.set_visual_transform(viewer.content, viewport_transform(&state.viewport));
     ui.set_local(viewer.status, ui.properties().content, state.status());
+    if let Some(inspector) = *viewer.inspector.borrow() {
+        update_svg_inspector(ui, inspector, &state);
+    }
 }
 
 fn viewport_transform(viewport: &Viewport2D) -> Affine {
@@ -2410,6 +2530,9 @@ mod tests {
         let root = ui.root();
         ui.set_layout(root, Layout::column(0.0).logical_size(360.0, 280.0));
         let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
+        let inspector = append_svg_inspector(&mut ui, root, &viewer);
+        *viewer.inspector.borrow_mut() = Some(inspector);
+        refresh_svg_viewer(&mut ui, &viewer);
         ui.compute_layout(Size::new(360.0, 280.0));
 
         let before_count = count_type(&ui, viewer.host, overstory::TYPE_VECTOR_PATH);
