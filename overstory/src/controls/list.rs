@@ -34,7 +34,7 @@ use crate::channels::LAYOUT;
 use crate::controls::scroll::{
     ScrollState, normalize_scroll_offset_y, scroll_offset_y, wheel_scroll_delta,
 };
-use crate::controls::support::f32_from_logical;
+use crate::controls::support::{action_scroll_unit, f32_from_logical};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
@@ -339,7 +339,7 @@ impl Widget for ListBoxWidget {
 
     fn configure_accessibility(
         &self,
-        _element: &Element,
+        element: &Element,
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
@@ -347,6 +347,16 @@ impl Widget for ListBoxWidget {
             node.set_multiselectable();
         }
         node.set_size_of_set(self.items.len());
+        let offset = self.scroll_state.offset();
+        let max = self.scroll_state.max_offset();
+        node.set_scroll_y(offset.y);
+        node.set_scroll_y_min(0.0);
+        node.set_scroll_y_max(max.y);
+        if ctx.is_enabled(element.id()) && max.y > f64::EPSILON {
+            node.add_action(accesskit::Action::ScrollUp);
+            node.add_action(accesskit::Action::ScrollDown);
+            node.add_action(accesskit::Action::SetScrollOffset);
+        }
         if let Some(primary) = self.selected_index()
             && let Some(item) = self.realized.iter().find(|item| item.index == primary)
         {
@@ -439,6 +449,34 @@ impl Widget for ListBoxWidget {
         }
         self.scroll_index_into_view(listbox, ctx, next);
         event.mark_handled();
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let listbox = ctx.id();
+        if !ctx.is_enabled(listbox) {
+            return false;
+        }
+        match request.action {
+            accesskit::Action::ScrollUp => {
+                self.scroll_by_accessibility_action(listbox, ctx, -1.0, request)
+            }
+            accesskit::Action::ScrollDown => {
+                self.scroll_by_accessibility_action(listbox, ctx, 1.0, request)
+            }
+            accesskit::Action::SetScrollOffset => {
+                let Some(accesskit::ActionData::SetScrollOffset(point)) = request.data.as_ref()
+                else {
+                    return false;
+                };
+                self.set_scroll_offset_y(listbox, ctx, point.y);
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -540,6 +578,26 @@ impl ListBoxWidget {
     fn scroll_by(&mut self, listbox: ElementId, ui: &mut Ui, delta_y: f64) {
         let next = self.virtual_list.scroll_offset() + delta_y;
         self.set_scroll_offset_y(listbox, ui, next);
+    }
+
+    fn scroll_by_accessibility_action(
+        &mut self,
+        listbox: ElementId,
+        ui: &mut Ui,
+        direction: f64,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let Some(unit) = action_scroll_unit(request) else {
+            return false;
+        };
+        let amount = match unit {
+            accesskit::ScrollUnit::Item => self.item_extent,
+            accesskit::ScrollUnit::Page => {
+                self.virtual_list.viewport_extent().max(self.item_extent)
+            }
+        };
+        self.scroll_by(listbox, ui, amount * direction);
+        true
     }
 
     fn set_scroll_offset_y(&mut self, listbox: ElementId, ui: &mut Ui, offset: f64) {
@@ -1011,7 +1069,7 @@ mod tests {
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
-    use accesskit::{Action, Node, NodeId, Role, TreeUpdate};
+    use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
     use kurbo::Point;
     use peniko::{Brush, Color};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
@@ -1203,6 +1261,56 @@ mod tests {
         assert!(ui.get(listbox).unwrap().children().len() < 100);
         assert!(realized_list_item(&ui, listbox, 0).is_some());
         assert!(realized_list_item(&ui, listbox, 99).is_none());
+    }
+
+    #[test]
+    fn listbox_accessibility_reports_scroll_range_from_virtual_model() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, scrolling_test_list_box());
+
+        realize(&mut ui);
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, listbox);
+
+        assert!(ui.get(listbox).unwrap().children().len() < 100);
+        assert_eq!(node.role(), Role::ListBox);
+        assert_eq!(node.size_of_set(), Some(100));
+        assert_eq!(node.scroll_y(), Some(0.0));
+        assert_eq!(node.scroll_y_min(), Some(0.0));
+        assert_eq!(node.scroll_y_max(), Some((100.0 * 20.0) - 56.0));
+        assert!(node.supports_action(Action::ScrollDown));
+        assert!(node.supports_action(Action::SetScrollOffset));
+
+        assert!(ui.handle_accesskit_action(&scroll_offset_action(listbox, 180.0)));
+        realize(&mut ui);
+
+        assert_eq!(list_scroll_offset_y(&ui, listbox), Some(180.0));
+        assert!(realized_list_item(&ui, listbox, 9).is_some());
+        assert!(realized_list_item(&ui, listbox, 0).is_none());
+    }
+
+    #[test]
+    fn listbox_accessibility_scroll_actions_use_virtual_list_units() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(root, scrolling_test_list_box());
+
+        realize(&mut ui);
+
+        assert!(ui.handle_accesskit_action(&scroll_action(
+            listbox,
+            Action::ScrollDown,
+            accesskit::ScrollUnit::Page,
+        )));
+        assert_eq!(list_scroll_offset_y(&ui, listbox), Some(56.0));
+
+        assert!(ui.handle_accesskit_action(&scroll_action(
+            listbox,
+            Action::ScrollUp,
+            accesskit::ScrollUnit::Item,
+        )));
+        assert_eq!(list_scroll_offset_y(&ui, listbox), Some(36.0));
     }
 
     #[test]
@@ -1400,5 +1508,29 @@ mod tests {
 
     fn accesskit_node_id(element: ElementId) -> NodeId {
         NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
+    }
+
+    fn scroll_action(
+        element: ElementId,
+        action: Action,
+        unit: accesskit::ScrollUnit,
+    ) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::ScrollUnit(unit)),
+        }
+    }
+
+    fn scroll_offset_action(element: ElementId, offset_y: f64) -> ActionRequest {
+        ActionRequest {
+            action: Action::SetScrollOffset,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::SetScrollOffset(accesskit::Point::new(
+                0.0, offset_y,
+            ))),
+        }
     }
 }
