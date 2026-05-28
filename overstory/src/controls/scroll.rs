@@ -26,6 +26,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
+use crate::controls::list::ListBoxWidget;
 use crate::controls::support::{
     PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, action_scroll_unit,
     is_initial_drag_move,
@@ -54,7 +55,7 @@ const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
 
 /// Shared scroll offset state for viewport-like controls.
 #[derive(Clone)]
-pub struct ScrollState {
+pub(crate) struct ScrollState {
     inner: Rc<ScrollStateInner>,
 }
 
@@ -108,7 +109,7 @@ impl Default for ScrollState {
 impl ScrollState {
     /// Creates shared scroll state with a zero offset.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inner: Rc::new(ScrollStateInner {
                 offset: Cell::new(Vec2::ZERO),
@@ -119,7 +120,7 @@ impl ScrollState {
 
     /// Creates shared scroll state with an initial vertical offset.
     #[must_use]
-    pub fn with_offset_y(offset_y: f64) -> Self {
+    pub(crate) fn with_offset_y(offset_y: f64) -> Self {
         let state = Self::new();
         state.set_offset_y_raw(offset_y);
         state
@@ -127,37 +128,39 @@ impl ScrollState {
 
     /// Returns the current scroll offset in logical pixels.
     #[must_use]
-    pub fn offset(&self) -> Vec2 {
+    pub(crate) fn offset(&self) -> Vec2 {
         self.inner.offset.get()
     }
 
     /// Returns the current vertical scroll offset in logical pixels.
     #[must_use]
-    pub fn offset_y(&self) -> f64 {
+    pub(crate) fn offset_y(&self) -> f64 {
         self.inner.offset.get().y
     }
 
     /// Returns the current maximum scroll offset in logical pixels.
     #[must_use]
-    pub fn max_offset(&self) -> Vec2 {
+    pub(crate) fn max_offset(&self) -> Vec2 {
         self.inner.metrics.get().max_offset()
     }
 
     /// Returns the current maximum vertical scroll offset in logical pixels.
     #[must_use]
-    pub fn max_offset_y(&self) -> f64 {
+    #[cfg(test)]
+    pub(crate) fn max_offset_y(&self) -> f64 {
         self.max_offset().y
     }
 
     /// Returns the latest viewport size in logical pixels.
     #[must_use]
-    pub fn viewport_size(&self) -> Size {
+    pub(crate) fn viewport_size(&self) -> Size {
         self.inner.metrics.get().viewport
     }
 
     /// Returns the latest scrollable content size in logical pixels.
     #[must_use]
-    pub fn content_size(&self) -> Size {
+    #[cfg(test)]
+    pub(crate) fn content_size(&self) -> Size {
         self.inner.metrics.get().content
     }
 
@@ -223,13 +226,6 @@ impl ScrollView {
     #[must_use]
     pub fn size(mut self, width: f32, height: f32) -> Self {
         self.size = Some((width, height));
-        self
-    }
-
-    /// Uses caller-provided shared scroll state.
-    #[must_use]
-    pub fn state(mut self, state: ScrollState) -> Self {
-        self.state = state;
         self
     }
 
@@ -402,11 +398,10 @@ impl Widget for ScrollViewWidget {
 }
 
 /// Builder + spec for a scrollbar that controls a viewport's shared
-/// [`ScrollState`].
+/// scroll state.
 pub struct ScrollBar {
     axis: Axis,
     viewport: ElementId,
-    state: ScrollState,
     length: f32,
     thickness: f32,
     thumb_extent: f32,
@@ -419,7 +414,6 @@ impl core::fmt::Debug for ScrollBar {
         f.debug_struct("ScrollBar")
             .field("axis", &self.axis)
             .field("viewport", &self.viewport)
-            .field("state", &self.state)
             .field("length", &self.length)
             .field("thickness", &self.thickness)
             .field("thumb_extent", &self.thumb_extent)
@@ -429,25 +423,24 @@ impl core::fmt::Debug for ScrollBar {
 }
 
 impl ScrollBar {
-    /// Starts a vertical scrollbar bound to `viewport` and `state`.
+    /// Starts a vertical scrollbar bound to `viewport`.
     #[must_use]
-    pub fn vertical(viewport: ElementId, state: ScrollState) -> Self {
-        Self::new(Axis::Vertical, viewport, state)
+    pub fn vertical(viewport: ElementId) -> Self {
+        Self::new(Axis::Vertical, viewport)
     }
 
-    /// Starts a horizontal scrollbar bound to `viewport` and `state`.
+    /// Starts a horizontal scrollbar bound to `viewport`.
     #[must_use]
-    pub fn horizontal(viewport: ElementId, state: ScrollState) -> Self {
-        Self::new(Axis::Horizontal, viewport, state)
+    pub fn horizontal(viewport: ElementId) -> Self {
+        Self::new(Axis::Horizontal, viewport)
     }
 
-    /// Starts a scrollbar on `axis` bound to `viewport` and `state`.
+    /// Starts a scrollbar on `axis` bound to `viewport`.
     #[must_use]
-    pub fn new(axis: Axis, viewport: ElementId, state: ScrollState) -> Self {
+    pub fn new(axis: Axis, viewport: ElementId) -> Self {
         Self {
             axis,
             viewport,
-            state,
             length: DEFAULT_SCROLL_BAR_LENGTH,
             thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
@@ -507,7 +500,7 @@ impl AppendSpec for ScrollBar {
         let widget = ScrollBarWidget {
             axis: self.axis,
             viewport: self.viewport,
-            state: self.state,
+            state: scroll_target_state(ui, self.viewport).unwrap_or_default(),
             length: self.length,
             thickness: self.thickness,
             thumb_extent: self.thumb_extent,
@@ -534,6 +527,9 @@ impl AppendSpec for ScrollBar {
 pub(crate) struct ScrollBarWidget {
     axis: Axis,
     viewport: ElementId,
+    // A clone of the target widget's internal scroll state. Apps bind
+    // scrollbars by target element; the scrollbar keeps this handle only so
+    // layout and accessibility hooks can read offset/metrics without a Ui.
     state: ScrollState,
     length: f32,
     thickness: f32,
@@ -684,24 +680,37 @@ impl Template for ScrollBarTemplate {
 /// Returns the current vertical scroll offset for `scroll_view`.
 #[must_use]
 pub fn scroll_view_offset_y(ui: &Ui, scroll_view: ElementId) -> Option<f64> {
-    scroll_view_state(ui, scroll_view).map(|state| state.offset_y())
+    scroll_offset_y(ui, scroll_view)
 }
 
 /// Sets the vertical scroll offset for `scroll_view`.
 pub fn set_scroll_view_offset_y(ui: &mut Ui, scroll_view: ElementId, offset: f64) -> bool {
-    let Some(state) = scroll_view_state(ui, scroll_view) else {
-        return false;
-    };
-    set_scroll_offset_y(ui, scroll_view, &state, offset)
+    set_scroll_offset_y(ui, scroll_view, offset)
 }
 
-/// Returns a cloned scroll state for `scroll_view`.
+/// Returns the current vertical scroll offset for a scrollable target.
 #[must_use]
-pub fn scroll_view_state(ui: &Ui, scroll_view: ElementId) -> Option<ScrollState> {
-    ui.get(scroll_view)
-        .and_then(|element| element.widget())
-        .and_then(|widget| widget.downcast_ref::<ScrollViewWidget>())
-        .map(|widget| widget.state.clone())
+pub fn scroll_offset_y(ui: &Ui, target: ElementId) -> Option<f64> {
+    scroll_target_state(ui, target).map(|state| state.offset_y())
+}
+
+/// Sets the vertical scroll offset for a scrollable target.
+pub fn set_scroll_offset_y(ui: &mut Ui, target: ElementId, offset: f64) -> bool {
+    let Some(state) = scroll_target_state(ui, target) else {
+        return false;
+    };
+    set_scroll_state_offset_y(ui, target, &state, offset)
+}
+
+pub(crate) fn scroll_target_state(ui: &Ui, target: ElementId) -> Option<ScrollState> {
+    let widget = ui.get(target)?.widget()?;
+    if let Some(scroll_view) = widget.downcast_ref::<ScrollViewWidget>() {
+        return Some(scroll_view.state.clone());
+    }
+    if let Some(listbox) = widget.downcast_ref::<ListBoxWidget>() {
+        return Some(listbox.scroll_state());
+    }
+    None
 }
 
 pub(crate) fn handle_wheel_scroll(
@@ -765,7 +774,7 @@ fn scroll_by_accessibility_action(
     )
 }
 
-pub(crate) fn set_scroll_offset_y(
+pub(crate) fn set_scroll_state_offset_y(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
@@ -774,7 +783,7 @@ pub(crate) fn set_scroll_offset_y(
     set_scroll_offset(ui, viewport, state, Vec2::new(state.offset().x, offset))
 }
 
-pub(crate) fn scroll_offset_y(state: &ScrollState) -> f64 {
+pub(crate) fn state_scroll_offset_y(state: &ScrollState) -> f64 {
     state.offset_y()
 }
 
@@ -1131,16 +1140,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 120.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(120.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
 
         ui.compute_layout(Size::new(180.0, 120.0));
+        let state = scroll_target_state(&ui, scroll).expect("scroll view should own scroll state");
 
         assert_eq!(state.viewport_size(), Size::new(120.0, 48.0));
         assert!(state.content_size().height > state.viewport_size().height);
@@ -1212,21 +1218,17 @@ mod tests {
     }
 
     #[test]
-    fn scroll_bar_thumb_tracks_shared_scroll_state() {
+    fn scroll_bar_thumb_tracks_target_scroll_state() {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1249,17 +1251,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1279,17 +1277,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1312,17 +1306,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1347,17 +1337,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1391,17 +1377,13 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let scroll = ui.append(
-            root,
-            ScrollView::new().size(100.0, 48.0).state(state.clone()),
-        );
+        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
         let bar = ui.append(
             root,
-            ScrollBar::vertical(scroll, state)
+            ScrollBar::vertical(scroll)
                 .length(48.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),

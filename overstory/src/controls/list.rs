@@ -31,7 +31,7 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
-    ScrollState, normalize_scroll_offset_y, scroll_offset_y, wheel_scroll_delta,
+    ScrollState, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{action_scroll_unit, f32_from_logical};
 use crate::controls::text::TextWidget;
@@ -103,7 +103,6 @@ pub struct ListBox {
     selection_mode: ListSelectionMode,
     selected_index: Option<usize>,
     scroll_offset_y: f64,
-    scroll_state: Option<ScrollState>,
     on_selection_changed: Option<ListSelectionChangedHandler>,
 }
 
@@ -134,7 +133,6 @@ impl ListBox {
             selection_mode: ListSelectionMode::Single,
             selected_index: None,
             scroll_offset_y: 0.0,
-            scroll_state: None,
             on_selection_changed: None,
         }
     }
@@ -223,17 +221,6 @@ impl ListBox {
     #[must_use]
     pub fn scroll_offset_y(mut self, offset: f64) -> Self {
         self.scroll_offset_y = normalize_scroll_offset_y(offset);
-        if let Some(state) = &self.scroll_state {
-            state.set_offset_y_raw(self.scroll_offset_y);
-        }
-        self
-    }
-
-    /// Uses caller-provided shared scroll state.
-    #[must_use]
-    pub fn scroll_state(mut self, state: ScrollState) -> Self {
-        state.set_offset_y_raw(self.scroll_offset_y);
-        self.scroll_state = Some(state);
         self
     }
 
@@ -264,9 +251,7 @@ impl AppendSpec for ListBox {
             let _ = selection.select_only(index);
         }
 
-        let scroll_state = self
-            .scroll_state
-            .unwrap_or_else(|| ScrollState::with_offset_y(self.scroll_offset_y));
+        let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
         let mut virtual_list = VirtualList::new(
             FixedExtentModel::new(self.items.len(), self.item_extent),
             0.0,
@@ -479,6 +464,10 @@ impl Widget for ListBoxWidget {
 }
 
 impl ListBoxWidget {
+    pub(crate) fn scroll_state(&self) -> ScrollState {
+        self.scroll_state.clone()
+    }
+
     fn sync_virtual_items(&mut self, listbox: ElementId, ui: &mut Ui) -> bool {
         let sync = self.sync_virtual_metrics(listbox, ui);
         let mut changed = sync.changed;
@@ -907,7 +896,7 @@ pub fn selected_list_indices(ui: &Ui, listbox: ElementId) -> Vec<usize> {
 /// Returns the list's current vertical scroll offset in logical pixels.
 #[must_use]
 pub fn list_scroll_offset_y(ui: &Ui, listbox: ElementId) -> Option<f64> {
-    list_box_widget(ui, listbox).map(|widget| scroll_offset_y(&widget.scroll_state))
+    list_box_widget(ui, listbox).map(|widget| state_scroll_offset_y(&widget.scroll_state))
 }
 
 /// Sets the list's vertical scroll offset in logical pixels.
@@ -1330,11 +1319,10 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let listbox = ui.append(root, scrolling_test_list_box().scroll_state(state.clone()));
+        let listbox = ui.append(root, scrolling_test_list_box());
         let bar = ui.append(
             root,
-            ScrollBar::vertical(listbox, state)
+            ScrollBar::vertical(listbox)
                 .length(56.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),
@@ -1360,11 +1348,10 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let state = ScrollState::new();
-        let listbox = ui.append(root, scrolling_test_list_box().scroll_state(state.clone()));
+        let listbox = ui.append(root, scrolling_test_list_box());
         let bar = ui.append(
             root,
-            ScrollBar::vertical(listbox, state)
+            ScrollBar::vertical(listbox)
                 .length(56.0)
                 .thickness(8.0)
                 .thumb_extent(12.0),

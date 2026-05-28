@@ -108,8 +108,8 @@ pub use controls::progress::{
     SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
 pub use controls::scroll::{
-    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollBar, ScrollState, ScrollView,
-    TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_view_offset_y, scroll_view_state,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollBar, ScrollView, TYPE_SCROLL_BAR,
+    TYPE_SCROLL_VIEW, scroll_offset_y, scroll_view_offset_y, set_scroll_offset_y,
     set_scroll_view_offset_y,
 };
 pub use controls::select::{

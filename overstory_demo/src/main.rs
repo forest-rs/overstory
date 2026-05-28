@@ -20,9 +20,9 @@ use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Affine, BuiltInProperties, Button, CheckBox, CursorIcon, Divider, ElementId, FontFeature,
     Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup,
-    ProgressBar, Rect, ScrollBar, ScrollState, Select, Slider, Spinner, Splitter, TYPE_GENERIC,
-    TYPE_TEXT, Text, TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui, Viewport,
-    layouts, set_progress_value, theme,
+    ProgressBar, Rect, ScrollBar, Select, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text,
+    TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui, Viewport, layouts,
+    set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
@@ -1277,7 +1277,6 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
     append_tabular_counter(ui, systems, "Frames", "fps", 120_000_000, 7);
 
     let selection = demo_card(ui, row, "SELECTION", OVERVIEW_CARD_WIDTH, 222.0);
-    let renderer_scroll = ScrollState::with_offset_y(28.0);
     let renderer_row = ui.append(selection, Panel::row(8.0).align_center());
     let list = ui.append(
         renderer_row,
@@ -1286,11 +1285,11 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
             .size(OVERVIEW_LIST_WIDTH, 132.0)
             .multiple_selection()
             .selected_index(INITIAL_RENDERER_SELECTION)
-            .scroll_state(renderer_scroll.clone()),
+            .scroll_offset_y(28.0),
     );
     ui.append(
         renderer_row,
-        ScrollBar::vertical(list, renderer_scroll)
+        ScrollBar::vertical(list)
             .length(132.0)
             .thickness(10.0)
             .thumb_extent(34.0),
@@ -1379,7 +1378,6 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId) {
 fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
     let list_card = demo_card(ui, row, "RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0);
-    let renderer_scroll = ScrollState::with_offset_y(34.0);
     let renderer_row = ui.append(list_card, Panel::row(10.0).align_center());
     let initial_summary = format!(
         "Selected: {}",
@@ -1393,7 +1391,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
             .size(PAGE_LIST_WIDTH, 178.0)
             .multiple_selection()
             .selected_index(INITIAL_RENDERER_SELECTION)
-            .scroll_state(renderer_scroll.clone())
+            .scroll_offset_y(34.0)
             .on_selection_changed(move |ui, event| {
                 let label = selection_summary(&event);
                 ui.set_local(summary, ui.properties().content, label);
@@ -1401,7 +1399,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     );
     ui.append(
         renderer_row,
-        ScrollBar::vertical(renderer_list, renderer_scroll)
+        ScrollBar::vertical(renderer_list)
             .length(178.0)
             .thickness(10.0)
             .thumb_extent(40.0),
