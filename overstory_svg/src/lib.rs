@@ -16,12 +16,13 @@
 use std::error::Error;
 use std::fmt;
 
-use kurbo::Point;
+use kurbo::{Line, PathEl, Point};
 use overstory::{
     Affine, AppendSpec, BezPath, Brush, Cap, Color, ElementId, Fill, Join, Layout, Panel, PathFill,
     PathPaintOrder, PathPrimitive, PathStroke, Rect, Stroke, Ui, VectorPath,
 };
 use understory_precise_hit::PreciseHitTest;
+use understory_precise_hit::stroke::StrokedLine;
 pub use understory_precise_hit::{HitKind, HitParams, HitScore};
 use usvg::tiny_skia_path::PathSegment;
 
@@ -132,10 +133,9 @@ impl SvgElementTree {
     /// Precise-picks the topmost imported path at `point` in SVG document
     /// coordinates.
     ///
-    /// Candidates are considered in reverse SVG paint order. The current first
-    /// slice tests filled path interiors through [`understory_precise_hit`];
-    /// stroke-only path picking is intentionally left for a richer stroke
-    /// narrow-phase.
+    /// Candidates are considered in reverse SVG paint order. Filled path
+    /// interiors use [`understory_precise_hit`]; strokes use a flattened
+    /// centerline narrow-phase.
     #[must_use]
     pub fn hit_test_path(&self, point: Point, params: &HitParams) -> Option<SvgPathHit> {
         self.paths
@@ -211,7 +211,7 @@ impl SvgPathElement {
         } else {
             bounds
         };
-        if !broad_bounds.contains(point) || self.primitive.fill.is_none() {
+        if !broad_bounds.contains(point) {
             return None;
         }
 
@@ -220,7 +220,99 @@ impl SvgPathElement {
         if !path_point.x.is_finite() || !path_point.y.is_finite() {
             return None;
         }
-        self.primitive.path.hit_test_local(path_point, params)
+        let fill = self
+            .primitive
+            .fill
+            .as_ref()
+            .and_then(|_| self.primitive.path.hit_test_local(path_point, params));
+        let stroke = self.primitive.stroke.as_ref().and_then(|stroke| {
+            stroke_path_hit(
+                &self.primitive.path,
+                path_point,
+                stroke.stroke.width,
+                params,
+            )
+        });
+        choose_path_hit(fill, stroke, params)
+    }
+}
+
+fn choose_path_hit(
+    fill: Option<HitScore>,
+    stroke: Option<HitScore>,
+    params: &HitParams,
+) -> Option<HitScore> {
+    match (fill, stroke) {
+        (Some(fill), Some(_stroke)) if params.prefer_fill => Some(fill),
+        (Some(fill), Some(stroke)) => {
+            if stroke.cmp_distance(&fill).is_lt() {
+                Some(stroke)
+            } else {
+                Some(fill)
+            }
+        }
+        (Some(fill), None) => Some(fill),
+        (None, Some(stroke)) => Some(stroke),
+        (None, None) => None,
+    }
+}
+
+fn stroke_path_hit(
+    path: &BezPath,
+    point: Point,
+    stroke_width: f64,
+    params: &HitParams,
+) -> Option<HitScore> {
+    if stroke_width <= 0.0 {
+        return None;
+    }
+    let half_width = stroke_width * 0.5;
+    let query = point;
+    let mut start = None;
+    let mut previous = None;
+    let mut best = None;
+    kurbo::flatten(path.iter(), 0.1, |element| match element {
+        PathEl::MoveTo(to) => {
+            start = Some(to);
+            previous = Some(to);
+        }
+        PathEl::LineTo(to) => {
+            if let Some(from) = previous {
+                best = best_stroke_score(
+                    best,
+                    StrokedLine {
+                        line: Line::new(from, to),
+                        half_width,
+                    }
+                    .hit_test_local(query, params),
+                );
+            }
+            previous = Some(to);
+        }
+        PathEl::ClosePath => {
+            if let (Some(from), Some(to)) = (previous, start) {
+                best = best_stroke_score(
+                    best,
+                    StrokedLine {
+                        line: Line::new(from, to),
+                        half_width,
+                    }
+                    .hit_test_local(query, params),
+                );
+            }
+            start = None;
+            previous = None;
+        }
+        PathEl::QuadTo(..) | PathEl::CurveTo(..) => {}
+    });
+    best
+}
+
+fn best_stroke_score(best: Option<HitScore>, candidate: Option<HitScore>) -> Option<HitScore> {
+    match (best, candidate) {
+        (Some(best), Some(candidate)) if candidate.cmp_distance(&best).is_lt() => Some(candidate),
+        (Some(best), _) => Some(best),
+        (None, candidate) => candidate,
     }
 }
 
@@ -519,5 +611,48 @@ mod tests {
             tree.path(hit.path_index()).unwrap().source_id(),
             Some("front")
         );
+    }
+
+    #[test]
+    fn precise_hit_returns_topmost_stroked_path() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+              <rect id="fill" x="0" y="0" width="20" height="20" fill="#ffffcc"/>
+              <path id="outline" d="M0 10 L20 10" fill="none" stroke="#000" stroke-width="2"/>
+            </svg>
+        "##;
+
+        let tree = SvgElementTree::from_bytes(svg, SvgImportOptions::default()).unwrap();
+        let hit = tree
+            .hit_test_path(Point::new(10.0, 10.0), &HitParams::default())
+            .expect("point on visible outline should hit stroke-only path");
+
+        assert_eq!(
+            tree.path(hit.path_index()).unwrap().source_id(),
+            Some("outline")
+        );
+        assert_eq!(hit.score().kind, HitKind::Stroke);
+    }
+
+    #[test]
+    fn precise_hit_tests_transformed_stroke_path() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+              <g transform="translate(5,5) scale(2)">
+                <path id="line" d="M0 0 L10 0" fill="none" stroke="#000" stroke-width="1"/>
+              </g>
+            </svg>
+        "##;
+
+        let tree = SvgElementTree::from_bytes(svg, SvgImportOptions::default()).unwrap();
+        let hit = tree
+            .hit_test_path(Point::new(15.0, 5.0), &HitParams::default())
+            .expect("document-space point on transformed stroke should hit");
+
+        assert_eq!(
+            tree.path(hit.path_index()).unwrap().source_id(),
+            Some("line")
+        );
+        assert_eq!(hit.score().kind, HitKind::Stroke);
     }
 }
