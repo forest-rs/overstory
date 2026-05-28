@@ -44,6 +44,7 @@ understory_box_tree = { default-features = false, git = "https://github.com/fore
 understory_event_state = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
 understory_focus = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
 understory_node_graph = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
+understory_outline = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
 understory_precise_hit = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
 understory_presentation = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }
 understory_property = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "f09b86e6400c1506042013cb6b0fe1c3e75390af" }

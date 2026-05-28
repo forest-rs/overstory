@@ -2146,6 +2146,7 @@ dependencies = [
  "understory_box_tree",
  "understory_event_state",
  "understory_focus",
+ "understory_outline",
  "understory_presentation",
  "understory_property",
  "understory_property_binding",
@@ -3351,6 +3352,14 @@ dependencies = [
  "kurbo",
  "understory_selection",
  "understory_view2d",
+]
+
+[[package]]
+name = "understory_outline"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=f09b86e6400c1506042013cb6b0fe1c3e75390af#f09b86e6400c1506042013cb6b0fe1c3e75390af"
+dependencies = [
+ "hashbrown 0.17.1",
 ]
 
 [[package]]

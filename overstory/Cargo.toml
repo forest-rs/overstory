@@ -22,6 +22,7 @@ std = [
     "understory_box_tree/std",
     "understory_event_state/std",
     "understory_focus/std",
+    "understory_outline/std",
     "understory_presentation/std",
     "understory_responder/std",
 ]
@@ -43,6 +44,7 @@ understory_axis = { default-features = false, workspace = true }
 understory_box_tree = { default-features = false, features = ["libm"], workspace = true }
 understory_event_state = { default-features = false, features = ["click", "drag", "libm"], workspace = true }
 understory_focus = { default-features = false, features = ["box_tree_adapter", "libm"], workspace = true }
+understory_outline = { default-features = false, workspace = true }
 understory_presentation = { default-features = false, features = ["libm"], workspace = true }
 understory_property = { default-features = false, workspace = true }
 understory_property_binding = { default-features = false, workspace = true }

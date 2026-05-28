@@ -19,10 +19,10 @@ use overstory::motion::{
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Affine, BuiltInProperties, Button, CheckBox, CursorIcon, Divider, ElementId, FontFeature,
-    Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, Panel, Popup,
-    ProgressBar, Rect, Select, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
-    TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui, Viewport, layouts, set_progress_value,
-    theme,
+    Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, OutlineView,
+    OutlineViewNode, Panel, Popup, ProgressBar, Rect, Select, Slider, Spinner, Splitter,
+    TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui,
+    Viewport, layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
@@ -159,6 +159,7 @@ enum DemoPage {
     Inputs,
     Systems,
     Selection,
+    Outline,
     Layout,
     Svg,
     Typography,
@@ -166,11 +167,12 @@ enum DemoPage {
 }
 
 impl DemoPage {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::Overview,
         Self::Inputs,
         Self::Systems,
         Self::Selection,
+        Self::Outline,
         Self::Layout,
         Self::Svg,
         Self::Typography,
@@ -187,10 +189,11 @@ impl DemoPage {
             Self::Inputs => 1,
             Self::Systems => 2,
             Self::Selection => 3,
-            Self::Layout => 4,
-            Self::Svg => 5,
-            Self::Typography => 6,
-            Self::Motion => 7,
+            Self::Outline => 4,
+            Self::Layout => 5,
+            Self::Svg => 6,
+            Self::Typography => 7,
+            Self::Motion => 8,
         }
     }
 
@@ -200,6 +203,7 @@ impl DemoPage {
             Self::Inputs => "Inputs",
             Self::Systems => "Systems",
             Self::Selection => "Selection",
+            Self::Outline => "Outline",
             Self::Layout => "Layout",
             Self::Svg => "SVG",
             Self::Typography => "Typography",
@@ -213,6 +217,7 @@ impl DemoPage {
             Self::Inputs => "Inputs and Command Surfaces",
             Self::Systems => "Controls and Values",
             Self::Selection => "Selection and Virtualization",
+            Self::Outline => "Expandable Outline",
             Self::Layout => "Layout and Resizing",
             Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
@@ -233,6 +238,9 @@ impl DemoPage {
             }
             Self::Selection => {
                 "A virtualized list backed by understory_selection with shared scroll state."
+            }
+            Self::Outline => {
+                "A virtualized tree projection backed by understory_outline with expandable rows."
             }
             Self::Layout => {
                 "Resizable panes, fixed-size content, axis-aware controls, and slider ruler marks."
@@ -520,6 +528,27 @@ fn renderer_queue_label(index: usize) -> String {
     let stage = RENDERER_STAGES[index % RENDERER_STAGES.len()];
     let batch = (index / RENDERER_STAGES.len()) + 1;
     format!("{stage} {batch:03}")
+}
+
+fn renderer_outline_nodes() -> Vec<OutlineViewNode> {
+    vec![
+        OutlineViewNode::new(String::from("Renderer"))
+            .with_first_child(Some(1))
+            .with_next_sibling(Some(5)),
+        OutlineViewNode::new(String::from("Scene graph lowering")).with_next_sibling(Some(2)),
+        OutlineViewNode::new(String::from("Text shaping")).with_next_sibling(Some(3)),
+        OutlineViewNode::new(String::from("Layer composition")).with_next_sibling(Some(4)),
+        OutlineViewNode::new(String::from("AccessKit tree")),
+        OutlineViewNode::new(String::from("Interaction"))
+            .with_first_child(Some(6))
+            .with_next_sibling(Some(9)),
+        OutlineViewNode::new(String::from("Focus routing")).with_next_sibling(Some(7)),
+        OutlineViewNode::new(String::from("Selection model")).with_next_sibling(Some(8)),
+        OutlineViewNode::new(String::from("Scroll target registry")),
+        OutlineViewNode::new(String::from("Motion")).with_first_child(Some(10)),
+        OutlineViewNode::new(String::from("Implicit transitions")).with_next_sibling(Some(11)),
+        OutlineViewNode::new(String::from("Timeline cues")),
+    ]
 }
 
 fn demo_card(ui: &mut Ui, parent: ElementId, title: &str, width: f32, height: f32) -> ElementId {
@@ -1201,6 +1230,7 @@ fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         DemoPage::Inputs => build_inputs_page(ui, stage),
         DemoPage::Systems => build_systems_page(ui, stage),
         DemoPage::Selection => build_selection_page(ui, stage),
+        DemoPage::Outline => build_outline_page(ui, stage),
         DemoPage::Layout => build_layout_page(ui, stage),
         DemoPage::Svg => build_svg_page(ui, stage),
         DemoPage::Typography => build_typography_page(ui, stage),
@@ -1404,7 +1434,9 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     ui.append(detail, page_heading("Virtualized by default"));
     ui.append(
         detail,
-        body_text("Only visible rows are realized. Selection stays in item indices, and the scrollbar shares viewport metrics with the list."),
+        body_text(
+            "Only visible rows are realized. Selection and scrolling stay keyed to item indices.",
+        ),
     );
     ui.append(detail, control_label("Inspection target"));
     let select = ui.append(
@@ -1423,6 +1455,52 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
     ui.set_tooltip(
         select,
         Tooltip::new("Popup-backed select using the ListBox path"),
+    );
+}
+
+fn build_outline_page(ui: &mut Ui, stage: ElementId) {
+    let row = demo_row(ui, stage);
+    let tree_card = demo_card(ui, row, "PIPELINE OUTLINE", PAGE_CARD_WIDTH, 374.0);
+    ui.append(tree_card, page_heading("Expandable retained rows"));
+    ui.append(
+        tree_card,
+        body_text("Click a parent row or use Left/Right, Enter, and Space to expand and collapse."),
+    );
+    let outline = ui.append(
+        tree_card,
+        OutlineView::new()
+            .nodes(renderer_outline_nodes(), Some(0))
+            .expanded(0)
+            .expanded(5)
+            .expanded(9)
+            .selected_key(10)
+            .size(PAGE_LIST_WIDTH, 194.0)
+            .item_extent(30.0)
+            .overscan(60.0)
+            .with_vertical_scrollbar()
+            .gap(10.0)
+            .scrollbar_thickness(10.0)
+            .thumb_extent(34.0),
+    );
+    ui.set_tooltip(
+        outline,
+        Tooltip::new("Virtualized tree projection from understory_outline"),
+    );
+
+    let detail = demo_card(ui, row, "NODE DETAIL", PAGE_CARD_WIDTH, 374.0);
+    ui.append(detail, page_heading("Motion"));
+    ui.append(
+        detail,
+        body_text(
+            "The selected branch represents scheduled presentation work: implicit transitions, timeline cues, and compositor-ready offsets.",
+        ),
+    );
+    ui.append(detail, control_label("Row behavior"));
+    ui.append(
+        detail,
+        body_text(
+            "Expansion state is held by the outline control; scroll metrics still come from the shared scroll target registry.",
+        ),
     );
 }
 

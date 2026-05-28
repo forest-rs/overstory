@@ -62,6 +62,10 @@ use crate::controls::checkbox::{
 };
 use crate::controls::divider::TYPE_DIVIDER;
 use crate::controls::list::{PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM};
+use crate::controls::outline::{
+    PART_OUTLINE_ITEM_CONTENT, PART_OUTLINE_ITEM_DISCLOSURE, PART_OUTLINE_ITEM_LABEL,
+    TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW,
+};
 use crate::controls::popup::TYPE_POPUP;
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
@@ -593,6 +597,61 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
+    let outline_view_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .build();
+    let outline_view_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let outline_item_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            background_transition_rules(properties),
+        )
+        .set(properties.font_size, 14.0_f64)
+        .set(properties.corner_radius, 6.0_f64)
+        .build();
+    let outline_item_content = StyleBuilder::new()
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::percent(1.0, 1.0))
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(8.0, 5.0),
+        )
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
+        .build();
+    let outline_item_disclosure = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 20.0_f64)
+        .build();
+    let outline_item_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let outline_item_hover = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .build();
+    let outline_item_selected = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .build();
     let tooltip_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
@@ -927,6 +986,46 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::state(TYPE_LIST_ITEM, PSEUDO_SELECTED),
             list_item_selected,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_OUTLINE_VIEW),
+            outline_view_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_OUTLINE_VIEW, PSEUDO_FOCUS_VISIBLE),
+            outline_view_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_OUTLINE_ITEM),
+            outline_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_CONTENT),
+            outline_item_content,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_DISCLOSURE),
+            outline_item_disclosure,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_LABEL),
+            outline_item_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_OUTLINE_ITEM, PSEUDO_HOVER),
+            outline_item_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_OUTLINE_ITEM, PSEUDO_SELECTED),
+            outline_item_selected,
         )
         .push_rule(
             StyleOrigin::Base,

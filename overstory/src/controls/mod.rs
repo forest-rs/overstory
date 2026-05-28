@@ -26,8 +26,8 @@
 //!   selected content panels, and overflow behavior.
 //! - Add multiline text editing (`TextArea`) once `TextInput`, `ScrollView`,
 //!   and prepared editable-text rendering have a stable shared shape.
-//! - Add `TreeView` or hierarchical `ListView` after list virtualization and
-//!   item templates can handle keyed, expandable data without one-off glue.
+//! - Grow `OutlineView` toward `TreeView` / hierarchical `ListView` once item
+//!   templates can handle keyed, expandable data without one-off glue.
 //! - Keep specialist controls behind reusable primitives: new controls should
 //!   strengthen templates, routed events, focus, selection, scrolling,
 //!   accessibility, or composition instead of bypassing them.
@@ -38,6 +38,7 @@ pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod divider;
 pub(crate) mod list;
+pub(crate) mod outline;
 pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress;
