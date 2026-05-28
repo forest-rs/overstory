@@ -27,7 +27,7 @@ use crate::Phase;
 use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
-    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, is_initial_drag_move,
+    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -475,7 +475,19 @@ impl Widget for ScrollBarWidget {
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.apply_numeric_range(element, node);
+        let value = state_axis_scroll_offset(&self.state, self.axis);
+        let max = axis_scroll_offset(self.state.max_offset(), self.axis);
+        node.set_orientation(accesskit_orientation(self.axis));
+        node.set_numeric_value(value);
+        node.set_min_numeric_value(0.0);
+        node.set_max_numeric_value(max);
+        node.set_numeric_value_step(DEFAULT_SCROLL_LINE_Y);
+        node.set_numeric_value_jump(scroll_bar_page(&self.state, self.axis));
+        if ctx.is_enabled(element.id()) {
+            node.add_action(accesskit::Action::Increment);
+            node.add_action(accesskit::Action::Decrement);
+            node.add_action(accesskit::Action::SetValue);
+        }
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -534,6 +546,30 @@ impl Widget for ScrollBarWidget {
             event.delta,
         );
         event.mark_handled();
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let scroll_bar = ctx.id();
+        if !ctx.is_enabled(scroll_bar) {
+            return false;
+        }
+        let current = state_axis_scroll_offset(&self.state, self.axis);
+        let next = match request.action {
+            accesskit::Action::Increment => current + DEFAULT_SCROLL_LINE_Y,
+            accesskit::Action::Decrement => current - DEFAULT_SCROLL_LINE_Y,
+            accesskit::Action::SetValue => {
+                let Some(value) = action_numeric_value(request) else {
+                    return false;
+                };
+                value
+            }
+            _ => return false,
+        };
+        set_axis_scroll_offset(ctx, self.viewport, &self.state, self.axis, next)
     }
 }
 
@@ -842,6 +878,13 @@ fn scroll_bar_thumb_offset(
     axis.pack_vec2(offset, 0.0)
 }
 
+fn accesskit_orientation(axis: Axis) -> accesskit::Orientation {
+    match axis {
+        Axis::Horizontal => accesskit::Orientation::Horizontal,
+        Axis::Vertical => accesskit::Orientation::Vertical,
+    }
+}
+
 fn is_scroll_bar_thumb(ui: &Ui, scroll_bar: ElementId, source: ElementId) -> bool {
     ui.slot(scroll_bar, SLOT_SCROLL_BAR_THUMB) == Some(source)
 }
@@ -902,6 +945,9 @@ fn normalize_scroll_axis(value: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
+    use accesskit::{
+        Action, ActionData, ActionRequest, Node, NodeId, Orientation, Role, TreeId, TreeUpdate,
+    };
     use ui_events::ScrollDelta;
 
     #[test]
@@ -1124,6 +1170,50 @@ mod tests {
     }
 
     #[test]
+    fn scroll_bar_accessibility_exposes_range_and_set_value_action() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
+        let state = ScrollState::new();
+        let scroll = ui.append(
+            root,
+            ScrollView::new().size(100.0, 48.0).state(state.clone()),
+        );
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+        let bar = ui.append(
+            root,
+            ScrollBar::vertical(scroll, state)
+                .length(48.0)
+                .thickness(8.0)
+                .thumb_extent(12.0),
+        );
+
+        ui.compute_layout(Size::new(180.0, 80.0));
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, bar);
+        let max = node
+            .max_numeric_value()
+            .expect("scrollbar should expose max");
+
+        assert_eq!(node.role(), Role::ScrollBar);
+        assert_eq!(node.orientation(), Some(Orientation::Vertical));
+        assert_eq!(node.numeric_value(), Some(0.0));
+        assert!(max > 0.0);
+        assert_eq!(node.min_numeric_value(), Some(0.0));
+        assert_eq!(node.numeric_value_step(), Some(DEFAULT_SCROLL_LINE_Y));
+        assert!(node.supports_action(Action::Increment));
+        assert!(node.supports_action(Action::Decrement));
+        assert!(node.supports_action(Action::SetValue));
+
+        let handled = ui.handle_accesskit_action(&numeric_action(bar, Action::SetValue, max * 0.5));
+
+        assert!(handled);
+        assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
     fn scroll_bar_uses_default_cursor() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1159,5 +1249,27 @@ mod tests {
             Layout::new().logical_size(100.0, 24.0).flex_shrink(0.0),
         );
         child
+    }
+
+    fn numeric_action(element: ElementId, action: Action, value: f64) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::NumericValue(value)),
+        }
+    }
+
+    fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .map(|(_, node)| node)
+            .expect("node should exist")
+    }
+
+    fn accesskit_node_id(element: ElementId) -> NodeId {
+        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

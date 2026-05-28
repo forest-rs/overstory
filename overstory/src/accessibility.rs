@@ -119,6 +119,12 @@ impl<'a> AccessibilityContext<'a> {
         self.get_value(element, self.ui.properties().small_change)
     }
 
+    /// Resolves the large-change step associated with `element`.
+    #[must_use]
+    pub fn large_change(&self, element: &Element) -> f64 {
+        self.get_value(element, self.ui.properties().large_change)
+    }
+
     /// Returns whether `element` currently carries selected state.
     #[must_use]
     pub fn is_selected(&self, element: &Element) -> bool {
@@ -154,6 +160,14 @@ impl<'a> AccessibilityContext<'a> {
         node.set_numeric_value(self.numeric_value(element));
         node.set_min_numeric_value(self.minimum_value(element));
         node.set_max_numeric_value(self.maximum_value(element));
+        let small = self.small_change(element);
+        if small > 0.0 {
+            node.set_numeric_value_step(small);
+        }
+        let large = self.large_change(element);
+        if large > 0.0 {
+            node.set_numeric_value_jump(large);
+        }
     }
 }
 
@@ -398,8 +412,10 @@ fn accesskit_bounds(bounds: kurbo::Rect) -> AccessRect {
 mod tests {
     use super::*;
     use crate::{Button, CheckBox, Layout, Slider, Text, Widget};
+    use accesskit::ActionData;
     use alloc::boxed::Box;
     use kurbo::Size;
+    use understory_property::DependencyObjectExt;
 
     #[test]
     fn accesskit_tree_includes_roles_labels_bounds_and_focus() {
@@ -449,6 +465,26 @@ mod tests {
         assert_eq!(slider_node.min_numeric_value(), Some(0.0));
         assert_eq!(slider_node.max_numeric_value(), Some(2.0));
         assert!(slider_node.supports_action(Action::Increment));
+        assert!(slider_node.supports_action(Action::Decrement));
+        assert!(slider_node.supports_action(Action::SetValue));
+    }
+
+    #[test]
+    fn accesskit_slider_set_value_action_updates_range_value() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(root, Slider::new().value(0.4).min(0.0).max(2.0));
+
+        let handled =
+            ui.handle_accesskit_action(&action_with_numeric_value(slider, Action::SetValue, 1.5));
+
+        assert!(handled);
+        assert_eq!(
+            ui.get(slider)
+                .and_then(|el| el.get_local_value(ui.properties().value))
+                .copied(),
+            Some(1.5)
+        );
     }
 
     #[test]
@@ -500,6 +536,15 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
+    }
+
+    fn action_with_numeric_value(element: ElementId, action: Action, value: f64) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::NumericValue(value)),
+        }
     }
 
     #[derive(Debug)]

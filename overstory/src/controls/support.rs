@@ -32,6 +32,14 @@ pub(crate) fn is_initial_drag_move(press_position: Point, position: Point, delta
     delta == position - press_position
 }
 
+pub(crate) fn action_numeric_value(request: &accesskit::ActionRequest) -> Option<f64> {
+    match request.data.as_ref()? {
+        accesskit::ActionData::NumericValue(value) => Some(*value),
+        accesskit::ActionData::Value(value) => value.parse().ok(),
+        _ => None,
+    }
+}
+
 // These receiver-style axis helpers are local stand-ins for methods we may want
 // to upstream to kurbo once the usage settles. In particular, calls like
 // `rect.min_along(axis)` read better than free functions at the call site.

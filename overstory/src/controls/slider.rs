@@ -26,7 +26,9 @@ use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::{f32_from_logical, is_initial_drag_move, read_local_or};
+use crate::controls::support::{
+    action_numeric_value, f32_from_logical, is_initial_drag_move, read_local_or,
+};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
@@ -278,8 +280,11 @@ impl Widget for SliderWidget {
         node: &mut accesskit::Node,
     ) {
         ctx.apply_numeric_range(element, node);
-        node.add_action(accesskit::Action::Increment);
-        node.add_action(accesskit::Action::Decrement);
+        if ctx.is_enabled(element.id()) {
+            node.add_action(accesskit::Action::Increment);
+            node.add_action(accesskit::Action::Decrement);
+            node.add_action(accesskit::Action::SetValue);
+        }
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -392,11 +397,6 @@ impl Widget for SliderWidget {
         ctx: &mut WidgetEventContext<'_>,
         request: &accesskit::ActionRequest,
     ) -> bool {
-        let direction = match request.action {
-            accesskit::Action::Increment => 1.0,
-            accesskit::Action::Decrement => -1.0,
-            _ => return false,
-        };
         let slider = ctx.id();
         if !ctx.is_enabled(slider) {
             return false;
@@ -404,17 +404,21 @@ impl Widget for SliderWidget {
         let Some(element) = ctx.element() else {
             return false;
         };
-        let min = ctx.resolve_value_for(element, ctx.properties().minimum);
-        let max = ctx.resolve_value_for(element, ctx.properties().maximum);
-        let current = ctx.resolve_value_for(element, ctx.properties().value);
-        let explicit_step = ctx.resolve_value_for(element, ctx.properties().small_change);
-        let fallback_step = ((max - min).abs() * 0.01).max(0.01);
-        let step = if explicit_step > 0.0 {
-            explicit_step
-        } else {
-            fallback_step
+        let min = ctx.get_value(element, ctx.properties().minimum);
+        let max = ctx.get_value(element, ctx.properties().maximum);
+        let current = ctx.get_value(element, ctx.properties().value);
+        let next = match request.action {
+            accesskit::Action::Increment => current + accessibility_step(ctx, element, min, max),
+            accesskit::Action::Decrement => current - accessibility_step(ctx, element, min, max),
+            accesskit::Action::SetValue => {
+                let Some(value) = action_numeric_value(request) else {
+                    return false;
+                };
+                value
+            }
+            _ => return false,
         };
-        set_slider_value(ctx, slider, current + (direction * step));
+        set_slider_value(ctx, slider, next);
         true
     }
 }
@@ -680,6 +684,15 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
         ui.set_layout_placement(label, tick_label_placement(mark, &content));
         ui.set_layout_size(label, tick_label_size(&content));
         ui.set_local(label, content_prop, content);
+    }
+}
+
+fn accessibility_step(ui: &WidgetEventContext<'_>, element: &Element, min: f64, max: f64) -> f64 {
+    let explicit = ui.get_value(element, ui.properties().small_change);
+    if explicit > 0.0 {
+        explicit
+    } else {
+        ((max - min).abs() * DEFAULT_SMALL_CHANGE_FRACTION).max(0.01)
     }
 }
 
