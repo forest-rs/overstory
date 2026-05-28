@@ -18,7 +18,7 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 
-use kurbo::Rect;
+use kurbo::{Affine, Rect};
 use parley::{FontFeature, FontVariation};
 use peniko::Brush;
 use understory_presentation::{
@@ -143,6 +143,13 @@ pub struct BuiltInProperties {
 
     /// Layer opacity sampled by composition. Default `1.0`.
     pub opacity: Property<f32>,
+
+    /// Presentation transform applied by composition after layout. Default
+    /// [`Affine::IDENTITY`].
+    ///
+    /// This does not affect layout bounds or flow; use it for pan/zoom,
+    /// compositor motion, and other visual-only subtree transforms.
+    pub visual_transform: Property<Affine>,
 
     /// Style-authored transition rules for dependency-property and visual
     /// output targets. Default empty, which snaps target changes.
@@ -396,6 +403,12 @@ impl BuiltInProperties {
             opacity: registry.register(
                 "Opacity",
                 PropertyMetadataBuilder::new(1.0_f32)
+                    .affects_channels(COMPOSE.into_set())
+                    .build(),
+            ),
+            visual_transform: registry.register(
+                "VisualTransform",
+                PropertyMetadataBuilder::new(Affine::IDENTITY)
                     .affects_channels(COMPOSE.into_set())
                     .build(),
             ),

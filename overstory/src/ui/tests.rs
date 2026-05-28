@@ -15,7 +15,7 @@ use crate::{
 use alloc::boxed::Box;
 use alloc::string::String;
 use imaging::record::{Command, Scene};
-use kurbo::{Point, Rect, Size, Vec2};
+use kurbo::{Affine, Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
 use understory_property::{DependencyObject, DependencyObjectExt};
@@ -2528,6 +2528,40 @@ fn composition_layers_track_layout_geometry() {
         Some(Point::new(10.0, 10.0))
     );
     assert_eq!(ui.composition.element_for_layer(child_layer), Some(child));
+}
+
+#[test]
+fn visual_transform_updates_composition_without_changing_layout_bounds() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(
+        root,
+        Layout::flex().logical_size(200.0, 100.0).padding_all(10.0),
+    );
+    let child = ui.insert_child(root);
+    ui.set_layout(child, Layout::new().logical_size(30.0, 20.0));
+
+    ui.compute_layout(Size::new(200.0, 100.0));
+    let child_layer = ui.composition.layer_for(child).unwrap();
+    let bounds = ui.effective_bounds(child);
+
+    ui.set_local(child, ui.properties().visual_transform, Affine::scale(2.0));
+    ui.flush_composition();
+
+    let layers = ui.composition_layers();
+    assert_eq!(ui.effective_bounds(child), bounds);
+    assert_eq!(
+        layers
+            .world_transform(child_layer)
+            .transform_point(Point::ZERO),
+        Some(Point::new(10.0, 10.0))
+    );
+    assert_eq!(
+        layers
+            .world_transform(child_layer)
+            .transform_point(Point::new(5.0, 0.0)),
+        Some(Point::new(20.0, 10.0))
+    );
 }
 
 #[test]

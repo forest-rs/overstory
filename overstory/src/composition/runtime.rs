@@ -116,6 +116,8 @@ struct ElementComposition {
     layer: LayerId,
     policy: CompositionPolicy,
     surface: Option<SurfaceId>,
+    layer_offset: Vec2,
+    visual_transform: Affine,
 }
 
 impl CompositionRuntime {
@@ -164,6 +166,8 @@ impl CompositionRuntime {
                 layer,
                 policy,
                 surface,
+                layer_offset: Vec2::ZERO,
+                visual_transform: Affine::IDENTITY,
             },
         );
         self.layer_to_element.insert(layer, id);
@@ -330,8 +334,9 @@ impl CompositionRuntime {
         world_offset: Vec2,
         size: Size,
         clip: Option<RoundedRect>,
+        visual_transform: Affine,
     ) {
-        let Some(entry) = self.elements.get(id).copied() else {
+        let Some(mut entry) = self.elements.get(id).copied() else {
             return;
         };
         let layer = entry.layer;
@@ -341,10 +346,11 @@ impl CompositionRuntime {
         } else {
             local_offset
         };
-        self.layers.set_transform(
-            layer,
-            Transform3d::from(Affine::translate((layer_offset.x, layer_offset.y))),
-        );
+        entry.layer_offset = layer_offset;
+        entry.visual_transform = visual_transform;
+        self.elements.insert(id, entry);
+        self.layers
+            .set_transform(layer, layer_transform(layer_offset, visual_transform));
         self.layers.set_bounds(layer, size);
         self.layers.set_hit_region(
             layer,
@@ -376,12 +382,27 @@ impl CompositionRuntime {
 
     /// Updates only the compositor-local offset for an element layer.
     pub(crate) fn set_layer_offset(&mut self, id: ElementId, local_offset: Vec2) {
-        let Some(entry) = self.elements.get(id).copied() else {
+        let Some(mut entry) = self.elements.get(id).copied() else {
             return;
         };
+        entry.layer_offset = local_offset;
+        self.elements.insert(id, entry);
         self.layers.set_transform(
             entry.layer,
-            Transform3d::from(Affine::translate((local_offset.x, local_offset.y))),
+            layer_transform(local_offset, entry.visual_transform),
+        );
+    }
+
+    /// Updates only the presentation transform for an element layer.
+    pub(crate) fn set_visual_transform(&mut self, id: ElementId, visual_transform: Affine) {
+        let Some(mut entry) = self.elements.get(id).copied() else {
+            return;
+        };
+        entry.visual_transform = visual_transform;
+        self.elements.insert(id, entry);
+        self.layers.set_transform(
+            entry.layer,
+            layer_transform(entry.layer_offset, visual_transform),
         );
     }
 
@@ -466,6 +487,10 @@ impl CompositionRuntime {
             output.pop_clip();
         }
     }
+}
+
+fn layer_transform(layer_offset: Vec2, visual_transform: Affine) -> Transform3d {
+    Transform3d::from(Affine::translate((layer_offset.x, layer_offset.y)) * visual_transform)
 }
 
 fn layer_clip(clip: ClipShape, transform: Affine) -> Clip {

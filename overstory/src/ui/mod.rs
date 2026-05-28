@@ -66,6 +66,7 @@ mod timers;
 mod tooltips;
 mod transition_planner;
 mod tree;
+mod visual;
 
 use transition_planner::MotionPolicy;
 
@@ -398,6 +399,7 @@ impl Ui {
     /// Evaluates Subduction layer dirty state and refreshes
     /// [`Self::composition_changes`].
     pub fn flush_composition(&mut self) {
+        self.sync_composition_values();
         self.composition.evaluate();
     }
 }
