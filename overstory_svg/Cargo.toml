@@ -1,0 +1,16 @@
+[package]
+name = "overstory_svg"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SVG-to-Overstory element tree importer."
+publish = false
+
+[dependencies]
+overstory.workspace = true
+usvg.workspace = true
+
+[lints]
+workspace = true

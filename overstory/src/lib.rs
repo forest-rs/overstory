@@ -170,7 +170,7 @@ pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
-pub use peniko::kurbo::{Affine, BezPath, Stroke};
+pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke};
 pub use peniko::{Brush, Color, Fill};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
