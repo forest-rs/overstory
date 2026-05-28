@@ -25,7 +25,7 @@ use overstory::{
     set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
-use overstory_svg::{SvgElementTree, SvgImportOptions};
+use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};
 use peniko::{Brush, Color};
 use understory_style::{
@@ -326,6 +326,7 @@ enum NavKeyAction {
 #[derive(Clone, Debug)]
 struct SvgViewportDemo {
     path_count: usize,
+    selected_path: Option<usize>,
     viewport: Viewport2D,
     world_bounds: Rect,
 }
@@ -346,6 +347,7 @@ impl SvgViewportDemo {
         viewport.fit_world();
         Self {
             path_count: svg.len(),
+            selected_path: None,
             viewport,
             world_bounds,
         }
@@ -365,6 +367,10 @@ impl SvgViewportDemo {
 
     fn pan_by_view(&mut self, delta: Vec2) {
         self.viewport.pan_by_view(delta);
+    }
+
+    fn select_path(&mut self, path: Option<usize>) {
+        self.selected_path = path;
     }
 
     fn status(&self) -> String {
@@ -398,6 +404,31 @@ impl SvgViewportDemo {
             self.viewport.zoom(),
             origin.x,
             origin.y,
+        )
+    }
+
+    fn selected_path_readout(&self, tree: &SvgElementTree) -> String {
+        let Some(path_index) = self.selected_path else {
+            return String::from("None");
+        };
+        let label = tree
+            .path(path_index)
+            .and_then(overstory_svg::SvgPathElement::source_id)
+            .unwrap_or("path");
+        format!("#{path_index} {label}")
+    }
+
+    fn selected_bounds_readout(&self, tree: &SvgElementTree) -> String {
+        let Some(path) = self.selected_path.and_then(|index| tree.path(index)) else {
+            return String::from("-");
+        };
+        let bounds = path.bounds();
+        format!(
+            "{:.0},{:.0} / {:.0}x{:.0}",
+            bounds.x0,
+            bounds.y0,
+            bounds.width(),
+            bounds.height(),
         )
     }
 }
@@ -1646,6 +1677,18 @@ fn append_svg_inspector(ui: &mut Ui, parent: ElementId, viewer: &SvgViewer) -> S
     ui.append(parent, caption("DOCUMENT"));
     append_svg_inspector_row(ui, parent, "Asset", "Ghostscript Tiger");
     let paths = append_svg_inspector_row(ui, parent, "Paths", &state.path_count_readout());
+    let selected = append_svg_inspector_row(
+        ui,
+        parent,
+        "Selected",
+        &state.selected_path_readout(&viewer.tree),
+    );
+    let bounds = append_svg_inspector_row(
+        ui,
+        parent,
+        "Bounds",
+        &state.selected_bounds_readout(&viewer.tree),
+    );
     let zoom = append_svg_inspector_row(ui, parent, "Zoom", &state.zoom_readout());
     let visible = append_svg_inspector_row(ui, parent, "Visible", &state.visible_rect_readout());
     let transform =
@@ -1657,17 +1700,34 @@ fn append_svg_inspector(ui: &mut Ui, parent: ElementId, viewer: &SvgViewer) -> S
     append_svg_inspector_row(ui, parent, "Next", "Outline + properties");
     SvgInspector {
         paths,
+        selected,
+        bounds,
         zoom,
         visible,
         transform,
     }
 }
 
-fn update_svg_inspector(ui: &mut Ui, inspector: SvgInspector, state: &SvgViewportDemo) {
+fn update_svg_inspector(
+    ui: &mut Ui,
+    inspector: SvgInspector,
+    state: &SvgViewportDemo,
+    tree: &SvgElementTree,
+) {
     ui.set_local(
         inspector.paths,
         ui.properties().content,
         state.path_count_readout(),
+    );
+    ui.set_local(
+        inspector.selected,
+        ui.properties().content,
+        state.selected_path_readout(tree),
+    );
+    ui.set_local(
+        inspector.bounds,
+        ui.properties().content,
+        state.selected_bounds_readout(tree),
     );
     ui.set_local(
         inspector.zoom,
@@ -1742,9 +1802,11 @@ fn append_svg_inspector_row_with_height(
 
 #[derive(Clone)]
 struct SvgViewer {
+    tree: Rc<SvgElementTree>,
     host: ElementId,
     grid: ElementId,
     content: ElementId,
+    selection: ElementId,
     status: ElementId,
     inspector: Rc<RefCell<Option<SvgInspector>>>,
     state: Rc<RefCell<SvgViewportDemo>>,
@@ -1753,6 +1815,8 @@ struct SvgViewer {
 #[derive(Clone, Copy, Debug)]
 struct SvgInspector {
     paths: ElementId,
+    selected: ElementId,
+    bounds: ElementId,
     zoom: ElementId,
     visible: ElementId,
     transform: ElementId,
@@ -1763,8 +1827,9 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     if svg.is_empty() {
         return Err(());
     }
+    let tree = Rc::new(svg);
     let state = Rc::new(RefCell::new(SvgViewportDemo::new(
-        &svg,
+        &tree,
         SVG_VIEWPORT_WIDTH,
         SVG_VIEWPORT_HEIGHT,
     )));
@@ -1805,13 +1870,26 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
             f32_coord(world_bounds.height()),
         )),
     );
-    ui.append(content, svg);
+    ui.append(content, (*tree).clone());
+    let selection = ui.append(
+        host,
+        Panel::new().layout(Layout::new().absolute_at(0.0, 0.0).logical_size(0.0, 0.0)),
+    );
+    ui.set_local(
+        selection,
+        ui.properties().border_brush,
+        opt_solid(0x6f, 0x8f, 0xff, 0xff),
+    );
+    ui.set_local(selection, ui.properties().border_width, 1.5_f64);
+    ui.set_local(selection, ui.properties().corner_radius, 4.0_f64);
 
     let status = ui.append(parent, caption(&state.borrow().status()));
     let viewer = SvgViewer {
+        tree,
         host,
         grid,
         content,
+        selection,
         status,
         inspector: Rc::new(RefCell::new(None)),
         state,
@@ -1822,6 +1900,26 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
 }
 
 fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
+    let pick_viewer = viewer.clone();
+    ui.on_pointer(
+        viewer.host,
+        overstory::PointerEventKind::Down,
+        move |ui, event| {
+            if !matches!(
+                event.phase,
+                overstory::Phase::Capture | overstory::Phase::Target
+            ) {
+                return;
+            }
+            let Some(position) = event.position else {
+                return;
+            };
+            let view_point = local_point(ui, pick_viewer.host, position);
+            select_svg_path_at_view_point(ui, &pick_viewer, view_point);
+            event.mark_handled();
+        },
+    );
+
     let drag_viewer = viewer.clone();
     ui.on_drag(viewer.host, move |ui, event| {
         if !matches!(
@@ -1864,6 +1962,30 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     });
 }
 
+fn select_svg_path_at_view_point(ui: &mut Ui, viewer: &SvgViewer, view_point: Point) {
+    {
+        let mut state = viewer.state.borrow_mut();
+        let world_point = state.viewport.view_to_world_point(view_point);
+        let params = svg_hit_params();
+        let selected = viewer
+            .tree
+            .hit_test_path(world_point, &params)
+            .map(|hit| hit.path_index());
+        state.select_path(selected);
+    }
+    refresh_svg_viewer(ui, viewer);
+}
+
+fn svg_hit_params() -> HitParams {
+    // Keep fill tolerance at zero until path tolerance is true near-edge
+    // geometry rather than a bounding-box fallback.
+    HitParams {
+        fill_tolerance: 0.0,
+        stroke_tolerance: 0.0,
+        prefer_fill: true,
+    }
+}
+
 fn append_svg_view_button(
     ui: &mut Ui,
     parent: ElementId,
@@ -1895,10 +2017,28 @@ fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
     clear_children(ui, viewer.grid);
     append_svg_grid(ui, viewer.grid, &state);
     ui.set_visual_transform(viewer.content, viewport_transform(&state.viewport));
+    update_svg_selection_overlay(ui, viewer, &state);
     ui.set_local(viewer.status, ui.properties().content, state.status());
     if let Some(inspector) = *viewer.inspector.borrow() {
-        update_svg_inspector(ui, inspector, &state);
+        update_svg_inspector(ui, inspector, &state, &viewer.tree);
     }
+}
+
+fn update_svg_selection_overlay(ui: &mut Ui, viewer: &SvgViewer, state: &SvgViewportDemo) {
+    let view_bounds = state
+        .selected_path
+        .and_then(|index| viewer.tree.path(index))
+        .map(|path| state.viewport.world_to_view_rect(path.bounds()))
+        .unwrap_or(Rect::ZERO);
+    ui.set_layout(
+        viewer.selection,
+        Layout::new()
+            .absolute_at(f32_coord(view_bounds.x0), f32_coord(view_bounds.y0))
+            .logical_size(
+                f32_coord(view_bounds.width().max(0.0)),
+                f32_coord(view_bounds.height().max(0.0)),
+            ),
+    );
 }
 
 fn viewport_transform(viewport: &Viewport2D) -> Affine {
@@ -2557,6 +2697,50 @@ mod tests {
         assert!(
             after_scale > before_scale * 1.5,
             "zoom should enlarge the content presentation transform: {before_scale} -> {after_scale}",
+        );
+    }
+
+    #[test]
+    fn svg_viewer_precisely_picks_path_content() {
+        let svg = br##"
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+              <path id="triangle" d="M0 0 L12 0 L0 12 Z" fill="#00ff00"/>
+            </svg>
+        "##;
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(360.0, 300.0));
+        let viewer = append_svg_viewer(&mut ui, root, svg).expect("test SVG should import");
+        let inspector = append_svg_inspector(&mut ui, root, &viewer);
+        *viewer.inspector.borrow_mut() = Some(inspector);
+        refresh_svg_viewer(&mut ui, &viewer);
+        ui.compute_layout(Size::new(360.0, 300.0));
+
+        let hit = viewer
+            .state
+            .borrow()
+            .viewport
+            .world_to_view_point(Point::new(2.0, 2.0));
+        select_svg_path_at_view_point(&mut ui, &viewer, hit);
+        ui.compute_layout(Size::new(360.0, 300.0));
+        assert_eq!(viewer.state.borrow().selected_path, Some(0));
+        assert!(
+            ui.effective_bounds(viewer.selection).width() > 0.0,
+            "selection overlay should track the selected path bounds",
+        );
+
+        let miss_inside_bounds = viewer
+            .state
+            .borrow()
+            .viewport
+            .world_to_view_point(Point::new(10.0, 10.0));
+        select_svg_path_at_view_point(&mut ui, &viewer, miss_inside_bounds);
+        ui.compute_layout(Size::new(360.0, 300.0));
+        assert_eq!(viewer.state.borrow().selected_path, None);
+        assert_close(
+            ui.effective_bounds(viewer.selection).width(),
+            0.0,
+            "selection overlay clears after a precise miss",
         );
     }
 
