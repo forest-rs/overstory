@@ -314,6 +314,35 @@ impl DemoThemeMode {
     }
 }
 
+#[derive(Debug)]
+struct DemoShellState {
+    theme_mode: Cell<DemoThemeMode>,
+    selected_page: Cell<DemoPage>,
+}
+
+impl DemoShellState {
+    fn new() -> Self {
+        Self {
+            theme_mode: Cell::new(DemoThemeMode::Dark),
+            selected_page: Cell::new(DemoPage::Overview),
+        }
+    }
+
+    fn theme_mode(&self) -> DemoThemeMode {
+        self.theme_mode.get()
+    }
+
+    fn toggle_theme(&self) -> DemoThemeMode {
+        let next = self.theme_mode.get().toggled();
+        self.theme_mode.set(next);
+        next
+    }
+
+    fn set_selected_page(&self, page: DemoPage) {
+        self.selected_page.set(page);
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct NavChrome {
     mode_toggle: ElementId,
@@ -898,11 +927,8 @@ fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
 /// each page owns only its local controls and timers.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
-    let mode = Rc::new(Cell::new(DemoThemeMode::Dark));
-    let selected_page = Rc::new(Cell::new(DemoPage::Overview));
-    let focused_page = Rc::new(Cell::new(None));
-    let focus_visible = Rc::new(Cell::new(false));
-    ui.set_theme(mode.get().theme());
+    let shell = Rc::new(DemoShellState::new());
+    ui.set_theme(shell.theme_mode().theme());
     let root = ui.root();
     ui.add_class(root, CLASS_DEMO_ROOT);
 
@@ -944,15 +970,8 @@ fn build_ui() -> Ui {
     );
 
     let nav_rows = build_nav_rows(&mut ui, nav);
-    wire_nav_rows(
-        &mut ui,
-        &nav_rows,
-        stage,
-        Rc::clone(&selected_page),
-        Rc::clone(&focused_page),
-        Rc::clone(&focus_visible),
-    );
-    wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&mode));
+    wire_nav_rows(&mut ui, &nav_rows, stage, Rc::clone(&shell));
+    wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&shell));
     show_demo_page(&mut ui, stage, DemoPage::Overview);
 
     ui.set_cascade(demo_cascade(ui.properties()));
@@ -1015,17 +1034,13 @@ fn wire_nav_rows(
     ui: &mut Ui,
     nav_rows: &Rc<[ElementId]>,
     stage: ElementId,
-    selected_page: Rc<Cell<DemoPage>>,
-    focused_page: Rc<Cell<Option<DemoPage>>>,
-    focus_visible: Rc<Cell<bool>>,
+    shell: Rc<DemoShellState>,
 ) {
     for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
         ui.set_focusable(row, true);
 
         let nav_rows_for_click = Rc::clone(nav_rows);
-        let selected_page_for_click = Rc::clone(&selected_page);
-        let focused_page_for_click = Rc::clone(&focused_page);
-        let focus_visible_for_click = Rc::clone(&focus_visible);
+        let shell_for_click = Rc::clone(&shell);
         ui.on_click(row, move |ui, event| {
             if !matches!(
                 event.phase,
@@ -1034,21 +1049,12 @@ fn wire_nav_rows(
                 return;
             }
             let _ = ui.set_pointer_focus(Some(row));
-            activate_nav_page(
-                ui,
-                &nav_rows_for_click,
-                &selected_page_for_click,
-                visible_focused_page(&focused_page_for_click, &focus_visible_for_click),
-                stage,
-                page,
-            );
+            activate_nav_page(ui, &nav_rows_for_click, &shell_for_click, stage, page);
             event.mark_handled();
         });
 
         let nav_rows_for_key = Rc::clone(nav_rows);
-        let selected_page_for_key = Rc::clone(&selected_page);
-        let focused_page_for_key = Rc::clone(&focused_page);
-        let focus_visible_for_key = Rc::clone(&focus_visible);
+        let shell_for_key = Rc::clone(&shell);
         ui.on_key(row, move |ui, event| {
             if !matches!(
                 event.phase,
@@ -1061,60 +1067,20 @@ fn wire_nav_rows(
             };
             match action {
                 NavKeyAction::Activate(page) => {
-                    activate_nav_page(
-                        ui,
-                        &nav_rows_for_key,
-                        &selected_page_for_key,
-                        visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
-                        stage,
-                        page,
-                    );
+                    activate_nav_page(ui, &nav_rows_for_key, &shell_for_key, stage, page);
                 }
                 NavKeyAction::MoveTo(page) => {
                     focus_nav_page(ui, &nav_rows_for_key, page);
-                    activate_nav_page(
-                        ui,
-                        &nav_rows_for_key,
-                        &selected_page_for_key,
-                        visible_focused_page(&focused_page_for_key, &focus_visible_for_key),
-                        stage,
-                        page,
-                    );
+                    activate_nav_page(ui, &nav_rows_for_key, &shell_for_key, stage, page);
                 }
             }
             event.mark_handled();
         });
-
-        let nav_rows_for_focus = Rc::clone(nav_rows);
-        let selected_page_for_focus = Rc::clone(&selected_page);
-        let focused_page_for_focus = Rc::clone(&focused_page);
-        let focus_visible_for_focus = Rc::clone(&focus_visible);
-        ui.on_focus(row, move |ui, event| {
-            match event.kind {
-                overstory::RoutedEventKind::FocusGained => {
-                    focused_page_for_focus.set(Some(page));
-                    focus_visible_for_focus.set(event.focus_visible);
-                }
-                overstory::RoutedEventKind::FocusLost => {
-                    if focused_page_for_focus.get() == Some(page) {
-                        focused_page_for_focus.set(None);
-                        focus_visible_for_focus.set(false);
-                    }
-                }
-                _ => return,
-            }
-            style_nav_rows(
-                ui,
-                &nav_rows_for_focus,
-                selected_page_for_focus.get(),
-                visible_focused_page(&focused_page_for_focus, &focus_visible_for_focus),
-            );
-        });
     }
 }
 
-fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, mode: Rc<Cell<DemoThemeMode>>) {
-    let mode_for_click = Rc::clone(&mode);
+fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, shell: Rc<DemoShellState>) {
+    let shell_for_click = Rc::clone(&shell);
     ui.on_click(nav_chrome.mode_toggle, move |ui, event| {
         if !matches!(
             event.phase,
@@ -1122,42 +1088,32 @@ fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, mode: Rc<Cell<DemoTheme
         ) {
             return;
         }
-        switch_demo_theme(ui, &mode_for_click);
+        switch_demo_theme(ui, &shell_for_click);
     });
 
-    let mode_for_key = Rc::clone(&mode);
+    let shell_for_key = Rc::clone(&shell);
     ui.on_key(nav_chrome.mode_toggle, move |ui, event| {
         if !matches!(event.phase, overstory::Phase::Target) || !is_activation_key(event.key) {
             return;
         }
-        switch_demo_theme(ui, &mode_for_key);
+        switch_demo_theme(ui, &shell_for_key);
     });
 }
 
-fn switch_demo_theme(ui: &mut Ui, mode: &Cell<DemoThemeMode>) {
-    let next = mode.get().toggled();
-    mode.set(next);
-    ui.set_theme(next.theme());
+fn switch_demo_theme(ui: &mut Ui, shell: &DemoShellState) {
+    ui.set_theme(shell.toggle_theme().theme());
 }
 
 fn activate_nav_page(
     ui: &mut Ui,
     nav_rows: &[ElementId],
-    selected_page: &Cell<DemoPage>,
-    focused_page: Option<DemoPage>,
+    shell: &DemoShellState,
     stage: ElementId,
     page: DemoPage,
 ) {
-    selected_page.set(page);
-    style_nav_rows(ui, nav_rows, page, focused_page);
+    shell.set_selected_page(page);
+    style_nav_rows(ui, nav_rows, page);
     show_demo_page(ui, stage, page);
-}
-
-fn visible_focused_page(
-    focused_page: &Cell<Option<DemoPage>>,
-    focus_visible: &Cell<bool>,
-) -> Option<DemoPage> {
-    focus_visible.get().then(|| focused_page.get()).flatten()
 }
 
 fn focus_nav_page(ui: &mut Ui, nav_rows: &[ElementId], page: DemoPage) {
@@ -1211,12 +1167,7 @@ fn page_offset(page: DemoPage, delta: isize) -> DemoPage {
     DemoPage::from_index(index).expect("wrapped page index should be valid")
 }
 
-fn style_nav_rows(
-    ui: &mut Ui,
-    nav_rows: &[ElementId],
-    selected_page: DemoPage,
-    _focused_page: Option<DemoPage>,
-) {
+fn style_nav_rows(ui: &mut Ui, nav_rows: &[ElementId], selected_page: DemoPage) {
     for (page, row) in DemoPage::ALL.iter().copied().zip(nav_rows.iter().copied()) {
         style_nav_row(ui, row, page == selected_page);
     }
