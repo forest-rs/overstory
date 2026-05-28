@@ -16,7 +16,6 @@
 //!   composition-backed virtualization without making apps assemble that by hand.
 
 use alloc::boxed::Box;
-use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -64,9 +63,8 @@ const DEFAULT_LIST_BOX_HEIGHT: f32 = 160.0;
 const DEFAULT_LIST_ITEM_EXTENT: f64 = 28.0;
 const DEFAULT_LIST_OVERSCAN: f64 = 56.0;
 
-type SharedSelection = Rc<RefCell<Selection<usize>>>;
 type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
-type SharedListSelectionChangedHandler = Rc<RefCell<Option<ListSelectionChangedHandler>>>;
+type ListSelectionChangedSlot = RefCell<Option<ListSelectionChangedHandler>>;
 type ListVirtualizer = VirtualList<FixedExtentModel<f64>>;
 
 /// Event delivered when a [`ListBox`] selection changes.
@@ -280,10 +278,10 @@ impl AppendSpec for ListBox {
             parent,
             Box::new(ListBoxWidget {
                 items: self.items,
-                selection: Rc::new(RefCell::new(selection)),
+                selection,
                 scroll_state: scroll_state.clone(),
                 selection_mode: self.selection_mode,
-                selection_changed: Rc::new(RefCell::new(self.on_selection_changed)),
+                selection_changed: ListSelectionChangedSlot::new(self.on_selection_changed),
                 virtual_list,
                 item_extent: self.item_extent,
                 realized: Vec::new(),
@@ -303,10 +301,10 @@ impl AppendSpec for ListBox {
 /// Per-element widget for `ListBox`.
 pub(crate) struct ListBoxWidget {
     items: Vec<String>,
-    selection: SharedSelection,
+    selection: Selection<usize>,
     scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
-    selection_changed: SharedListSelectionChangedHandler,
+    selection_changed: ListSelectionChangedSlot,
     virtual_list: ListVirtualizer,
     item_extent: f64,
     realized: Vec<RealizedListItem>,
@@ -627,7 +625,6 @@ impl ListBoxWidget {
 
     fn selected_index(&self) -> Option<usize> {
         self.selection
-            .borrow()
             .primary()
             .copied()
             .filter(|index| *index < self.items.len())
@@ -635,7 +632,6 @@ impl ListBoxWidget {
 
     fn selected_indices(&self) -> Vec<usize> {
         self.selection
-            .borrow()
             .items()
             .iter()
             .copied()
@@ -664,7 +660,6 @@ impl ListBoxWidget {
 
         let anchor = self
             .selection
-            .borrow()
             .anchor()
             .copied()
             .filter(|anchor| *anchor < self.items.len())
@@ -721,16 +716,13 @@ impl ListBoxWidget {
         listbox: ElementId,
         mutate: impl FnOnce(&mut Selection<usize>) -> bool,
     ) -> Option<bool> {
-        let changed = {
-            let mut selection = self.selection.borrow_mut();
-            mutate(&mut selection)
-        };
+        let changed = mutate(&mut self.selection);
 
         self.sync_realized_selected_pseudos(ui);
         if changed {
             dispatch_list_selection_changed(
                 ui,
-                Some(Rc::clone(&self.selection_changed)),
+                &self.selection_changed,
                 ListSelectionChangedEvent {
                     listbox,
                     selected_indices: self.selected_indices(),
@@ -742,9 +734,8 @@ impl ListBoxWidget {
     }
 
     fn sync_realized_selected_pseudos(&self, ui: &mut Ui) {
-        let selection = self.selection.borrow();
         for item in &self.realized {
-            if selection.contains(&item.index) {
+            if self.selection.contains(&item.index) {
                 ui.add_pseudo(item.element, PSEUDO_SELECTED);
             } else {
                 ui.remove_pseudo(item.element, PSEUDO_SELECTED);
@@ -991,12 +982,9 @@ fn select_list_index_for_click(
 
 fn dispatch_list_selection_changed(
     ui: &mut Ui,
-    handler: Option<SharedListSelectionChangedHandler>,
+    handler: &ListSelectionChangedSlot,
     event: ListSelectionChangedEvent,
 ) {
-    let Some(handler) = handler else {
-        return;
-    };
     let Some(mut callback) = handler.borrow_mut().take() else {
         return;
     };
@@ -1070,6 +1058,7 @@ mod tests {
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
+    use alloc::rc::Rc;
     use kurbo::Point;
     use peniko::{Brush, Color};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
