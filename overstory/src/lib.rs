@@ -97,8 +97,9 @@ pub use controls::checkbox::{
 };
 pub use controls::divider::{Divider, TYPE_DIVIDER};
 pub use controls::list::{
-    ListBox, ListSelectionChangedEvent, ListSelectionMode, PART_LIST_ITEM_CONTENT,
-    PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM,
+    ListBox, ListBoxScrollArea, ListSelectionChangedEvent, ListSelectionMode,
+    PART_LIST_ITEM_CONTENT, PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX,
+    TYPE_LIST_ITEM, list_box_scroll_area_list, list_box_scroll_area_scrollbar,
     list_scroll_offset_y, realized_list_item_index, scroll_list_index_into_view, select_list_index,
     selected_list_index, selected_list_indices, set_list_scroll_offset_y,
 };

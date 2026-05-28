@@ -31,7 +31,7 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
-    normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
+    ScrollBar, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{action_scroll_unit, f32_from_logical};
 use crate::controls::text::TextWidget;
@@ -63,6 +63,9 @@ const DEFAULT_LIST_BOX_WIDTH: f32 = 220.0;
 const DEFAULT_LIST_BOX_HEIGHT: f32 = 160.0;
 const DEFAULT_LIST_ITEM_EXTENT: f64 = 28.0;
 const DEFAULT_LIST_OVERSCAN: f64 = 56.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_GAP: f32 = 8.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS: f32 = 10.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 
 type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
 type ListSelectionChangedSlot = RefCell<Option<ListSelectionChangedHandler>>;
@@ -234,6 +237,12 @@ impl ListBox {
         self.on_selection_changed = Some(Box::new(handler));
         self
     }
+
+    /// Wraps this list in a reserved vertical scrollbar frame.
+    #[must_use]
+    pub fn with_vertical_scrollbar(self) -> ListBoxScrollArea {
+        ListBoxScrollArea::new(self)
+    }
 }
 
 impl Default for ListBox {
@@ -283,6 +292,137 @@ impl AppendSpec for ListBox {
         ui.set_control_state(id, self.state);
         id
     }
+}
+
+/// Builder + spec for a [`ListBox`] with a reserved vertical scrollbar.
+pub struct ListBoxScrollArea {
+    list: ListBox,
+    gap: f32,
+    scrollbar_thickness: f32,
+    thumb_extent: f32,
+}
+
+impl core::fmt::Debug for ListBoxScrollArea {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ListBoxScrollArea")
+            .field("list", &self.list)
+            .field("gap", &self.gap)
+            .field("scrollbar_thickness", &self.scrollbar_thickness)
+            .field("thumb_extent", &self.thumb_extent)
+            .finish()
+    }
+}
+
+impl ListBoxScrollArea {
+    /// Starts a scrollbar frame around `list`.
+    #[must_use]
+    pub fn new(list: ListBox) -> Self {
+        Self {
+            list,
+            gap: DEFAULT_LIST_BOX_SCROLLBAR_GAP,
+            scrollbar_thickness: DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS,
+            thumb_extent: DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT,
+        }
+    }
+
+    /// Sets the gap between the list viewport and the reserved scrollbar.
+    #[must_use]
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.gap = gap.max(0.0);
+        self
+    }
+
+    /// Sets the reserved scrollbar thickness.
+    #[must_use]
+    pub fn scrollbar_thickness(mut self, thickness: f32) -> Self {
+        self.scrollbar_thickness = thickness.max(1.0);
+        self
+    }
+
+    /// Sets the fixed scrollbar thumb extent.
+    #[must_use]
+    pub fn thumb_extent(mut self, extent: f32) -> Self {
+        self.thumb_extent = extent.max(1.0);
+        self
+    }
+}
+
+impl AppendSpec for ListBoxScrollArea {
+    fn append_to(mut self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let (width, height) = self
+            .list
+            .size
+            .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
+        self.list.size = Some((width, height));
+        let enabled = self.list.state.enabled;
+        let frame_width = width + self.gap + self.scrollbar_thickness;
+
+        let frame = ui.append_widget(parent, Box::new(ListBoxScrollAreaWidget::default()));
+        ui.set_layout(
+            frame,
+            Layout::row(self.gap).logical_size(frame_width, height),
+        );
+        ui.set_control_state(frame, ControlState::interactive().focusable(false));
+
+        let listbox = ui.append(frame, self.list);
+        let scrollbar = ui.append(
+            frame,
+            ScrollBar::vertical(listbox)
+                .length(height)
+                .thickness(self.scrollbar_thickness)
+                .thumb_extent(self.thumb_extent)
+                .enabled(enabled),
+        );
+        set_list_box_scroll_area_parts(ui, frame, listbox, scrollbar);
+        frame
+    }
+}
+
+/// Per-element widget for a [`ListBox`] scrollbar frame.
+#[derive(Debug, Default)]
+pub(crate) struct ListBoxScrollAreaWidget {
+    listbox: core::cell::Cell<Option<ElementId>>,
+    scrollbar: core::cell::Cell<Option<ElementId>>,
+}
+
+impl Widget for ListBoxScrollAreaWidget {
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::GenericContainer)
+    }
+}
+
+fn set_list_box_scroll_area_parts(
+    ui: &Ui,
+    frame: ElementId,
+    listbox: ElementId,
+    scrollbar: ElementId,
+) {
+    if let Some(widget) = list_box_scroll_area_widget(ui, frame) {
+        widget.listbox.set(Some(listbox));
+        widget.scrollbar.set(Some(scrollbar));
+    }
+}
+
+fn list_box_scroll_area_widget(ui: &Ui, frame: ElementId) -> Option<&ListBoxScrollAreaWidget> {
+    ui.get(frame)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ListBoxScrollAreaWidget>())
+}
+
+/// Returns the inner list target for a [`ListBoxScrollArea`].
+#[must_use]
+pub fn list_box_scroll_area_list(ui: &Ui, frame: ElementId) -> Option<ElementId> {
+    list_box_scroll_area_widget(ui, frame).and_then(|widget| widget.listbox.get())
+}
+
+/// Returns the reserved scrollbar for a [`ListBoxScrollArea`].
+#[must_use]
+pub fn list_box_scroll_area_scrollbar(ui: &Ui, frame: ElementId) -> Option<ElementId> {
+    list_box_scroll_area_widget(ui, frame).and_then(|widget| widget.scrollbar.get())
 }
 
 /// Per-element widget for `ListBox`.
@@ -984,13 +1124,26 @@ fn dispatch_list_selection_changed(
 
 fn listbox_parent(ui: &Ui, item: ElementId) -> Option<ElementId> {
     let parent = ui.get(item)?.parent()?;
-    list_box_widget(ui, parent).is_some().then_some(parent)
+    direct_list_box_widget(ui, parent)
+        .is_some()
+        .then_some(parent)
 }
 
 fn list_box_widget(ui: &Ui, listbox: ElementId) -> Option<&ListBoxWidget> {
+    direct_list_box_widget(ui, list_box_target(ui, listbox)?)
+}
+
+fn direct_list_box_widget(ui: &Ui, listbox: ElementId) -> Option<&ListBoxWidget> {
     ui.get(listbox)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ListBoxWidget>())
+}
+
+fn list_box_target(ui: &Ui, id: ElementId) -> Option<ElementId> {
+    if direct_list_box_widget(ui, id).is_some() {
+        return Some(id);
+    }
+    list_box_scroll_area_list(ui, id)
 }
 
 fn with_list_box_mut<R>(
@@ -998,6 +1151,7 @@ fn with_list_box_mut<R>(
     listbox: ElementId,
     f: impl FnOnce(&mut ListBoxWidget, &mut Ui) -> R,
 ) -> Option<R> {
+    let listbox = list_box_target(ui, listbox)?;
     let mut output = None;
     ui.with_widget_mut(listbox, |widget, ui| {
         if let Some(listbox_widget) = widget.downcast_mut::<ListBoxWidget>() {
@@ -1369,6 +1523,41 @@ mod tests {
 
         assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
         assert!(realized_list_item(&ui, listbox, 0).is_none());
+    }
+
+    #[test]
+    fn listbox_scroll_area_bar_scrolls_virtualized_listbox() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 90.0));
+        let frame = ui.append(
+            root,
+            scrolling_test_list_box()
+                .with_vertical_scrollbar()
+                .thumb_extent(12.0),
+        );
+        let listbox =
+            list_box_scroll_area_list(&ui, frame).expect("scroll frame should expose listbox");
+        let bar = list_box_scroll_area_scrollbar(&ui, frame)
+            .expect("scroll frame should expose scrollbar");
+
+        realize(&mut ui);
+        let bar_bounds = ui.effective_bounds(bar);
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
+
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        realize(&mut ui);
+
+        assert!(list_scroll_offset_y(&ui, frame).is_some_and(|offset| offset > 0.0));
+        assert_eq!(
+            list_scroll_offset_y(&ui, frame),
+            list_scroll_offset_y(&ui, listbox)
+        );
+        assert!(realized_list_item(&ui, frame, 0).is_none());
     }
 
     #[test]
