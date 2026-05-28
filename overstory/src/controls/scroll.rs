@@ -27,7 +27,8 @@ use crate::Phase;
 use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
-    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, is_initial_drag_move,
+    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, action_scroll_unit,
+    is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -298,6 +299,37 @@ impl Widget for ScrollViewWidget {
         Some(accesskit::Role::ScrollView)
     }
 
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        let offset = self.state.offset();
+        let max = self.state.max_offset();
+        node.set_scroll_x(offset.x);
+        node.set_scroll_x_min(0.0);
+        node.set_scroll_x_max(max.x);
+        node.set_scroll_y(offset.y);
+        node.set_scroll_y_min(0.0);
+        node.set_scroll_y_max(max.y);
+
+        if !ctx.is_enabled(element.id()) {
+            return;
+        }
+        if max.x > f64::EPSILON {
+            node.add_action(accesskit::Action::ScrollLeft);
+            node.add_action(accesskit::Action::ScrollRight);
+        }
+        if max.y > f64::EPSILON {
+            node.add_action(accesskit::Action::ScrollUp);
+            node.add_action(accesskit::Action::ScrollDown);
+        }
+        if max.x > f64::EPSILON || max.y > f64::EPSILON {
+            node.add_action(accesskit::Action::SetScrollOffset);
+        }
+    }
+
     fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
         update_scroll_metrics_from_layout(element, ctx, &self.state);
     }
@@ -313,6 +345,59 @@ impl Widget for ScrollViewWidget {
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
         let viewport = ctx.id();
         handle_wheel_scroll(ctx, viewport, &self.state, event);
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let viewport = ctx.id();
+        if !ctx.is_enabled(viewport) {
+            return false;
+        }
+        match request.action {
+            accesskit::Action::ScrollLeft => scroll_by_accessibility_action(
+                ctx,
+                viewport,
+                &self.state,
+                Axis::Horizontal,
+                -1.0,
+                request,
+            ),
+            accesskit::Action::ScrollRight => scroll_by_accessibility_action(
+                ctx,
+                viewport,
+                &self.state,
+                Axis::Horizontal,
+                1.0,
+                request,
+            ),
+            accesskit::Action::ScrollUp => scroll_by_accessibility_action(
+                ctx,
+                viewport,
+                &self.state,
+                Axis::Vertical,
+                -1.0,
+                request,
+            ),
+            accesskit::Action::ScrollDown => scroll_by_accessibility_action(
+                ctx,
+                viewport,
+                &self.state,
+                Axis::Vertical,
+                1.0,
+                request,
+            ),
+            accesskit::Action::SetScrollOffset => {
+                let Some(accesskit::ActionData::SetScrollOffset(point)) = request.data.as_ref()
+                else {
+                    return false;
+                };
+                set_scroll_offset(ctx, viewport, &self.state, Vec2::new(point.x, point.y))
+            }
+            _ => false,
+        }
     }
 }
 
@@ -654,6 +739,30 @@ pub(crate) fn wheel_scroll_delta(
     } else {
         Some(delta)
     }
+}
+
+fn scroll_by_accessibility_action(
+    ui: &mut Ui,
+    viewport: ElementId,
+    state: &ScrollState,
+    axis: Axis,
+    direction: f64,
+    request: &accesskit::ActionRequest,
+) -> bool {
+    let Some(unit) = action_scroll_unit(request) else {
+        return false;
+    };
+    let amount = match unit {
+        accesskit::ScrollUnit::Item => DEFAULT_SCROLL_LINE_Y,
+        accesskit::ScrollUnit::Page => state.viewport_size().along(axis).max(DEFAULT_SCROLL_LINE_Y),
+    };
+    set_axis_scroll_offset(
+        ui,
+        viewport,
+        state,
+        axis,
+        state_axis_scroll_offset(state, axis) + (amount * direction),
+    )
 }
 
 pub(crate) fn set_scroll_offset_y(
@@ -1039,6 +1148,70 @@ mod tests {
     }
 
     #[test]
+    fn scroll_view_accessibility_exposes_offsets_and_handles_set_offset() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 120.0));
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 120.0));
+        let update = ui.accesskit_tree_update();
+        let node = accesskit_node_for(&update, scroll);
+        let max = node
+            .scroll_y_max()
+            .expect("scroll view should expose max y");
+
+        assert_eq!(node.role(), Role::ScrollView);
+        assert_eq!(node.scroll_x(), Some(0.0));
+        assert_eq!(node.scroll_y(), Some(0.0));
+        assert_eq!(node.scroll_y_min(), Some(0.0));
+        assert!(max > 0.0);
+        assert!(node.supports_action(Action::ScrollDown));
+        assert!(node.supports_action(Action::SetScrollOffset));
+
+        let handled = ui.handle_accesskit_action(&scroll_offset_action(scroll, 0.0, max * 0.5));
+
+        assert!(handled);
+        assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn scroll_view_accessibility_scroll_actions_use_units() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 160.0));
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+        for _ in 0..6 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 160.0));
+
+        assert!(ui.handle_accesskit_action(&scroll_action(
+            scroll,
+            Action::ScrollDown,
+            accesskit::ScrollUnit::Page,
+        )));
+        assert!(
+            scroll_view_offset_y(&ui, scroll)
+                .is_some_and(|offset| { (offset - 48.0).abs() <= 0.01 })
+        );
+
+        assert!(ui.handle_accesskit_action(&scroll_action(
+            scroll,
+            Action::ScrollUp,
+            accesskit::ScrollUnit::Item,
+        )));
+        assert!(
+            scroll_view_offset_y(&ui, scroll)
+                .is_some_and(|offset| { (offset - 12.0).abs() <= 0.01 })
+        );
+    }
+
+    #[test]
     fn scroll_bar_thumb_tracks_shared_scroll_state() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1257,6 +1430,28 @@ mod tests {
             target_tree: TreeId::ROOT,
             target_node: accesskit_node_id(element),
             data: Some(ActionData::NumericValue(value)),
+        }
+    }
+
+    fn scroll_action(
+        element: ElementId,
+        action: Action,
+        unit: accesskit::ScrollUnit,
+    ) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::ScrollUnit(unit)),
+        }
+    }
+
+    fn scroll_offset_action(element: ElementId, x: f64, y: f64) -> ActionRequest {
+        ActionRequest {
+            action: Action::SetScrollOffset,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(element),
+            data: Some(ActionData::SetScrollOffset(accesskit::Point::new(x, y))),
         }
     }
 

@@ -40,6 +40,16 @@ pub(crate) fn action_numeric_value(request: &accesskit::ActionRequest) -> Option
     }
 }
 
+pub(crate) fn action_scroll_unit(
+    request: &accesskit::ActionRequest,
+) -> Option<accesskit::ScrollUnit> {
+    match request.data.as_ref() {
+        None => Some(accesskit::ScrollUnit::Item),
+        Some(accesskit::ActionData::ScrollUnit(unit)) => Some(*unit),
+        _ => None,
+    }
+}
+
 // These receiver-style axis helpers are local stand-ins for methods we may want
 // to upstream to kurbo once the usage settles. In particular, calls like
 // `rect.min_along(axis)` read better than free functions at the call site.
