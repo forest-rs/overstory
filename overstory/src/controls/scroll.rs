@@ -651,7 +651,10 @@ impl AppendSpec for ScrollBar {
         let widget = ScrollBarWidget {
             axis: self.axis,
             viewport: self.viewport,
-            state: ui.scroll_target_state(self.viewport).unwrap_or_default(),
+            state: ui
+                .scroll_target(self.viewport)
+                .map(|target| target.state())
+                .unwrap_or_default(),
             length: self.length,
             thickness: self.thickness,
             thumb_extent: self.thumb_extent,
@@ -842,12 +845,12 @@ pub fn set_scroll_view_offset_y(ui: &mut Ui, scroll_view: ElementId, offset: f64
 /// Returns the current vertical scroll offset for a scrollable target.
 #[must_use]
 pub fn scroll_offset_y(ui: &Ui, target: ElementId) -> Option<f64> {
-    ui.scroll_target_state(target).map(|state| state.offset_y())
+    ui.scroll_target(target).map(|target| target.offset_y())
 }
 
 /// Sets the vertical scroll offset for a scrollable target.
 pub fn set_scroll_offset_y(ui: &mut Ui, target: ElementId, offset: f64) -> bool {
-    let Some(state) = ui.scroll_target_state(target) else {
+    let Some(state) = ui.scroll_target(target).map(|target| target.state()) else {
         return false;
     };
     set_scroll_state_offset_y(ui, target, &state, offset)
@@ -1279,7 +1282,8 @@ mod tests {
 
         ui.compute_layout(Size::new(180.0, 120.0));
         let state = ui
-            .scroll_target_state(scroll)
+            .scroll_target(scroll)
+            .map(|target| target.state())
             .expect("scroll view should own scroll state");
 
         assert_eq!(state.viewport_size(), Size::new(120.0, 48.0));
@@ -1293,11 +1297,11 @@ mod tests {
         let root = ui.root();
         let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
 
-        assert!(ui.scroll_target_state(scroll).is_some());
+        assert!(ui.scroll_target(scroll).is_some());
 
         ui.remove(scroll);
 
-        assert!(ui.scroll_target_state(scroll).is_none());
+        assert!(ui.scroll_target(scroll).is_none());
     }
 
     #[test]

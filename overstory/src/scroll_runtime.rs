@@ -21,6 +21,26 @@ use kurbo::{Size, Vec2};
 use crate::element::ElementId;
 use crate::element_side_map::ElementSideMap;
 
+/// Registered scrollable target capability.
+#[derive(Clone, Debug)]
+pub(crate) struct ScrollTarget {
+    state: ScrollState,
+}
+
+impl ScrollTarget {
+    pub(crate) fn new(state: ScrollState) -> Self {
+        Self { state }
+    }
+
+    pub(crate) fn state(&self) -> ScrollState {
+        self.state.clone()
+    }
+
+    pub(crate) fn offset_y(&self) -> f64 {
+        self.state.offset_y()
+    }
+}
+
 /// Shared scroll offset state for viewport-like controls.
 #[derive(Clone)]
 pub(crate) struct ScrollState {
@@ -171,7 +191,7 @@ pub(crate) fn normalize_scroll_axis(value: f64) -> f64 {
 /// Registry of elements that expose scroll state to other systems.
 #[derive(Debug, Default)]
 pub(crate) struct ScrollRuntime {
-    targets: ElementSideMap<ScrollState>,
+    targets: ElementSideMap<ScrollTarget>,
 }
 
 impl ScrollRuntime {
@@ -179,11 +199,11 @@ impl ScrollRuntime {
         Self::default()
     }
 
-    pub(crate) fn register_target(&mut self, target: ElementId, state: ScrollState) {
-        self.targets.insert(target, state);
+    pub(crate) fn register_target(&mut self, target: ElementId, scroll_target: ScrollTarget) {
+        self.targets.insert(target, scroll_target);
     }
 
-    pub(crate) fn target_state(&self, target: ElementId) -> Option<ScrollState> {
+    pub(crate) fn target(&self, target: ElementId) -> Option<ScrollTarget> {
         self.targets.get(target).cloned()
     }
 

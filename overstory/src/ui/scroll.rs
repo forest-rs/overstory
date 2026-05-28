@@ -4,16 +4,17 @@
 //! Internal scroll target registration.
 
 use crate::element::ElementId;
-use crate::scroll_runtime::ScrollState;
+use crate::scroll_runtime::{ScrollState, ScrollTarget};
 
 use super::Ui;
 
 impl Ui {
     pub(crate) fn register_scroll_target(&mut self, target: ElementId, state: ScrollState) {
-        self.scrolling.register_target(target, state);
+        self.scrolling
+            .register_target(target, ScrollTarget::new(state));
     }
 
-    pub(crate) fn scroll_target_state(&self, target: ElementId) -> Option<ScrollState> {
-        self.scrolling.target_state(target)
+    pub(crate) fn scroll_target(&self, target: ElementId) -> Option<ScrollTarget> {
+        self.scrolling.target(target)
     }
 }
