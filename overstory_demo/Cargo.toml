@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 overstory.workspace = true
 overstory_host_winit.workspace = true
+overstory_svg.workspace = true
 peniko.workspace = true
 understory_style.workspace = true
 ui-events.workspace = true

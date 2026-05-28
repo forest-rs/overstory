@@ -2163,6 +2163,7 @@ dependencies = [
  "kurbo",
  "overstory",
  "overstory_host_winit",
+ "overstory_svg",
  "peniko",
  "ui-events",
  "understory_style",

@@ -24,6 +24,7 @@ use overstory::{
     TimerDuration, ToggleSwitch, Tooltip, Ui, layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
+use overstory_svg::{SvgElementTree, SvgImportOptions};
 use peniko::{Brush, Color};
 use understory_style::{
     ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade,
@@ -115,6 +116,16 @@ const CLASS_SRGB_SWATCH: ClassId = ClassId(105);
 const EASE_OUT: TimingFunction = TimingFunction::cubic_bezier(0.16, 1.0, 0.3, 1.0);
 const EASE_IN_OUT: TimingFunction = TimingFunction::cubic_bezier(0.65, 0.0, 0.35, 1.0);
 const MID_SLOW: TimingFunction = TimingFunction::cubic_bezier(0.2, 0.48, 0.8, 0.52);
+
+const SCENE_GRAPH_SVG: &[u8] = br##"
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="54" viewBox="0 0 100 54">
+  <path id="surface" d="M8 13h31v18H8z" fill="#4f6fd6"/>
+  <path id="text" d="M58 7h28v15H58z" fill="#64b37d"/>
+  <path id="edge" d="M39 22 C49 22 48 14 58 14" fill="none" stroke="#d8dbea" stroke-width="3" stroke-linecap="round"/>
+  <path id="output" d="M57 32h34v15H57z" fill="#d18b47"/>
+  <path id="edge2" d="M39 28 C50 34 47 40 57 40" fill="none" stroke="#d8dbea" stroke-width="3" stroke-linecap="round"/>
+</svg>
+"##;
 
 fn main() -> overstory_host_winit::HostResult<()> {
     overstory_host_winit::run(
@@ -1350,6 +1361,9 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
         ),
     );
     ui.append(left_pane, control_label("Scene"));
+    if let Ok(svg) = SvgElementTree::from_bytes(SCENE_GRAPH_SVG, SvgImportOptions::default()) {
+        ui.append(left_pane, svg);
+    }
     ui.append(left_pane, caption("Retained graph"));
 
     let right_pane_slot = Rc::new(Cell::new(None));
@@ -1903,6 +1917,15 @@ mod tests {
     }
 
     #[test]
+    fn layout_page_contains_imported_svg_vector_paths() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Layout);
+
+        assert_eq!(count_type(&ui, ui.root(), overstory::TYPE_VECTOR_PATH), 5);
+    }
+
+    #[test]
     fn gallery_pages_stay_inside_initial_window_width() {
         for page in DemoPage::ALL {
             let mut ui = build_ui();
@@ -2037,6 +2060,19 @@ mod tests {
             .children()
             .iter()
             .find_map(|child| find_by_class(ui, *child, class))
+    }
+
+    fn count_type(ui: &Ui, element: ElementId, type_tag: understory_style::TypeTag) -> usize {
+        let Some(current) = ui.get(element) else {
+            return 0;
+        };
+        let current_count = usize::from(current.type_tag() == Some(type_tag));
+        current_count
+            + current
+                .children()
+                .iter()
+                .map(|child| count_type(ui, *child, type_tag))
+                .sum::<usize>()
     }
 
     fn assert_first_page_card_height(ui: &mut Ui, height: f64, label: &str) {
