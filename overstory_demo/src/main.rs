@@ -11,6 +11,7 @@ use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::Cell;
+use std::path::Path;
 
 use overstory::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
@@ -46,6 +47,7 @@ const PAGE_CONTROL_WIDTH: f32 = 328.0;
 const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
+const TIGER_SVG_FILE: &str = "Ghostscript_Tiger.svg";
 
 const DEMO_ROOT_BG: ResourceKey = ResourceKey::new(1_000);
 const DEMO_NAV_BG: ResourceKey = ResourceKey::new(1_001);
@@ -141,17 +143,19 @@ enum DemoPage {
     Systems,
     Selection,
     Layout,
+    Svg,
     Typography,
     Motion,
 }
 
 impl DemoPage {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Overview,
         Self::Inputs,
         Self::Systems,
         Self::Selection,
         Self::Layout,
+        Self::Svg,
         Self::Typography,
         Self::Motion,
     ];
@@ -167,8 +171,9 @@ impl DemoPage {
             Self::Systems => 2,
             Self::Selection => 3,
             Self::Layout => 4,
-            Self::Typography => 5,
-            Self::Motion => 6,
+            Self::Svg => 5,
+            Self::Typography => 6,
+            Self::Motion => 7,
         }
     }
 
@@ -179,6 +184,7 @@ impl DemoPage {
             Self::Systems => "Systems",
             Self::Selection => "Selection",
             Self::Layout => "Layout",
+            Self::Svg => "SVG",
             Self::Typography => "Typography",
             Self::Motion => "Motion",
         }
@@ -191,6 +197,7 @@ impl DemoPage {
             Self::Systems => "Controls and Values",
             Self::Selection => "Selection and Virtualization",
             Self::Layout => "Layout and Resizing",
+            Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
             Self::Motion => "Presentation Motion",
         }
@@ -212,6 +219,9 @@ impl DemoPage {
             }
             Self::Layout => {
                 "Resizable panes, fixed-size content, axis-aware controls, and slider ruler marks."
+            }
+            Self::Svg => {
+                "Static SVG paths lowered through overstory_svg into retained VectorPath elements."
             }
             Self::Typography => {
                 "Font features, wrapping, editable text, and dynamic numbers shaped through Parley."
@@ -850,7 +860,7 @@ fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
 fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
     let stack = ui.append(
         nav,
-        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 312.0)),
+        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 348.0)),
     );
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
     for page in DemoPage::ALL {
@@ -1114,6 +1124,7 @@ fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         DemoPage::Systems => build_systems_page(ui, stage),
         DemoPage::Selection => build_selection_page(ui, stage),
         DemoPage::Layout => build_layout_page(ui, stage),
+        DemoPage::Svg => build_svg_page(ui, stage),
         DemoPage::Typography => build_typography_page(ui, stage),
         DemoPage::Motion => build_motion_page(ui, stage),
     }
@@ -1407,6 +1418,56 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
         ruler,
         body_text("Longhand layout properties keep slider ticks, labels, and thumbs independently positioned without replacing the rest of the style."),
     );
+}
+
+fn build_svg_page(ui: &mut Ui, stage: ElementId) {
+    let row = demo_row(ui, stage);
+    let specimen = demo_card(ui, row, "GHOSTSCRIPT TIGER", PAGE_CARD_WIDTH, 326.0);
+    match load_workspace_svg(TIGER_SVG_FILE)
+        .as_deref()
+        .and_then(|bytes| append_svg_specimen(ui, specimen, bytes).ok())
+    {
+        Some(imported_paths) => {
+            ui.append(
+                specimen,
+                caption(&format!("{imported_paths} retained vector paths")),
+            );
+        }
+        None => {
+            ui.append(
+                specimen,
+                body_text("Local SVG stress file was not found or used unsupported SVG features."),
+            );
+        }
+    }
+
+    let notes = demo_card(ui, row, "IMPORT SURFACE", PAGE_CARD_WIDTH, 326.0);
+    ui.append(notes, page_heading("Path-first lowering"));
+    ui.append(
+        notes,
+        body_text("The importer keeps SVG parsing outside the UI core, then appends ordinary elements that paint through the same presentation primitive path as hand-authored vector controls."),
+    );
+    ui.append(notes, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+    ui.append(
+        notes,
+        body_text("Current support is intentionally static: solid fills, strokes, transforms, opacity, fill rules, caps, joins, dashes, and paint order."),
+    );
+}
+
+fn append_svg_specimen(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<usize, ()> {
+    let svg = SvgElementTree::from_bytes(bytes, SvgImportOptions::default()).map_err(|_| ())?;
+    let imported_paths = svg.len();
+    if imported_paths == 0 {
+        return Err(());
+    }
+    ui.append(parent, svg);
+    Ok(imported_paths)
+}
+
+fn load_workspace_svg(file_name: &str) -> Option<Vec<u8>> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent().unwrap_or(manifest_dir);
+    std::fs::read(workspace_root.join(file_name)).ok()
 }
 
 fn build_typography_page(ui: &mut Ui, stage: ElementId) {
@@ -1923,6 +1984,22 @@ mod tests {
         show_demo_page(&mut ui, stage, DemoPage::Layout);
 
         assert_eq!(count_type(&ui, ui.root(), overstory::TYPE_VECTOR_PATH), 5);
+    }
+
+    #[test]
+    fn local_tiger_svg_imports_when_available() {
+        let Some(bytes) = load_workspace_svg(TIGER_SVG_FILE) else {
+            return;
+        };
+
+        let svg = SvgElementTree::from_bytes(&bytes, SvgImportOptions::default())
+            .expect("local Tiger SVG should parse");
+
+        assert!(
+            svg.len() > 100,
+            "local Tiger SVG should stress the path importer, got {} paths",
+            svg.len(),
+        );
     }
 
     #[test]
