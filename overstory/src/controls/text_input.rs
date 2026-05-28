@@ -15,7 +15,7 @@
 //! - Revisit rendering so editable text can use the editor's cached layout via
 //!   the presentation model instead of reshaping through a `TextWidget` part.
 
-use alloc::{borrow::Cow, boxed::Box, string::String};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
 use kurbo::Rect;
 use parley::{FontFeatures, FontVariations, PlainEditor, StyleProperty};
@@ -253,8 +253,15 @@ impl Widget for TextInputWidget {
         node: &mut accesskit::Node,
     ) {
         let input = element.id();
+        let text_run = text_input_text_run_node_id(input);
         node.clear_label();
         node.set_value(String::from(self.edit.text()));
+        node.set_text_selection(accesskit_selection_for_byte_range(
+            self.edit.text(),
+            text_run,
+            self.edit.editor.raw_selection().anchor().index(),
+            self.edit.editor.raw_selection().focus().index(),
+        ));
         if let Some(placeholder) = self.placeholder.as_deref() {
             node.set_placeholder(placeholder);
         }
@@ -264,10 +271,28 @@ impl Widget for TextInputWidget {
             node.set_read_only();
         }
 
-        if ctx.is_enabled(input) && !read_only {
-            node.add_action(accesskit::Action::ReplaceSelectedText);
-            node.add_action(accesskit::Action::SetValue);
+        if ctx.is_enabled(input) {
+            node.add_action(accesskit::Action::SetTextSelection);
+            if !read_only {
+                node.add_action(accesskit::Action::ReplaceSelectedText);
+                node.add_action(accesskit::Action::SetValue);
+            }
         }
+    }
+
+    fn append_accessibility_children(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+        nodes: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        let text_run = text_input_text_run_node_id(element.id());
+        node.push_child(text_run);
+        nodes.push((
+            text_run,
+            text_input_text_run_node(self.edit.text(), element, ctx),
+        ));
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -363,30 +388,54 @@ impl Widget for TextInputWidget {
         request: &accesskit::ActionRequest,
     ) -> bool {
         let input = ctx.id();
-        let read_only = read_only_from_ctx(ctx);
-        if !ctx.is_enabled(input) || read_only {
+        if !ctx.is_enabled(input) {
             return false;
         }
-        let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
-            return false;
-        };
 
         match request.action {
+            accesskit::Action::SetTextSelection => {
+                let Some(accesskit::ActionData::SetTextSelection(selection)) =
+                    request.data.as_ref()
+                else {
+                    return false;
+                };
+                let Some((anchor, focus)) =
+                    byte_range_from_accesskit_selection(self.edit.text(), input, selection)
+                else {
+                    return false;
+                };
+                ctx.with_plain_editor(&mut self.edit.editor, |driver| {
+                    driver.select_byte_range(anchor, focus);
+                });
+            }
             accesskit::Action::ReplaceSelectedText => {
+                if read_only_from_ctx(ctx) {
+                    return false;
+                }
+                let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
+                    return false;
+                };
                 ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                     driver.insert_or_replace_selection(value);
                 });
+                self.commit_content(ctx, input);
             }
             accesskit::Action::SetValue => {
+                if read_only_from_ctx(ctx) {
+                    return false;
+                }
+                let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
+                    return false;
+                };
                 ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                     driver.editor.set_text(value);
                     driver.move_to_text_end();
                 });
+                self.commit_content(ctx, input);
             }
             _ => return false,
         }
 
-        self.commit_content(ctx, input);
         self.refresh_parts(ctx, input);
         true
     }
@@ -395,6 +444,109 @@ impl Widget for TextInputWidget {
 fn read_only_from_ctx(ctx: &WidgetEventContext<'_>) -> bool {
     ctx.element()
         .is_some_and(|element| ctx.get_value(element, ctx.properties().is_read_only))
+}
+
+fn text_input_text_run_node_id(input: ElementId) -> accesskit::NodeId {
+    accesskit::NodeId(
+        (0x8000_0000_u64 | u64::from(input.generation())) << 32 | u64::from(input.slot()),
+    )
+}
+
+fn text_input_text_run_node(
+    text: &str,
+    element: &Element,
+    ctx: &crate::AccessibilityContext<'_>,
+) -> accesskit::Node {
+    let mut node = accesskit::Node::new(accesskit::Role::TextRun);
+    let style = text_style(element, ctx);
+    let bounds = ctx.bounds(element.id());
+    let y0 = bounds.y0 + f64::from(text_top(style.font_size));
+    node.set_bounds(accesskit::Rect {
+        x0: bounds.x0 + f64::from(TEXT_INPUT_PADDING_X),
+        y0,
+        x1: bounds.x1,
+        y1: y0 + f64::from(style.font_size * 1.35),
+    });
+    node.set_value(String::from(text));
+    node.set_character_lengths(text_character_lengths(text));
+    let word_starts = text_word_starts(text);
+    if !word_starts.is_empty() {
+        node.set_word_starts(word_starts);
+    }
+    node
+}
+
+fn accesskit_selection_for_byte_range(
+    text: &str,
+    node: accesskit::NodeId,
+    anchor: usize,
+    focus: usize,
+) -> accesskit::TextSelection {
+    accesskit::TextSelection {
+        anchor: accesskit::TextPosition {
+            node,
+            character_index: character_index_for_byte(text, anchor),
+        },
+        focus: accesskit::TextPosition {
+            node,
+            character_index: character_index_for_byte(text, focus),
+        },
+    }
+}
+
+fn byte_range_from_accesskit_selection(
+    text: &str,
+    input: ElementId,
+    selection: &accesskit::TextSelection,
+) -> Option<(usize, usize)> {
+    let text_run = text_input_text_run_node_id(input);
+    if selection.anchor.node != text_run || selection.focus.node != text_run {
+        return None;
+    }
+    let anchor = byte_index_for_character_index(text, selection.anchor.character_index)?;
+    let focus = byte_index_for_character_index(text, selection.focus.character_index)?;
+    Some((anchor, focus))
+}
+
+fn character_index_for_byte(text: &str, byte: usize) -> usize {
+    let mut byte = byte.min(text.len());
+    while !text.is_char_boundary(byte) {
+        byte -= 1;
+    }
+    text[..byte].chars().count()
+}
+
+fn byte_index_for_character_index(text: &str, character_index: usize) -> Option<usize> {
+    if character_index == text.chars().count() {
+        return Some(text.len());
+    }
+    text.char_indices()
+        .nth(character_index)
+        .map(|(index, _)| index)
+}
+
+fn text_character_lengths(text: &str) -> Vec<u8> {
+    text.chars()
+        .map(|ch| {
+            u8::try_from(ch.len_utf8()).expect("a Unicode scalar value is at most four UTF-8 bytes")
+        })
+        .collect()
+}
+
+fn text_word_starts(text: &str) -> Vec<u8> {
+    let mut starts = Vec::new();
+    let mut in_word = false;
+    for (index, ch) in text.chars().enumerate() {
+        if ch.is_whitespace() {
+            in_word = false;
+        } else if !in_word {
+            if let Ok(index) = u8::try_from(index) {
+                starts.push(index);
+            }
+            in_word = true;
+        }
+    }
+    starts
 }
 
 impl TextInputWidget {
@@ -847,7 +999,10 @@ pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) 
 mod tests {
     use super::*;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
-    use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
+    use accesskit::{
+        Action, ActionData, ActionRequest, Node, NodeId, Role, TextPosition, TextSelection, TreeId,
+        TreeUpdate,
+    };
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
     use understory_property::DependencyObjectExt;
@@ -1044,7 +1199,29 @@ mod tests {
         assert_eq!(node.label(), None);
         assert!(node.supports_action(Action::ReplaceSelectedText));
         assert!(node.supports_action(Action::SetValue));
+        assert!(node.supports_action(Action::SetTextSelection));
         assert!(!node.is_read_only());
+
+        let text_run_id = accesskit_text_run_node_id(input);
+        assert_eq!(node.children(), &[text_run_id]);
+        assert_eq!(
+            node.text_selection(),
+            Some(&TextSelection {
+                anchor: TextPosition {
+                    node: text_run_id,
+                    character_index: 6
+                },
+                focus: TextPosition {
+                    node: text_run_id,
+                    character_index: 6
+                }
+            })
+        );
+
+        let text_run = accesskit_node_for_id(&update, text_run_id);
+        assert_eq!(text_run.role(), Role::TextRun);
+        assert_eq!(text_run.value(), Some("George"));
+        assert_eq!(text_run.character_lengths(), &[1, 1, 1, 1, 1, 1]);
     }
 
     #[test]
@@ -1058,6 +1235,7 @@ mod tests {
         let node = accesskit_node_for(&update, input);
         assert_eq!(node.value(), Some("locked"));
         assert!(node.is_read_only());
+        assert!(node.supports_action(Action::SetTextSelection));
         assert!(!node.supports_action(Action::ReplaceSelectedText));
         assert!(!node.supports_action(Action::SetValue));
 
@@ -1121,6 +1299,37 @@ mod tests {
     }
 
     #[test]
+    fn accesskit_set_text_selection_updates_plain_editor_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("old"));
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let selection = TextSelection {
+            anchor: TextPosition {
+                node: accesskit_text_run_node_id(input),
+                character_index: 1,
+            },
+            focus: TextPosition {
+                node: accesskit_text_run_node_id(input),
+                character_index: 3,
+            },
+        };
+        let selected = ui.handle_accesskit_action(&selection_action(input, selection));
+        let replaced =
+            ui.handle_accesskit_action(&text_action(input, Action::ReplaceSelectedText, "X"));
+
+        assert!(selected);
+        assert!(replaced);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("oX")
+        );
+    }
+
+    #[test]
     fn text_input_drag_extends_selection_and_ignores_trailing_click() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1152,16 +1361,35 @@ mod tests {
         }
     }
 
+    fn selection_action(input: ElementId, selection: TextSelection) -> ActionRequest {
+        ActionRequest {
+            action: Action::SetTextSelection,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(input),
+            data: Some(ActionData::SetTextSelection(selection)),
+        }
+    }
+
     fn accesskit_node_for(update: &TreeUpdate, element: ElementId) -> &Node {
+        accesskit_node_for_id(update, accesskit_node_id(element))
+    }
+
+    fn accesskit_node_for_id(update: &TreeUpdate, node_id: NodeId) -> &Node {
         update
             .nodes
             .iter()
-            .find(|(id, _)| *id == accesskit_node_id(element))
+            .find(|(id, _)| *id == node_id)
             .map(|(_, node)| node)
             .expect("node should exist")
     }
 
     fn accesskit_node_id(element: ElementId) -> NodeId {
         NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
+    }
+
+    fn accesskit_text_run_node_id(element: ElementId) -> NodeId {
+        NodeId(
+            (0x8000_0000_u64 | u64::from(element.generation())) << 32 | u64::from(element.slot()),
+        )
     }
 }

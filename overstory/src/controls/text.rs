@@ -29,6 +29,7 @@ use understory_presentation::{PresentationStore, TextContent, TextStyle, TextWra
 use understory_property::Property;
 use understory_style::{ClassId, TypeTag};
 
+use crate::AccessibilityContext;
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext};
 use crate::element::{Element, ElementId};
 use crate::properties::BuiltInProperties;
@@ -157,7 +158,7 @@ impl Widget for TextWidget {
     fn accessibility_role(
         &self,
         _element: &Element,
-        _ctx: &crate::AccessibilityContext<'_>,
+        _ctx: &AccessibilityContext<'_>,
     ) -> Option<accesskit::Role> {
         Some(accesskit::Role::Label)
     }
@@ -255,6 +256,19 @@ impl ResolvedPropertySource for WidgetEventContext<'_> {
         T: Clone + 'static,
     {
         self.ui().resolve_value_for(element, property)
+    }
+}
+
+impl ResolvedPropertySource for AccessibilityContext<'_> {
+    fn properties(&self) -> &BuiltInProperties {
+        self.properties()
+    }
+
+    fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.get_value(element, property)
     }
 }
 

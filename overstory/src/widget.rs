@@ -41,7 +41,8 @@
 
 use core::any::Any;
 
-use accesskit::{ActionRequest, Node, Role};
+use accesskit::{ActionRequest, Node, NodeId as AccessNodeId, Role};
+use alloc::vec::Vec;
 use cursor_icon::CursorIcon;
 use kurbo::{Size, Vec2};
 use understory_box_tree::NodeId;
@@ -111,6 +112,20 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         _element: &Element,
         _ctx: &AccessibilityContext<'_>,
         _node: &mut Node,
+    ) {
+    }
+
+    /// Appends widget-owned accessibility children to `node`.
+    ///
+    /// The core lowering pass traverses retained element children. Widgets use
+    /// this hook for semantic child nodes that do not correspond to retained
+    /// elements, such as text-run children inside an editable text input.
+    fn append_accessibility_children(
+        &self,
+        _element: &Element,
+        _ctx: &AccessibilityContext<'_>,
+        _node: &mut Node,
+        _nodes: &mut Vec<(AccessNodeId, Node)>,
     ) {
     }
 
@@ -328,6 +343,17 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         node: &mut Node,
     ) {
         self.widget.configure_accessibility(element, ctx, node);
+    }
+
+    fn append_accessibility_children(
+        &self,
+        element: &Element,
+        ctx: &AccessibilityContext<'_>,
+        node: &mut Node,
+        nodes: &mut Vec<(AccessNodeId, Node)>,
+    ) {
+        self.widget
+            .append_accessibility_children(element, ctx, node, nodes);
     }
 
     fn present(

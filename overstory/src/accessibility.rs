@@ -18,9 +18,11 @@ use accesskit::{
     TreeUpdate,
 };
 use alloc::{string::String, vec::Vec};
+use understory_property::Property;
 
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
+use crate::properties::BuiltInProperties;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::ui::Ui;
 
@@ -48,11 +50,31 @@ impl<'a> AccessibilityContext<'a> {
         self.scale_factor
     }
 
+    /// Returns the built-in property handles for resolved semantic reads.
+    #[must_use]
+    pub fn properties(&self) -> &BuiltInProperties {
+        self.ui.properties()
+    }
+
+    /// Resolves `property` for `element` through the active cascade.
+    #[must_use]
+    pub fn get_value<T>(&self, element: &Element, property: Property<T>) -> T
+    where
+        T: Clone + 'static,
+    {
+        self.ui.resolve_value_for(element, property)
+    }
+
+    /// Returns the latest computed bounds for `id`.
+    #[must_use]
+    pub fn bounds(&self, id: ElementId) -> kurbo::Rect {
+        self.ui.effective_bounds(id)
+    }
+
     /// Resolves the textual content associated with `element`.
     #[must_use]
     pub fn content(&self, element: &Element) -> String {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().content)
+        self.get_value(element, self.ui.properties().content)
     }
 
     /// Returns whether `id` is currently eligible for focus.
@@ -70,36 +92,31 @@ impl<'a> AccessibilityContext<'a> {
     /// Resolves the checked state associated with `element`.
     #[must_use]
     pub fn is_checked(&self, element: &Element) -> bool {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().is_checked)
+        self.get_value(element, self.ui.properties().is_checked)
     }
 
     /// Resolves the numeric value associated with `element`.
     #[must_use]
     pub fn numeric_value(&self, element: &Element) -> f64 {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().value)
+        self.get_value(element, self.ui.properties().value)
     }
 
     /// Resolves the minimum numeric value associated with `element`.
     #[must_use]
     pub fn minimum_value(&self, element: &Element) -> f64 {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().minimum)
+        self.get_value(element, self.ui.properties().minimum)
     }
 
     /// Resolves the maximum numeric value associated with `element`.
     #[must_use]
     pub fn maximum_value(&self, element: &Element) -> f64 {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().maximum)
+        self.get_value(element, self.ui.properties().maximum)
     }
 
     /// Resolves the small-change step associated with `element`.
     #[must_use]
     pub fn small_change(&self, element: &Element) -> f64 {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().small_change)
+        self.get_value(element, self.ui.properties().small_change)
     }
 
     /// Returns whether `element` currently carries selected state.
@@ -111,8 +128,7 @@ impl<'a> AccessibilityContext<'a> {
     /// Resolves read-only state associated with `element`.
     #[must_use]
     pub fn is_read_only(&self, element: &Element) -> bool {
-        self.ui
-            .resolve_value_for(element, self.ui.properties().is_read_only)
+        self.get_value(element, self.ui.properties().is_read_only)
     }
 
     /// Adds the standard click action to `node`.
@@ -216,7 +232,7 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return;
         };
-        let children = element.children().to_vec();
+        let children = self.accessibility_children(element);
         let mut node = self.accesskit_node_for(element, ctx);
         node.set_children(
             children
@@ -225,6 +241,9 @@ impl Ui {
                 .map(accesskit_node_id)
                 .collect::<Vec<_>>(),
         );
+        if let Some(widget) = element.widget() {
+            widget.append_accessibility_children(element, ctx, &mut node, nodes);
+        }
         nodes.push((accesskit_node_id(id), node));
         for child in children {
             self.push_accesskit_node(child, ctx, nodes);
@@ -253,6 +272,18 @@ impl Ui {
             widget.configure_accessibility(element, ctx, &mut node);
         }
         node
+    }
+
+    fn accessibility_children(&self, element: &Element) -> Vec<ElementId> {
+        element
+            .children()
+            .iter()
+            .copied()
+            .filter(|child| {
+                self.get(*child)
+                    .is_some_and(|child| child.templated_parent().is_none())
+            })
+            .collect()
     }
 
     fn dispatch_accesskit_widget_action(
