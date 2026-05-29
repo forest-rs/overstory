@@ -27,7 +27,7 @@ use overstory::{
     TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
     TYPE_PROGRESS_BAR, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, TYPE_SELECT,
     TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
-    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui,
+    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, theme,
 };
 
 /// A source that can produce an owned Overstory inspection snapshot.
@@ -270,6 +270,9 @@ pub fn append_inspection_view(
         parent,
         Panel::row(16.0).layout(Layout::row(16.0).padding_all(12.0)),
     );
+    if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
+        ui.set_local(root, ui.properties().foreground, foreground.clone());
+    }
     let outline = ui.append(root, snapshot.element_outline_view().size(280.0, 420.0));
     let details = ui.append(
         root,
