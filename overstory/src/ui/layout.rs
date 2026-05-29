@@ -164,6 +164,7 @@ impl Ui {
             self.mark_channels(self.root(), LAYOUT.into());
         }
         let needs_layout = self.invalidation.has_invalidated(LAYOUT);
+        self.frame_stats.layout_requested |= needs_layout;
         if needs_layout {
             self.compute_layout_until_stable(viewport);
             if self.reposition_overlays(viewport) {
@@ -186,6 +187,7 @@ impl Ui {
     }
 
     fn compute_layout_pass(&mut self, viewport: Size) -> bool {
+        self.frame_stats.layout_passes += 1;
         // Bindings first — they may dirty LAYOUT/PAINT for their targets.
         self.flush_bindings();
         // Push any pending Layout changes into the layout engine. We collect
@@ -200,6 +202,7 @@ impl Ui {
                 Some((taffy_node, style))
             })
             .collect();
+        self.frame_stats.layout_style_updates += updates.len();
         for (node, style) in updates {
             self.layout.set_style(node, style);
         }
@@ -217,6 +220,7 @@ impl Ui {
         // Run taffy with a measure callback that dispatches to the elements'
         // widgets. Split-borrow the disjoint Ui fields so the closure can
         // read everything it needs while the taffy tree is &mut.
+        let mut measured_widgets = 0_usize;
         {
             let taffy = self.layout.taffy_mut();
             let registry = &self.registry;
@@ -239,6 +243,7 @@ impl Ui {
                         // default style-based sizing.
                         return taffy::Size::ZERO;
                     };
+                    measured_widgets += 1;
                     let match_state = style.match_state(id);
                     let measure_ctx = crate::behavior::MeasureContext {
                         registry,
@@ -273,6 +278,7 @@ impl Ui {
                 },
             );
         }
+        self.frame_stats.measured_widgets += measured_widgets;
 
         // Walk the tree and write absolute bounds for every element.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
@@ -291,6 +297,8 @@ impl Ui {
             self.with_widget_mut(id, |widget, ui| {
                 widget_changed = widget.post_layout(id, ui);
             });
+            self.frame_stats.post_layout_widgets += 1;
+            self.frame_stats.post_layout_changes += usize::from(widget_changed);
             changed |= widget_changed;
         }
         changed
@@ -332,6 +340,7 @@ impl Ui {
         );
         let bounds_prop = self.properties.bounds;
         self.set_local(id, bounds_prop, rect);
+        self.frame_stats.bounds_written += 1;
         let child_offset = self
             .get(id)
             .and_then(|element| {

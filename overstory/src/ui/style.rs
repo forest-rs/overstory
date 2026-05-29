@@ -90,6 +90,7 @@ impl Ui {
     /// unioned into the invalidation tracker.
     pub fn flush_style(&mut self) {
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(STYLE).collect();
+        self.frame_stats.style_roots += dirty.len();
         for id in dirty {
             self.restyle_subtree(id);
         }
@@ -99,6 +100,7 @@ impl Ui {
     /// each element's styled-property changes are marked in the tracker.
     pub(in crate::ui) fn restyle_subtree(&mut self, id: ElementId) {
         let order: Vec<ElementId> = collect_preorder(self, id);
+        self.frame_stats.styled_elements += order.len();
         for id in order {
             self.style_one(id);
         }

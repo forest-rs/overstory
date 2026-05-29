@@ -1,0 +1,86 @@
+// Copyright 2026 the Overstory Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Lightweight diagnostics snapshots for the UI frame pipeline.
+//!
+//! The counters here are intentionally cheap and always available in the
+//! `no_std` core crate. Host crates own wall-clock timing because they already
+//! depend on a monotonic platform clock.
+
+use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::text::TextLayoutCacheStats;
+
+/// Count of invalidation-channel marks observed during a frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ChannelMarkStats {
+    /// Number of `STYLE` channel marks.
+    pub style: usize,
+    /// Number of `TEMPLATE` channel marks.
+    pub template: usize,
+    /// Number of `LAYOUT` channel marks.
+    pub layout: usize,
+    /// Number of `PAINT` channel marks.
+    pub paint: usize,
+    /// Number of `COMPOSE` channel marks.
+    pub compose: usize,
+    /// Number of binding-runtime channel marks.
+    pub binding: usize,
+}
+
+impl ChannelMarkStats {
+    pub(crate) fn record(&mut self, channel: invalidation::Channel) {
+        if channel == STYLE {
+            self.style += 1;
+        } else if channel == TEMPLATE {
+            self.template += 1;
+        } else if channel == LAYOUT {
+            self.layout += 1;
+        } else if channel == PAINT {
+            self.paint += 1;
+        } else if channel == COMPOSE {
+            self.compose += 1;
+        } else if channel == BINDING {
+            self.binding += 1;
+        }
+    }
+}
+
+/// Counters collected while driving one UI frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiFrameStats {
+    /// Live element count observed when the snapshot is read.
+    pub elements: usize,
+    /// Invalidation-channel marks observed since the last reset.
+    pub channel_marks: ChannelMarkStats,
+    /// Roots drained from the `STYLE` channel.
+    pub style_roots: usize,
+    /// Elements whose selector match state was recomputed.
+    pub styled_elements: usize,
+    /// Whether `compute_layout` found layout work to perform.
+    pub layout_requested: bool,
+    /// Number of layout passes run. Post-layout widgets can request more than
+    /// one pass.
+    pub layout_passes: usize,
+    /// Layout style records pushed into the layout engine.
+    pub layout_style_updates: usize,
+    /// Widget measure callbacks invoked by the layout engine.
+    pub measured_widgets: usize,
+    /// Element bounds written back after layout.
+    pub bounds_written: usize,
+    /// Widgets visited for `post_layout`.
+    pub post_layout_widgets: usize,
+    /// Widgets whose `post_layout` hook reported a geometry-affecting change.
+    pub post_layout_changes: usize,
+    /// Elements drained from the `PAINT` channel.
+    pub painted_elements: usize,
+    /// Presentation nodes drained from the presentation dirty set.
+    pub presentation_dirty_nodes: usize,
+    /// Composition surfaces rebuilt from presentation primitives.
+    pub rebuilt_surfaces: usize,
+    /// Composition surfaces rewritten during the most recent paint call.
+    pub composition_surface_updates: usize,
+    /// Live composition surfaces observed when the snapshot is read.
+    pub composition_surfaces: usize,
+    /// Text layout cache counters observed when the snapshot is read.
+    pub text_layout_cache: TextLayoutCacheStats,
+}

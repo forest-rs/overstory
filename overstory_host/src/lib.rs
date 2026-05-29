@@ -20,7 +20,7 @@ use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use kurbo::{Affine, Size};
 use overstory::{
-    CursorIcon, KeyDispatchResult, PointerDispatchResult, SurfaceId, TimerInstant, Ui,
+    CursorIcon, KeyDispatchResult, PointerDispatchResult, SurfaceId, TimerInstant, Ui, UiFrameStats,
 };
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
@@ -34,6 +34,7 @@ pub struct UiHost {
     surface_scenes: HashMap<SurfaceId, Scene>,
     start_instant: Instant,
     cursor_icon: CursorIcon,
+    last_frame_diagnostics: FrameDiagnostics,
 }
 
 impl fmt::Debug for UiHost {
@@ -55,6 +56,7 @@ impl UiHost {
             surface_scenes: HashMap::new(),
             start_instant: Instant::now(),
             cursor_icon: CursorIcon::Default,
+            last_frame_diagnostics: FrameDiagnostics::default(),
         }
     }
 
@@ -155,19 +157,58 @@ impl UiHost {
     /// `scale_factor` maps those logical coordinates into the physical
     /// texture that the backend renderer will target.
     pub fn prepare_frame(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
-        self.ui.set_now(self.now());
-        self.ui.compute_layout(logical_viewport);
-        self.ui.paint(&mut self.scene);
-        self.sync_surface_scenes();
+        let total_start = Instant::now();
+        self.ui.reset_frame_stats();
 
+        let phase_start = Instant::now();
+        self.ui.set_now(self.now());
+        let set_now = phase_start.elapsed();
+
+        let phase_start = Instant::now();
+        self.ui.compute_layout(logical_viewport);
+        let layout = phase_start.elapsed();
+
+        let phase_start = Instant::now();
+        self.ui.paint(&mut self.scene);
+        let paint = phase_start.elapsed();
+
+        let phase_start = Instant::now();
+        self.sync_surface_scenes();
+        let sync_surfaces = phase_start.elapsed();
+
+        let phase_start = Instant::now();
         self.scene.clear();
         self.ui
             .render_composition_with(&mut self.scene, |surface| self.surface_scenes.get(&surface));
+        let compose = phase_start.elapsed();
 
+        let phase_start = Instant::now();
         self.scaled_scene.clear();
         self.scaled_scene
             .append_transformed(&self.scene, Affine::scale(scale_factor));
+        let scale = phase_start.elapsed();
+
+        self.last_frame_diagnostics = FrameDiagnostics {
+            timings: FrameTimings {
+                set_now,
+                layout,
+                paint,
+                sync_surfaces,
+                compose,
+                scale,
+                total: total_start.elapsed(),
+            },
+            ui: self.ui.frame_stats(),
+            surface_cache_len: self.surface_scenes.len(),
+            output_empty: self.scaled_scene.is_empty(),
+        };
         &self.scaled_scene
+    }
+
+    /// Returns diagnostics from the most recent [`Self::prepare_frame`] call.
+    #[must_use]
+    pub fn last_frame_diagnostics(&self) -> FrameDiagnostics {
+        self.last_frame_diagnostics
     }
 
     fn sync_surface_scenes(&mut self) {
@@ -187,6 +228,40 @@ impl UiHost {
     fn instant_for_deadline(&self, deadline: TimerInstant) -> Instant {
         self.start_instant + Duration::from_nanos(deadline)
     }
+}
+
+/// Wall-clock timings for one host frame preparation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FrameTimings {
+    /// Time spent advancing the UI clock and presentation timeline.
+    pub set_now: Duration,
+    /// Time spent in layout, including bindings, post-layout hooks, and
+    /// composition-layer geometry synchronization.
+    pub layout: Duration,
+    /// Time spent refreshing presentation and Overstory-owned composition
+    /// surfaces.
+    pub paint: Duration,
+    /// Time spent copying updated surface scenes into the host cache.
+    pub sync_surfaces: Duration,
+    /// Time spent composing cached surfaces into the logical output scene.
+    pub compose: Duration,
+    /// Time spent scaling the logical scene for the physical render target.
+    pub scale: Duration,
+    /// Total time spent preparing the frame.
+    pub total: Duration,
+}
+
+/// Diagnostics captured for one host frame preparation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FrameDiagnostics {
+    /// Host-side wall-clock timings by stage.
+    pub timings: FrameTimings,
+    /// Core UI counters captured after the frame was prepared.
+    pub ui: UiFrameStats,
+    /// Number of Overstory-owned surface scenes retained by the host cache.
+    pub surface_cache_len: usize,
+    /// Whether the scaled output scene is empty.
+    pub output_empty: bool,
 }
 
 /// Result of dispatching a platform-normalized event into a [`UiHost`].
@@ -256,6 +331,27 @@ mod tests {
 
         assert!(!frame.is_empty());
         assert!(!host.surface_scenes.is_empty());
+    }
+
+    #[test]
+    fn prepare_frame_records_diagnostics() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(
+            root,
+            overstory::Layout::column(0.0).logical_size(100.0, 50.0),
+        );
+        ui.append(root, overstory::Text::new("Hello"));
+
+        let mut host = UiHost::new(ui);
+        let _ = host.prepare_frame(Size::new(100.0, 50.0), 1.0);
+        let diagnostics = host.last_frame_diagnostics();
+
+        assert!(diagnostics.timings.total >= diagnostics.timings.layout);
+        assert!(diagnostics.ui.elements >= 2);
+        assert!(diagnostics.ui.layout_passes >= 1);
+        assert!(diagnostics.ui.painted_elements >= 1);
+        assert!(!diagnostics.output_empty);
     }
 
     #[test]

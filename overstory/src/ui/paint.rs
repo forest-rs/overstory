@@ -185,14 +185,17 @@ impl Ui {
         self.geometry.commit();
         self.flush_composition();
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
+        self.frame_stats.painted_elements += dirty.len();
         for &id in &dirty {
             self.present_element(id);
         }
         // We don't yet drive incremental re-lowering off this, but
         // draining keeps the dirty set bounded.
-        let _: Vec<NodeId> = self.presentation.drain_dirty();
+        let dirty_presentation: Vec<NodeId> = self.presentation.drain_dirty();
+        self.frame_stats.presentation_dirty_nodes += dirty_presentation.len();
 
         self.composition.clear_surface_updates();
+        let mut rebuilt_surfaces = 0_usize;
         for id in dirty {
             let Some(surface) = self.composition.owned_scene_surface_for(id) else {
                 continue;
@@ -201,7 +204,9 @@ impl Ui {
             scene.clear();
             self.lower_element_surface(id, &mut scene);
             self.composition.restore_surface(surface, scene);
+            rebuilt_surfaces += 1;
         }
+        self.frame_stats.rebuilt_surfaces += rebuilt_surfaces;
         self.composition.render_into(output);
         self.invalidation.clear(COMPOSE);
     }

@@ -53,6 +53,7 @@ mod binding_runtime;
 pub mod channels;
 mod composition;
 mod controls;
+pub mod diagnostics;
 mod element;
 mod element_side_map;
 mod element_store;
@@ -153,6 +154,7 @@ pub use controls::tooltip::{PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLT
 pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use cursor_icon::CursorIcon;
+pub use diagnostics::{ChannelMarkStats, UiFrameStats};
 pub use element::{Element, ElementId};
 pub use event_runtime::{
     ClickEvent, DragEvent, FocusChangeReason, FocusEvent, KeyDispatchResult, KeyEvent,

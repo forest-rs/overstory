@@ -37,6 +37,7 @@ use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
+use crate::diagnostics::UiFrameStats;
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
@@ -121,6 +122,8 @@ pub struct Ui {
     overlays: OverlayRuntime,
     /// Scrollable target registry shared by scrollbars and semantic actions.
     scrolling: ScrollRuntime,
+    /// Cheap counters for the current or most recently prepared frame.
+    frame_stats: UiFrameStats,
     /// Last viewport size used during layout/paint.
     last_viewport: kurbo::Size,
 }
@@ -288,6 +291,7 @@ impl Ui {
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
             scrolling: ScrollRuntime::new(),
+            frame_stats: UiFrameStats::default(),
             last_viewport: kurbo::Size::ZERO,
         };
         me.mirror_allocated_element(root, None);
@@ -351,8 +355,25 @@ impl Ui {
     /// Marks every channel in `set` dirty for `id` in the tracker.
     pub fn mark_channels(&mut self, id: ElementId, set: ChannelSet) {
         for channel in set.iter() {
+            self.frame_stats.channel_marks.record(channel);
             self.invalidation.mark(id, channel);
         }
+    }
+
+    /// Clears frame-pipeline counters before a host prepares a new frame.
+    pub fn reset_frame_stats(&mut self) {
+        self.frame_stats = UiFrameStats::default();
+    }
+
+    /// Returns a snapshot of the current frame-pipeline counters.
+    #[must_use]
+    pub fn frame_stats(&self) -> UiFrameStats {
+        let mut stats = self.frame_stats;
+        stats.elements = self.len();
+        stats.composition_surfaces = self.composition_surfaces().count();
+        stats.composition_surface_updates = self.composition_surface_updates().count();
+        stats.text_layout_cache = self.text_layout_cache_stats();
+        stats
     }
 
     /// Returns the invalidation tracker for diagnostics or custom drainers.
