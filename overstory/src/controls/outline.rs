@@ -21,7 +21,7 @@ use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Size, Vec2};
-use understory_outline::{Outline, OutlineModel, OutlineNode, VisibleRow};
+use understory_outline::{Outline, OutlineModel, VisibleRow};
 use understory_property::DependencyObjectExt;
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
@@ -80,13 +80,84 @@ type OutlineSelectionChangedSlot = RefCell<Option<OutlineSelectionChangedHandler
 type OutlineExpansionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineExpansionChangedEvent)>;
 type OutlineExpansionChangedSlot = RefCell<Option<OutlineExpansionChangedHandler>>;
 
+/// Stable key for a dense [`OutlineView`] node.
+///
+/// Keys are indices into the node vector supplied to [`OutlineView::nodes`].
+/// The newtype keeps public APIs explicit about key semantics instead of
+/// accepting arbitrary row indices.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct OutlineNodeKey(usize);
+
+impl OutlineNodeKey {
+    /// Creates a key from a dense node index.
+    #[must_use]
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Returns this key's dense node index.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for OutlineNodeKey {
+    fn from(index: usize) -> Self {
+        Self::new(index)
+    }
+}
+
+/// A string-backed node for [`OutlineView`].
+///
+/// The node links use stable [`OutlineNodeKey`] values into the node vector
+/// supplied to [`OutlineView::nodes`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutlineViewNode {
+    label: String,
+    first_child: Option<OutlineNodeKey>,
+    next_sibling: Option<OutlineNodeKey>,
+}
+
+impl OutlineViewNode {
+    /// Creates a leaf node with no children or siblings.
+    #[must_use]
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            first_child: None,
+            next_sibling: None,
+        }
+    }
+
+    /// Returns a copy of this node with `first_child` set.
+    #[must_use]
+    pub fn with_first_child(mut self, first_child: Option<impl Into<OutlineNodeKey>>) -> Self {
+        self.first_child = first_child.map(Into::into);
+        self
+    }
+
+    /// Returns a copy of this node with `next_sibling` set.
+    #[must_use]
+    pub fn with_next_sibling(mut self, next_sibling: Option<impl Into<OutlineNodeKey>>) -> Self {
+        self.next_sibling = next_sibling.map(Into::into);
+        self
+    }
+
+    /// Returns the node's visible label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
 /// Event delivered when an [`OutlineView`] selection changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutlineSelectionChangedEvent {
     /// The outline whose selection changed.
     pub outline: ElementId,
     /// The selected node key after the change, if any.
-    pub selected_key: Option<usize>,
+    pub selected_key: Option<OutlineNodeKey>,
 }
 
 /// Event delivered when an [`OutlineView`] node expands or collapses.
@@ -95,32 +166,24 @@ pub struct OutlineExpansionChangedEvent {
     /// The outline whose expansion state changed.
     pub outline: ElementId,
     /// The node key whose expansion state changed.
-    pub key: usize,
+    pub key: OutlineNodeKey,
     /// Whether the node is expanded after the change.
     pub expanded: bool,
 }
 
-/// A string-backed node for [`OutlineView`].
-///
-/// The node links use stable indices into the node vector supplied to
-/// [`OutlineView::nodes`]. This is the same compact shape used by
-/// `understory_outline::SliceOutline`.
-pub type OutlineViewNode = OutlineNode<String>;
-
 /// Builder + spec for a virtualized outline view.
 ///
 /// `OutlineView` owns its expansion state and realizes only the currently
-/// visible rows. Node identity is the node's stable `usize` key in the supplied
-/// node vector, so selection and expansion do not drift when siblings expand or
-/// collapse.
+/// visible rows. Node identity is the node's stable [`OutlineNodeKey`], so
+/// selection and expansion do not drift when siblings expand or collapse.
 pub struct OutlineView {
     nodes: Vec<OutlineViewNode>,
-    first_root: Option<usize>,
-    expanded: Vec<usize>,
+    first_root: Option<OutlineNodeKey>,
+    expanded: Vec<OutlineNodeKey>,
     size: Option<(f32, f32)>,
     item_extent: f64,
     overscan: f64,
-    selected_key: Option<usize>,
+    selected_key: Option<OutlineNodeKey>,
     scroll_offset_y: f64,
     state: ControlState,
     on_selection_changed: Option<OutlineSelectionChangedHandler>,
@@ -167,15 +230,20 @@ impl OutlineView {
     /// Node keys are indices into `nodes`. Each node's `first_child` and
     /// `next_sibling` fields must point at indices in the same vector.
     #[must_use]
-    pub fn nodes(mut self, nodes: Vec<OutlineViewNode>, first_root: Option<usize>) -> Self {
+    pub fn nodes(
+        mut self,
+        nodes: Vec<OutlineViewNode>,
+        first_root: Option<impl Into<OutlineNodeKey>>,
+    ) -> Self {
         self.nodes = nodes;
-        self.first_root = first_root;
+        self.first_root = first_root.map(Into::into);
         self
     }
 
     /// Marks a node key as initially expanded.
     #[must_use]
-    pub fn expanded(mut self, key: usize) -> Self {
+    pub fn expanded(mut self, key: impl Into<OutlineNodeKey>) -> Self {
+        let key = key.into();
         if !self.expanded.contains(&key) {
             self.expanded.push(key);
         }
@@ -205,8 +273,8 @@ impl OutlineView {
 
     /// Sets the initially selected node key.
     #[must_use]
-    pub fn selected_key(mut self, key: usize) -> Self {
-        self.selected_key = Some(key);
+    pub fn selected_key(mut self, key: impl Into<OutlineNodeKey>) -> Self {
+        self.selected_key = Some(key.into());
         self
     }
 
@@ -456,7 +524,7 @@ pub fn outline_view_scroll_area_scrollbar(ui: &Ui, frame: ElementId) -> Option<E
 #[derive(Clone, Debug)]
 struct OwnedOutlineModel {
     nodes: Vec<OutlineViewNode>,
-    first_root: Option<usize>,
+    first_root: Option<OutlineNodeKey>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -470,11 +538,15 @@ impl OwnedOutlineModel {
         self.sibling_keys(self.first_root).len()
     }
 
-    fn sibling_set(&self, key: usize) -> Option<SiblingSet> {
+    fn sibling_set(&self, key: OutlineNodeKey) -> Option<SiblingSet> {
         self.sibling_set_from(self.first_root, key)
     }
 
-    fn sibling_set_from(&self, first_key: Option<usize>, target: usize) -> Option<SiblingSet> {
+    fn sibling_set_from(
+        &self,
+        first_key: Option<OutlineNodeKey>,
+        target: OutlineNodeKey,
+    ) -> Option<SiblingSet> {
         let siblings = self.sibling_keys(first_key);
         if let Some(index) = siblings.iter().position(|key| *key == target) {
             return Some(SiblingSet {
@@ -488,7 +560,7 @@ impl OwnedOutlineModel {
             .find_map(|key| self.sibling_set_from(self.first_child_key(&key), target))
     }
 
-    fn sibling_keys(&self, first_key: Option<usize>) -> Vec<usize> {
+    fn sibling_keys(&self, first_key: Option<OutlineNodeKey>) -> Vec<OutlineNodeKey> {
         let mut keys = Vec::new();
         let mut key = first_key.filter(|key| self.contains_key(key));
         while let Some(current) = key {
@@ -502,7 +574,7 @@ impl OwnedOutlineModel {
 }
 
 impl OutlineModel for OwnedOutlineModel {
-    type Key = usize;
+    type Key = OutlineNodeKey;
     type Item = String;
 
     fn first_root_key(&self) -> Option<Self::Key> {
@@ -510,26 +582,30 @@ impl OutlineModel for OwnedOutlineModel {
     }
 
     fn contains_key(&self, key: &Self::Key) -> bool {
-        *key < self.nodes.len()
+        key.index() < self.nodes.len()
     }
 
     fn next_sibling_key(&self, key: &Self::Key) -> Option<Self::Key> {
-        self.nodes.get(*key).and_then(|node| node.next_sibling)
+        self.nodes
+            .get(key.index())
+            .and_then(|node| node.next_sibling)
     }
 
     fn first_child_key(&self, key: &Self::Key) -> Option<Self::Key> {
-        self.nodes.get(*key).and_then(|node| node.first_child)
+        self.nodes
+            .get(key.index())
+            .and_then(|node| node.first_child)
     }
 
     fn item(&self, key: &Self::Key) -> Option<Self::Item> {
-        self.nodes.get(*key).map(|node| node.item.clone())
+        self.nodes.get(key.index()).map(|node| node.label.clone())
     }
 }
 
 /// Per-element widget for `OutlineView`.
 pub(crate) struct OutlineViewWidget {
     outline: Outline<OwnedOutlineModel>,
-    selection: Selection<usize>,
+    selection: Selection<OutlineNodeKey>,
     selection_changed: OutlineSelectionChangedSlot,
     expansion_changed: OutlineExpansionChangedSlot,
     scroll_state: ScrollState,
@@ -846,7 +922,7 @@ impl OutlineViewWidget {
         self.visible_len
     }
 
-    fn selected_key(&self) -> Option<usize> {
+    fn selected_key(&self) -> Option<OutlineNodeKey> {
         self.selection.primary().copied()
     }
 
@@ -864,7 +940,7 @@ impl OutlineViewWidget {
         changed
     }
 
-    fn select_key(&mut self, outline: ElementId, ui: &mut Ui, key: usize) -> bool {
+    fn select_key(&mut self, outline: ElementId, ui: &mut Ui, key: OutlineNodeKey) -> bool {
         if self.outline.model().contains_key(&key) {
             let changed =
                 self.mutate_selection(ui, outline, |selection| selection.select_only(key));
@@ -932,7 +1008,12 @@ impl OutlineViewWidget {
         false
     }
 
-    fn toggle_key_expanded(&mut self, outline: ElementId, ui: &mut Ui, key: usize) -> bool {
+    fn toggle_key_expanded(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        key: OutlineNodeKey,
+    ) -> bool {
         let expanded = self.outline.is_expanded(&key);
         self.set_key_expanded(outline, ui, key, !expanded)
     }
@@ -941,7 +1022,7 @@ impl OutlineViewWidget {
         &mut self,
         outline: ElementId,
         ui: &mut Ui,
-        key: usize,
+        key: OutlineNodeKey,
         expanded: bool,
     ) -> bool {
         if self.outline.model().first_child_key(&key).is_none() {
@@ -981,7 +1062,7 @@ impl OutlineViewWidget {
         &mut self,
         ui: &mut Ui,
         outline: ElementId,
-        mutate: impl FnOnce(&mut Selection<usize>) -> bool,
+        mutate: impl FnOnce(&mut Selection<OutlineNodeKey>) -> bool,
     ) -> bool {
         let changed = mutate(&mut self.selection);
         self.sync_realized_selected_pseudos(ui);
@@ -1028,7 +1109,7 @@ impl OutlineViewWidget {
 /// Per-element widget for a realized `OutlineView` item.
 #[derive(Debug)]
 pub(crate) struct OutlineItemWidget {
-    key: usize,
+    key: OutlineNodeKey,
     index: usize,
     depth: usize,
     position_in_set: usize,
@@ -1110,7 +1191,7 @@ impl Widget for OutlineItemWidget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RealizedOutlineItem {
     index: usize,
-    key: usize,
+    key: OutlineNodeKey,
     element: ElementId,
 }
 
@@ -1123,7 +1204,7 @@ struct OutlineVirtualSync {
 
 struct OutlineRowSnapshot {
     index: usize,
-    key: usize,
+    key: OutlineNodeKey,
     depth: usize,
     position_in_set: usize,
     size_of_set: usize,
@@ -1136,7 +1217,7 @@ fn outline_row_snapshot(
     model: &OwnedOutlineModel,
     visible_len: usize,
     index: usize,
-    row: &VisibleRow<usize>,
+    row: &VisibleRow<OutlineNodeKey>,
     label: String,
 ) -> OutlineRowSnapshot {
     let sibling_set = model.sibling_set(row.key).unwrap_or(SiblingSet {
@@ -1147,7 +1228,12 @@ fn outline_row_snapshot(
 }
 
 impl OutlineRowSnapshot {
-    fn new(index: usize, row: &VisibleRow<usize>, label: String, sibling_set: SiblingSet) -> Self {
+    fn new(
+        index: usize,
+        row: &VisibleRow<OutlineNodeKey>,
+        label: String,
+        sibling_set: SiblingSet,
+    ) -> Self {
         Self {
             index,
             key: row.key,
@@ -1260,7 +1346,8 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
 ///
 /// Returns `false` if `outline` is stale, disabled, not an `OutlineView`, or
 /// if `key` is outside the model.
-pub fn select_outline_key(ui: &mut Ui, outline: ElementId, key: usize) -> bool {
+pub fn select_outline_key(ui: &mut Ui, outline: ElementId, key: impl Into<OutlineNodeKey>) -> bool {
+    let key = key.into();
     with_outline_view_mut(ui, outline, |widget, ui| {
         widget.select_key(outline, ui, key)
     })
@@ -1269,13 +1356,18 @@ pub fn select_outline_key(ui: &mut Ui, outline: ElementId, key: usize) -> bool {
 
 /// Returns the currently selected node key in `outline`, if any.
 #[must_use]
-pub fn selected_outline_key(ui: &Ui, outline: ElementId) -> Option<usize> {
+pub fn selected_outline_key(ui: &Ui, outline: ElementId) -> Option<OutlineNodeKey> {
     outline_view_widget(ui, outline).and_then(OutlineViewWidget::selected_key)
 }
 
 /// Returns whether `key` is currently expanded in `outline`.
 #[must_use]
-pub fn outline_key_expanded(ui: &Ui, outline: ElementId, key: usize) -> Option<bool> {
+pub fn outline_key_expanded(
+    ui: &Ui,
+    outline: ElementId,
+    key: impl Into<OutlineNodeKey>,
+) -> Option<bool> {
+    let key = key.into();
     outline_view_widget(ui, outline).map(|widget| widget.outline.is_expanded(&key))
 }
 
@@ -1286,9 +1378,10 @@ pub fn outline_key_expanded(ui: &Ui, outline: ElementId, key: usize) -> Option<b
 pub fn set_outline_key_expanded(
     ui: &mut Ui,
     outline: ElementId,
-    key: usize,
+    key: impl Into<OutlineNodeKey>,
     expanded: bool,
 ) -> bool {
+    let key = key.into();
     with_outline_view_mut(ui, outline, |widget, ui| {
         widget.set_key_expanded(outline, ui, key, expanded)
     })
@@ -1296,7 +1389,8 @@ pub fn set_outline_key_expanded(
 }
 
 /// Toggles expansion for `key` in `outline`.
-pub fn toggle_outline_key(ui: &mut Ui, outline: ElementId, key: usize) -> bool {
+pub fn toggle_outline_key(ui: &mut Ui, outline: ElementId, key: impl Into<OutlineNodeKey>) -> bool {
+    let key = key.into();
     with_outline_view_mut(ui, outline, |widget, ui| {
         widget.toggle_key_expanded(outline, ui, key)
     })
@@ -1322,7 +1416,7 @@ pub fn set_outline_scroll_offset_y(ui: &mut Ui, outline: ElementId, offset: f64)
 
 /// Returns the node key represented by a realized outline item.
 #[must_use]
-pub fn realized_outline_item_key(ui: &Ui, item: ElementId) -> Option<usize> {
+pub fn realized_outline_item_key(ui: &Ui, item: ElementId) -> Option<OutlineNodeKey> {
     ui.get(item)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<OutlineItemWidget>())
@@ -1360,7 +1454,12 @@ fn dispatch_outline_expansion_changed(
 }
 
 #[cfg(test)]
-pub(crate) fn realized_outline_item(ui: &Ui, outline: ElementId, key: usize) -> Option<ElementId> {
+pub(crate) fn realized_outline_item(
+    ui: &Ui,
+    outline: ElementId,
+    key: impl Into<OutlineNodeKey>,
+) -> Option<ElementId> {
+    let key = key.into();
     outline_view_widget(ui, outline)?
         .realized
         .iter()
@@ -1463,6 +1562,10 @@ mod tests {
         OutlineViewNode::new(String::from(label))
     }
 
+    fn key(index: usize) -> OutlineNodeKey {
+        OutlineNodeKey::new(index)
+    }
+
     fn test_outline() -> OutlineView {
         OutlineView::new()
             .nodes(
@@ -1491,7 +1594,7 @@ mod tests {
         ui.synthesize_click(parent, Point::ZERO);
         realize(&mut ui);
 
-        assert_eq!(selected_outline_key(&ui, outline), Some(0));
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(true));
         assert!(realized_outline_item(&ui, outline, 1).is_some());
         assert!(ui.get(parent).unwrap().pseudos().contains(&PSEUDO_SELECTED));
@@ -1520,11 +1623,11 @@ mod tests {
 
         assert!(ui.dispatch_key(&right).handled);
         realize(&mut ui);
-        assert_eq!(selected_outline_key(&ui, outline), Some(1));
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(1)));
 
         let up = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowUp), Code::ArrowUp);
         assert!(ui.dispatch_key(&up).handled);
-        assert_eq!(selected_outline_key(&ui, outline), Some(0));
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
 
         let left = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowLeft), Code::ArrowLeft);
         assert!(ui.dispatch_key(&left).handled);
@@ -1565,9 +1668,9 @@ mod tests {
 
         assert_eq!(
             &*selected.borrow(),
-            &[(outline, Some(0)), (outline, Some(2))]
+            &[(outline, Some(key(0))), (outline, Some(key(2)))]
         );
-        assert_eq!(&*expanded.borrow(), &[(outline, 0, true)]);
+        assert_eq!(&*expanded.borrow(), &[(outline, key(0), true)]);
     }
 
     #[test]
