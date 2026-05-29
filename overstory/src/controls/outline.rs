@@ -30,11 +30,12 @@ use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
 use crate::controls::scroll::{
-    ScrollBar, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
+    normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    FixedVirtualizer, action_scroll_unit, fixed_virtualizer, fixed_visible_item_count,
-    layout_fixed_virtual_rows, sync_fixed_virtual_rows,
+    FixedVirtualizer, ReservedVerticalScrollArea, action_scroll_unit,
+    append_reserved_vertical_scroll_area, fixed_virtualizer, fixed_visible_item_count,
+    layout_fixed_virtual_rows, reserved_scroll_frame_widget, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -445,77 +446,34 @@ impl AppendSpec for OutlineViewScrollArea {
             .unwrap_or((DEFAULT_OUTLINE_WIDTH, DEFAULT_OUTLINE_HEIGHT));
         self.outline.size = Some((width, height));
         let enabled = self.outline.state.enabled;
-        let frame_width = width + self.gap + self.scrollbar_thickness;
 
-        let frame = ui.append_widget(parent, Box::new(OutlineViewScrollAreaWidget::default()));
-        ui.set_layout(
-            frame,
-            Layout::row(self.gap).logical_size(frame_width, height),
+        let (frame, _, _) = append_reserved_vertical_scroll_area(
+            ui,
+            parent,
+            self.outline,
+            ReservedVerticalScrollArea {
+                width,
+                height,
+                gap: self.gap,
+                scrollbar_thickness: self.scrollbar_thickness,
+                thumb_extent: self.thumb_extent,
+                enabled,
+            },
         );
-        ui.set_control_state(frame, ControlState::interactive().focusable(false));
-
-        let outline = ui.append(frame, self.outline);
-        let scrollbar = ui.append(
-            frame,
-            ScrollBar::vertical(outline)
-                .length(height)
-                .thickness(self.scrollbar_thickness)
-                .thumb_extent(self.thumb_extent)
-                .enabled(enabled),
-        );
-        set_outline_view_scroll_area_parts(ui, frame, outline, scrollbar);
         frame
     }
-}
-
-/// Per-element widget for an [`OutlineView`] scrollbar frame.
-#[derive(Debug, Default)]
-pub(crate) struct OutlineViewScrollAreaWidget {
-    outline: core::cell::Cell<Option<ElementId>>,
-    scrollbar: core::cell::Cell<Option<ElementId>>,
-}
-
-impl Widget for OutlineViewScrollAreaWidget {
-    fn accessibility_role(
-        &self,
-        _element: &Element,
-        _ctx: &crate::AccessibilityContext<'_>,
-    ) -> Option<accesskit::Role> {
-        Some(accesskit::Role::GenericContainer)
-    }
-}
-
-fn set_outline_view_scroll_area_parts(
-    ui: &Ui,
-    frame: ElementId,
-    outline: ElementId,
-    scrollbar: ElementId,
-) {
-    if let Some(widget) = outline_view_scroll_area_widget(ui, frame) {
-        widget.outline.set(Some(outline));
-        widget.scrollbar.set(Some(scrollbar));
-    }
-}
-
-fn outline_view_scroll_area_widget(
-    ui: &Ui,
-    frame: ElementId,
-) -> Option<&OutlineViewScrollAreaWidget> {
-    ui.get(frame)
-        .and_then(|element| element.widget())
-        .and_then(|widget| widget.downcast_ref::<OutlineViewScrollAreaWidget>())
 }
 
 /// Returns the inner outline target for an [`OutlineViewScrollArea`].
 #[must_use]
 pub fn outline_view_scroll_area_outline(ui: &Ui, frame: ElementId) -> Option<ElementId> {
-    outline_view_scroll_area_widget(ui, frame).and_then(|widget| widget.outline.get())
+    reserved_scroll_frame_widget(ui, frame).and_then(|widget| widget.target())
 }
 
 /// Returns the reserved scrollbar for an [`OutlineViewScrollArea`].
 #[must_use]
 pub fn outline_view_scroll_area_scrollbar(ui: &Ui, frame: ElementId) -> Option<ElementId> {
-    outline_view_scroll_area_widget(ui, frame).and_then(|widget| widget.scrollbar.get())
+    reserved_scroll_frame_widget(ui, frame).and_then(|widget| widget.scrollbar())
 }
 
 #[derive(Clone, Debug)]

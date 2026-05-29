@@ -3,16 +3,20 @@
 
 //! Small shared helpers for built-in controls.
 
+use alloc::boxed::Box;
 use core::ops::Range;
 
 use kurbo::{Axis, Point, Rect, Size, Vec2};
 use understory_property::{DependencyObjectExt, Property};
 use understory_virtual_list::{FixedExtentModel, VirtualList};
 
+use crate::controls::scroll::ScrollBar;
+use crate::element::Element;
 use crate::element::ElementId;
-use crate::layouts::{LayoutPlacement, LayoutSize};
+use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::ScrollState;
-use crate::ui::Ui;
+use crate::ui::{ControlState, Ui};
+use crate::widget::{AppendSpec, Widget};
 
 pub(crate) type FixedVirtualizer = VirtualList<FixedExtentModel<f64>>;
 
@@ -62,6 +66,86 @@ pub(crate) fn action_scroll_unit(
         Some(accesskit::ActionData::ScrollUnit(unit)) => Some(*unit),
         _ => None,
     }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ReservedScrollFrameWidget {
+    target: core::cell::Cell<Option<ElementId>>,
+    scrollbar: core::cell::Cell<Option<ElementId>>,
+}
+
+impl ReservedScrollFrameWidget {
+    pub(crate) fn target(&self) -> Option<ElementId> {
+        self.target.get()
+    }
+
+    pub(crate) fn scrollbar(&self) -> Option<ElementId> {
+        self.scrollbar.get()
+    }
+
+    fn set_parts(&self, target: ElementId, scrollbar: ElementId) {
+        self.target.set(Some(target));
+        self.scrollbar.set(Some(scrollbar));
+    }
+}
+
+impl Widget for ReservedScrollFrameWidget {
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::GenericContainer)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ReservedVerticalScrollArea {
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) gap: f32,
+    pub(crate) scrollbar_thickness: f32,
+    pub(crate) thumb_extent: f32,
+    pub(crate) enabled: bool,
+}
+
+pub(crate) fn append_reserved_vertical_scroll_area(
+    ui: &mut Ui,
+    parent: ElementId,
+    target: impl AppendSpec,
+    spec: ReservedVerticalScrollArea,
+) -> (ElementId, ElementId, ElementId) {
+    let frame_width = spec.width + spec.gap + spec.scrollbar_thickness;
+    let frame = ui.append_widget(parent, Box::new(ReservedScrollFrameWidget::default()));
+    ui.set_layout(
+        frame,
+        Layout::row(spec.gap).logical_size(frame_width, spec.height),
+    );
+    ui.set_control_state(frame, ControlState::interactive().focusable(false));
+
+    let target = ui.append(frame, target);
+    let scrollbar = ui.append(
+        frame,
+        ScrollBar::vertical(target)
+            .length(spec.height)
+            .thickness(spec.scrollbar_thickness)
+            .thumb_extent(spec.thumb_extent)
+            .enabled(spec.enabled),
+    );
+
+    if let Some(widget) = reserved_scroll_frame_widget(ui, frame) {
+        widget.set_parts(target, scrollbar);
+    }
+    (frame, target, scrollbar)
+}
+
+pub(crate) fn reserved_scroll_frame_widget(
+    ui: &Ui,
+    frame: ElementId,
+) -> Option<&ReservedScrollFrameWidget> {
+    ui.get(frame)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ReservedScrollFrameWidget>())
 }
 
 pub(crate) fn fixed_virtualizer(
