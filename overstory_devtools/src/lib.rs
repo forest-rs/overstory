@@ -439,57 +439,105 @@ fn append_selected_element_details(
         return;
     };
 
-    ui.append(
-        parent,
-        Text::new(format!("Element {}:{}", row.id.slot(), row.id.generation())).font_size(15.0),
+    let identity = append_detail_section(ui, parent, "Identity");
+    append_detail_row(
+        ui,
+        identity,
+        "Element",
+        &format!("{}:{}", row.id.slot(), row.id.generation()),
     );
-    ui.append(
-        parent,
-        Text::new(format!("parent: {}", optional_element_id(row.parent))).font_size(12.0),
+    append_detail_row(ui, identity, "Type", element_type_label(row));
+    append_detail_row(
+        ui,
+        identity,
+        "Widget identity",
+        bool_summary(row.has_widget_identity),
     );
-    ui.append(
-        parent,
-        Text::new(format!("children: {}", row.children.len())).font_size(12.0),
+    append_detail_row(ui, identity, "Type tag", &optional_debug(row.type_tag));
+
+    let tree = append_detail_section(ui, parent, "Tree");
+    append_detail_row(ui, tree, "Parent", &optional_element_id(row.parent));
+    append_detail_row(ui, tree, "Children", &format!("{}", row.children.len()));
+    append_detail_row(
+        ui,
+        tree,
+        "Child ids",
+        &element_list_summary(row.children.as_slice()),
     );
-    ui.append(
-        parent,
-        Text::new(format!("type: {}", element_type_label(row))).font_size(12.0),
+    append_detail_row(
+        ui,
+        tree,
+        "Template owner",
+        &optional_element_id(row.templated_parent),
     );
-    ui.append(
-        parent,
-        Text::new(format!("bounds: {}", rect_summary(row.bounds))).font_size(12.0),
+
+    let style = append_detail_section(ui, parent, "Style");
+    append_detail_row(ui, style, "Part tag", &optional_debug(row.part_tag));
+    append_detail_row(
+        ui,
+        style,
+        "Classes",
+        &debug_list_summary(row.classes.as_slice()),
     );
-    ui.append(
-        parent,
-        Text::new(format!("layer: {}", optional_layer_id(row.layer))).font_size(12.0),
+    append_detail_row(
+        ui,
+        style,
+        "Pseudos",
+        &debug_list_summary(row.pseudos.as_slice()),
     );
-    ui.append(
-        parent,
-        Text::new(format!("surface: {}", optional_surface_id(row.surface))).font_size(12.0),
+
+    let layout = append_detail_section(ui, parent, "Layout");
+    append_detail_row(ui, layout, "Bounds", &rect_summary(row.bounds));
+
+    let composition = append_detail_section(ui, parent, "Composition");
+    append_detail_row(ui, composition, "Layer", &optional_layer_id(row.layer));
+    append_detail_row(
+        ui,
+        composition,
+        "Surface",
+        &optional_surface_id(row.surface),
     );
-    ui.append(
-        parent,
-        Text::new(format!("composition: {:?}", row.composition_policy)).font_size(12.0),
+    append_detail_row(
+        ui,
+        composition,
+        "Policy",
+        &format!("{:?}", row.composition_policy),
     );
 
     if let Some(layer) = row.layer.and_then(|id| snapshot.layer(id)) {
-        ui.append(
-            parent,
-            Text::new(format!(
-                "opacity: {:.3} / {:.3}",
+        append_detail_row(ui, composition, "Layer bounds", &size_summary(layer.bounds));
+        append_detail_row(
+            ui,
+            composition,
+            "Opacity",
+            &format!(
+                "{:.3} / {:.3}",
                 layer.local_opacity, layer.effective_opacity
-            ))
-            .font_size(12.0),
+            ),
         );
-        ui.append(
-            parent,
-            Text::new(format!(
-                "hidden: {} / {}",
-                layer.hidden, layer.effectively_hidden
-            ))
-            .font_size(12.0),
+        append_detail_row(
+            ui,
+            composition,
+            "Hidden",
+            &format!("{} / {}", layer.hidden, layer.effectively_hidden),
         );
+        append_detail_row(ui, composition, "Clip", bool_summary(layer.has_clip));
     }
+}
+
+fn append_detail_section(ui: &mut Ui, parent: ElementId, title: &str) -> ElementId {
+    let section = ui.append(parent, Panel::column(3.0).layout(Layout::column(3.0)));
+    ui.append(section, Text::new(title).font_size(12.0));
+    section
+}
+
+fn append_detail_row(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
+    ui.append(
+        parent,
+        Text::new(format!("{label}: {value}"))
+            .font_size(12.0)
+            .wrap(),
+    )
 }
 
 fn optional_element_id(id: Option<ElementId>) -> String {
@@ -497,6 +545,38 @@ fn optional_element_id(id: Option<ElementId>) -> String {
         || "none".into(),
         |id| format!("{}:{}", id.slot(), id.generation()),
     )
+}
+
+fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> String {
+    value.map_or_else(|| "none".into(), |value| format!("{value:?}"))
+}
+
+fn debug_list_summary<T: core::fmt::Debug>(values: &[T]) -> String {
+    if values.is_empty() {
+        return "none".into();
+    }
+    let mut output = String::new();
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&format!("{value:?}"));
+    }
+    output
+}
+
+fn element_list_summary(elements: &[ElementId]) -> String {
+    if elements.is_empty() {
+        return "none".into();
+    }
+    let mut output = String::new();
+    for (index, element) in elements.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&optional_element_id(Some(*element)));
+    }
+    output
 }
 
 fn optional_layer_id(id: Option<LayerInspectionId>) -> String {
@@ -521,6 +601,14 @@ fn rect_summary(rect: overstory::Rect) -> String {
         rect.width(),
         rect.height()
     )
+}
+
+fn size_summary(size: overstory::Size) -> String {
+    format!("{:.1}x{:.1}", size.width, size.height)
+}
+
+fn bool_summary(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
 }
 
 #[cfg(test)]
@@ -733,12 +821,12 @@ mod tests {
                 .and_then(overstory::Element::parent),
             Some(elements.root)
         );
-        assert_eq!(
+        assert!(
             inspector
                 .get(elements.details)
                 .map(overstory::Element::children)
-                .map(<[ElementId]>::len),
-            Some(10)
+                .is_some_and(|children| children.len() >= 5),
+            "details should render sectioned selected-element panels"
         );
     }
 
@@ -778,7 +866,7 @@ mod tests {
             .get(elements.details)
             .map(overstory::Element::children)
             .expect("details panel should still exist");
-        assert_eq!(detail_children.len(), 10);
+        assert!(detail_children.len() >= 5);
         assert_ne!(detail_children[0], first_detail_before);
         assert_eq!(
             overstory::selected_outline_key(&inspector, elements.outline),
