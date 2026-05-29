@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "overstory",
     "overstory_demo",
+    "overstory_devtools",
     "overstory_host",
     "overstory_host_winit",
     "overstory_node_graph_demo",
@@ -21,7 +22,8 @@ repository = "https://github.com/forest-rs/overstory"
 
 [workspace.dependencies]
 # Overstory workspace crates.
-overstory = { path = "overstory", version = "0.0.1" }
+overstory = { default-features = false, path = "overstory", version = "0.0.1" }
+overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 overstory_svg = { path = "overstory_svg", version = "0.0.1" }

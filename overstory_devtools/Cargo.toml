@@ -1,0 +1,23 @@
+[package]
+name = "overstory_devtools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Snapshot adapters and model helpers for Overstory devtools."
+publish = false
+
+[features]
+default = []
+std = ["overstory/std"]
+system-fonts = ["overstory/system-fonts"]
+
+[dependencies]
+overstory.workspace = true
+
+[dev-dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+
+[lints]
+workspace = true

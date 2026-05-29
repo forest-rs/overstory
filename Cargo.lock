@@ -2172,6 +2172,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_devtools"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+]
+
+[[package]]
 name = "overstory_host"
 version = "0.0.1"
 dependencies = [

@@ -17,5 +17,8 @@ overstory.workspace = true
 ui-events.workspace = true
 web-time.workspace = true
 
+[dev-dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+
 [lints]
 workspace = true

@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 kurbo.workspace = true
-overstory.workspace = true
+overstory = { features = ["system-fonts"], workspace = true }
 overstory_host_winit.workspace = true
 peniko.workspace = true
 understory_node_graph.workspace = true

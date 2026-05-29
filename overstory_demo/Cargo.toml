@@ -9,7 +9,7 @@ description = "Demo binary for Overstory — winit + imaging_vello host."
 publish = false
 
 [dependencies]
-overstory.workspace = true
+overstory = { features = ["system-fonts"], workspace = true }
 overstory_host_winit.workspace = true
 overstory_svg.workspace = true
 peniko.workspace = true

@@ -14,5 +14,8 @@ overstory.workspace = true
 understory_precise_hit = { workspace = true, features = ["std"] }
 usvg.workspace = true
 
+[dev-dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+
 [lints]
 workspace = true

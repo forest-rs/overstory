@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 imaging.workspace = true
 kurbo.workspace = true
-overstory.workspace = true
+overstory = { features = ["system-fonts"], workspace = true }
 overstory_host.workspace = true
 
 [dev-dependencies]
