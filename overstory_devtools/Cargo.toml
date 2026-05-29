@@ -10,11 +10,13 @@ publish = false
 
 [features]
 default = []
+spoor-session = ["dep:spoor_session"]
 std = ["overstory/std"]
 system-fonts = ["overstory/system-fonts"]
 
 [dependencies]
 overstory.workspace = true
+spoor_session = { optional = true, workspace = true }
 
 [dev-dependencies]
 overstory = { features = ["system-fonts"], workspace = true }

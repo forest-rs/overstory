@@ -24,7 +24,9 @@ use overstory::{
     TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui,
     Viewport, layouts, set_progress_value, theme,
 };
-use overstory_devtools::{DevtoolsSnapshot, append_inspection_view};
+use overstory_devtools::{
+    DevtoolsSession, DevtoolsSessionHandle, DevtoolsSnapshot, append_session_view,
+};
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};
@@ -2417,6 +2419,9 @@ fn build_motion_page(ui: &mut Ui, stage: ElementId) {
 fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
     let row = demo_row(ui, stage);
     let (snapshot, selected) = devtools_target_snapshot();
+    let session = DevtoolsSessionHandle::new(
+        DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
+    );
 
     let inspector = demo_card(
         ui,
@@ -2426,7 +2431,7 @@ fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
         DEVTOOLS_CARD_HEIGHT,
     );
     ui.add_class(inspector, CLASS_DEVTOOLS_INSPECTOR_CARD);
-    append_inspection_view(ui, inspector, &snapshot, Some(selected));
+    append_session_view(ui, inspector, session.clone());
 
     let summary = demo_card(
         ui,
@@ -2445,7 +2450,7 @@ fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
     );
     ui.append(summary, Divider::horizontal().length(220.0));
 
-    let inspection = snapshot.inspection();
+    let inspection = session.with(|session| session.snapshot().inspection().clone());
     append_svg_inspector_row(
         ui,
         summary,
@@ -2463,6 +2468,24 @@ fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
         summary,
         "Surfaces",
         &format!("{}", inspection.composition.surfaces.len()),
+    );
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Spoor envelopes",
+        &session.with(|session| format!("{}", session.spoor_summary().envelope_count)),
+    );
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Spoor rows",
+        &session.with(|session| {
+            let summary = session.spoor_summary();
+            format!(
+                "{} contexts / {} counters / {} events",
+                summary.context_count, summary.counter_count, summary.event_count
+            )
+        }),
     );
     append_svg_inspector_row(
         ui,

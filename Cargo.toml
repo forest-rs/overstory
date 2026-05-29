@@ -38,6 +38,7 @@ invalidation = { default-features = false, version = "0.2.0" }
 kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
 peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
 smallvec = { default-features = false, version = "1.13.2" }
+spoor_session = { default-features = false, git = "https://github.com/forest-rs/spoor.git", rev = "9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22" }
 subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "fd26c7acb332ff0668a040010093f0c3318233c0" }
 
 # Understory primitives.

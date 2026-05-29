@@ -2177,6 +2177,7 @@ name = "overstory_devtools"
 version = "0.0.1"
 dependencies = [
  "overstory",
+ "spoor_session",
 ]
 
 [[package]]
@@ -3004,6 +3005,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
  "bitflags 2.11.1",
+]
+
+[[package]]
+name = "spoor_core"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
+
+[[package]]
+name = "spoor_runtime"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
+dependencies = [
+ "spoor_core",
+]
+
+[[package]]
+name = "spoor_session"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
+dependencies = [
+ "spoor_core",
+ "spoor_runtime",
 ]
 
 [[package]]

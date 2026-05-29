@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 overstory = { features = ["system-fonts"], workspace = true }
-overstory_devtools.workspace = true
+overstory_devtools = { features = ["spoor-session"], workspace = true }
 overstory_host_winit.workspace = true
 overstory_svg.workspace = true
 peniko.workspace = true

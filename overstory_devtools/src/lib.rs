@@ -6,7 +6,7 @@
 //! Snapshot adapters and model helpers for Overstory devtools.
 //!
 //! ```text
-//! Ui -> UiInspectionSnapshot -> DevtoolsSnapshot -> inspector UI / transport
+//! Ui -> UiInspectionSnapshot -> DevtoolsSnapshot -> DevtoolsSession -> inspector UI / transport
 //! ```
 //!
 //! This crate owns the inspection adapter layer. It explicitly does not own
@@ -32,6 +32,12 @@ use overstory::{
     TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
     TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, theme,
 };
+
+mod session;
+
+#[cfg(feature = "spoor-session")]
+pub use session::DevtoolsSpoorSummary;
+pub use session::{DevtoolsEvent, DevtoolsSession, DevtoolsSessionHandle};
 
 /// A source that can produce an owned Overstory inspection snapshot.
 ///
@@ -281,6 +287,24 @@ pub fn append_inspection_view(
     snapshot: &DevtoolsSnapshot,
     selected: Option<ElementId>,
 ) -> DevtoolsViewElements {
+    append_session_view(
+        ui,
+        parent,
+        DevtoolsSessionHandle::new(
+            DevtoolsSession::new(snapshot.clone()).with_selected_element(selected),
+        ),
+    )
+}
+
+/// Appends an inspector view backed by `session`.
+///
+/// Selection changes update both the rendered details panel and the supplied
+/// session handle.
+pub fn append_session_view(
+    ui: &mut Ui,
+    parent: ElementId,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
         Panel::row(16.0).layout(Layout::row(16.0).padding_all(12.0)),
@@ -291,9 +315,10 @@ pub fn append_inspection_view(
 
     let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
     let details_for_selection = Rc::clone(&details_slot);
-    let snapshot_for_selection = snapshot.clone();
-    let mut outline_view = snapshot.element_outline_view().size(280.0, 420.0);
-    if let Some(key) = selected.and_then(|id| snapshot.outline_key_for_element(id)) {
+    let session_for_selection = session.clone();
+    let mut outline_view =
+        session.with(|session| session.snapshot().element_outline_view().size(280.0, 420.0));
+    if let Some(key) = session.with(DevtoolsSession::selected_outline_key) {
         outline_view = outline_view.selected_key(key);
     }
     let outline = ui.append(
@@ -303,10 +328,15 @@ pub fn append_inspection_view(
                 return;
             };
             clear_children(ui, details);
-            let selected = event
-                .selected_key
-                .and_then(|key| snapshot_for_selection.element_for_outline_key(key));
-            append_selected_element_details(ui, details, &snapshot_for_selection, selected);
+            session_for_selection.with_mut(|session| {
+                let _ = session.select_outline_key(event.selected_key);
+                append_selected_element_details(
+                    ui,
+                    details,
+                    session.snapshot(),
+                    session.selected_element(),
+                );
+            });
         }),
     );
     let details = ui.append(
@@ -315,7 +345,14 @@ pub fn append_inspection_view(
     );
     details_slot.set(Some(details));
 
-    append_selected_element_details(ui, details, snapshot, selected);
+    session.with(|session| {
+        append_selected_element_details(
+            ui,
+            details,
+            session.snapshot(),
+            session.selected_element(),
+        );
+    });
 
     DevtoolsViewElements {
         root,
@@ -489,6 +526,8 @@ fn rect_summary(rect: overstory::Rect) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "spoor-session")]
+    use alloc::vec;
 
     #[test]
     fn snapshot_capture_indexes_elements_and_layers() {
@@ -576,6 +615,102 @@ mod tests {
     }
 
     #[test]
+    fn devtools_session_selects_elements_by_outline_key() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let grandchild = ui.append(child, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let grandchild_key = snapshot
+            .outline_key_for_element(grandchild)
+            .expect("grandchild should have an outline key");
+
+        let mut session = DevtoolsSession::new(snapshot).with_selected_element(Some(child));
+        let event = session.select_outline_key(Some(grandchild_key));
+
+        assert_eq!(
+            event,
+            Some(DevtoolsEvent::SelectionChanged {
+                selected: Some(grandchild)
+            })
+        );
+        assert_eq!(session.selected_element(), Some(grandchild));
+        assert_eq!(session.selected_outline_key(), Some(grandchild_key));
+    }
+
+    #[test]
+    fn devtools_session_replaces_snapshot_and_clears_stale_selection() {
+        let mut first = Ui::new();
+        let first_root = first.root();
+        let selected = first.append(first_root, Panel::new());
+        let mut session = DevtoolsSession::capture(&first).with_selected_element(Some(selected));
+
+        let second = Ui::new();
+        let event = session.replace_snapshot(DevtoolsSnapshot::capture(&second));
+
+        assert_eq!(event, DevtoolsEvent::SnapshotReplaced { selected: None });
+        assert_eq!(session.selected_element(), None);
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn devtools_session_summarizes_spoor_envelopes() {
+        use spoor_session::{
+            DroppedSummary, EnvelopeHeader, OwnedSessionEnvelope, OwnedSessionPayload,
+            OwnedSnapshotMetadata, OwnedSnapshotSummary, PROTOCOL_VERSION,
+        };
+
+        let mut session = DevtoolsSession::new(DevtoolsSnapshot::capture(&Ui::new()));
+        session.replace_spoor_envelopes(vec![
+            OwnedSessionEnvelope {
+                header: EnvelopeHeader {
+                    protocol_version: PROTOCOL_VERSION,
+                    session_sequence: 7,
+                    chunk_index: 0,
+                },
+                payload: OwnedSessionPayload::SnapshotStart(OwnedSnapshotSummary {
+                    metadata: OwnedSnapshotMetadata {
+                        process_name: String::from("overstory_demo"),
+                        session_name: Some(String::from("devtools")),
+                        session_sequence: 7,
+                    },
+                    capture_start_micros: 0,
+                    captured_at_micros: 10,
+                    context_count: 3,
+                    counter_count: 2,
+                    event_count: 1,
+                }),
+            },
+            OwnedSessionEnvelope {
+                header: EnvelopeHeader {
+                    protocol_version: PROTOCOL_VERSION,
+                    session_sequence: 7,
+                    chunk_index: 1,
+                },
+                payload: OwnedSessionPayload::SnapshotEnd(DroppedSummary {
+                    contexts: 1,
+                    counters: 2,
+                    events: 3,
+                }),
+            },
+        ]);
+
+        assert_eq!(
+            session.spoor_summary(),
+            DevtoolsSpoorSummary {
+                envelope_count: 2,
+                session_sequence: Some(7),
+                context_count: 3,
+                counter_count: 2,
+                event_count: 1,
+                dropped_contexts: 1,
+                dropped_counters: 2,
+                dropped_events: 3,
+            }
+        );
+    }
+
+    #[test]
     fn append_inspection_view_builds_outline_and_details() {
         let mut target = Ui::new();
         let target_root = target.root();
@@ -648,6 +783,35 @@ mod tests {
         assert_eq!(
             overstory::selected_outline_key(&inspector, elements.outline),
             Some(grandchild_key)
+        );
+    }
+
+    #[test]
+    fn append_session_view_updates_session_selection() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let child = target.append(target_root, Panel::new());
+        let grandchild = target.append(child, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&target);
+        let grandchild_key = snapshot
+            .outline_key_for_element(grandchild)
+            .expect("grandchild should have an outline key");
+        let session = DevtoolsSessionHandle::new(
+            DevtoolsSession::new(snapshot).with_selected_element(Some(child)),
+        );
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_session_view(&mut inspector, root, session.clone());
+
+        assert!(overstory::select_outline_key(
+            &mut inspector,
+            elements.outline,
+            grandchild_key
+        ));
+        assert_eq!(
+            session.with(DevtoolsSession::selected_element),
+            Some(grandchild)
         );
     }
 }
