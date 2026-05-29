@@ -174,6 +174,19 @@ impl Ui {
     ///    surfaces into `output` through layer transforms and clips.
     /// 6. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
+        self.refresh_presentation_surfaces();
+        self.composition.render_into(output);
+    }
+
+    /// Runs the present pass and rebuilds owned composition surface contents
+    /// without composing the layer tree into an output scene.
+    ///
+    /// Hosts use this before synchronizing [`Self::composition_surface_updates`]
+    /// into a backend-owned surface cache, then call
+    /// [`Self::render_composition_with`] to produce the frame output exactly
+    /// once. This clears `COMPOSE`, matching [`Self::paint`], because the layer
+    /// state and owned surfaces are ready for immediate composition.
+    pub fn refresh_presentation_surfaces(&mut self) {
         self.flush_bindings();
         self.flush_style();
         // Make sure the box tree's world-space data and spatial index
@@ -207,14 +220,14 @@ impl Ui {
             rebuilt_surfaces += 1;
         }
         self.frame_stats.rebuilt_surfaces += rebuilt_surfaces;
-        self.composition.render_into(output);
         self.invalidation.clear(COMPOSE);
     }
 
     /// Composes the current layer tree into `output` using caller-owned
     /// surface scenes.
     ///
-    /// Hosts use this after [`Self::paint`] has refreshed
+    /// Hosts use this after [`Self::paint`] or
+    /// [`Self::refresh_presentation_surfaces`] has refreshed
     /// [`Self::composition_surface_updates`]. The lookup is called for each
     /// `SurfaceId` attached to a visible composition layer; returning `None`
     /// skips that layer's content while preserving descendants.

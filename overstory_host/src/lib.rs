@@ -186,7 +186,7 @@ impl UiHost {
         let layout = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        self.ui.paint(&mut self.scene);
+        self.ui.refresh_presentation_surfaces();
         let paint = phase_start.elapsed();
 
         let phase_start = Instant::now();
@@ -194,7 +194,6 @@ impl UiHost {
         let sync_surfaces = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        self.scene.clear();
         self.ui
             .render_composition_with(&mut self.scene, |surface| self.surface_scenes.get(&surface));
         let compose = phase_start.elapsed();
