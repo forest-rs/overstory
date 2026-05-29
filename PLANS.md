@@ -46,3 +46,56 @@ styles target owners and named parts, and presentation remains resolved output.
 - `cargo test --workspace --all-features`
 - Built-in controls use named parts, default styles, and canonical state paths.
 - The demo uses the same canonical app path as tests and docs.
+
+# Overstory Devtools / Inspection Substrate
+
+## Goal
+
+Make Overstory inspectable through plain snapshot data that a devtools UI can
+render in-process today and a separate process later. The snapshots should cover
+the retained element tree, composition layers and surfaces, frame counters,
+storage counts, and enough timeline state to grow into timeline views.
+
+## Non-Goals
+
+- Do not build the full devtools UI in the first slice.
+- Do not make Spoor carry Overstory's full element tree.
+- Do not add a transport before the snapshot model has proven useful
+  in-process.
+- Do not make the inspector borrow or mutate the target UI while rendering.
+
+## Boundary
+
+Overstory owns domain inspection snapshots: elements, style identity, layout
+bounds, composition topology, frame counters, and UI-local timeline counts.
+Spoor owns telemetry: counters, scopes, frame/pass markers, resource lifecycle,
+memory/cache gauges, session envelopes, and downstream transport.
+
+## Steps
+
+1. Add `Ui::inspection_snapshot()` with plain owned snapshot rows for elements,
+   composition layers, frame counters, storage counts, and timeline counts.
+2. Add a small devtools target trait in a host/devtools crate that can return an
+   inspection snapshot and optional Spoor session snapshot without exposing live
+   UI internals.
+3. Build an `overstory_devtools` UI that consumes snapshots and shows an element
+   outline plus selected element/composition details.
+4. Co-evolve Spoor instrumentation for frame phases, invalidation counters,
+   cache/memory gauges, resource lifecycle, and transport-friendly session
+   snapshots.
+
+## Risks
+
+- Inspector UI can accidentally become a privileged friend API. Keep the first
+  substrate plain snapshots and explicit commands.
+- Snapshot rows can grow into a second retained tree. Keep them ephemeral and
+  cheap enough to discard each refresh.
+- Telemetry and domain state can overlap. Use Spoor for "what happened over
+  time" and Overstory snapshots for "what exists now".
+
+## Done
+
+- `cargo fmt --all --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo test --workspace --all-features`
+- A caller can snapshot a `Ui` without a renderer, host, or devtools UI.
