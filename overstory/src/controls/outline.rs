@@ -17,11 +17,13 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Size, Vec2};
 use understory_outline::{Outline, OutlineModel, OutlineNode, VisibleRow};
 use understory_property::DependencyObjectExt;
+use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 
@@ -73,6 +75,30 @@ const OUTLINE_INDENT_PER_DEPTH: f32 = 18.0;
 const OUTLINE_DISCLOSURE_WIDTH: f32 = 26.0;
 
 type OutlineVirtualizer = VirtualList<FixedExtentModel<f64>>;
+type OutlineSelectionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineSelectionChangedEvent)>;
+type OutlineSelectionChangedSlot = RefCell<Option<OutlineSelectionChangedHandler>>;
+type OutlineExpansionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineExpansionChangedEvent)>;
+type OutlineExpansionChangedSlot = RefCell<Option<OutlineExpansionChangedHandler>>;
+
+/// Event delivered when an [`OutlineView`] selection changes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutlineSelectionChangedEvent {
+    /// The outline whose selection changed.
+    pub outline: ElementId,
+    /// The selected node key after the change, if any.
+    pub selected_key: Option<usize>,
+}
+
+/// Event delivered when an [`OutlineView`] node expands or collapses.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutlineExpansionChangedEvent {
+    /// The outline whose expansion state changed.
+    pub outline: ElementId,
+    /// The node key whose expansion state changed.
+    pub key: usize,
+    /// Whether the node is expanded after the change.
+    pub expanded: bool,
+}
 
 /// A string-backed node for [`OutlineView`].
 ///
@@ -87,7 +113,6 @@ pub type OutlineViewNode = OutlineNode<String>;
 /// visible rows. Node identity is the node's stable `usize` key in the supplied
 /// node vector, so selection and expansion do not drift when siblings expand or
 /// collapse.
-#[derive(Clone, Debug)]
 pub struct OutlineView {
     nodes: Vec<OutlineViewNode>,
     first_root: Option<usize>,
@@ -98,6 +123,24 @@ pub struct OutlineView {
     selected_key: Option<usize>,
     scroll_offset_y: f64,
     state: ControlState,
+    on_selection_changed: Option<OutlineSelectionChangedHandler>,
+    on_expansion_changed: Option<OutlineExpansionChangedHandler>,
+}
+
+impl core::fmt::Debug for OutlineView {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OutlineView")
+            .field("nodes_len", &self.nodes.len())
+            .field("first_root", &self.first_root)
+            .field("expanded", &self.expanded)
+            .field("size", &self.size)
+            .field("item_extent", &self.item_extent)
+            .field("overscan", &self.overscan)
+            .field("selected_key", &self.selected_key)
+            .field("scroll_offset_y", &self.scroll_offset_y)
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
 }
 
 impl OutlineView {
@@ -114,6 +157,8 @@ impl OutlineView {
             selected_key: None,
             scroll_offset_y: 0.0,
             state: ControlState::interactive(),
+            on_selection_changed: None,
+            on_expansion_changed: None,
         }
     }
 
@@ -192,6 +237,26 @@ impl OutlineView {
         self.enabled(false)
     }
 
+    /// Registers a handler fired after the selected node key changes.
+    #[must_use]
+    pub fn on_selection_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, OutlineSelectionChangedEvent) + 'static,
+    {
+        self.on_selection_changed = Some(Box::new(handler));
+        self
+    }
+
+    /// Registers a handler fired after a node expands or collapses.
+    #[must_use]
+    pub fn on_expansion_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, OutlineExpansionChangedEvent) + 'static,
+    {
+        self.on_expansion_changed = Some(Box::new(handler));
+        self
+    }
+
     /// Wraps this outline in a reserved vertical scrollbar frame.
     #[must_use]
     pub fn with_vertical_scrollbar(self) -> OutlineViewScrollArea {
@@ -220,20 +285,27 @@ impl AppendSpec for OutlineView {
             first_root: self.first_root,
         });
         let _ = outline.replace_expanded(self.expanded);
-        let selected_key = self
+        let mut selection = Selection::new();
+        if let Some(selected_key) = self
             .selected_key
-            .filter(|key| outline.model().contains_key(key));
+            .filter(|key| outline.model().contains_key(key))
+        {
+            let _ = selection.select_only(selected_key);
+        }
 
         let id = ui.append_widget(
             parent,
             Box::new(OutlineViewWidget {
                 outline,
+                selection,
+                selection_changed: OutlineSelectionChangedSlot::new(self.on_selection_changed),
+                expansion_changed: OutlineExpansionChangedSlot::new(self.on_expansion_changed),
                 scroll_state: scroll_state.clone(),
                 virtual_list,
                 item_extent: self.item_extent,
-                selected_key,
                 realized: Vec::new(),
                 last_viewport: Size::ZERO,
+                visible_len: 0,
             }),
         );
 
@@ -248,12 +320,22 @@ impl AppendSpec for OutlineView {
 }
 
 /// Builder + spec for an [`OutlineView`] with a reserved vertical scrollbar.
-#[derive(Clone, Debug)]
 pub struct OutlineViewScrollArea {
     outline: OutlineView,
     gap: f32,
     scrollbar_thickness: f32,
     thumb_extent: f32,
+}
+
+impl core::fmt::Debug for OutlineViewScrollArea {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OutlineViewScrollArea")
+            .field("outline", &self.outline)
+            .field("gap", &self.gap)
+            .field("scrollbar_thickness", &self.scrollbar_thickness)
+            .field("thumb_extent", &self.thumb_extent)
+            .finish()
+    }
 }
 
 impl OutlineViewScrollArea {
@@ -377,6 +459,48 @@ struct OwnedOutlineModel {
     first_root: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SiblingSet {
+    position: usize,
+    size: usize,
+}
+
+impl OwnedOutlineModel {
+    fn root_set_len(&self) -> usize {
+        self.sibling_keys(self.first_root).len()
+    }
+
+    fn sibling_set(&self, key: usize) -> Option<SiblingSet> {
+        self.sibling_set_from(self.first_root, key)
+    }
+
+    fn sibling_set_from(&self, first_key: Option<usize>, target: usize) -> Option<SiblingSet> {
+        let siblings = self.sibling_keys(first_key);
+        if let Some(index) = siblings.iter().position(|key| *key == target) {
+            return Some(SiblingSet {
+                position: index + 1,
+                size: siblings.len(),
+            });
+        }
+
+        siblings
+            .into_iter()
+            .find_map(|key| self.sibling_set_from(self.first_child_key(&key), target))
+    }
+
+    fn sibling_keys(&self, first_key: Option<usize>) -> Vec<usize> {
+        let mut keys = Vec::new();
+        let mut key = first_key.filter(|key| self.contains_key(key));
+        while let Some(current) = key {
+            keys.push(current);
+            key = self
+                .next_sibling_key(&current)
+                .filter(|key| self.contains_key(key));
+        }
+        keys
+    }
+}
+
 impl OutlineModel for OwnedOutlineModel {
     type Key = usize;
     type Item = String;
@@ -405,12 +529,15 @@ impl OutlineModel for OwnedOutlineModel {
 /// Per-element widget for `OutlineView`.
 pub(crate) struct OutlineViewWidget {
     outline: Outline<OwnedOutlineModel>,
+    selection: Selection<usize>,
+    selection_changed: OutlineSelectionChangedSlot,
+    expansion_changed: OutlineExpansionChangedSlot,
     scroll_state: ScrollState,
     virtual_list: OutlineVirtualizer,
     item_extent: f64,
-    selected_key: Option<usize>,
     realized: Vec<RealizedOutlineItem>,
     last_viewport: Size,
+    visible_len: usize,
 }
 
 impl core::fmt::Debug for OutlineViewWidget {
@@ -418,7 +545,7 @@ impl core::fmt::Debug for OutlineViewWidget {
         f.debug_struct("OutlineViewWidget")
             .field("visible_len", &self.visible_len())
             .field("item_extent", &self.item_extent)
-            .field("selected_key", &self.selected_key)
+            .field("selected_key", &self.selected_key())
             .field("realized", &self.realized)
             .finish_non_exhaustive()
     }
@@ -443,7 +570,7 @@ impl Widget for OutlineViewWidget {
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        node.set_size_of_set(self.visible_len());
+        node.set_size_of_set(self.outline.model().root_set_len());
         let offset = self.scroll_state.offset();
         let max = self.scroll_state.max_offset();
         node.set_scroll_y(offset.y);
@@ -454,7 +581,7 @@ impl Widget for OutlineViewWidget {
             node.add_action(accesskit::Action::ScrollDown);
             node.add_action(accesskit::Action::SetScrollOffset);
         }
-        if let Some(selected_key) = self.selected_key
+        if let Some(selected_key) = self.selected_key()
             && let Some(item) = self.realized.iter().find(|item| item.key == selected_key)
         {
             node.set_active_descendant(ctx.node_id(item.element));
@@ -493,7 +620,7 @@ impl Widget for OutlineViewWidget {
         }
         if event.key.state != KeyState::Down
             || !ctx.is_enabled(outline)
-            || self.visible_len_mut() == 0
+            || self.update_visible_len() == 0
         {
             return;
         }
@@ -514,7 +641,7 @@ impl Widget for OutlineViewWidget {
             }
             Key::Named(NamedKey::Home) => self.select_visible_index(outline, ctx, 0),
             Key::Named(NamedKey::End) => {
-                let last = self.visible_len_mut() - 1;
+                let last = self.update_visible_len() - 1;
                 self.select_visible_index(outline, ctx, last)
             }
             Key::Named(NamedKey::ArrowRight) => self.expand_or_advance(outline, ctx),
@@ -574,7 +701,7 @@ impl OutlineViewWidget {
         let viewport_changed = !sizes_nearly_equal(viewport, self.last_viewport);
         self.last_viewport = viewport;
 
-        let visible_len = self.visible_len_mut();
+        let visible_len = self.update_visible_len();
         self.virtual_list.set_len(visible_len);
         self.virtual_list.set_viewport_extent(viewport.height);
         self.virtual_list
@@ -601,6 +728,8 @@ impl OutlineViewWidget {
         range: Range<usize>,
     ) -> bool {
         let rows = self.outline.visible_rows().to_vec();
+        let model = self.outline.model().clone();
+        let visible_len = self.visible_len();
         let mut changed = false;
         let mut kept = Vec::with_capacity(self.realized.len());
         for item in self.realized.drain(..) {
@@ -609,13 +738,11 @@ impl OutlineViewWidget {
                 && ui.get(item.element).is_some();
             if keep {
                 if let Some(row) = rows.get(item.index)
-                    && let Some(label) = self.outline.item(&row.key)
+                    && let Some(label) = model.item(&row.key)
                 {
-                    update_realized_outline_item(
-                        ui,
-                        item.element,
-                        &OutlineRowSnapshot::new(item.index, row, label),
-                    );
+                    let snapshot =
+                        outline_row_snapshot(&model, visible_len, item.index, row, label);
+                    update_realized_outline_item(ui, item.element, &snapshot);
                 }
                 kept.push(item);
             } else if ui.get(item.element).is_some() {
@@ -632,10 +759,10 @@ impl OutlineViewWidget {
             let Some(row) = rows.get(index) else {
                 continue;
             };
-            let Some(label) = self.outline.item(&row.key) else {
+            let Some(label) = model.item(&row.key) else {
                 continue;
             };
-            let snapshot = OutlineRowSnapshot::new(index, row, label);
+            let snapshot = outline_row_snapshot(&model, visible_len, index, row, label);
             let element = append_realized_outline_item(ui, outline, &snapshot);
             self.realized.push(RealizedOutlineItem {
                 index,
@@ -711,15 +838,20 @@ impl OutlineViewWidget {
     }
 
     fn visible_len(&self) -> usize {
-        self.outline.clone().visible_len()
+        self.visible_len
     }
 
-    fn visible_len_mut(&mut self) -> usize {
-        self.outline.visible_len()
+    fn update_visible_len(&mut self) -> usize {
+        self.visible_len = self.outline.visible_len();
+        self.visible_len
+    }
+
+    fn selected_key(&self) -> Option<usize> {
+        self.selection.primary().copied()
     }
 
     fn selected_visible_index(&mut self) -> Option<usize> {
-        self.selected_key
+        self.selected_key()
             .and_then(|key| self.outline.index_of_key(&key))
     }
 
@@ -727,26 +859,27 @@ impl OutlineViewWidget {
         let Some(row) = self.outline.visible_row(index).cloned() else {
             return false;
         };
-        self.selected_key = Some(row.key);
+        let changed = self.select_key(outline, ui, row.key);
         self.scroll_index_into_view(outline, ui, index);
-        self.sync_realized_selected_pseudos(ui);
-        true
+        changed
     }
 
     fn select_key(&mut self, outline: ElementId, ui: &mut Ui, key: usize) -> bool {
         if self.outline.model().contains_key(&key) {
-            self.selected_key = Some(key);
+            let changed =
+                self.mutate_selection(ui, outline, |selection| selection.select_only(key));
             if let Some(index) = self.outline.index_of_key(&key) {
                 self.scroll_index_into_view(outline, ui, index);
+            } else {
+                self.sync_realized_selected_pseudos(ui);
             }
-            self.sync_realized_selected_pseudos(ui);
-            return true;
+            return changed;
         }
         false
     }
 
     fn move_selection_by(&mut self, outline: ElementId, ui: &mut Ui, delta: isize) -> bool {
-        let len = self.visible_len_mut();
+        let len = self.update_visible_len();
         if len == 0 {
             return false;
         }
@@ -766,7 +899,7 @@ impl OutlineViewWidget {
     }
 
     fn toggle_selected(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
-        let Some(key) = self.selected_key else {
+        let Some(key) = self.selected_key() else {
             return false;
         };
         self.toggle_key_expanded(outline, ui, key)
@@ -782,7 +915,7 @@ impl OutlineViewWidget {
         if row.has_children && !row.is_expanded {
             return self.set_key_expanded(outline, ui, row.key, true);
         }
-        let last = self.visible_len_mut() - 1;
+        let last = self.update_visible_len() - 1;
         self.select_visible_index(outline, ui, (index + 1).min(last))
     }
 
@@ -819,12 +952,12 @@ impl OutlineViewWidget {
         }
 
         if self
-            .selected_key
+            .selected_key()
             .is_none_or(|selected| self.outline.index_of_key(&selected).is_none())
         {
-            self.selected_key = Some(key);
+            let _ = self.mutate_selection(ui, outline, |selection| selection.select_only(key));
         }
-        let visible_len = self.visible_len_mut();
+        let visible_len = self.update_visible_len();
         self.virtual_list.set_len(visible_len);
         self.virtual_list.clamp_scroll_to_content();
         let _ = self
@@ -832,12 +965,42 @@ impl OutlineViewWidget {
             .set_offset_y_raw(self.virtual_list.scroll_offset());
         ui.mark_channels(outline, LAYOUT.into());
         let _ = self.sync_virtual_items(outline, ui);
+        dispatch_outline_expansion_changed(
+            ui,
+            &self.expansion_changed,
+            OutlineExpansionChangedEvent {
+                outline,
+                key,
+                expanded,
+            },
+        );
         true
+    }
+
+    fn mutate_selection(
+        &mut self,
+        ui: &mut Ui,
+        outline: ElementId,
+        mutate: impl FnOnce(&mut Selection<usize>) -> bool,
+    ) -> bool {
+        let changed = mutate(&mut self.selection);
+        self.sync_realized_selected_pseudos(ui);
+        if changed {
+            dispatch_outline_selection_changed(
+                ui,
+                &self.selection_changed,
+                OutlineSelectionChangedEvent {
+                    outline,
+                    selected_key: self.selected_key(),
+                },
+            );
+        }
+        changed
     }
 
     fn sync_realized_selected_pseudos(&self, ui: &mut Ui) {
         for item in &self.realized {
-            if Some(item.key) == self.selected_key {
+            if self.selection.contains(&item.key) {
                 ui.add_pseudo(item.element, PSEUDO_SELECTED);
             } else {
                 ui.remove_pseudo(item.element, PSEUDO_SELECTED);
@@ -868,6 +1031,8 @@ pub(crate) struct OutlineItemWidget {
     key: usize,
     index: usize,
     depth: usize,
+    position_in_set: usize,
+    size_of_set: usize,
     has_children: bool,
     is_expanded: bool,
 }
@@ -894,7 +1059,8 @@ impl Widget for OutlineItemWidget {
         ctx.add_click_action_if_enabled(element, node);
         ctx.apply_selected_state(element, node);
         node.set_level(self.depth + 1);
-        node.set_position_in_set(self.index + 1);
+        node.set_position_in_set(self.position_in_set);
+        node.set_size_of_set(self.size_of_set);
         if self.has_children {
             node.set_expanded(self.is_expanded);
             if self.is_expanded {
@@ -959,17 +1125,35 @@ struct OutlineRowSnapshot {
     index: usize,
     key: usize,
     depth: usize,
+    position_in_set: usize,
+    size_of_set: usize,
     has_children: bool,
     is_expanded: bool,
     label: String,
 }
 
+fn outline_row_snapshot(
+    model: &OwnedOutlineModel,
+    visible_len: usize,
+    index: usize,
+    row: &VisibleRow<usize>,
+    label: String,
+) -> OutlineRowSnapshot {
+    let sibling_set = model.sibling_set(row.key).unwrap_or(SiblingSet {
+        position: index + 1,
+        size: visible_len,
+    });
+    OutlineRowSnapshot::new(index, row, label, sibling_set)
+}
+
 impl OutlineRowSnapshot {
-    fn new(index: usize, row: &VisibleRow<usize>, label: String) -> Self {
+    fn new(index: usize, row: &VisibleRow<usize>, label: String, sibling_set: SiblingSet) -> Self {
         Self {
             index,
             key: row.key,
             depth: row.depth,
+            position_in_set: sibling_set.position,
+            size_of_set: sibling_set.size,
             has_children: row.has_children,
             is_expanded: row.is_expanded,
             label,
@@ -1032,6 +1216,8 @@ fn append_realized_outline_item(
             key: item.key,
             index: item.index,
             depth: item.depth,
+            position_in_set: item.position_in_set,
+            size_of_set: item.size_of_set,
             has_children: item.has_children,
             is_expanded: item.is_expanded,
         }),
@@ -1047,6 +1233,8 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
             widget.key = item.key;
             widget.index = item.index;
             widget.depth = item.depth;
+            widget.position_in_set = item.position_in_set;
+            widget.size_of_set = item.size_of_set;
             widget.has_children = item.has_children;
             widget.is_expanded = item.is_expanded;
         }
@@ -1082,7 +1270,7 @@ pub fn select_outline_key(ui: &mut Ui, outline: ElementId, key: usize) -> bool {
 /// Returns the currently selected node key in `outline`, if any.
 #[must_use]
 pub fn selected_outline_key(ui: &Ui, outline: ElementId) -> Option<usize> {
-    outline_view_widget(ui, outline).and_then(|widget| widget.selected_key)
+    outline_view_widget(ui, outline).and_then(OutlineViewWidget::selected_key)
 }
 
 /// Returns whether `key` is currently expanded in `outline`.
@@ -1139,6 +1327,36 @@ pub fn realized_outline_item_key(ui: &Ui, item: ElementId) -> Option<usize> {
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<OutlineItemWidget>())
         .map(|widget| widget.key)
+}
+
+fn dispatch_outline_selection_changed(
+    ui: &mut Ui,
+    handler: &OutlineSelectionChangedSlot,
+    event: OutlineSelectionChangedEvent,
+) {
+    let Some(mut callback) = handler.borrow_mut().take() else {
+        return;
+    };
+    callback(ui, event);
+    let should_restore = handler.borrow().is_none();
+    if should_restore {
+        *handler.borrow_mut() = Some(callback);
+    }
+}
+
+fn dispatch_outline_expansion_changed(
+    ui: &mut Ui,
+    handler: &OutlineExpansionChangedSlot,
+    event: OutlineExpansionChangedEvent,
+) {
+    let Some(mut callback) = handler.borrow_mut().take() else {
+        return;
+    };
+    callback(ui, event);
+    let should_restore = handler.borrow().is_none();
+    if should_restore {
+        *handler.borrow_mut() = Some(callback);
+    }
 }
 
 #[cfg(test)]
@@ -1227,8 +1445,10 @@ fn sizes_nearly_equal(a: Size, b: Size) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use alloc::rc::Rc;
     use alloc::string::String;
     use alloc::vec;
+    use core::cell::RefCell;
 
     use accesskit::{Node, NodeId, Role, TreeUpdate};
     use kurbo::Point;
@@ -1311,6 +1531,43 @@ mod tests {
         realize(&mut ui);
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
         assert!(realized_outline_item(&ui, outline, 1).is_none());
+    }
+
+    #[test]
+    fn outline_selection_and_expansion_handlers_report_stable_keys() {
+        let selected = Rc::new(RefCell::new(Vec::new()));
+        let expanded = Rc::new(RefCell::new(Vec::new()));
+        let selected_for_handler = Rc::clone(&selected);
+        let expanded_for_handler = Rc::clone(&expanded);
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(
+            root,
+            test_outline()
+                .on_selection_changed(move |_ui, event| {
+                    selected_for_handler
+                        .borrow_mut()
+                        .push((event.outline, event.selected_key));
+                })
+                .on_expansion_changed(move |_ui, event| {
+                    expanded_for_handler.borrow_mut().push((
+                        event.outline,
+                        event.key,
+                        event.expanded,
+                    ));
+                }),
+        );
+        realize(&mut ui);
+
+        assert!(set_outline_key_expanded(&mut ui, outline, 0, true));
+        assert!(select_outline_key(&mut ui, outline, 2));
+
+        assert_eq!(
+            &*selected.borrow(),
+            &[(outline, Some(0)), (outline, Some(2))]
+        );
+        assert_eq!(&*expanded.borrow(), &[(outline, 0, true)]);
     }
 
     #[test]
@@ -1399,11 +1656,13 @@ mod tests {
 
         let outline_node = accesskit_node_for(&update, outline);
         assert_eq!(outline_node.role(), Role::Tree);
-        assert_eq!(outline_node.size_of_set(), Some(3));
+        assert_eq!(outline_node.size_of_set(), Some(1));
 
         let child_node = accesskit_node_for(&update, child);
         assert_eq!(child_node.role(), Role::TreeItem);
         assert_eq!(child_node.level(), Some(2));
+        assert_eq!(child_node.position_in_set(), Some(1));
+        assert_eq!(child_node.size_of_set(), Some(2));
         assert_eq!(child_node.is_selected(), Some(true));
     }
 
