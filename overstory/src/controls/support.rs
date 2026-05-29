@@ -3,11 +3,25 @@
 
 //! Small shared helpers for built-in controls.
 
+use core::ops::Range;
+
 use kurbo::{Axis, Point, Rect, Size, Vec2};
 use understory_property::{DependencyObjectExt, Property};
+use understory_virtual_list::{FixedExtentModel, VirtualList};
 
 use crate::element::ElementId;
+use crate::layouts::{LayoutPlacement, LayoutSize};
+use crate::scroll_runtime::ScrollState;
 use crate::ui::Ui;
+
+pub(crate) type FixedVirtualizer = VirtualList<FixedExtentModel<f64>>;
+
+#[derive(Clone, Debug)]
+pub(crate) struct FixedVirtualRowsSync {
+    pub(crate) viewport: Size,
+    pub(crate) range: Range<usize>,
+    pub(crate) changed: bool,
+}
 
 pub(crate) fn read_local_or<T: Clone + 'static>(
     ui: &Ui,
@@ -48,6 +62,95 @@ pub(crate) fn action_scroll_unit(
         Some(accesskit::ActionData::ScrollUnit(unit)) => Some(*unit),
         _ => None,
     }
+}
+
+pub(crate) fn fixed_virtualizer(
+    len: usize,
+    item_extent: f64,
+    scroll_offset: f64,
+    overscan: f64,
+) -> FixedVirtualizer {
+    let mut virtualizer = VirtualList::new(FixedExtentModel::new(len, item_extent), 0.0, overscan);
+    virtualizer.set_scroll_offset(scroll_offset);
+    virtualizer
+}
+
+pub(crate) fn sync_fixed_virtual_rows(
+    owner: ElementId,
+    ui: &Ui,
+    virtualizer: &mut FixedVirtualizer,
+    scroll_state: &ScrollState,
+    len: usize,
+    last_viewport: &mut Size,
+) -> FixedVirtualRowsSync {
+    let bounds = ui.effective_bounds(owner);
+    let viewport = Size::new(bounds.width().max(0.0), bounds.height().max(0.0));
+    let viewport_changed = !sizes_nearly_equal(viewport, *last_viewport);
+    *last_viewport = viewport;
+
+    virtualizer.set_len(len);
+    virtualizer.set_viewport_extent(viewport.height);
+    virtualizer.set_scroll_offset(scroll_state.offset_y());
+    virtualizer.clamp_scroll_to_content();
+    let offset_changed = scroll_state.set_offset_y_raw(virtualizer.scroll_offset());
+    let content_height = virtualizer.total_extent();
+    scroll_state.set_metrics(viewport, Size::new(viewport.width, content_height));
+
+    FixedVirtualRowsSync {
+        viewport,
+        range: virtualizer.materialized_range(),
+        changed: viewport_changed || offset_changed,
+    }
+}
+
+pub(crate) fn layout_fixed_virtual_rows<'a>(
+    ui: &mut Ui,
+    virtualizer: &mut FixedVirtualizer,
+    item_extent: f64,
+    rows: impl IntoIterator<Item = (usize, ElementId)> + 'a,
+    viewport: Size,
+) -> bool {
+    let mut changed = false;
+    let width = f32_from_logical(viewport.width);
+    let height = f32_from_logical(item_extent);
+    for (index, element) in rows {
+        let top = f32_from_logical(virtualizer.offset_of(index));
+        let size = LayoutSize::logical(width, height);
+        let placement = LayoutPlacement::absolute_at(0.0, top);
+        let size_changed = ui
+            .get(element)
+            .and_then(|element| element.get_local_value(ui.properties().layout_size))
+            != Some(&size);
+        let placement_changed = ui
+            .get(element)
+            .and_then(|element| element.get_local_value(ui.properties().layout_placement))
+            != Some(&placement);
+        if size_changed || placement_changed {
+            let props = *ui.properties();
+            ui.set_local(element, props.layout_size, size);
+            ui.set_local(element, props.layout_placement, placement);
+            changed = true;
+        }
+    }
+    changed
+}
+
+pub(crate) fn fixed_visible_item_count(item_extent: f64, viewport_extent: f64) -> usize {
+    if item_extent <= f64::EPSILON || viewport_extent <= 0.0 {
+        return 1;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "positive viewport/item ratio is clamped to at least one visible item"
+    )]
+    {
+        (viewport_extent / item_extent).floor().max(1.0) as usize
+    }
+}
+
+pub(crate) fn sizes_nearly_equal(a: Size, b: Size) -> bool {
+    (a.width - b.width).abs() <= f64::EPSILON && (a.height - b.height).abs() <= f64::EPSILON
 }
 
 // These receiver-style axis helpers are local stand-ins for methods we may want

@@ -22,10 +22,9 @@ use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Size, Vec2};
-use understory_property::DependencyObjectExt;
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
-use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
+use understory_virtual_list::ScrollAlign;
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
@@ -33,11 +32,14 @@ use crate::channels::LAYOUT;
 use crate::controls::scroll::{
     ScrollBar, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
-use crate::controls::support::{action_scroll_unit, f32_from_logical};
+use crate::controls::support::{
+    FixedVirtualizer, action_scroll_unit, fixed_virtualizer, fixed_visible_item_count,
+    layout_fixed_virtual_rows, sync_fixed_virtual_rows,
+};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
-use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
+use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
 use crate::template::{
@@ -69,7 +71,6 @@ const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 
 type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
 type ListSelectionChangedSlot = RefCell<Option<ListSelectionChangedHandler>>;
-type ListVirtualizer = VirtualList<FixedExtentModel<f64>>;
 
 /// Event delivered when a [`ListBox`] selection changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,12 +263,12 @@ impl AppendSpec for ListBox {
         }
 
         let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
-        let mut virtual_list = VirtualList::new(
-            FixedExtentModel::new(self.items.len(), self.item_extent),
-            0.0,
+        let virtual_list = fixed_virtualizer(
+            self.items.len(),
+            self.item_extent,
+            self.scroll_offset_y,
             self.overscan,
         );
-        virtual_list.set_scroll_offset(self.scroll_offset_y);
 
         let id = ui.append_widget(
             parent,
@@ -432,7 +433,7 @@ pub(crate) struct ListBoxWidget {
     scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
     selection_changed: ListSelectionChangedSlot,
-    virtual_list: ListVirtualizer,
+    virtual_list: FixedVirtualizer,
     item_extent: f64,
     realized: Vec<RealizedListItem>,
     last_viewport: Size,
@@ -615,30 +616,19 @@ impl ListBoxWidget {
         changed
     }
 
-    fn sync_virtual_metrics(&mut self, listbox: ElementId, ui: &mut Ui) -> ListVirtualSync {
-        let bounds = ui.effective_bounds(listbox);
-        let viewport = Size::new(bounds.width().max(0.0), bounds.height().max(0.0));
-        let viewport_changed = !sizes_nearly_equal(viewport, self.last_viewport);
-        self.last_viewport = viewport;
-
-        self.virtual_list.set_len(self.items.len());
-        self.virtual_list.set_viewport_extent(viewport.height);
-        self.virtual_list
-            .set_scroll_offset(self.scroll_state.offset_y());
-        self.virtual_list.clamp_scroll_to_content();
-        let offset_changed = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        let content_height = self.virtual_list.total_extent();
-        self.scroll_state
-            .set_metrics(viewport, Size::new(viewport.width, content_height));
-
-        let range = self.virtual_list.materialized_range();
-        ListVirtualSync {
-            viewport,
-            range,
-            changed: viewport_changed || offset_changed,
-        }
+    fn sync_virtual_metrics(
+        &mut self,
+        listbox: ElementId,
+        ui: &mut Ui,
+    ) -> crate::controls::support::FixedVirtualRowsSync {
+        sync_fixed_virtual_rows(
+            listbox,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            self.items.len(),
+            &mut self.last_viewport,
+        )
     }
 
     fn reconcile_realized_items(
@@ -675,29 +665,13 @@ impl ListBoxWidget {
     }
 
     fn layout_realized_items(&mut self, ui: &mut Ui, viewport: Size) -> bool {
-        let mut changed = false;
-        let width = f32_from_logical(viewport.width);
-        let height = f32_from_logical(self.item_extent);
-        for item in &self.realized {
-            let top = f32_from_logical(self.virtual_list.offset_of(item.index));
-            let size = LayoutSize::logical(width, height);
-            let placement = LayoutPlacement::absolute_at(0.0, top);
-            let size_changed = ui
-                .get(item.element)
-                .and_then(|element| element.get_local_value(ui.properties().layout_size))
-                != Some(&size);
-            let placement_changed = ui
-                .get(item.element)
-                .and_then(|element| element.get_local_value(ui.properties().layout_placement))
-                != Some(&placement);
-            if size_changed || placement_changed {
-                let props = *ui.properties();
-                ui.set_local(item.element, props.layout_size, size);
-                ui.set_local(item.element, props.layout_placement, placement);
-                changed = true;
-            }
-        }
-        changed
+        layout_fixed_virtual_rows(
+            ui,
+            &mut self.virtual_list,
+            self.item_extent,
+            self.realized.iter().map(|item| (item.index, item.element)),
+            viewport,
+        )
     }
 
     fn scroll_by(&mut self, listbox: ElementId, ui: &mut Ui, delta_y: f64) {
@@ -871,19 +845,7 @@ impl ListBoxWidget {
     }
 
     fn visible_item_count(&self) -> usize {
-        if self.item_extent <= f64::EPSILON || self.virtual_list.viewport_extent() <= 0.0 {
-            return 1;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "positive viewport/item ratio is clamped to at least one visible item"
-        )]
-        {
-            (self.virtual_list.viewport_extent() / self.item_extent)
-                .floor()
-                .max(1.0) as usize
-        }
+        fixed_visible_item_count(self.item_extent, self.virtual_list.viewport_extent())
     }
 }
 
@@ -948,13 +910,6 @@ impl Widget for ListItemWidget {
 struct RealizedListItem {
     index: usize,
     element: ElementId,
-}
-
-#[derive(Clone, Debug)]
-struct ListVirtualSync {
-    viewport: Size,
-    range: Range<usize>,
-    changed: bool,
 }
 
 type ListItemTemplate = TemplateSpec;
@@ -1186,10 +1141,6 @@ fn normalize_item_extent(extent: f64) -> f64 {
     } else {
         DEFAULT_LIST_ITEM_EXTENT
     }
-}
-
-fn sizes_nearly_equal(a: Size, b: Size) -> bool {
-    (a.width - b.width).abs() <= f64::EPSILON && (a.height - b.height).abs() <= f64::EPSILON
 }
 
 #[cfg(test)]

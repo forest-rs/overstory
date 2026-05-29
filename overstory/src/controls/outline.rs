@@ -22,10 +22,9 @@ use core::ops::Range;
 
 use kurbo::{Size, Vec2};
 use understory_outline::{Outline, OutlineModel, VisibleRow};
-use understory_property::DependencyObjectExt;
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
-use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
+use understory_virtual_list::ScrollAlign;
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
@@ -33,11 +32,14 @@ use crate::channels::LAYOUT;
 use crate::controls::scroll::{
     ScrollBar, normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
-use crate::controls::support::{action_scroll_unit, f32_from_logical};
+use crate::controls::support::{
+    FixedVirtualizer, action_scroll_unit, fixed_virtualizer, fixed_visible_item_count,
+    layout_fixed_virtual_rows, sync_fixed_virtual_rows,
+};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
-use crate::layouts::{Layout, LayoutDimension, LayoutPlacement, LayoutSize};
+use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
 use crate::template::{
@@ -74,7 +76,6 @@ const DEFAULT_OUTLINE_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 const OUTLINE_INDENT_PER_DEPTH: f32 = 18.0;
 const OUTLINE_DISCLOSURE_WIDTH: f32 = 26.0;
 
-type OutlineVirtualizer = VirtualList<FixedExtentModel<f64>>;
 type OutlineSelectionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineSelectionChangedEvent)>;
 type OutlineSelectionChangedSlot = RefCell<Option<OutlineSelectionChangedHandler>>;
 type OutlineExpansionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineExpansionChangedEvent)>;
@@ -341,12 +342,8 @@ impl Default for OutlineView {
 impl AppendSpec for OutlineView {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
-        let mut virtual_list = VirtualList::new(
-            FixedExtentModel::new(0, self.item_extent),
-            0.0,
-            self.overscan,
-        );
-        virtual_list.set_scroll_offset(self.scroll_offset_y);
+        let virtual_list =
+            fixed_virtualizer(0, self.item_extent, self.scroll_offset_y, self.overscan);
 
         let mut outline = Outline::new(OwnedOutlineModel {
             nodes: self.nodes,
@@ -609,7 +606,7 @@ pub(crate) struct OutlineViewWidget {
     selection_changed: OutlineSelectionChangedSlot,
     expansion_changed: OutlineExpansionChangedSlot,
     scroll_state: ScrollState,
-    virtual_list: OutlineVirtualizer,
+    virtual_list: FixedVirtualizer,
     item_extent: f64,
     realized: Vec<RealizedOutlineItem>,
     last_viewport: Size,
@@ -771,30 +768,20 @@ impl OutlineViewWidget {
         changed
     }
 
-    fn sync_virtual_metrics(&mut self, outline: ElementId, ui: &mut Ui) -> OutlineVirtualSync {
-        let bounds = ui.effective_bounds(outline);
-        let viewport = Size::new(bounds.width().max(0.0), bounds.height().max(0.0));
-        let viewport_changed = !sizes_nearly_equal(viewport, self.last_viewport);
-        self.last_viewport = viewport;
-
+    fn sync_virtual_metrics(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+    ) -> crate::controls::support::FixedVirtualRowsSync {
         let visible_len = self.update_visible_len();
-        self.virtual_list.set_len(visible_len);
-        self.virtual_list.set_viewport_extent(viewport.height);
-        self.virtual_list
-            .set_scroll_offset(self.scroll_state.offset_y());
-        self.virtual_list.clamp_scroll_to_content();
-        let offset_changed = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        let content_height = self.virtual_list.total_extent();
-        self.scroll_state
-            .set_metrics(viewport, Size::new(viewport.width, content_height));
-
-        OutlineVirtualSync {
-            viewport,
-            range: self.virtual_list.materialized_range(),
-            changed: viewport_changed || offset_changed,
-        }
+        sync_fixed_virtual_rows(
+            outline,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            visible_len,
+            &mut self.last_viewport,
+        )
     }
 
     fn reconcile_realized_items(
@@ -852,29 +839,13 @@ impl OutlineViewWidget {
     }
 
     fn layout_realized_items(&mut self, ui: &mut Ui, viewport: Size) -> bool {
-        let mut changed = false;
-        let width = f32_from_logical(viewport.width);
-        let height = f32_from_logical(self.item_extent);
-        for item in &self.realized {
-            let top = f32_from_logical(self.virtual_list.offset_of(item.index));
-            let size = LayoutSize::logical(width, height);
-            let placement = LayoutPlacement::absolute_at(0.0, top);
-            let size_changed = ui
-                .get(item.element)
-                .and_then(|element| element.get_local_value(ui.properties().layout_size))
-                != Some(&size);
-            let placement_changed = ui
-                .get(item.element)
-                .and_then(|element| element.get_local_value(ui.properties().layout_placement))
-                != Some(&placement);
-            if size_changed || placement_changed {
-                let props = *ui.properties();
-                ui.set_local(item.element, props.layout_size, size);
-                ui.set_local(item.element, props.layout_placement, placement);
-                changed = true;
-            }
-        }
-        changed
+        layout_fixed_virtual_rows(
+            ui,
+            &mut self.virtual_list,
+            self.item_extent,
+            self.realized.iter().map(|item| (item.index, item.element)),
+            viewport,
+        )
     }
 
     fn scroll_by(&mut self, outline: ElementId, ui: &mut Ui, delta_y: f64) {
@@ -1090,19 +1061,7 @@ impl OutlineViewWidget {
     }
 
     fn visible_item_count(&self) -> usize {
-        if self.item_extent <= f64::EPSILON || self.virtual_list.viewport_extent() <= 0.0 {
-            return 1;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "positive viewport/item ratio is clamped to at least one visible item"
-        )]
-        {
-            (self.virtual_list.viewport_extent() / self.item_extent)
-                .floor()
-                .max(1.0) as usize
-        }
+        fixed_visible_item_count(self.item_extent, self.virtual_list.viewport_extent())
     }
 }
 
@@ -1193,13 +1152,6 @@ struct RealizedOutlineItem {
     index: usize,
     key: OutlineNodeKey,
     element: ElementId,
-}
-
-#[derive(Clone, Debug)]
-struct OutlineVirtualSync {
-    viewport: Size,
-    range: Range<usize>,
-    changed: bool,
 }
 
 struct OutlineRowSnapshot {
@@ -1536,10 +1488,6 @@ fn normalize_item_extent(extent: f64) -> f64 {
     } else {
         DEFAULT_OUTLINE_ITEM_EXTENT
     }
-}
-
-fn sizes_nearly_equal(a: Size, b: Size) -> bool {
-    (a.width - b.width).abs() <= f64::EPSILON && (a.height - b.height).abs() <= f64::EPSILON
 }
 
 #[cfg(test)]
