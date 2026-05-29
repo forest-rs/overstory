@@ -68,6 +68,38 @@ pub(crate) fn action_scroll_unit(
     }
 }
 
+pub(crate) fn configure_vertical_scroll_accessibility(
+    element: &Element,
+    ctx: &crate::AccessibilityContext<'_>,
+    node: &mut accesskit::Node,
+    scroll_state: &ScrollState,
+) {
+    let offset = scroll_state.offset();
+    let max = scroll_state.max_offset();
+    node.set_scroll_y(offset.y);
+    node.set_scroll_y_min(0.0);
+    node.set_scroll_y_max(max.y);
+    if ctx.is_enabled(element.id()) && max.y > f64::EPSILON {
+        node.add_action(accesskit::Action::ScrollUp);
+        node.add_action(accesskit::Action::ScrollDown);
+        node.add_action(accesskit::Action::SetScrollOffset);
+    }
+}
+
+pub(crate) fn fixed_virtual_accessibility_scroll_delta(
+    request: &accesskit::ActionRequest,
+    direction: f64,
+    item_extent: f64,
+    viewport_extent: f64,
+) -> Option<f64> {
+    let unit = action_scroll_unit(request)?;
+    let amount = match unit {
+        accesskit::ScrollUnit::Item => item_extent,
+        accesskit::ScrollUnit::Page => viewport_extent.max(item_extent),
+    };
+    Some(amount * direction)
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct ReservedScrollFrameWidget {
     target: core::cell::Cell<Option<ElementId>>,

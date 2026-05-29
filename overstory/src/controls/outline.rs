@@ -33,9 +33,10 @@ use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    FixedVirtualizer, ReservedVerticalScrollArea, action_scroll_unit,
-    append_reserved_vertical_scroll_area, fixed_virtualizer, fixed_visible_item_count,
-    layout_fixed_virtual_rows, reserved_scroll_frame_widget, sync_fixed_virtual_rows,
+    FixedVirtualizer, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
+    configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
+    fixed_virtualizer, fixed_visible_item_count, layout_fixed_virtual_rows,
+    reserved_scroll_frame_widget, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -624,16 +625,7 @@ impl Widget for OutlineViewWidget {
         node: &mut accesskit::Node,
     ) {
         node.set_size_of_set(self.outline.model().root_set_len());
-        let offset = self.scroll_state.offset();
-        let max = self.scroll_state.max_offset();
-        node.set_scroll_y(offset.y);
-        node.set_scroll_y_min(0.0);
-        node.set_scroll_y_max(max.y);
-        if ctx.is_enabled(element.id()) && max.y > f64::EPSILON {
-            node.add_action(accesskit::Action::ScrollUp);
-            node.add_action(accesskit::Action::ScrollDown);
-            node.add_action(accesskit::Action::SetScrollOffset);
-        }
+        configure_vertical_scroll_accessibility(element, ctx, node, &self.scroll_state);
         if let Some(selected_key) = self.selected_key()
             && let Some(item) = self.realized.iter().find(|item| item.key == selected_key)
         {
@@ -840,16 +832,15 @@ impl OutlineViewWidget {
         direction: f64,
         request: &accesskit::ActionRequest,
     ) -> bool {
-        let Some(unit) = action_scroll_unit(request) else {
+        let Some(delta) = fixed_virtual_accessibility_scroll_delta(
+            request,
+            direction,
+            self.item_extent,
+            self.virtual_list.viewport_extent(),
+        ) else {
             return false;
         };
-        let amount = match unit {
-            accesskit::ScrollUnit::Item => self.item_extent,
-            accesskit::ScrollUnit::Page => {
-                self.virtual_list.viewport_extent().max(self.item_extent)
-            }
-        };
-        self.scroll_by(outline, ui, amount * direction);
+        self.scroll_by(outline, ui, delta);
         true
     }
 
