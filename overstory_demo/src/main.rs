@@ -20,10 +20,11 @@ use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Affine, BuiltInProperties, Button, CheckBox, CursorIcon, Divider, ElementId, FontFeature,
     Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox, OutlineView,
-    OutlineViewNode, Panel, Popup, ProgressBar, Rect, Select, Slider, Spinner, Splitter,
+    OutlineViewNode, Panel, Popup, ProgressBar, Rect, Select, Size, Slider, Spinner, Splitter,
     TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui,
     Viewport, layouts, set_progress_value, theme,
 };
+use overstory_devtools::{DevtoolsSnapshot, append_inspection_view};
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};
@@ -49,6 +50,11 @@ const PAGE_CONTROL_WIDTH: f32 = 328.0;
 const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
+const DEVTOOLS_INSPECTOR_WIDTH: f32 = 520.0;
+const DEVTOOLS_SUMMARY_WIDTH: f32 = 250.0;
+const DEVTOOLS_CARD_HEIGHT: f32 = 520.0;
+const DEVTOOLS_TARGET_WIDTH: f32 = 640.0;
+const DEVTOOLS_TARGET_HEIGHT: f32 = 420.0;
 const SVG_PAGE_WIDTH: f32 = 824.0;
 const SVG_INFO_HEIGHT: f32 = 132.0;
 const SVG_TIGER_CARD_WIDTH: f32 = 548.0;
@@ -107,6 +113,8 @@ const CLASS_SVG_GRID_LINE: ClassId = ClassId(21);
 const CLASS_SVG_INFO_CARD: ClassId = ClassId(22);
 const CLASS_SVG_TIGER_CARD: ClassId = ClassId(23);
 const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
+const CLASS_DEVTOOLS_INSPECTOR_CARD: ClassId = ClassId(25);
+const CLASS_DEVTOOLS_SUMMARY_CARD: ClassId = ClassId(26);
 
 const RENDERER_QUEUE_LEN: usize = 1_000;
 const INITIAL_RENDERER_SELECTION: usize = 2;
@@ -164,10 +172,11 @@ enum DemoPage {
     Svg,
     Typography,
     Motion,
+    Devtools,
 }
 
 impl DemoPage {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::Overview,
         Self::Inputs,
         Self::Systems,
@@ -177,6 +186,7 @@ impl DemoPage {
         Self::Svg,
         Self::Typography,
         Self::Motion,
+        Self::Devtools,
     ];
 
     fn from_index(index: usize) -> Option<Self> {
@@ -194,6 +204,7 @@ impl DemoPage {
             Self::Svg => 6,
             Self::Typography => 7,
             Self::Motion => 8,
+            Self::Devtools => 9,
         }
     }
 
@@ -208,6 +219,7 @@ impl DemoPage {
             Self::Svg => "SVG",
             Self::Typography => "Typography",
             Self::Motion => "Motion",
+            Self::Devtools => "Devtools",
         }
     }
 
@@ -222,6 +234,7 @@ impl DemoPage {
             Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
             Self::Motion => "Presentation Motion",
+            Self::Devtools => "Overstory Devtools",
         }
     }
 
@@ -253,6 +266,9 @@ impl DemoPage {
             }
             Self::Motion => {
                 "Style-authored transitions for color, opacity, border, retargeting, and composition offset."
+            }
+            Self::Devtools => {
+                "An inspector page built from owned UI snapshots instead of live privileged handles."
             }
         }
     }
@@ -1033,9 +1049,12 @@ fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
 }
 
 fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
+    let row_count = DemoPage::ALL.len() as f32;
+    let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
     let stack = ui.append(
         nav,
-        Panel::column(4.0).layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, 348.0)),
+        Panel::column(4.0)
+            .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
     );
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
     for page in DemoPage::ALL {
@@ -1235,6 +1254,7 @@ fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
         DemoPage::Svg => build_svg_page(ui, stage),
         DemoPage::Typography => build_typography_page(ui, stage),
         DemoPage::Motion => build_motion_page(ui, stage),
+        DemoPage::Devtools => build_devtools_page(ui, stage),
     }
 }
 
@@ -2394,6 +2414,119 @@ fn build_motion_page(ui: &mut Ui, stage: ElementId) {
     schedule_movement(ui, mover, millis(1_250));
 }
 
+fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
+    let row = demo_row(ui, stage);
+    let (snapshot, selected) = devtools_target_snapshot();
+
+    let inspector = demo_card(
+        ui,
+        row,
+        "INSPECTION SNAPSHOT",
+        DEVTOOLS_INSPECTOR_WIDTH,
+        DEVTOOLS_CARD_HEIGHT,
+    );
+    ui.add_class(inspector, CLASS_DEVTOOLS_INSPECTOR_CARD);
+    append_inspection_view(ui, inspector, &snapshot, Some(selected));
+
+    let summary = demo_card(
+        ui,
+        row,
+        "PROTOCOL BOUNDARY",
+        DEVTOOLS_SUMMARY_WIDTH,
+        DEVTOOLS_CARD_HEIGHT,
+    );
+    ui.add_class(summary, CLASS_DEVTOOLS_SUMMARY_CARD);
+    ui.append(summary, page_heading("Snapshot, not a borrow"));
+    ui.append(
+        summary,
+        body_text(
+            "The inspector receives owned rows. The target UI can keep running, repainting, or move out-of-process later.",
+        ),
+    );
+    ui.append(summary, Divider::horizontal().length(220.0));
+
+    let inspection = snapshot.inspection();
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Elements",
+        &format!("{}", inspection.elements.len()),
+    );
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Layers",
+        &format!("{}", inspection.composition.layers.len()),
+    );
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Surfaces",
+        &format!("{}", inspection.composition.surfaces.len()),
+    );
+    append_svg_inspector_row(
+        ui,
+        summary,
+        "Timeline",
+        &format!("{} cues", inspection.timeline.pending_cues),
+    );
+    ui.append(summary, Divider::horizontal().length(220.0));
+    ui.append(
+        summary,
+        body_text("Next: stream snapshots beside Spoor telemetry for frame phases, traces, cache pressure, and timeline tracks."),
+    );
+}
+
+fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
+    let mut target = Ui::new();
+    target.set_theme(theme::dark_theme_builder().build());
+    let root = target.root();
+    target.set_layout(
+        root,
+        Layout::column(12.0)
+            .logical_size(DEVTOOLS_TARGET_WIDTH, DEVTOOLS_TARGET_HEIGHT)
+            .padding_all(18.0),
+    );
+
+    let header = target.append(root, Panel::row(12.0).align_center());
+    target.append(header, ToggleSwitch::new().checked(true));
+    target.append(header, Text::new("Snapshot target").font_size(18.0));
+
+    let controls = target.append(root, Panel::row(12.0).align_center());
+    let deploy = target.append(controls, Button::new("Deploy").font_size(14.0));
+    target.append(controls, CheckBox::new("Collect traces").checked(true));
+    target.append(controls, ProgressBar::new().value(0.68).size(190.0, 18.0));
+
+    let content = target.append(root, Panel::row(14.0));
+    target.append(
+        content,
+        ListBox::new()
+            .items(renderer_queue_items().take(48))
+            .size(260.0, 190.0)
+            .selected_index(4)
+            .scroll_offset_y(54.0)
+            .with_vertical_scrollbar(),
+    );
+    let detail = target.append(
+        content,
+        Panel::column(8.0).layout(Layout::column(8.0).logical_size(260.0, 190.0)),
+    );
+    target.append(detail, Text::new("Composition").font_size(15.0));
+    target.append(
+        detail,
+        Text::new("Layer tree, surfaces, and timeline counters").wrap(),
+    );
+    target.append(detail, Slider::new().value(0.42));
+
+    target.schedule_timeline_cue(millis(800), 1);
+    target.compute_layout(Size::new(
+        f64::from(DEVTOOLS_TARGET_WIDTH),
+        f64::from(DEVTOOLS_TARGET_HEIGHT),
+    ));
+
+    (DevtoolsSnapshot::capture(&target), deploy)
+}
+
 fn motion_tile(ui: &mut Ui, parent: ElementId, class: ClassId) -> ElementId {
     ui.append(
         parent,
@@ -2797,6 +2930,31 @@ mod tests {
         show_demo_page(&mut ui, stage, DemoPage::Layout);
 
         assert_eq!(count_type(&ui, ui.root(), overstory::TYPE_VECTOR_PATH), 5);
+    }
+
+    #[test]
+    fn devtools_page_renders_snapshot_outline_and_summary() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Devtools);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let inspector = find_by_class(&ui, stage, CLASS_DEVTOOLS_INSPECTOR_CARD)
+            .expect("Devtools page should contain an inspector card");
+        let summary = find_by_class(&ui, stage, CLASS_DEVTOOLS_SUMMARY_CARD)
+            .expect("Devtools page should contain a summary card");
+
+        assert!(
+            count_type(&ui, inspector, overstory::TYPE_OUTLINE_VIEW) >= 1,
+            "devtools card should render the snapshot as an OutlineView",
+        );
+        assert!(
+            ui.effective_bounds(inspector).width() > ui.effective_bounds(summary).width(),
+            "inspector should get more room than the summary",
+        );
     }
 
     #[test]

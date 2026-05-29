@@ -2163,6 +2163,7 @@ version = "0.0.1"
 dependencies = [
  "kurbo",
  "overstory",
+ "overstory_devtools",
  "overstory_host_winit",
  "overstory_svg",
  "peniko",

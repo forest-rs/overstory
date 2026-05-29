@@ -22,7 +22,13 @@ use overstory::inspection::{
     CompositionLayerInspectionRow, ElementInspectionRow, LayerInspectionId, SurfaceInspectionId,
     UiInspectionSnapshot,
 };
-use overstory::{ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, Text, Ui};
+use overstory::{
+    ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, TYPE_BUTTON,
+    TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
+    TYPE_PROGRESS_BAR, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, TYPE_SELECT,
+    TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
+    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui,
+};
 
 /// A source that can produce an owned Overstory inspection snapshot.
 ///
@@ -280,12 +286,59 @@ pub fn append_inspection_view(
 }
 
 fn element_label(row: &ElementInspectionRow) -> String {
-    let prefix = if row.has_widget_identity {
-        "widget"
-    } else {
-        "element"
-    };
+    let prefix = element_type_label(row);
     format!("{prefix} {}:{}", row.id.slot(), row.id.generation())
+}
+
+fn element_type_label(row: &ElementInspectionRow) -> &'static str {
+    let Some(tag) = row.type_tag else {
+        return "Element";
+    };
+    if tag == TYPE_BUTTON {
+        "Button"
+    } else if tag == TYPE_CHECK_BOX {
+        "CheckBox"
+    } else if tag == TYPE_DIVIDER {
+        "Divider"
+    } else if tag == TYPE_GENERIC {
+        "Panel"
+    } else if tag == TYPE_LIST_BOX {
+        "ListBox"
+    } else if tag == TYPE_OUTLINE_VIEW {
+        "OutlineView"
+    } else if tag == TYPE_PROGRESS_BAR {
+        "ProgressBar"
+    } else if tag == TYPE_SCROLL_AREA {
+        "ScrollArea"
+    } else if tag == TYPE_SCROLL_BAR {
+        "ScrollBar"
+    } else if tag == TYPE_SCROLL_VIEW {
+        "ScrollView"
+    } else if tag == TYPE_SELECT {
+        "Select"
+    } else if tag == TYPE_SLIDER {
+        "Slider"
+    } else if tag == TYPE_SPINNER {
+        "Spinner"
+    } else if tag == TYPE_SPLITTER {
+        "Splitter"
+    } else if tag == TYPE_TEXT {
+        "Text"
+    } else if tag == TYPE_TEXT_INPUT {
+        "TextInput"
+    } else if tag == TYPE_TOGGLE {
+        "ToggleSwitch"
+    } else if tag == TYPE_TOOLTIP {
+        "Tooltip"
+    } else if tag == TYPE_VECTOR_PATH {
+        "VectorPath"
+    } else if tag == TYPE_VIEWPORT {
+        "Viewport"
+    } else if row.has_widget_identity {
+        "Widget"
+    } else {
+        "Element"
+    }
 }
 
 fn append_selected_element_details(
@@ -314,7 +367,7 @@ fn append_selected_element_details(
     );
     ui.append(
         parent,
-        Text::new(format!("type: {:?}", row.type_tag)).font_size(12.0),
+        Text::new(format!("type: {}", element_type_label(row))).font_size(12.0),
     );
     ui.append(
         parent,
@@ -448,11 +501,11 @@ mod tests {
         assert_eq!(nodes.len(), 2);
         assert_eq!(
             nodes[0].label(),
-            format!("widget {}:{}", root.slot(), root.generation())
+            format!("Panel {}:{}", root.slot(), root.generation())
         );
         assert_eq!(
             nodes[1].label(),
-            format!("widget {}:{}", child.slot(), child.generation())
+            format!("Panel {}:{}", child.slot(), child.generation())
         );
 
         let view = snapshot.element_outline_view();
