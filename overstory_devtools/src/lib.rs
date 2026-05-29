@@ -26,18 +26,22 @@ use overstory::inspection::{
     UiInspectionSnapshot,
 };
 use overstory::{
-    ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, TYPE_BUTTON,
-    TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
+    ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea,
+    TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
     TYPE_PROGRESS_BAR, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, TYPE_SELECT,
     TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
-    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, select_outline_key, theme,
+    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
 };
 
+mod property_grid;
 mod session;
 
+pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use session::DevtoolsSpoorSummary;
 pub use session::{DevtoolsEvent, DevtoolsSession, DevtoolsSessionHandle};
+
+use property_grid::{DetailActions, append_property_grid_sections};
 
 /// A source that can produce an owned Overstory inspection snapshot.
 ///
@@ -276,12 +280,9 @@ pub struct DevtoolsViewElements {
 }
 
 const MAX_RELATIONSHIP_CHILDREN: usize = 8;
-
-#[derive(Clone, Debug)]
-struct DetailActions {
-    session: DevtoolsSessionHandle,
-    outline: ElementId,
-}
+const INSPECTOR_OUTLINE_WIDTH: f32 = 220.0;
+const INSPECTOR_DETAILS_WIDTH: f32 = 228.0;
+const INSPECTOR_VIEW_HEIGHT: f32 = 420.0;
 
 /// Appends a simple inspector view for `snapshot`.
 ///
@@ -315,7 +316,7 @@ pub fn append_session_view(
 ) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
-        Panel::row(16.0).layout(Layout::row(16.0).padding_all(12.0)),
+        Panel::row(12.0).layout(Layout::row(12.0).padding_all(8.0)),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
@@ -324,8 +325,12 @@ pub fn append_session_view(
     let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
     let details_for_selection = Rc::clone(&details_slot);
     let session_for_selection = session.clone();
-    let mut outline_view =
-        session.with(|session| session.snapshot().element_outline_view().size(280.0, 420.0));
+    let mut outline_view = session.with(|session| {
+        session
+            .snapshot()
+            .element_outline_view()
+            .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT)
+    });
     if let Some(key) = session.with(DevtoolsSession::selected_outline_key) {
         outline_view = outline_view.selected_key(key);
     }
@@ -352,11 +357,17 @@ pub fn append_session_view(
             });
         }),
     );
-    let details = ui.append(
+    let details_frame = ui.append(
         root,
-        Panel::column(6.0).layout(Layout::column(6.0).flex_grow(1.0)),
+        ScrollArea::new()
+            .size(INSPECTOR_DETAILS_WIDTH, INSPECTOR_VIEW_HEIGHT)
+            .gap(6.0)
+            .scrollbar_thickness(8.0)
+            .thumb_extent(36.0),
     );
-    details_slot.set(Some(details));
+    let details_viewport = scroll_area_viewport(ui, details_frame)
+        .expect("ScrollArea should expose its viewport immediately after append");
+    details_slot.set(Some(details_viewport));
 
     let actions = DetailActions {
         session: session.clone(),
@@ -365,7 +376,7 @@ pub fn append_session_view(
     session.with(|session| {
         append_selected_element_details(
             ui,
-            details,
+            details_viewport,
             session.snapshot(),
             session.selected_element(),
             Some(&actions),
@@ -375,7 +386,7 @@ pub fn append_session_view(
     DevtoolsViewElements {
         root,
         outline,
-        details,
+        details: details_viewport,
     }
 }
 
@@ -458,31 +469,31 @@ fn append_selected_element_details(
         return;
     };
 
-    let identity = append_detail_section(ui, parent, "Identity");
-    append_detail_row(
-        ui,
-        identity,
-        "Element",
-        &format!("{}:{}", row.id.slot(), row.id.generation()),
-    );
-    append_detail_row(ui, identity, "Type", element_type_label(row));
-    append_detail_row(
-        ui,
-        identity,
-        "Widget identity",
-        bool_summary(row.has_widget_identity),
-    );
-    append_detail_row(ui, identity, "Type tag", &optional_debug(row.type_tag));
+    let grid = selected_element_property_grid(snapshot, row);
+    append_property_grid_sections(ui, parent, &grid, snapshot, actions);
+}
 
-    let tree = append_detail_section(ui, parent, "Tree");
-    append_element_relation_row(ui, tree, "Parent", row.parent, snapshot, actions);
-    append_detail_row(ui, tree, "Children", &format!("{}", row.children.len()));
-    append_detail_row(
-        ui,
-        tree,
-        "Child ids",
-        &element_list_summary(row.children.as_slice()),
-    );
+fn selected_element_property_grid(
+    snapshot: &DevtoolsSnapshot,
+    row: &ElementInspectionRow,
+) -> PropertyGrid {
+    let identity = PropertyGridSection::new("Identity")
+        .row(PropertyGridRow::new(
+            "Element",
+            format!("{}:{}", row.id.slot(), row.id.generation()),
+        ))
+        .row(PropertyGridRow::new("Type", element_type_label(row)))
+        .row(PropertyGridRow::new("Role", element_role(snapshot, row)))
+        .row(PropertyGridRow::new(
+            "Widget identity",
+            bool_summary(row.has_widget_identity),
+        ))
+        .row(PropertyGridRow::new(
+            "Type tag",
+            optional_debug(row.type_tag),
+        ));
+
+    let mut children = PropertyGridRow::new("Children", format!("{}", row.children.len()));
     for (index, child) in row
         .children
         .iter()
@@ -490,152 +501,241 @@ fn append_selected_element_details(
         .copied()
         .enumerate()
     {
-        append_element_relation_row(
-            ui,
-            tree,
-            &format!("Child {index}"),
-            Some(child),
+        children.push_child(element_relation_row(
             snapshot,
-            actions,
-        );
+            &child_relation_label(snapshot, row, index, child),
+            Some(child),
+        ));
     }
     if row.children.len() > MAX_RELATIONSHIP_CHILDREN {
-        append_detail_row(
-            ui,
-            tree,
+        children.push_child(PropertyGridRow::new(
             "More children",
-            &format!("{}", row.children.len() - MAX_RELATIONSHIP_CHILDREN),
-        );
+            format!("{}", row.children.len() - MAX_RELATIONSHIP_CHILDREN),
+        ));
     }
-    append_element_relation_row(
-        ui,
-        tree,
-        "Template owner",
-        row.templated_parent,
-        snapshot,
-        actions,
-    );
+    let tree = PropertyGridSection::new("Tree")
+        .row(element_relation_row(snapshot, "Parent", row.parent))
+        .row(children)
+        .row(element_relation_row(
+            snapshot,
+            "Template owner",
+            row.templated_parent,
+        ));
 
-    let template = append_detail_section(ui, parent, "Template");
-    append_detail_row(ui, template, "Part tag", &optional_debug(row.part_tag));
-    append_detail_row(ui, template, "Slot", row.template_slot.unwrap_or("none"));
-    append_detail_row(ui, template, "Key", &optional_u64(row.template_key));
+    let template = PropertyGridSection::new("Template")
+        .row(PropertyGridRow::new("Role", template_role(snapshot, row)))
+        .row(PropertyGridRow::new(
+            "Owned parts",
+            format!("{}", template_part_count(snapshot, row.id)),
+        ))
+        .row(element_relation_row(
+            snapshot,
+            "Owner",
+            row.templated_parent,
+        ))
+        .row(PropertyGridRow::new(
+            "Part tag",
+            optional_debug(row.part_tag),
+        ))
+        .row(PropertyGridRow::new(
+            "Slot",
+            row.template_slot.unwrap_or("none"),
+        ))
+        .row(PropertyGridRow::new("Key", optional_u64(row.template_key)));
 
-    let style = append_detail_section(ui, parent, "Style");
-    append_detail_row(
-        ui,
-        style,
-        "Classes",
-        &debug_list_summary(row.classes.as_slice()),
-    );
-    append_detail_row(
-        ui,
-        style,
-        "Pseudos",
-        &debug_list_summary(row.pseudos.as_slice()),
-    );
+    let style = PropertyGridSection::new("Style")
+        .row(debug_tree_row("Classes", row.classes.as_slice()))
+        .row(debug_tree_row("Pseudos", row.pseudos.as_slice()));
 
-    let state = append_detail_section(ui, parent, "State");
-    append_detail_row(ui, state, "Enabled", bool_summary(row.state.enabled));
-    append_detail_row(ui, state, "Focusable", bool_summary(row.state.focusable));
-    append_detail_row(ui, state, "Focused", bool_summary(row.state.focused));
-    append_detail_row(
-        ui,
-        state,
-        "Focus visible",
-        bool_summary(row.state.focus_visible),
-    );
-    append_detail_row(ui, state, "Hovered", bool_summary(row.state.hovered));
-    append_detail_row(ui, state, "Pressed", bool_summary(row.state.pressed));
-    append_detail_row(
-        ui,
-        state,
-        "Pointer capture",
-        bool_summary(row.state.pointer_captured),
-    );
+    let state = PropertyGridSection::new("State")
+        .row(PropertyGridRow::new(
+            "Enabled",
+            bool_summary(row.state.enabled),
+        ))
+        .row(PropertyGridRow::new(
+            "Focusable",
+            bool_summary(row.state.focusable),
+        ))
+        .row(PropertyGridRow::new(
+            "Focused",
+            bool_summary(row.state.focused),
+        ))
+        .row(PropertyGridRow::new(
+            "Focus visible",
+            bool_summary(row.state.focus_visible),
+        ))
+        .row(PropertyGridRow::new(
+            "Hovered",
+            bool_summary(row.state.hovered),
+        ))
+        .row(PropertyGridRow::new(
+            "Pressed",
+            bool_summary(row.state.pressed),
+        ))
+        .row(PropertyGridRow::new(
+            "Pointer capture",
+            bool_summary(row.state.pointer_captured),
+        ));
 
-    let layout = append_detail_section(ui, parent, "Layout");
-    append_detail_row(ui, layout, "Bounds", &rect_summary(row.bounds));
+    let layout = PropertyGridSection::new("Layout")
+        .row(PropertyGridRow::new("Bounds", rect_summary(row.bounds)));
 
-    let composition = append_detail_section(ui, parent, "Composition");
-    append_detail_row(ui, composition, "Layer", &optional_layer_id(row.layer));
-    append_detail_row(
-        ui,
-        composition,
-        "Surface",
-        &optional_surface_id(row.surface),
-    );
-    append_detail_row(
-        ui,
-        composition,
-        "Policy",
-        &format!("{:?}", row.composition_policy),
-    );
-
-    if let Some(layer) = row.layer.and_then(|id| snapshot.layer(id)) {
-        append_detail_row(ui, composition, "Layer bounds", &size_summary(layer.bounds));
-        append_detail_row(
-            ui,
-            composition,
-            "Opacity",
-            &format!(
-                "{:.3} / {:.3}",
-                layer.local_opacity, layer.effective_opacity
-            ),
+    let mut layer = PropertyGridRow::new("Layer", optional_layer_id(row.layer));
+    if let Some(layer_row) = row.layer.and_then(|id| snapshot.layer(id)) {
+        layer.push_child(PropertyGridRow::new(
+            "Bounds",
+            size_summary(layer_row.bounds),
+        ));
+        layer.push_child(
+            PropertyGridRow::new(
+                "Opacity",
+                format!(
+                    "{:.3} / {:.3}",
+                    layer_row.local_opacity, layer_row.effective_opacity
+                ),
+            )
+            .child(PropertyGridRow::new(
+                "Local",
+                format!("{:.3}", layer_row.local_opacity),
+            ))
+            .child(PropertyGridRow::new(
+                "Effective",
+                format!("{:.3}", layer_row.effective_opacity),
+            )),
         );
-        append_detail_row(
-            ui,
-            composition,
-            "Hidden",
-            &format!("{} / {}", layer.hidden, layer.effectively_hidden),
+        layer.push_child(
+            PropertyGridRow::new(
+                "Hidden",
+                format!("{} / {}", layer_row.hidden, layer_row.effectively_hidden),
+            )
+            .child(PropertyGridRow::new(
+                "Local",
+                bool_summary(layer_row.hidden),
+            ))
+            .child(PropertyGridRow::new(
+                "Effective",
+                bool_summary(layer_row.effectively_hidden),
+            )),
         );
-        append_detail_row(ui, composition, "Clip", bool_summary(layer.has_clip));
+        layer.push_child(PropertyGridRow::new(
+            "Clip",
+            bool_summary(layer_row.has_clip),
+        ));
     }
+    let composition = PropertyGridSection::new("Composition")
+        .row(layer)
+        .row(PropertyGridRow::new(
+            "Surface",
+            optional_surface_id(row.surface),
+        ))
+        .row(PropertyGridRow::new(
+            "Policy",
+            format!("{:?}", row.composition_policy),
+        ));
+
+    PropertyGrid::new()
+        .section(identity)
+        .section(tree)
+        .section(template)
+        .section(style)
+        .section(state)
+        .section(layout)
+        .section(composition)
 }
 
-fn append_element_relation_row(
-    ui: &mut Ui,
-    parent: ElementId,
+fn element_relation_row(
+    snapshot: &DevtoolsSnapshot,
     label: &str,
     target: Option<ElementId>,
-    snapshot: &DevtoolsSnapshot,
-    actions: Option<&DetailActions>,
-) -> ElementId {
-    let row = append_detail_row(ui, parent, label, &optional_element_id(target));
-    let Some(target) = target else {
-        return row;
-    };
-    if snapshot.outline_key_for_element(target).is_none() {
-        return row;
+) -> PropertyGridRow {
+    let row = PropertyGridRow::new(label, relation_summary(snapshot, target));
+    match target {
+        Some(element) => row.select_element(element),
+        None => row,
     }
-    let Some(actions) = actions.cloned() else {
-        return row;
-    };
-    ui.on_click(row, move |ui, event| {
-        let key = actions
-            .session
-            .with(|session| session.snapshot().outline_key_for_element(target));
-        if let Some(key) = key {
-            let _ = select_outline_key(ui, actions.outline, key);
-            event.mark_handled();
-        }
-    });
-    row
 }
 
-fn append_detail_section(ui: &mut Ui, parent: ElementId, title: &str) -> ElementId {
-    let section = ui.append(parent, Panel::column(3.0).layout(Layout::column(3.0)));
-    ui.append(section, Text::new(title).font_size(12.0));
-    section
-}
-
-fn append_detail_row(ui: &mut Ui, parent: ElementId, label: &str, value: &str) -> ElementId {
-    ui.append(
-        parent,
-        Text::new(format!("{label}: {value}"))
-            .font_size(12.0)
-            .wrap(),
+fn relation_summary(snapshot: &DevtoolsSnapshot, target: Option<ElementId>) -> String {
+    target.map_or_else(
+        || String::from("none"),
+        |id| {
+            snapshot.element(id).map_or_else(
+                || optional_element_id(Some(id)),
+                |row| {
+                    format!(
+                        "{} {}",
+                        element_type_label(row),
+                        optional_element_id(Some(id))
+                    )
+                },
+            )
+        },
     )
+}
+
+fn child_relation_label(
+    snapshot: &DevtoolsSnapshot,
+    parent: &ElementInspectionRow,
+    index: usize,
+    child: ElementId,
+) -> String {
+    let is_template_part = snapshot
+        .element(child)
+        .is_some_and(|row| row.templated_parent == Some(parent.id));
+    if is_template_part {
+        format!("Part {index}")
+    } else {
+        format!("Child {index}")
+    }
+}
+
+fn element_role(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> &'static str {
+    if row.templated_parent.is_some() {
+        "template part"
+    } else if template_part_count(snapshot, row.id) > 0 {
+        "templated control"
+    } else if row.has_widget_identity {
+        "widget"
+    } else {
+        "element"
+    }
+}
+
+fn template_role(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> &'static str {
+    if row.templated_parent.is_some() {
+        "part"
+    } else if template_part_count(snapshot, row.id) > 0 {
+        "owner"
+    } else {
+        "none"
+    }
+}
+
+fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
+    snapshot
+        .inspection()
+        .elements
+        .iter()
+        .filter(|row| row.templated_parent == Some(owner))
+        .count()
+}
+
+fn debug_tree_row<T: core::fmt::Debug>(label: &str, values: &[T]) -> PropertyGridRow {
+    let mut row = PropertyGridRow::new(
+        label,
+        if values.is_empty() {
+            String::from("none")
+        } else {
+            format!("{}", values.len())
+        },
+    );
+    for (index, value) in values.iter().enumerate() {
+        row.push_child(PropertyGridRow::new(
+            format!("{label} {index}"),
+            format!("{value:?}"),
+        ));
+    }
+    row
 }
 
 fn optional_element_id(id: Option<ElementId>) -> String {
@@ -651,34 +751,6 @@ fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> String {
 
 fn optional_u64(value: Option<u64>) -> String {
     value.map_or_else(|| "none".into(), |value| format!("{value}"))
-}
-
-fn debug_list_summary<T: core::fmt::Debug>(values: &[T]) -> String {
-    if values.is_empty() {
-        return "none".into();
-    }
-    let mut output = String::new();
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            output.push_str(", ");
-        }
-        output.push_str(&format!("{value:?}"));
-    }
-    output
-}
-
-fn element_list_summary(elements: &[ElementId]) -> String {
-    if elements.is_empty() {
-        return "none".into();
-    }
-    let mut output = String::new();
-    for (index, element) in elements.iter().enumerate() {
-        if index > 0 {
-            output.push_str(", ");
-        }
-        output.push_str(&optional_element_id(Some(*element)));
-    }
-    output
 }
 
 fn optional_layer_id(id: Option<LayerInspectionId>) -> String {
@@ -933,6 +1005,172 @@ mod tests {
     }
 
     #[test]
+    fn selected_element_property_grid_preserves_structured_rows() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let grandchild = ui.append(child, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let row = snapshot
+            .element(child)
+            .expect("child should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, row);
+        let tree = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Tree")
+            .expect("grid should contain tree section");
+        let children = tree
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Children")
+            .expect("tree section should contain children row");
+
+        assert_eq!(children.value(), "1");
+        assert_eq!(children.children().len(), 1);
+        assert_eq!(children.children()[0].label(), "Child 0");
+        assert_eq!(
+            children.children()[0].value(),
+            format!("Panel {}", optional_element_id(Some(grandchild)))
+        );
+    }
+
+    #[test]
+    fn property_grid_renders_label_value_row_panels() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let selected = target.append(target_root, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(selected));
+        let identity_section = inspector
+            .get(elements.details)
+            .and_then(|details| details.children().first().copied())
+            .expect("details should contain identity section");
+        let element_row = inspector
+            .get(identity_section)
+            .and_then(|section| section.children().get(1).copied())
+            .expect("identity section should contain an element row after its header");
+
+        assert_eq!(
+            inspector
+                .get(element_row)
+                .map(overstory::Element::children)
+                .map(|children| children.len()),
+            Some(2),
+            "property rows should render as label/value panels"
+        );
+    }
+
+    #[test]
+    fn append_inspection_view_places_details_in_scroll_area() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let selected = target.append(target_root, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(selected));
+        let details_frame = inspector
+            .get(elements.root)
+            .and_then(|root| root.children().get(1).copied())
+            .expect("inspector root should contain a details scroll area");
+        let viewport = scroll_area_viewport(&inspector, details_frame)
+            .expect("details should be placed inside a scroll area viewport");
+
+        assert_eq!(elements.details, viewport);
+    }
+
+    #[test]
+    fn details_scroll_area_accepts_scroll_offsets() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let selected = target.append(target_root, overstory::Button::new("Deploy"));
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        inspector.set_layout(root, Layout::new().logical_size(520.0, 520.0));
+        let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(selected));
+        let details_frame = inspector
+            .get(elements.root)
+            .and_then(|root| root.children().get(1).copied())
+            .expect("inspector root should contain a details scroll area");
+        let viewport = scroll_area_viewport(&inspector, details_frame)
+            .expect("details should be placed inside a scroll area viewport");
+
+        inspector.compute_layout(overstory::Size::new(520.0, 520.0));
+
+        assert!(overstory::set_scroll_offset_y(
+            &mut inspector,
+            viewport,
+            48.0
+        ));
+        assert!(
+            overstory::scroll_offset_y(&inspector, viewport).is_some_and(|offset| offset > 0.0),
+            "details scroll area should expose non-zero overflow"
+        );
+    }
+
+    #[test]
+    fn selected_element_property_grid_identifies_template_parts() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, overstory::Button::new("Run"));
+        let label = ui
+            .slot(button, overstory::SLOT_BUTTON_CONTENT)
+            .expect("button template should expose a content part");
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let button_row = snapshot
+            .element(button)
+            .expect("button should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, button_row);
+        let identity = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Identity")
+            .expect("grid should contain identity section");
+        let role = identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Role")
+            .expect("identity section should expose element role");
+        let tree = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Tree")
+            .expect("grid should contain tree section");
+        let children = tree
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Children")
+            .expect("tree section should contain children row");
+        let template = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("grid should contain template section");
+        let owned_parts = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Owned parts")
+            .expect("template section should expose owned part count");
+
+        assert_eq!(role.value(), "templated control");
+        assert_eq!(owned_parts.value(), "1");
+        assert_eq!(children.children()[0].label(), "Part 0");
+        assert_eq!(
+            children.children()[0].value(),
+            format!("Text {}", optional_element_id(Some(label)))
+        );
+    }
+
+    #[test]
     fn append_inspection_view_updates_details_when_outline_selection_changes() {
         let mut target = Ui::new();
         let target_root = target.root();
@@ -958,7 +1196,7 @@ mod tests {
             overstory::selected_outline_key(&inspector, elements.outline),
             Some(child_key)
         );
-        assert!(select_outline_key(
+        assert!(overstory::select_outline_key(
             &mut inspector,
             elements.outline,
             grandchild_key
@@ -994,7 +1232,7 @@ mod tests {
         let root = inspector.root();
         let elements = append_session_view(&mut inspector, root, session.clone());
 
-        assert!(select_outline_key(
+        assert!(overstory::select_outline_key(
             &mut inspector,
             elements.outline,
             grandchild_key
