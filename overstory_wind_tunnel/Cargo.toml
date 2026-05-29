@@ -11,6 +11,7 @@ publish = false
 imaging.workspace = true
 kurbo.workspace = true
 overstory.workspace = true
+overstory_host.workspace = true
 
 [dev-dependencies]
 criterion = "0.8.2"

@@ -7,10 +7,12 @@ use imaging::record::Scene;
 use kurbo::Size;
 use overstory::{
     Button, Layout, ListBox, Panel, ProgressBar, Slider, Text, TextInput, TextLayoutCacheStats,
-    TextResources, ToggleSwitch, Ui,
+    TextResources, ToggleSwitch, Ui, UiFrameStats, theme, toggle_checked,
 };
 use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
+use overstory_host::{FrameDiagnostics, FrameTimings, UiHost};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 /// Default number of rows in the rich dashboard scenario.
 pub const DASHBOARD_ROWS: usize = 64;
@@ -26,6 +28,9 @@ pub const VIEWPORT_WIDTH: f32 = 960.0;
 
 /// Default viewport size used by UI pipeline scenarios.
 pub const VIEWPORT: Size = Size::new(960.0, 720.0);
+
+/// Default frame count for latency-oriented profile scenarios.
+pub const PROFILE_FRAMES: usize = 240;
 
 fn shared_text_resources() -> &'static TextResources {
     static RESOURCES: OnceLock<TextResources> = OnceLock::new();
@@ -86,6 +91,24 @@ pub fn build_virtual_list(items: usize) -> (Ui, overstory::ElementId) {
             .overscan(84.0),
     );
     (ui, listbox)
+}
+
+/// Builds a small toggle scene for animation and retargeting profiles.
+pub fn build_toggle_scene() -> (Ui, overstory::ElementId) {
+    let mut ui = Ui::with_text_resources(shared_text_resources());
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(
+        root,
+        Layout::row(12.0)
+            .padding_all(16.0)
+            .align_center()
+            .logical_size(320.0, 96.0),
+    );
+    let toggle = ui.append(root, ToggleSwitch::new());
+    ui.append(root, Text::new("Live rendering").font_size(18.0));
+    (ui, toggle)
 }
 
 /// Builds a text-heavy tree where many widgets share identical text/style.
@@ -150,4 +173,121 @@ pub fn paint_repeated_text_labels(labels: usize) -> TextLayoutCacheStats {
     let mut scene = Scene::new();
     ui.paint(&mut scene);
     ui.text_layout_cache_stats()
+}
+
+/// Aggregated frame timings and counters from a profile run.
+#[derive(Clone, Debug, Default)]
+pub struct FrameRunSummary {
+    /// Number of frames included in the summary.
+    pub frames: usize,
+    /// Sum of synthetic mutation/input-to-prepared-frame durations.
+    pub input_to_frame: Duration,
+    /// Slowest synthetic mutation/input-to-prepared-frame duration.
+    pub max_input_to_frame: Duration,
+    /// Sum of host frame preparation timings by stage.
+    pub timings: FrameTimings,
+    /// Slowest host frame preparation timings by stage.
+    pub max_timings: FrameTimings,
+    /// UI counters from the final frame.
+    pub last_ui: UiFrameStats,
+    /// Number of frames whose output scene was empty.
+    pub empty_outputs: usize,
+    /// Small checksum used to keep profile loops observable to the optimizer.
+    pub checksum: u64,
+}
+
+impl FrameRunSummary {
+    fn push(
+        &mut self,
+        diagnostics: FrameDiagnostics,
+        input_to_frame: Duration,
+        output_empty: bool,
+    ) {
+        self.frames += 1;
+        self.input_to_frame += input_to_frame;
+        self.max_input_to_frame = self.max_input_to_frame.max(input_to_frame);
+        self.timings.set_now += diagnostics.timings.set_now;
+        self.timings.layout += diagnostics.timings.layout;
+        self.timings.paint += diagnostics.timings.paint;
+        self.timings.sync_surfaces += diagnostics.timings.sync_surfaces;
+        self.timings.compose += diagnostics.timings.compose;
+        self.timings.scale += diagnostics.timings.scale;
+        self.timings.total += diagnostics.timings.total;
+        self.max_timings.set_now = self.max_timings.set_now.max(diagnostics.timings.set_now);
+        self.max_timings.layout = self.max_timings.layout.max(diagnostics.timings.layout);
+        self.max_timings.paint = self.max_timings.paint.max(diagnostics.timings.paint);
+        self.max_timings.sync_surfaces = self
+            .max_timings
+            .sync_surfaces
+            .max(diagnostics.timings.sync_surfaces);
+        self.max_timings.compose = self.max_timings.compose.max(diagnostics.timings.compose);
+        self.max_timings.scale = self.max_timings.scale.max(diagnostics.timings.scale);
+        self.max_timings.total = self.max_timings.total.max(diagnostics.timings.total);
+        self.last_ui = diagnostics.ui;
+        self.empty_outputs += usize::from(output_empty);
+        self.checksum = self.checksum.wrapping_add(frame_checksum(diagnostics));
+    }
+}
+
+/// Prepares repeated frames for the rich dashboard scenario.
+pub fn prepare_dashboard_frames(rows: usize, frames: usize) -> FrameRunSummary {
+    let ui = build_dashboard(rows);
+    let mut host = UiHost::new(ui);
+    let mut summary = FrameRunSummary::default();
+    for _ in 0..frames {
+        let input_start = Instant::now();
+        let output_empty = host.prepare_frame(VIEWPORT, 1.0).is_empty();
+        let input_to_frame = input_start.elapsed();
+        summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
+    }
+    summary
+}
+
+/// Scrolls a virtual list and prepares a frame after every mutation.
+pub fn scroll_virtual_list_frames(items: usize, frames: usize) -> FrameRunSummary {
+    let (ui, listbox) = build_virtual_list(items);
+    let mut host = UiHost::new(ui);
+    let mut summary = FrameRunSummary::default();
+    let _ = host.prepare_frame(VIEWPORT, 1.0).is_empty();
+    for step in 0..frames {
+        host.ui_mut().reset_frame_stats();
+        let input_start = Instant::now();
+        let offset = step as f64 * 96.0;
+        let _ = set_list_scroll_offset_y(host.ui_mut(), listbox, offset);
+        let output_empty = host
+            .prepare_frame_preserving_stats(VIEWPORT, 1.0)
+            .is_empty();
+        let input_to_frame = input_start.elapsed();
+        summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
+    }
+    summary
+}
+
+/// Repeatedly retargets a toggle transition and prepares a frame after every
+/// mutation.
+pub fn toggle_retarget_frames(frames: usize) -> FrameRunSummary {
+    let (ui, toggle) = build_toggle_scene();
+    let mut host = UiHost::new(ui);
+    let mut summary = FrameRunSummary::default();
+    let _ = host.prepare_frame(Size::new(320.0, 96.0), 1.0).is_empty();
+    for _ in 0..frames {
+        host.ui_mut().reset_frame_stats();
+        let input_start = Instant::now();
+        toggle_checked(host.ui_mut(), toggle);
+        let output_empty = host
+            .prepare_frame_preserving_stats(Size::new(320.0, 96.0), 1.0)
+            .is_empty();
+        let input_to_frame = input_start.elapsed();
+        summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
+    }
+    summary
+}
+
+fn frame_checksum(diagnostics: FrameDiagnostics) -> u64 {
+    let stats = diagnostics.ui;
+    (stats.elements as u64)
+        ^ ((stats.layout_passes as u64) << 8)
+        ^ ((stats.painted_elements as u64) << 16)
+        ^ ((stats.rebuilt_surfaces as u64) << 24)
+        ^ ((diagnostics.output_empty as u64) << 63)
 }

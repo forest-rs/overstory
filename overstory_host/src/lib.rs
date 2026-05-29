@@ -157,8 +157,25 @@ impl UiHost {
     /// `scale_factor` maps those logical coordinates into the physical
     /// texture that the backend renderer will target.
     pub fn prepare_frame(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
-        let total_start = Instant::now();
         self.ui.reset_frame_stats();
+        self.prepare_frame_inner(logical_viewport, scale_factor)
+    }
+
+    /// Lays out and paints without clearing existing UI frame counters first.
+    ///
+    /// Use this for latency probes that reset counters before dispatching or
+    /// mutating input, then want the prepared-frame diagnostics to include that
+    /// input's invalidation marks.
+    pub fn prepare_frame_preserving_stats(
+        &mut self,
+        logical_viewport: Size,
+        scale_factor: f64,
+    ) -> &Scene {
+        self.prepare_frame_inner(logical_viewport, scale_factor)
+    }
+
+    fn prepare_frame_inner(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
+        let total_start = Instant::now();
 
         let phase_start = Instant::now();
         self.ui.set_now(self.now());
