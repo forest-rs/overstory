@@ -173,6 +173,28 @@ pub struct OutlineExpansionChangedEvent {
     pub expanded: bool,
 }
 
+/// Semantic row metadata for a realized [`OutlineView`] item.
+///
+/// The item element is only a realized container; this value describes the
+/// stable outline node and its current visible-row projection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OutlineItemInfo {
+    /// The current visible row index.
+    pub index: usize,
+    /// The stable node key represented by this row.
+    pub key: OutlineNodeKey,
+    /// The row depth below the outline root. Root rows have depth `0`.
+    pub depth: usize,
+    /// One-based position among this node's siblings.
+    pub position_in_set: usize,
+    /// Number of siblings in this node's sibling set.
+    pub size_of_set: usize,
+    /// Whether this node can expand.
+    pub has_children: bool,
+    /// Whether this node is currently expanded.
+    pub is_expanded: bool,
+}
+
 /// Builder + spec for a virtualized outline view.
 ///
 /// `OutlineView` owns its expansion state and realizes only the currently
@@ -787,7 +809,7 @@ impl OutlineViewWidget {
             let element = append_realized_outline_item(ui, outline, &snapshot);
             self.realized.push(RealizedOutlineItem {
                 index,
-                key: snapshot.key,
+                key: snapshot.info.key,
                 element,
             });
             changed = true;
@@ -1026,13 +1048,7 @@ impl OutlineViewWidget {
 /// Per-element widget for a realized `OutlineView` item.
 #[derive(Debug)]
 pub(crate) struct OutlineItemWidget {
-    key: OutlineNodeKey,
-    index: usize,
-    depth: usize,
-    position_in_set: usize,
-    size_of_set: usize,
-    has_children: bool,
-    is_expanded: bool,
+    info: OutlineItemInfo,
 }
 
 impl Widget for OutlineItemWidget {
@@ -1056,12 +1072,12 @@ impl Widget for OutlineItemWidget {
     ) {
         ctx.add_click_action_if_enabled(element, node);
         ctx.apply_selected_state(element, node);
-        node.set_level(self.depth + 1);
-        node.set_position_in_set(self.position_in_set);
-        node.set_size_of_set(self.size_of_set);
-        if self.has_children {
-            node.set_expanded(self.is_expanded);
-            if self.is_expanded {
+        node.set_level(self.info.depth + 1);
+        node.set_position_in_set(self.info.position_in_set);
+        node.set_size_of_set(self.info.size_of_set);
+        if self.info.has_children {
+            node.set_expanded(self.info.is_expanded);
+            if self.info.is_expanded {
                 node.add_action(accesskit::Action::Collapse);
             } else {
                 node.add_action(accesskit::Action::Expand);
@@ -1081,9 +1097,9 @@ impl Widget for OutlineItemWidget {
         let Some(outline) = outline_parent(ctx, item) else {
             return;
         };
-        let _ = select_outline_key(ctx, outline, self.key);
-        if self.has_children {
-            let _ = toggle_outline_key(ctx, outline, self.key);
+        let _ = select_outline_key(ctx, outline, self.info.key);
+        if self.info.has_children {
+            let _ = toggle_outline_key(ctx, outline, self.info.key);
         }
         let _ = ctx.set_pointer_focus(Some(outline));
         event.mark_handled();
@@ -1098,8 +1114,12 @@ impl Widget for OutlineItemWidget {
             return false;
         };
         match request.action {
-            accesskit::Action::Expand => set_outline_key_expanded(ctx, outline, self.key, true),
-            accesskit::Action::Collapse => set_outline_key_expanded(ctx, outline, self.key, false),
+            accesskit::Action::Expand => {
+                set_outline_key_expanded(ctx, outline, self.info.key, true)
+            }
+            accesskit::Action::Collapse => {
+                set_outline_key_expanded(ctx, outline, self.info.key, false)
+            }
             _ => false,
         }
     }
@@ -1113,13 +1133,7 @@ struct RealizedOutlineItem {
 }
 
 struct OutlineRowSnapshot {
-    index: usize,
-    key: OutlineNodeKey,
-    depth: usize,
-    position_in_set: usize,
-    size_of_set: usize,
-    has_children: bool,
-    is_expanded: bool,
+    info: OutlineItemInfo,
     label: String,
 }
 
@@ -1145,13 +1159,15 @@ impl OutlineRowSnapshot {
         sibling_set: SiblingSet,
     ) -> Self {
         Self {
-            index,
-            key: row.key,
-            depth: row.depth,
-            position_in_set: sibling_set.position,
-            size_of_set: sibling_set.size,
-            has_children: row.has_children,
-            is_expanded: row.is_expanded,
+            info: OutlineItemInfo {
+                index,
+                key: row.key,
+                depth: row.depth,
+                position_in_set: sibling_set.position,
+                size_of_set: sibling_set.size,
+                has_children: row.has_children,
+                is_expanded: row.is_expanded,
+            },
             label,
         }
     }
@@ -1206,18 +1222,7 @@ fn append_realized_outline_item(
     outline: ElementId,
     item: &OutlineRowSnapshot,
 ) -> ElementId {
-    let id = ui.append_widget(
-        outline,
-        Box::new(OutlineItemWidget {
-            key: item.key,
-            index: item.index,
-            depth: item.depth,
-            position_in_set: item.position_in_set,
-            size_of_set: item.size_of_set,
-            has_children: item.has_children,
-            is_expanded: item.is_expanded,
-        }),
-    );
+    let id = ui.append_widget(outline, Box::new(OutlineItemWidget { info: item.info }));
     update_realized_outline_item(ui, id, item);
     ui.set_control_state(id, ControlState::interactive().focusable(false));
     id
@@ -1226,13 +1231,7 @@ fn append_realized_outline_item(
 fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSnapshot) {
     ui.with_widget_mut(id, |widget, _ui| {
         if let Some(widget) = widget.downcast_mut::<OutlineItemWidget>() {
-            widget.key = item.key;
-            widget.index = item.index;
-            widget.depth = item.depth;
-            widget.position_in_set = item.position_in_set;
-            widget.size_of_set = item.size_of_set;
-            widget.has_children = item.has_children;
-            widget.is_expanded = item.is_expanded;
+            widget.info = item.info;
         }
     });
     ui.set_local(id, ui.properties().content, item.label.clone());
@@ -1240,13 +1239,17 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
         ui.set_local(
             disclosure,
             ui.properties().content,
-            disclosure_text(item.depth, item.has_children, item.is_expanded),
+            disclosure_text(
+                item.info.depth,
+                item.info.has_children,
+                item.info.is_expanded,
+            ),
         );
         ui.set_local(
             disclosure,
             ui.properties().layout_size,
             LayoutSize::new()
-                .width(LayoutDimension::Logical(disclosure_width(item.depth)))
+                .width(LayoutDimension::Logical(disclosure_width(item.info.depth)))
                 .height(LayoutDimension::Percent(1.0)),
         );
     }
@@ -1327,10 +1330,16 @@ pub fn set_outline_scroll_offset_y(ui: &mut Ui, outline: ElementId, offset: f64)
 /// Returns the node key represented by a realized outline item.
 #[must_use]
 pub fn realized_outline_item_key(ui: &Ui, item: ElementId) -> Option<OutlineNodeKey> {
+    realized_outline_item_info(ui, item).map(|info| info.key)
+}
+
+/// Returns semantic row metadata for a realized outline item.
+#[must_use]
+pub fn realized_outline_item_info(ui: &Ui, item: ElementId) -> Option<OutlineItemInfo> {
     ui.get(item)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<OutlineItemWidget>())
-        .map(|widget| widget.key)
+        .map(|widget| widget.info)
 }
 
 fn dispatch_outline_selection_changed(
@@ -1577,6 +1586,30 @@ mod tests {
             &[(outline, Some(key(0))), (outline, Some(key(2)))]
         );
         assert_eq!(&*expanded.borrow(), &[(outline, key(0), true)]);
+    }
+
+    #[test]
+    fn realized_outline_item_info_reports_row_projection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(root, test_outline().expanded(0).selected_key(1));
+        realize(&mut ui);
+
+        let child = realized_outline_item(&ui, outline, 1).unwrap();
+
+        assert_eq!(
+            realized_outline_item_info(&ui, child),
+            Some(OutlineItemInfo {
+                index: 1,
+                key: key(1),
+                depth: 1,
+                position_in_set: 1,
+                size_of_set: 2,
+                has_children: false,
+                is_expanded: false,
+            })
+        );
+        assert_eq!(realized_outline_item_key(&ui, child), Some(key(1)));
     }
 
     #[test]
