@@ -2538,6 +2538,7 @@ fn inspection_snapshot_reports_elements_and_composition() {
     let button = ui.append(root, crate::Button::new("Inspect"));
 
     ui.compute_layout(Size::new(240.0, 80.0));
+    assert!(ui.set_focus(Some(button)));
     let mut scene = Scene::new();
     ui.paint(&mut scene);
 
@@ -2570,7 +2571,24 @@ fn inspection_snapshot_reports_elements_and_composition() {
     assert_eq!(button_row.parent, Some(root));
     assert_eq!(button_row.type_tag, Some(crate::TYPE_BUTTON));
     assert!(button_row.has_widget_identity);
+    assert!(button_row.state.enabled);
+    assert!(button_row.state.focusable);
+    assert!(button_row.state.focused);
+    assert!(button_row.state.focus_visible);
     assert!(button_row.layer.is_some());
+
+    let button_label = ui
+        .slot(button, crate::SLOT_BUTTON_CONTENT)
+        .expect("button template should expose content slot");
+    let label_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == button_label)
+        .expect("button label row should be present");
+    assert_eq!(label_row.templated_parent, Some(button));
+    assert_eq!(label_row.part_tag, Some(crate::PART_BUTTON_LABEL));
+    assert_eq!(label_row.template_slot, Some("content"));
+    assert_eq!(label_row.template_key, None);
 
     assert_eq!(
         snapshot.composition.layers.len(),

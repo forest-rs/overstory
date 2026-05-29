@@ -471,8 +471,12 @@ fn append_selected_element_details(
         &optional_element_id(row.templated_parent),
     );
 
+    let template = append_detail_section(ui, parent, "Template");
+    append_detail_row(ui, template, "Part tag", &optional_debug(row.part_tag));
+    append_detail_row(ui, template, "Slot", row.template_slot.unwrap_or("none"));
+    append_detail_row(ui, template, "Key", &optional_u64(row.template_key));
+
     let style = append_detail_section(ui, parent, "Style");
-    append_detail_row(ui, style, "Part tag", &optional_debug(row.part_tag));
     append_detail_row(
         ui,
         style,
@@ -484,6 +488,25 @@ fn append_selected_element_details(
         style,
         "Pseudos",
         &debug_list_summary(row.pseudos.as_slice()),
+    );
+
+    let state = append_detail_section(ui, parent, "State");
+    append_detail_row(ui, state, "Enabled", bool_summary(row.state.enabled));
+    append_detail_row(ui, state, "Focusable", bool_summary(row.state.focusable));
+    append_detail_row(ui, state, "Focused", bool_summary(row.state.focused));
+    append_detail_row(
+        ui,
+        state,
+        "Focus visible",
+        bool_summary(row.state.focus_visible),
+    );
+    append_detail_row(ui, state, "Hovered", bool_summary(row.state.hovered));
+    append_detail_row(ui, state, "Pressed", bool_summary(row.state.pressed));
+    append_detail_row(
+        ui,
+        state,
+        "Pointer capture",
+        bool_summary(row.state.pointer_captured),
     );
 
     let layout = append_detail_section(ui, parent, "Layout");
@@ -549,6 +572,10 @@ fn optional_element_id(id: Option<ElementId>) -> String {
 
 fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> String {
     value.map_or_else(|| "none".into(), |value| format!("{value:?}"))
+}
+
+fn optional_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "none".into(), |value| format!("{value}"))
 }
 
 fn debug_list_summary<T: core::fmt::Debug>(values: &[T]) -> String {

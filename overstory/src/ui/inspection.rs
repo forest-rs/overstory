@@ -5,9 +5,10 @@ use alloc::vec::Vec;
 
 use crate::inspection::{
     CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
-    ElementInspectionRow, LayerInspectionId, SurfaceInspectionId, TimelineInspectionSnapshot,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementInspectionRow, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
+    TimelineInspectionSnapshot, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
+use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 
 use super::{Ui, collect_preorder};
 
@@ -33,6 +34,8 @@ impl Ui {
             .into_iter()
             .filter_map(|id| {
                 let element = self.get(id)?;
+                let (template_slot, template_key) =
+                    self.template_identity_for(id, element.templated_parent());
                 Some(ElementInspectionRow {
                     id,
                     parent: element.parent(),
@@ -40,8 +43,19 @@ impl Ui {
                     templated_parent: element.templated_parent(),
                     type_tag: element.type_tag(),
                     part_tag: element.part_tag(),
+                    template_slot,
+                    template_key,
                     classes: element.classes().to_vec(),
                     pseudos: element.pseudos().to_vec(),
+                    state: ElementStateInspection {
+                        enabled: self.is_enabled(id),
+                        focusable: self.is_focusable(id),
+                        focused: self.focused() == Some(id),
+                        focus_visible: element.pseudos().contains(&PSEUDO_FOCUS_VISIBLE),
+                        hovered: element.pseudos().contains(&PSEUDO_HOVER),
+                        pressed: element.pseudos().contains(&PSEUDO_PRESSED),
+                        pointer_captured: self.pointer_capture() == Some(id),
+                    },
                     has_widget_identity: element.has_widget_identity(),
                     bounds: self.effective_bounds(id),
                     layer: self
@@ -56,6 +70,28 @@ impl Ui {
                 })
             })
             .collect()
+    }
+
+    fn template_identity_for(
+        &self,
+        element: crate::ElementId,
+        owner: Option<crate::ElementId>,
+    ) -> (Option<&'static str>, Option<u64>) {
+        let Some(owner) = owner else {
+            return (None, None);
+        };
+        let Some(part) = self.template_instance(owner).and_then(|instance| {
+            instance
+                .part_records()
+                .iter()
+                .find(|part| part.element() == element)
+        }) else {
+            return (None, None);
+        };
+        (
+            part.slot().map(|slot| slot.name()),
+            part.key().map(|key| key.value()),
+        )
     }
 
     fn composition_inspection_snapshot(&self) -> CompositionInspectionSnapshot {

@@ -49,10 +49,16 @@ pub struct ElementInspectionRow {
     pub type_tag: Option<TypeTag>,
     /// Owner-local template part identity for this element, if any.
     pub part_tag: Option<PartTag>,
+    /// Semantic template slot name for this element, if any.
+    pub template_slot: Option<&'static str>,
+    /// Repeated template item key for this element, if any.
+    pub template_key: Option<u64>,
     /// Sorted class identifiers active on the element.
     pub classes: Vec<ClassId>,
     /// Sorted pseudoclass identifiers active on the element.
     pub pseudos: Vec<PseudoClassId>,
+    /// Interaction state captured for this element.
+    pub state: ElementStateInspection,
     /// Whether this element was inserted with widget identity.
     pub has_widget_identity: bool,
     /// Current layout bounds in logical pixels.
@@ -63,6 +69,25 @@ pub struct ElementInspectionRow {
     pub surface: Option<SurfaceInspectionId>,
     /// Composition policy applied to this element's layer, if one exists.
     pub composition_policy: Option<CompositionPolicy>,
+}
+
+/// Interaction state for one retained element in an inspection snapshot.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ElementStateInspection {
+    /// Whether the element is enabled after style/property resolution.
+    pub enabled: bool,
+    /// Whether the element currently participates in focus traversal.
+    pub focusable: bool,
+    /// Whether this element currently has focus.
+    pub focused: bool,
+    /// Whether focus should be rendered as keyboard-visible.
+    pub focus_visible: bool,
+    /// Whether the element currently matches `:hover`.
+    pub hovered: bool,
+    /// Whether the element currently matches `:pressed`.
+    pub pressed: bool,
+    /// Whether this element currently owns pointer capture.
+    pub pointer_captured: bool,
 }
 
 /// Composition-layer and surface rows for one UI snapshot.
