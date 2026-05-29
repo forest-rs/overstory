@@ -199,10 +199,18 @@ impl UiHost {
         let compose = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        self.scaled_scene.clear();
-        self.scaled_scene
-            .append_transformed(&self.scene, Affine::scale(scale_factor));
+        let use_scaled_scene = scale_factor != 1.0;
+        if use_scaled_scene {
+            self.scaled_scene.clear();
+            self.scaled_scene
+                .append_transformed(&self.scene, Affine::scale(scale_factor));
+        }
         let scale = phase_start.elapsed();
+        let output_empty = if use_scaled_scene {
+            self.scaled_scene.is_empty()
+        } else {
+            self.scene.is_empty()
+        };
 
         self.last_frame_diagnostics = FrameDiagnostics {
             timings: FrameTimings {
@@ -216,9 +224,13 @@ impl UiHost {
             },
             ui: self.ui.frame_stats(),
             surface_cache_len: self.surface_scenes.len(),
-            output_empty: self.scaled_scene.is_empty(),
+            output_empty,
         };
-        &self.scaled_scene
+        if use_scaled_scene {
+            &self.scaled_scene
+        } else {
+            &self.scene
+        }
     }
 
     /// Returns diagnostics from the most recent [`Self::prepare_frame`] call.
