@@ -14,7 +14,10 @@
 
 extern crate alloc;
 
+use core::cell::Cell;
+
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -110,6 +113,18 @@ impl DevtoolsSnapshot {
     pub fn element(&self, id: ElementId) -> Option<&ElementInspectionRow> {
         let index = self.element_offset(id)?;
         self.inspection.elements.get(index)
+    }
+
+    /// Returns the outline key that represents `id` in the element tree.
+    #[must_use]
+    pub fn outline_key_for_element(&self, id: ElementId) -> Option<OutlineNodeKey> {
+        self.element_offset(id).map(OutlineNodeKey::from)
+    }
+
+    /// Returns the element represented by `key` in the element outline.
+    #[must_use]
+    pub fn element_for_outline_key(&self, key: OutlineNodeKey) -> Option<ElementId> {
+        self.inspection.elements.get(key.index()).map(|row| row.id)
     }
 
     /// Returns the composition-layer row for `id`.
@@ -258,8 +273,8 @@ pub struct DevtoolsViewElements {
 ///
 /// This is a bootstrap UI for same-process devtools: it renders the retained
 /// element tree in an [`OutlineView`] and shows selected element and
-/// composition details beside it. Interactive selection wiring can build on the
-/// same snapshot model without changing the target UI.
+/// composition details beside it. Selecting an outline row rebuilds the details
+/// panel from the same snapshot.
 pub fn append_inspection_view(
     ui: &mut Ui,
     parent: ElementId,
@@ -273,11 +288,32 @@ pub fn append_inspection_view(
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
     }
-    let outline = ui.append(root, snapshot.element_outline_view().size(280.0, 420.0));
+
+    let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
+    let details_for_selection = Rc::clone(&details_slot);
+    let snapshot_for_selection = snapshot.clone();
+    let mut outline_view = snapshot.element_outline_view().size(280.0, 420.0);
+    if let Some(key) = selected.and_then(|id| snapshot.outline_key_for_element(id)) {
+        outline_view = outline_view.selected_key(key);
+    }
+    let outline = ui.append(
+        root,
+        outline_view.on_selection_changed(move |ui, event| {
+            let Some(details) = details_for_selection.get() else {
+                return;
+            };
+            clear_children(ui, details);
+            let selected = event
+                .selected_key
+                .and_then(|key| snapshot_for_selection.element_for_outline_key(key));
+            append_selected_element_details(ui, details, &snapshot_for_selection, selected);
+        }),
+    );
     let details = ui.append(
         root,
         Panel::column(6.0).layout(Layout::column(6.0).flex_grow(1.0)),
     );
+    details_slot.set(Some(details));
 
     append_selected_element_details(ui, details, snapshot, selected);
 
@@ -285,6 +321,16 @@ pub fn append_inspection_view(
         root,
         outline,
         details,
+    }
+}
+
+fn clear_children(ui: &mut Ui, parent: ElementId) {
+    let children = ui
+        .get(parent)
+        .map(|element| element.children().to_vec())
+        .unwrap_or_default();
+    for child in children {
+        ui.remove(child);
     }
 }
 
@@ -516,6 +562,20 @@ mod tests {
     }
 
     #[test]
+    fn element_outline_keys_map_back_to_elements() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let key = snapshot
+            .outline_key_for_element(child)
+            .expect("child should have an outline key");
+
+        assert_eq!(snapshot.element_for_outline_key(key), Some(child));
+    }
+
+    #[test]
     fn append_inspection_view_builds_outline_and_details() {
         let mut target = Ui::new();
         let target_root = target.root();
@@ -544,6 +604,50 @@ mod tests {
                 .map(overstory::Element::children)
                 .map(<[ElementId]>::len),
             Some(10)
+        );
+    }
+
+    #[test]
+    fn append_inspection_view_updates_details_when_outline_selection_changes() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let child = target.append(target_root, Panel::new());
+        let grandchild = target.append(child, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(child));
+        let child_key = snapshot
+            .outline_key_for_element(child)
+            .expect("child should have an outline key");
+        let grandchild_key = snapshot
+            .outline_key_for_element(grandchild)
+            .expect("grandchild should have an outline key");
+        let first_detail_before = inspector
+            .get(elements.details)
+            .and_then(|element| element.children().first().copied())
+            .expect("details should contain selected element text");
+
+        assert_eq!(
+            overstory::selected_outline_key(&inspector, elements.outline),
+            Some(child_key)
+        );
+        assert!(overstory::select_outline_key(
+            &mut inspector,
+            elements.outline,
+            grandchild_key
+        ));
+
+        let detail_children = inspector
+            .get(elements.details)
+            .map(overstory::Element::children)
+            .expect("details panel should still exist");
+        assert_eq!(detail_children.len(), 10);
+        assert_ne!(detail_children[0], first_detail_before);
+        assert_eq!(
+            overstory::selected_outline_key(&inspector, elements.outline),
+            Some(grandchild_key)
         );
     }
 }
