@@ -2531,6 +2531,83 @@ fn composition_layers_track_layout_geometry() {
 }
 
 #[test]
+fn inspection_snapshot_reports_elements_and_composition() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+    let button = ui.append(root, crate::Button::new("Inspect"));
+
+    ui.compute_layout(Size::new(240.0, 80.0));
+    let mut scene = Scene::new();
+    ui.paint(&mut scene);
+
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.root, root);
+    assert_eq!(snapshot.storage.live_elements, ui.len());
+    assert_eq!(
+        snapshot.storage.allocated_element_slots,
+        snapshot.storage.live_elements + snapshot.storage.free_element_slots
+    );
+    assert_eq!(snapshot.frame.elements, ui.len());
+
+    let root_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == root)
+        .expect("root row should be present");
+    assert!(root_row.children.contains(&button));
+    assert!(root_row.layer.is_some());
+    assert_eq!(
+        root_row.composition_policy,
+        Some(CompositionPolicy::InlineScene)
+    );
+
+    let button_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == button)
+        .expect("button row should be present");
+    assert_eq!(button_row.parent, Some(root));
+    assert_eq!(button_row.type_tag, Some(crate::TYPE_BUTTON));
+    assert!(button_row.has_widget_identity);
+    assert!(button_row.layer.is_some());
+
+    assert_eq!(
+        snapshot.composition.layers.len(),
+        snapshot.storage.composition_layers
+    );
+    assert!(!snapshot.composition.roots.is_empty());
+    assert_eq!(
+        snapshot.composition.surfaces.len(),
+        snapshot.storage.composition_surfaces
+    );
+    assert!(
+        snapshot
+            .composition
+            .layers
+            .iter()
+            .any(|row| row.element == Some(button))
+    );
+}
+
+#[test]
+fn inspection_snapshot_reports_timeline_counts() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let scoped = ui.append(root, crate::Panel::new());
+
+    ui.schedule_timeline_cue(10, 1);
+    ui.schedule_element_timeline_cue(scoped, 20, 2)
+        .expect("fresh element should accept scoped cue");
+
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.timeline.pending_cues, 2);
+    assert_eq!(snapshot.timeline.targets, 0);
+    assert_eq!(snapshot.timeline.active_tracks, 0);
+    assert_eq!(snapshot.timeline.pending_transitions, 0);
+}
+
+#[test]
 fn visual_transform_updates_composition_without_changing_layout_bounds() {
     let mut ui = Ui::new();
     let root = ui.root();

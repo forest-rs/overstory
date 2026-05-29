@@ -1,0 +1,138 @@
+// Copyright 2026 the Overstory Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use alloc::vec::Vec;
+
+use crate::inspection::{
+    CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
+    ElementInspectionRow, LayerInspectionId, SurfaceInspectionId, TimelineInspectionSnapshot,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+};
+
+use super::{Ui, collect_preorder};
+
+impl Ui {
+    /// Returns an owned snapshot of state useful to inspectors and devtools.
+    ///
+    /// The snapshot is intentionally detached from the live UI: callers can
+    /// render or transmit it without borrowing the target tree.
+    #[must_use]
+    pub fn inspection_snapshot(&self) -> UiInspectionSnapshot {
+        UiInspectionSnapshot {
+            root: self.root(),
+            elements: self.element_inspection_rows(),
+            composition: self.composition_inspection_snapshot(),
+            storage: self.storage_inspection_snapshot(),
+            timeline: self.timeline_inspection_snapshot(),
+            frame: self.frame_stats(),
+        }
+    }
+
+    fn element_inspection_rows(&self) -> Vec<ElementInspectionRow> {
+        collect_preorder(self, self.root())
+            .into_iter()
+            .filter_map(|id| {
+                let element = self.get(id)?;
+                Some(ElementInspectionRow {
+                    id,
+                    parent: element.parent(),
+                    children: element.children().to_vec(),
+                    templated_parent: element.templated_parent(),
+                    type_tag: element.type_tag(),
+                    part_tag: element.part_tag(),
+                    classes: element.classes().to_vec(),
+                    pseudos: element.pseudos().to_vec(),
+                    has_widget_identity: element.has_widget_identity(),
+                    bounds: self.effective_bounds(id),
+                    layer: self
+                        .composition
+                        .layer_for(id)
+                        .map(LayerInspectionId::from_layer),
+                    surface: self
+                        .composition
+                        .surface_for(id)
+                        .map(SurfaceInspectionId::from_surface),
+                    composition_policy: self.composition.policy_for(id),
+                })
+            })
+            .collect()
+    }
+
+    fn composition_inspection_snapshot(&self) -> CompositionInspectionSnapshot {
+        let layers = self.composition.layers();
+        let roots = layers.roots();
+        let mut rows = Vec::with_capacity(layers.len());
+        for root in roots.iter().copied() {
+            self.push_composition_layer_rows(root, &mut rows);
+        }
+
+        CompositionInspectionSnapshot {
+            roots: roots
+                .into_iter()
+                .map(LayerInspectionId::from_layer)
+                .collect(),
+            layers: rows,
+            surfaces: self
+                .composition
+                .surfaces()
+                .map(|surface| SurfaceInspectionId::from_surface(surface.surface()))
+                .collect(),
+            updated_surfaces: self
+                .composition
+                .surface_updates()
+                .map(|surface| SurfaceInspectionId::from_surface(surface.surface()))
+                .collect(),
+            changes: CompositionChangeStats::from_changes(self.composition.last_changes()),
+        }
+    }
+
+    fn push_composition_layer_rows(
+        &self,
+        layer: subduction_core::layer::LayerId,
+        rows: &mut Vec<CompositionLayerInspectionRow>,
+    ) {
+        let layers = self.composition.layers();
+        let element = self.composition.element_for_layer(layer);
+        rows.push(CompositionLayerInspectionRow {
+            id: LayerInspectionId::from_layer(layer),
+            parent: layers.parent(layer).map(LayerInspectionId::from_layer),
+            children: layers
+                .children(layer)
+                .map(LayerInspectionId::from_layer)
+                .collect(),
+            element,
+            policy: element.and_then(|id| self.composition.policy_for(id)),
+            surface: layers.content(layer).map(SurfaceInspectionId::from_surface),
+            bounds: layers.bounds(layer),
+            local_opacity: layers.local_opacity(layer),
+            effective_opacity: layers.effective_opacity(layer),
+            hidden: layers.flags(layer).hidden,
+            effectively_hidden: layers.effective_hidden(layer),
+            has_clip: layers.clip(layer).is_some(),
+        });
+        for child in layers.children(layer) {
+            self.push_composition_layer_rows(child, rows);
+        }
+    }
+
+    fn storage_inspection_snapshot(&self) -> UiStorageInspectionSnapshot {
+        let live_elements = self.len();
+        let free_element_slots = self.elements.free_len();
+        UiStorageInspectionSnapshot {
+            live_elements,
+            free_element_slots,
+            allocated_element_slots: live_elements + free_element_slots,
+            composition_layers: self.composition.layers().len(),
+            composition_surfaces: self.composition.surfaces().count(),
+        }
+    }
+
+    fn timeline_inspection_snapshot(&self) -> TimelineInspectionSnapshot {
+        TimelineInspectionSnapshot {
+            targets: self.timeline.target_count(),
+            active_tracks: self.timeline.active_track_count(),
+            pending_transitions: self.timeline.pending_transition_count(),
+            pending_cues: self.timeline.pending_cue_count(),
+        }
+    }
+}

@@ -57,6 +57,7 @@ use crate::timer_runtime::TimerRuntime;
 
 mod bindings;
 mod events;
+mod inspection;
 mod layout;
 mod overlays;
 mod paint;

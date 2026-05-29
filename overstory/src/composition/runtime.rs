@@ -220,6 +220,11 @@ impl CompositionRuntime {
         self.elements.get(id).and_then(|entry| entry.surface)
     }
 
+    /// Returns the composition policy corresponding to `id`.
+    pub(crate) fn policy_for(&self, id: ElementId) -> Option<CompositionPolicy> {
+        self.elements.get(id).map(|entry| entry.policy)
+    }
+
     /// Returns the Overstory-owned scene surface corresponding to `id`.
     pub(crate) fn owned_scene_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         let entry = self.elements.get(id)?;
@@ -247,7 +252,6 @@ impl CompositionRuntime {
     }
 
     /// Returns the element corresponding to `layer`.
-    #[cfg(test)]
     pub(crate) fn element_for_layer(&self, layer: LayerId) -> Option<ElementId> {
         self.layer_to_element.get(&layer).copied()
     }

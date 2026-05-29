@@ -614,6 +614,30 @@ impl TimelineRuntime {
         min_deadline(track_deadline, cue_deadline)
     }
 
+    /// Returns the number of retained timeline targets.
+    #[must_use]
+    pub(crate) fn target_count(&self) -> usize {
+        self.targets.len()
+    }
+
+    /// Returns the number of active timeline tracks.
+    #[must_use]
+    pub(crate) fn active_track_count(&self) -> usize {
+        self.tracks.len()
+    }
+
+    /// Returns the number of pending transition specs.
+    #[must_use]
+    pub(crate) fn pending_transition_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Returns the number of pending timeline cues.
+    #[must_use]
+    pub(crate) fn pending_cue_count(&self) -> usize {
+        self.cues.len()
+    }
+
     /// Removes all runtime state for `element`.
     pub(crate) fn remove_element(&mut self, element: ElementId) {
         self.targets.retain(|key, _| key.element() != element);
