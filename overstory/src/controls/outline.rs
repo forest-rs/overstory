@@ -1089,7 +1089,7 @@ impl Widget for OutlineItemWidget {
             return;
         };
         let _ = select_outline_key(ctx, outline, self.info.key);
-        if self.info.has_children {
+        if self.info.has_children && click_source_is_disclosure(ctx, item, event.source) {
             let _ = toggle_outline_key(ctx, outline, self.info.key);
         }
         let _ = ctx.set_pointer_focus(Some(outline));
@@ -1114,6 +1114,32 @@ impl Widget for OutlineItemWidget {
             _ => false,
         }
     }
+}
+
+fn click_source_is_disclosure(
+    ctx: &WidgetEventContext<'_>,
+    item: ElementId,
+    source: ElementId,
+) -> bool {
+    let Some(disclosure) = ctx.slot(item, SLOT_OUTLINE_ITEM_DISCLOSURE) else {
+        return false;
+    };
+    is_descendant_or_self(ctx, source, disclosure)
+}
+
+fn is_descendant_or_self(
+    ctx: &WidgetEventContext<'_>,
+    descendant: ElementId,
+    ancestor: ElementId,
+) -> bool {
+    let mut current = Some(descendant);
+    while let Some(id) = current {
+        if id == ancestor {
+            return true;
+        }
+        current = ctx.get(id).and_then(Element::parent);
+    }
+    false
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1488,16 +1514,19 @@ mod tests {
     }
 
     #[test]
-    fn clicking_parent_toggles_expansion_and_selection() {
+    fn clicking_disclosure_toggles_expansion_and_selection() {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline());
         realize(&mut ui);
 
         let parent = realized_outline_item(&ui, outline, 0).unwrap();
+        let disclosure = ui
+            .slot(parent, SLOT_OUTLINE_ITEM_DISCLOSURE)
+            .expect("parent should expose disclosure slot");
         assert!(realized_outline_item(&ui, outline, 1).is_none());
 
-        ui.synthesize_click(parent, Point::ZERO);
+        ui.synthesize_click(disclosure, Point::ZERO);
         realize(&mut ui);
 
         assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
@@ -1506,9 +1535,49 @@ mod tests {
         assert!(ui.get(parent).unwrap().pseudos().contains(&PSEUDO_SELECTED));
 
         let parent = realized_outline_item(&ui, outline, 0).unwrap();
+        let disclosure = ui
+            .slot(parent, SLOT_OUTLINE_ITEM_DISCLOSURE)
+            .expect("parent should expose disclosure slot");
+        ui.synthesize_click(disclosure, Point::ZERO);
+        realize(&mut ui);
+
+        assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
+        assert!(realized_outline_item(&ui, outline, 1).is_none());
+    }
+
+    #[test]
+    fn clicking_outline_label_selects_without_toggling_expansion() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(root, test_outline());
+        realize(&mut ui);
+
+        let parent = realized_outline_item(&ui, outline, 0).unwrap();
+        let label = ui
+            .slot(parent, SLOT_OUTLINE_ITEM_LABEL)
+            .expect("parent should expose label slot");
+
+        ui.synthesize_click(label, Point::ZERO);
+        realize(&mut ui);
+
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
+        assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
+        assert!(realized_outline_item(&ui, outline, 1).is_none());
+    }
+
+    #[test]
+    fn clicking_outline_row_background_selects_without_toggling_expansion() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(root, test_outline());
+        realize(&mut ui);
+
+        let parent = realized_outline_item(&ui, outline, 0).unwrap();
+
         ui.synthesize_click(parent, Point::ZERO);
         realize(&mut ui);
 
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
         assert!(realized_outline_item(&ui, outline, 1).is_none());
     }
