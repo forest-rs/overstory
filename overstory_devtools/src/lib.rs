@@ -30,7 +30,7 @@ use overstory::{
     TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
     TYPE_PROGRESS_BAR, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, TYPE_SELECT,
     TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
-    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, theme,
+    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, select_outline_key, theme,
 };
 
 mod session;
@@ -275,6 +275,14 @@ pub struct DevtoolsViewElements {
     pub details: ElementId,
 }
 
+const MAX_RELATIONSHIP_CHILDREN: usize = 8;
+
+#[derive(Clone, Debug)]
+struct DetailActions {
+    session: DevtoolsSessionHandle,
+    outline: ElementId,
+}
+
 /// Appends a simple inspector view for `snapshot`.
 ///
 /// This is a bootstrap UI for same-process devtools: it renders the retained
@@ -330,11 +338,16 @@ pub fn append_session_view(
             clear_children(ui, details);
             session_for_selection.with_mut(|session| {
                 let _ = session.select_outline_key(event.selected_key);
+                let actions = DetailActions {
+                    session: session_for_selection.clone(),
+                    outline: event.outline,
+                };
                 append_selected_element_details(
                     ui,
                     details,
                     session.snapshot(),
                     session.selected_element(),
+                    Some(&actions),
                 );
             });
         }),
@@ -345,12 +358,17 @@ pub fn append_session_view(
     );
     details_slot.set(Some(details));
 
+    let actions = DetailActions {
+        session: session.clone(),
+        outline,
+    };
     session.with(|session| {
         append_selected_element_details(
             ui,
             details,
             session.snapshot(),
             session.selected_element(),
+            Some(&actions),
         );
     });
 
@@ -432,6 +450,7 @@ fn append_selected_element_details(
     parent: ElementId,
     snapshot: &DevtoolsSnapshot,
     selected: Option<ElementId>,
+    actions: Option<&DetailActions>,
 ) {
     let selected = selected.unwrap_or(snapshot.inspection.root);
     let Some(row) = snapshot.element(selected) else {
@@ -456,7 +475,7 @@ fn append_selected_element_details(
     append_detail_row(ui, identity, "Type tag", &optional_debug(row.type_tag));
 
     let tree = append_detail_section(ui, parent, "Tree");
-    append_detail_row(ui, tree, "Parent", &optional_element_id(row.parent));
+    append_element_relation_row(ui, tree, "Parent", row.parent, snapshot, actions);
     append_detail_row(ui, tree, "Children", &format!("{}", row.children.len()));
     append_detail_row(
         ui,
@@ -464,11 +483,37 @@ fn append_selected_element_details(
         "Child ids",
         &element_list_summary(row.children.as_slice()),
     );
-    append_detail_row(
+    for (index, child) in row
+        .children
+        .iter()
+        .take(MAX_RELATIONSHIP_CHILDREN)
+        .copied()
+        .enumerate()
+    {
+        append_element_relation_row(
+            ui,
+            tree,
+            &format!("Child {index}"),
+            Some(child),
+            snapshot,
+            actions,
+        );
+    }
+    if row.children.len() > MAX_RELATIONSHIP_CHILDREN {
+        append_detail_row(
+            ui,
+            tree,
+            "More children",
+            &format!("{}", row.children.len() - MAX_RELATIONSHIP_CHILDREN),
+        );
+    }
+    append_element_relation_row(
         ui,
         tree,
         "Template owner",
-        &optional_element_id(row.templated_parent),
+        row.templated_parent,
+        snapshot,
+        actions,
     );
 
     let template = append_detail_section(ui, parent, "Template");
@@ -546,6 +591,36 @@ fn append_selected_element_details(
         );
         append_detail_row(ui, composition, "Clip", bool_summary(layer.has_clip));
     }
+}
+
+fn append_element_relation_row(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    target: Option<ElementId>,
+    snapshot: &DevtoolsSnapshot,
+    actions: Option<&DetailActions>,
+) -> ElementId {
+    let row = append_detail_row(ui, parent, label, &optional_element_id(target));
+    let Some(target) = target else {
+        return row;
+    };
+    if snapshot.outline_key_for_element(target).is_none() {
+        return row;
+    }
+    let Some(actions) = actions.cloned() else {
+        return row;
+    };
+    ui.on_click(row, move |ui, event| {
+        let key = actions
+            .session
+            .with(|session| session.snapshot().outline_key_for_element(target));
+        if let Some(key) = key {
+            let _ = select_outline_key(ui, actions.outline, key);
+            event.mark_handled();
+        }
+    });
+    row
 }
 
 fn append_detail_section(ui: &mut Ui, parent: ElementId, title: &str) -> ElementId {
@@ -883,7 +958,7 @@ mod tests {
             overstory::selected_outline_key(&inspector, elements.outline),
             Some(child_key)
         );
-        assert!(overstory::select_outline_key(
+        assert!(select_outline_key(
             &mut inspector,
             elements.outline,
             grandchild_key
@@ -919,7 +994,7 @@ mod tests {
         let root = inspector.root();
         let elements = append_session_view(&mut inspector, root, session.clone());
 
-        assert!(overstory::select_outline_key(
+        assert!(select_outline_key(
             &mut inspector,
             elements.outline,
             grandchild_key
@@ -927,6 +1002,43 @@ mod tests {
         assert_eq!(
             session.with(DevtoolsSession::selected_element),
             Some(grandchild)
+        );
+    }
+
+    #[test]
+    fn selected_element_relationship_rows_select_elements() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let child = target.append(target_root, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&target);
+        let root_key = snapshot
+            .outline_key_for_element(target_root)
+            .expect("root should have an outline key");
+        let session = DevtoolsSessionHandle::new(
+            DevtoolsSession::new(snapshot).with_selected_element(Some(child)),
+        );
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_session_view(&mut inspector, root, session.clone());
+        let tree_section = inspector
+            .get(elements.details)
+            .and_then(|details| details.children().get(1).copied())
+            .expect("details should contain a tree section");
+        let parent_row = inspector
+            .get(tree_section)
+            .and_then(|tree| tree.children().get(1).copied())
+            .expect("tree section should contain a parent relationship row");
+
+        inspector.synthesize_click(parent_row, overstory::Rect::ZERO.center());
+
+        assert_eq!(
+            session.with(DevtoolsSession::selected_element),
+            Some(target_root)
+        );
+        assert_eq!(
+            overstory::selected_outline_key(&inspector, elements.outline),
+            Some(root_key)
         );
     }
 }
