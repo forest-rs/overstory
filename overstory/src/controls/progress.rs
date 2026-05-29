@@ -25,7 +25,9 @@ use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `ProgressBar`.
 pub const TYPE_PROGRESS_BAR: TypeTag = TypeTag(7);
@@ -49,10 +51,8 @@ pub struct ProgressBar {
     value: f64,
     min: f64,
     max: f64,
-    width: f32,
-    height: f32,
     show_label: bool,
-    state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
 }
 
@@ -71,14 +71,15 @@ impl ProgressBar {
     /// Starts a new determinate progress bar.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_layout(progress_layout(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             value: 0.0,
             min: 0.0,
             max: 1.0,
-            width: DEFAULT_WIDTH,
-            height: DEFAULT_HEIGHT,
             show_label: true,
-            state: ControlState::interactive().focusable(false),
+            element,
             template: None,
         }
     }
@@ -107,8 +108,7 @@ impl ProgressBar {
     /// Sets the fixed logical size.
     #[must_use]
     pub fn size(mut self, width: f32, height: f32) -> Self {
-        self.width = width.max(1.0);
-        self.height = height.max(1.0);
+        self.element.set_layout(progress_layout(width, height));
         self
     }
 
@@ -123,7 +123,15 @@ impl ProgressBar {
     /// are still visible, but style rules can use `:disabled` to dim them.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
+        self
+    }
+
+    /// Sets the shared construction-time control state.
+    #[must_use]
+    pub fn control_state(mut self, state: ControlState) -> Self {
+        self.element.set_control_state(state);
         self
     }
 
@@ -155,20 +163,26 @@ impl AppendSpec for ProgressBar {
         let max_prop = ui.properties().maximum;
         ui.set_local(id, min_prop, self.min);
         ui.set_local(id, max_prop, self.max);
-        ui.set_layout(
-            id,
-            Layout::row(0.0)
-                .relative()
-                .justify_center()
-                .align_center()
-                .logical_size(self.width, self.height),
-        );
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         ui.expand_default_template(id);
         set_progress_label_visible(ui, id, self.show_label);
         set_progress_value(ui, id, self.value);
         id
     }
+}
+
+impl ElementSpec for ProgressBar {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
+    }
+}
+
+fn progress_layout(width: f32, height: f32) -> Layout {
+    Layout::row(0.0)
+        .relative()
+        .justify_center()
+        .align_center()
+        .logical_size(width.max(1.0), height.max(1.0))
 }
 
 /// Per-element widget for `ProgressBar`.

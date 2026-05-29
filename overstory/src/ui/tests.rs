@@ -3618,6 +3618,29 @@ fn text_builder_attaches_classes() {
     assert!(ui.get(text).unwrap().classes().contains(&ClassId(42)));
 }
 
+#[test]
+fn element_spec_ext_applies_shared_settings() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(
+        root,
+        crate::Button::new("Run")
+            .class(ClassId(77))
+            .layout(Layout::new().logical_size(80.0, 30.0))
+            .disabled(),
+    );
+
+    assert!(ui.get(button).unwrap().classes().contains(&ClassId(77)));
+    assert!(!ui.is_enabled(button));
+    assert!(!ui.is_focusable(button));
+    assert_eq!(
+        ui.effective_layout(button),
+        Layout::new().logical_size(80.0, 30.0)
+    );
+}
+
 fn slider_value(ui: &Ui, slider: ElementId) -> Option<f64> {
     ui.get(slider)
         .and_then(|el| el.get_local_value(ui.properties().value).copied())

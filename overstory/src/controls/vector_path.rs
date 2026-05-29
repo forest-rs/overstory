@@ -18,7 +18,6 @@
 use alloc::boxed::Box;
 
 use kurbo::Affine;
-use smallvec::SmallVec;
 use understory_box_tree::NodeId;
 use understory_presentation::{
     PathFill, PathPaintOrder, PathPrimitive, PathStroke, PresentationStore,
@@ -30,7 +29,7 @@ use crate::behavior::PresentContext;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for vector path elements.
 pub const TYPE_VECTOR_PATH: TypeTag = TypeTag(19);
@@ -39,8 +38,7 @@ pub const TYPE_VECTOR_PATH: TypeTag = TypeTag(19);
 #[derive(Clone, Debug)]
 pub struct VectorPath {
     primitive: PathPrimitive,
-    layout: Option<Layout>,
-    classes: SmallVec<[ClassId; 1]>,
+    element: ElementConfig,
 }
 
 impl VectorPath {
@@ -49,8 +47,7 @@ impl VectorPath {
     pub fn from_primitive(primitive: PathPrimitive) -> Self {
         Self {
             primitive,
-            layout: None,
-            classes: SmallVec::new(),
+            element: ElementConfig::default(),
         }
     }
 
@@ -91,14 +88,14 @@ impl VectorPath {
     /// Replaces the element's layout contribution.
     #[must_use]
     pub fn layout(mut self, layout: impl Into<Layout>) -> Self {
-        self.layout = Some(layout.into());
+        self.element.set_layout(layout);
         self
     }
 
     /// Attaches a class id to the resulting element.
     #[must_use]
     pub fn class(mut self, class: ClassId) -> Self {
-        self.classes.push(class);
+        self.element.add_class(class);
         self
     }
 }
@@ -111,13 +108,14 @@ impl AppendSpec for VectorPath {
                 primitive: self.primitive,
             }),
         );
-        if let Some(layout) = self.layout {
-            ui.set_layout(id, layout);
-        }
-        for class in self.classes {
-            ui.add_class(id, class);
-        }
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for VectorPath {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

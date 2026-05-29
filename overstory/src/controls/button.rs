@@ -44,7 +44,7 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `Button`.
 pub const TYPE_BUTTON: TypeTag = TypeTag(2);
@@ -61,7 +61,7 @@ pub struct Button {
     content: String,
     font_size: Option<f64>,
     foreground: Option<Brush>,
-    state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
     on_click: Option<BoxedClickHandler>,
     on_key: Option<BoxedKeyHandler>,
@@ -82,11 +82,13 @@ impl Button {
     /// Starts a new `Button` builder with the given label.
     #[must_use]
     pub fn new(content: impl Into<String>) -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             content: content.into(),
             font_size: None,
             foreground: None,
-            state: ControlState::interactive(),
+            element,
             template: None,
             on_click: None,
             on_key: None,
@@ -114,7 +116,8 @@ impl Button {
     /// Default `true`.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
@@ -123,7 +126,8 @@ impl Button {
     /// activation handlers, and carry `:disabled` for styling.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -136,7 +140,7 @@ impl Button {
     /// Sets the shared construction-time control state.
     #[must_use]
     pub fn control_state(mut self, state: ControlState) -> Self {
-        self.state = state;
+        self.element.set_control_state(state);
         self
     }
 
@@ -195,7 +199,7 @@ impl AppendSpec for Button {
         if let Some(brush) = self.foreground {
             ui.set_local(id, fg_prop, brush);
         }
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         if let Some(handler) = self.on_click {
             let mut handler = handler;
             ui.on_click(id, move |ui, event| {
@@ -208,6 +212,12 @@ impl AppendSpec for Button {
             ui.on_key(id, handler);
         }
         id
+    }
+}
+
+impl ElementSpec for Button {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

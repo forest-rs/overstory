@@ -31,7 +31,9 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `CheckBox`.
 pub const TYPE_CHECK_BOX: TypeTag = TypeTag(8);
@@ -56,7 +58,7 @@ pub struct CheckBox {
     content: String,
     initial_checked: bool,
     font_size: Option<f64>,
-    state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
 }
 
@@ -73,11 +75,13 @@ impl CheckBox {
     /// Starts a new labeled checkbox.
     #[must_use]
     pub fn new(content: impl Into<String>) -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             content: content.into(),
             initial_checked: false,
             font_size: None,
-            state: ControlState::interactive(),
+            element,
             template: None,
         }
     }
@@ -101,14 +105,16 @@ impl CheckBox {
     /// Sets whether the checkbox participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the checkbox starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -116,6 +122,13 @@ impl CheckBox {
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
+    }
+
+    /// Sets the shared construction-time control state.
+    #[must_use]
+    pub fn control_state(mut self, state: ControlState) -> Self {
+        self.element.set_control_state(state);
+        self
     }
 
     /// Overrides the visual template used when this checkbox is inserted.
@@ -143,9 +156,15 @@ impl AppendSpec for CheckBox {
         if let Some(font_size) = self.font_size {
             ui.set_local(id, font_size_prop, font_size);
         }
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         set_check_box_checked(ui, id, self.initial_checked);
         id
+    }
+}
+
+impl ElementSpec for CheckBox {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

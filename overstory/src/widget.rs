@@ -45,9 +45,10 @@ use accesskit::{ActionRequest, Node, NodeId as AccessNodeId, Role};
 use alloc::vec::Vec;
 use cursor_icon::CursorIcon;
 use kurbo::{Size, Vec2};
+use smallvec::SmallVec;
 use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
-use understory_style::TypeTag;
+use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
@@ -59,8 +60,9 @@ use crate::event_runtime::{
     ClickEvent, DragEvent, FocusEvent, KeyEvent, PointerRoutedEvent, ScrollEvent,
 };
 use crate::generic::present_surface;
+use crate::layouts::Layout;
 use crate::template::Template;
-use crate::ui::Ui;
+use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
 /// (an anonymous container, e.g. the root or a layout-only panel).
@@ -478,3 +480,142 @@ pub trait AppendSpec {
     /// the resulting element id. Called by [`Ui::append`].
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId;
 }
+
+/// Common construction-time element settings shared by append specs.
+///
+/// `ElementConfig` stores only settings that belong to the resulting element
+/// regardless of its concrete widget: layout contribution, style classes, and
+/// optional interactive control state. Control-specific values still live on
+/// the control builder.
+#[derive(Clone, Debug, Default)]
+pub struct ElementConfig {
+    layout: Option<Layout>,
+    classes: SmallVec<[ClassId; 1]>,
+    control_state: Option<ControlState>,
+}
+
+impl ElementConfig {
+    /// Replaces the layout contribution applied after insertion.
+    pub fn set_layout(&mut self, layout: impl Into<Layout>) {
+        self.layout = Some(layout.into());
+    }
+
+    /// Returns the configured layout contribution, if any.
+    #[must_use]
+    pub fn layout(&self) -> Option<&Layout> {
+        self.layout.as_ref()
+    }
+
+    /// Adds a style class to the resulting element.
+    pub fn add_class(&mut self, class: ClassId) {
+        self.classes.push(class);
+    }
+
+    /// Returns style classes applied to the resulting element.
+    #[must_use]
+    pub fn classes(&self) -> &[ClassId] {
+        &self.classes
+    }
+
+    /// Sets the shared interactive control state applied after insertion.
+    pub fn set_control_state(&mut self, state: ControlState) {
+        self.control_state = Some(state);
+    }
+
+    /// Returns the configured interactive control state, if any.
+    #[must_use]
+    pub const fn control_state(&self) -> Option<ControlState> {
+        self.control_state
+    }
+
+    /// Mutates the configured control state, inserting the interactive default
+    /// when the spec did not explicitly carry control state yet.
+    pub fn update_control_state(&mut self, f: impl FnOnce(ControlState) -> ControlState) {
+        let state = self.control_state.unwrap_or_else(ControlState::interactive);
+        self.control_state = Some(f(state));
+    }
+
+    /// Applies every configured setting to `id`.
+    pub fn apply_to(self, ui: &mut Ui, id: ElementId) {
+        if let Some(layout) = self.layout {
+            ui.set_layout(id, layout);
+        }
+        for class in self.classes {
+            ui.add_class(id, class);
+        }
+        if let Some(state) = self.control_state {
+            ui.set_control_state(id, state);
+        }
+    }
+}
+
+/// Append specs that expose the shared element authoring surface.
+///
+/// Implement this for builders that want the common extension methods from
+/// [`ElementSpecExt`]. The trait is deliberately about construction-time
+/// element settings, not widget behavior.
+pub trait ElementSpec: AppendSpec {
+    /// Returns mutable access to the spec's shared element config.
+    fn element_config_mut(&mut self) -> &mut ElementConfig;
+}
+
+/// Shared builder methods available to element specs.
+///
+/// Import this trait, or use `overstory::prelude::*`, to get a uniform
+/// `.class(...)`, `.layout(...)`, `.enabled(...)`, `.disabled()`, and
+/// `.focusable(...)` surface on specs that implement [`ElementSpec`].
+pub trait ElementSpecExt: ElementSpec + Sized {
+    /// Adds a style class to the resulting element.
+    #[must_use]
+    fn class(mut self, class: ClassId) -> Self {
+        self.element_config_mut().add_class(class);
+        self
+    }
+
+    /// Adds several style classes to the resulting element.
+    #[must_use]
+    fn classes(mut self, classes: impl IntoIterator<Item = ClassId>) -> Self {
+        for class in classes {
+            self.element_config_mut().add_class(class);
+        }
+        self
+    }
+
+    /// Replaces the resulting element's layout contribution.
+    #[must_use]
+    fn layout(mut self, layout: impl Into<Layout>) -> Self {
+        self.element_config_mut().set_layout(layout);
+        self
+    }
+
+    /// Sets the resulting element's shared interactive control state.
+    #[must_use]
+    fn control_state(mut self, state: ControlState) -> Self {
+        self.element_config_mut().set_control_state(state);
+        self
+    }
+
+    /// Sets whether the resulting element starts enabled.
+    #[must_use]
+    fn enabled(mut self, enabled: bool) -> Self {
+        self.element_config_mut()
+            .update_control_state(|state| state.enabled(enabled));
+        self
+    }
+
+    /// Convenience for [`Self::enabled`] with `false`.
+    #[must_use]
+    fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Sets whether the resulting element participates in focus traversal.
+    #[must_use]
+    fn focusable(mut self, focusable: bool) -> Self {
+        self.element_config_mut()
+            .update_control_state(|state| state.focusable(focusable));
+        self
+    }
+}
+
+impl<T> ElementSpecExt for T where T: ElementSpec {}

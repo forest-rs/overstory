@@ -30,7 +30,9 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `ToggleSwitch`.
 pub const TYPE_TOGGLE: TypeTag = TypeTag(3);
@@ -43,7 +45,7 @@ pub const SLOT_TOGGLE_THUMB: TemplateSlot =
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
     initial_checked: bool,
-    state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
 }
 
@@ -59,9 +61,11 @@ impl ToggleSwitch {
     /// Starts a new `ToggleSwitch` builder, off by default.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             initial_checked: false,
-            state: ControlState::interactive(),
+            element,
             template: None,
         }
     }
@@ -77,7 +81,8 @@ impl ToggleSwitch {
     /// Default `true`.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
@@ -86,7 +91,8 @@ impl ToggleSwitch {
     /// styling.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -99,7 +105,7 @@ impl ToggleSwitch {
     /// Sets the shared construction-time control state.
     #[must_use]
     pub fn control_state(mut self, state: ControlState) -> Self {
-        self.state = state;
+        self.element.set_control_state(state);
         self
     }
 
@@ -127,13 +133,19 @@ impl AppendSpec for ToggleSwitch {
             None => Box::new(ToggleWidget),
         };
         let id = ui.append_widget(parent, widget);
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         if self.initial_checked {
             let is_checked_prop = ui.properties().is_checked;
             ui.set_local(id, is_checked_prop, true);
             ui.add_pseudo(id, PSEUDO_CHECKED);
         }
         id
+    }
+}
+
+impl ElementSpec for ToggleSwitch {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

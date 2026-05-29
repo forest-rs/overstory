@@ -180,7 +180,21 @@ pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, Ui};
-pub use widget::{AppendSpec, TYPE_GENERIC, Widget};
+pub use widget::{AppendSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GENERIC, Widget};
+
+/// Common imports for authoring Overstory UI trees.
+///
+/// The prelude is intentionally app-author focused: controls, layout/value
+/// types, the scoped child builder, and extension traits that make shared
+/// element configuration methods available.
+pub mod prelude {
+    pub use crate::{
+        AppendSpec, Button, CheckBox, ChildUi, Color, CursorIcon, Divider, ElementId, ElementSpec,
+        ElementSpecExt, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar, ScrollArea,
+        ScrollBar, ScrollView, Select, Size, Slider, Spinner, Splitter, Text, TextInput,
+        TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+    };
+}
 
 // Re-export the responder's `Phase` so callers can read
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending

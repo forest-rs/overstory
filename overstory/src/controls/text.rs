@@ -20,7 +20,6 @@
 
 use alloc::boxed::Box;
 use alloc::string::String;
-use alloc::vec::Vec;
 
 use kurbo::Size;
 use peniko::Brush;
@@ -34,7 +33,7 @@ use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, Widget
 use crate::element::{Element, ElementId};
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Text`.
 pub const TYPE_TEXT: TypeTag = TypeTag(1);
@@ -48,7 +47,7 @@ pub struct Text {
     font_size: Option<f64>,
     foreground: Option<Brush>,
     wrap_mode: Option<TextWrapMode>,
-    classes: Vec<ClassId>,
+    element: ElementConfig,
 }
 
 impl core::fmt::Debug for Text {
@@ -68,7 +67,7 @@ impl Text {
             font_size: None,
             foreground: None,
             wrap_mode: None,
-            classes: Vec::new(),
+            element: ElementConfig::default(),
         }
     }
 
@@ -110,7 +109,7 @@ impl Text {
     /// values into each label.
     #[must_use]
     pub fn class(mut self, class: ClassId) -> Self {
-        self.classes.push(class);
+        self.element.add_class(class);
         self
     }
 }
@@ -138,10 +137,14 @@ impl AppendSpec for Text {
         if let Some(wrap_mode) = self.wrap_mode {
             ui.set_local(id, wrap_mode_prop, wrap_mode);
         }
-        for class in self.classes {
-            ui.add_class(id, class);
-        }
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Text {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

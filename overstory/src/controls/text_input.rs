@@ -33,7 +33,9 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `TextInput`.
 pub const TYPE_TEXT_INPUT: TypeTag = TypeTag(9);
@@ -62,10 +64,9 @@ const DEFAULT_FONT_SIZE: f32 = 15.0;
 pub struct TextInput {
     text: String,
     placeholder: Option<String>,
-    width: f32,
     font_size: Option<f64>,
     read_only: bool,
-    state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
 }
 
@@ -82,13 +83,15 @@ impl TextInput {
     /// Starts a new empty text input.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_layout(text_input_layout(TEXT_INPUT_WIDTH));
+        element.set_control_state(ControlState::interactive());
         Self {
             text: String::new(),
             placeholder: None,
-            width: TEXT_INPUT_WIDTH,
             font_size: None,
             read_only: false,
-            state: ControlState::interactive(),
+            element,
             template: None,
         }
     }
@@ -110,7 +113,7 @@ impl TextInput {
     /// Sets the fixed logical width.
     #[must_use]
     pub fn width(mut self, width: f32) -> Self {
-        self.width = width.max(1.0);
+        self.element.set_layout(text_input_layout(width));
         self
     }
 
@@ -136,14 +139,16 @@ impl TextInput {
     /// Sets whether the input participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the input starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -151,6 +156,13 @@ impl TextInput {
     #[must_use]
     pub fn disabled(self) -> Self {
         self.enabled(false)
+    }
+
+    /// Sets the shared construction-time control state.
+    #[must_use]
+    pub fn control_state(mut self, state: ControlState) -> Self {
+        self.element.set_control_state(state);
+        self
     }
 
     /// Overrides the visual template used when this input is inserted.
@@ -177,10 +189,9 @@ impl AppendSpec for TextInput {
         let Self {
             text,
             placeholder,
-            width,
             font_size,
             read_only,
-            state,
+            element,
             template,
         } = self;
         let mut edit = TextInputEditState::new(
@@ -204,18 +215,24 @@ impl AppendSpec for TextInput {
         if let Some(font_size) = font_size {
             ui.set_local(id, font_size_prop, font_size);
         }
-        ui.set_layout(
-            id,
-            Layout::new()
-                .relative()
-                .logical_size(width, TEXT_INPUT_HEIGHT),
-        );
-        ui.set_control_state(id, state);
+        element.apply_to(ui, id);
         set_text_input_read_only(ui, id, read_only);
         ui.expand_default_template(id);
         ui.with_widget_mut(id, |widget, ui| widget.template_expanded(id, ui));
         id
     }
+}
+
+impl ElementSpec for TextInput {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
+    }
+}
+
+fn text_input_layout(width: f32) -> Layout {
+    Layout::new()
+        .relative()
+        .logical_size(width.max(1.0), TEXT_INPUT_HEIGHT)
 }
 
 /// Per-element widget for `TextInput`.

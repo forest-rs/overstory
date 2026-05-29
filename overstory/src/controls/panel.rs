@@ -23,19 +23,17 @@
 //!   letting `Panel` become a catch-all widget.
 
 use alloc::boxed::Box;
-use smallvec::SmallVec;
 use understory_style::{ClassId, TypeTag};
 
 use crate::element::{Element, ElementId};
 use crate::layouts::{self, Layout};
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, TYPE_GENERIC, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TYPE_GENERIC, Widget};
 
 /// Builder + spec for an anonymous container element.
 #[derive(Debug, Default)]
 pub struct Panel {
-    layout: Option<Layout>,
-    classes: SmallVec<[ClassId; 1]>,
+    element: ElementConfig,
 }
 
 impl Panel {
@@ -50,26 +48,20 @@ impl Panel {
     /// Shortcut for a horizontal flex row with the given gap.
     #[must_use]
     pub fn row(gap: f32) -> Self {
-        Self {
-            layout: Some(layouts::row_with_gap(gap)),
-            classes: SmallVec::new(),
-        }
+        Self::new().layout(layouts::row_with_gap(gap))
     }
 
     /// Shortcut for a vertical flex column with the given gap.
     #[must_use]
     pub fn column(gap: f32) -> Self {
-        Self {
-            layout: Some(layouts::column_with_gap(gap)),
-            classes: SmallVec::new(),
-        }
+        Self::new().layout(layouts::column_with_gap(gap))
     }
 
     /// Replaces the panel's layout style. Use this when the row /
     /// column shortcuts aren't enough.
     #[must_use]
     pub fn layout(mut self, layout: impl Into<Layout>) -> Self {
-        self.layout = Some(layout.into());
+        self.element.set_layout(layout);
         self
     }
 
@@ -78,24 +70,39 @@ impl Panel {
     /// container with the padding applied.
     #[must_use]
     pub fn padding(mut self, value: f32) -> Self {
-        let layout = self.layout.unwrap_or_else(Layout::flex).padding_all(value);
-        self.layout = Some(layout);
+        let layout = self
+            .element
+            .layout()
+            .cloned()
+            .unwrap_or_else(Layout::flex)
+            .padding_all(value);
+        self.element.set_layout(layout);
         self
     }
 
     /// Sets the cross-axis alignment to centered.
     #[must_use]
     pub fn align_center(mut self) -> Self {
-        let layout = self.layout.unwrap_or_default().align_center();
-        self.layout = Some(layout);
+        let layout = self
+            .element
+            .layout()
+            .cloned()
+            .unwrap_or_default()
+            .align_center();
+        self.element.set_layout(layout);
         self
     }
 
     /// Sets the main-axis justification to centered.
     #[must_use]
     pub fn justify_center(mut self) -> Self {
-        let layout = self.layout.unwrap_or_default().justify_center();
-        self.layout = Some(layout);
+        let layout = self
+            .element
+            .layout()
+            .cloned()
+            .unwrap_or_default()
+            .justify_center();
+        self.element.set_layout(layout);
         self
     }
 
@@ -103,7 +110,7 @@ impl Panel {
     /// keyed on this class will match.
     #[must_use]
     pub fn class(mut self, class: ClassId) -> Self {
-        self.classes.push(class);
+        self.element.add_class(class);
         self
     }
 }
@@ -111,13 +118,14 @@ impl Panel {
 impl AppendSpec for Panel {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(PanelWidget));
-        if let Some(layout) = self.layout {
-            ui.set_layout(id, layout);
-        }
-        for class in self.classes {
-            ui.add_class(id, class);
-        }
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Panel {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
