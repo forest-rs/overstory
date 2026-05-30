@@ -21,7 +21,7 @@ use understory_style::TypeTag;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Viewport`.
 pub const TYPE_VIEWPORT: TypeTag = TypeTag(17);
@@ -33,7 +33,7 @@ pub const TYPE_VIEWPORT: TypeTag = TypeTag(17);
 /// scrolling, panning, zooming, or compositor-backed behavior on top.
 #[derive(Clone, Debug, Default)]
 pub struct Viewport {
-    layout: Option<Layout>,
+    element: ElementConfig,
     cursor_icon: Option<CursorIcon>,
 }
 
@@ -47,7 +47,7 @@ impl Viewport {
     /// Replaces the viewport's layout style.
     #[must_use]
     pub fn layout(mut self, layout: impl Into<Layout>) -> Self {
-        self.layout = Some(layout.into());
+        self.element.set_layout(layout);
         self
     }
 
@@ -68,10 +68,14 @@ impl AppendSpec for Viewport {
                 cursor_icon: self.cursor_icon,
             }),
         );
-        if let Some(layout) = self.layout {
-            ui.set_layout(id, layout);
-        }
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Viewport {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

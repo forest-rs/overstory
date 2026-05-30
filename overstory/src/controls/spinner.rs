@@ -26,7 +26,7 @@ use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::motion::millis;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Spinner`.
 pub const TYPE_SPINNER: TypeTag = TypeTag(5);
@@ -53,13 +53,15 @@ const DOT_ALPHAS: [u8; DOT_COUNT] = [255, 208, 168, 132, 100, 72, 48, 28];
 /// and tick interval are baked in. Future builder methods will hang
 /// here when there's a real need.
 #[derive(Debug, Default)]
-pub struct Spinner;
+pub struct Spinner {
+    element: ElementConfig,
+}
 
 impl Spinner {
     /// Starts a new `Spinner` builder.
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 }
 
@@ -75,6 +77,7 @@ impl AppendSpec for Spinner {
                 .relative()
                 .logical_size(SPINNER_SIZE, SPINNER_SIZE),
         );
+        self.element.apply_to(ui, id);
 
         // Build dot children.
         let mut dots: Vec<ElementId> = Vec::with_capacity(DOT_COUNT);
@@ -111,6 +114,12 @@ impl AppendSpec for Spinner {
         });
 
         id
+    }
+}
+
+impl ElementSpec for Spinner {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

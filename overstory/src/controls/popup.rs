@@ -34,7 +34,7 @@ use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Popup`.
 pub const TYPE_POPUP: TypeTag = TypeTag(16);
@@ -49,6 +49,7 @@ pub struct Popup {
     dismiss_on_outside_pointer: bool,
     dismiss_on_escape: bool,
     restore_focus_on_close: bool,
+    element: ElementConfig,
 }
 
 impl Popup {
@@ -63,6 +64,7 @@ impl Popup {
             dismiss_on_outside_pointer: true,
             dismiss_on_escape: true,
             restore_focus_on_close: true,
+            element: ElementConfig::default(),
         }
     }
 
@@ -158,6 +160,12 @@ impl AppendSpec for Popup {
     }
 }
 
+impl ElementSpec for Popup {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
+    }
+}
+
 /// Per-element widget for `Popup`.
 #[derive(Debug, Default)]
 pub(crate) struct PopupWidget;
@@ -187,5 +195,6 @@ pub(crate) fn append_overlay_popup(ui: &mut Ui, popup: &Popup, origin: Point) ->
 fn append_popup(ui: &mut Ui, parent: ElementId, popup: &Popup, origin: Point) -> ElementId {
     let id = ui.append_widget(parent, Box::new(PopupWidget));
     ui.set_layout(id, popup.layout_for(origin));
+    popup.element.clone().apply_to(ui, id);
     id
 }

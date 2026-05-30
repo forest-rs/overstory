@@ -28,7 +28,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutSize};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Splitter`.
 pub const TYPE_SPLITTER: TypeTag = TypeTag(10);
@@ -109,7 +109,7 @@ pub struct Splitter {
     length: f32,
     keyboard_step: f64,
     keyboard_large_step: f64,
-    state: ControlState,
+    element: ElementConfig,
     on_resize: Option<SplitterResizeHandler>,
 }
 
@@ -141,13 +141,15 @@ impl Splitter {
     /// Creates a splitter with the supplied orientation.
     #[must_use]
     pub fn new(orientation: SplitterOrientation) -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             orientation,
             thickness: DEFAULT_THICKNESS,
             length: DEFAULT_LENGTH,
             keyboard_step: DEFAULT_KEYBOARD_STEP,
             keyboard_large_step: DEFAULT_KEYBOARD_LARGE_STEP,
-            state: ControlState::interactive(),
+            element,
             on_resize: None,
         }
     }
@@ -187,14 +189,16 @@ impl Splitter {
     /// Sets whether the splitter participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the splitter starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -218,7 +222,7 @@ impl Splitter {
         self
     }
 
-    fn layout(&self) -> Layout {
+    fn default_layout(&self) -> Layout {
         match self.orientation {
             SplitterOrientation::Horizontal => {
                 Layout::new().logical_size(self.length, self.thickness)
@@ -238,7 +242,7 @@ impl Default for Splitter {
 
 impl AppendSpec for Splitter {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let layout = self.layout();
+        let layout = self.default_layout();
         let id = ui.append_widget(
             parent,
             Box::new(SplitterWidget {
@@ -249,8 +253,14 @@ impl AppendSpec for Splitter {
             }),
         );
         ui.set_layout(id, layout);
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Splitter {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

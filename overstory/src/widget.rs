@@ -487,7 +487,7 @@ pub trait AppendSpec {
 /// regardless of its concrete widget: layout contribution, style classes, and
 /// optional interactive control state. Control-specific values still live on
 /// the control builder.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ElementConfig {
     layout: Option<Layout>,
     classes: SmallVec<[ClassId; 1]>,
@@ -495,7 +495,11 @@ pub struct ElementConfig {
 }
 
 impl ElementConfig {
-    /// Replaces the layout contribution applied after insertion.
+    /// Sets layout longhand contributions applied after insertion.
+    ///
+    /// This follows [`Ui::set_layout`]: only longhands explicitly carried by
+    /// `layout` are written, so a size update does not erase independently
+    /// styled padding, alignment, overflow, or placement.
     pub fn set_layout(&mut self, layout: impl Into<Layout>) {
         self.layout = Some(layout.into());
     }
@@ -581,7 +585,10 @@ pub trait ElementSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Replaces the resulting element's layout contribution.
+    /// Sets layout longhand contributions on the resulting element.
+    ///
+    /// Only the longhands explicitly carried by `layout` are written; this is
+    /// the same partial-update behavior as [`Ui::set_layout`].
     #[must_use]
     fn layout(mut self, layout: impl Into<Layout>) -> Self {
         self.element_config_mut().set_layout(layout);

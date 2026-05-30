@@ -21,7 +21,7 @@ use understory_style::TypeTag;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Divider`.
 pub const TYPE_DIVIDER: TypeTag = TypeTag(4);
@@ -32,6 +32,7 @@ pub struct Divider {
     axis: Axis,
     thickness: f32,
     length: Option<f32>,
+    element: ElementConfig,
 }
 
 impl Default for Divider {
@@ -40,6 +41,7 @@ impl Default for Divider {
             axis: Axis::Horizontal,
             thickness: 1.0,
             length: None,
+            element: ElementConfig::default(),
         }
     }
 }
@@ -87,7 +89,7 @@ impl Divider {
         self
     }
 
-    fn layout(&self) -> Layout {
+    fn default_layout(&self) -> Layout {
         let length = self.length.unwrap_or(1.0);
         match self.axis {
             Axis::Horizontal => Layout::new().logical_size(length, self.thickness),
@@ -99,8 +101,15 @@ impl Divider {
 impl AppendSpec for Divider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(DividerWidget));
-        ui.set_layout(id, self.layout());
+        ui.set_layout(id, self.default_layout());
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Divider {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

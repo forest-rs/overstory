@@ -49,7 +49,7 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `ListBox`.
 pub const TYPE_LIST_BOX: TypeTag = TypeTag(11);
@@ -106,7 +106,7 @@ pub struct ListBox {
     size: Option<(f32, f32)>,
     item_extent: f64,
     overscan: f64,
-    state: ControlState,
+    element: ElementConfig,
     selection_mode: ListSelectionMode,
     selected_index: Option<usize>,
     scroll_offset_y: f64,
@@ -131,12 +131,14 @@ impl ListBox {
     /// Starts a new empty `ListBox` builder.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             items: Vec::new(),
             size: None,
             item_extent: DEFAULT_LIST_ITEM_EXTENT,
             overscan: DEFAULT_LIST_OVERSCAN,
-            state: ControlState::interactive(),
+            element,
             selection_mode: ListSelectionMode::Single,
             selected_index: None,
             scroll_offset_y: 0.0,
@@ -186,14 +188,16 @@ impl ListBox {
     /// Sets whether the list participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the list starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -246,6 +250,12 @@ impl ListBox {
     pub fn with_vertical_scrollbar(self) -> ListBoxScrollArea {
         ListBoxScrollArea::new(self)
     }
+
+    fn control_state(&self) -> ControlState {
+        self.element
+            .control_state()
+            .unwrap_or_else(ControlState::interactive)
+    }
 }
 
 impl Default for ListBox {
@@ -292,8 +302,14 @@ impl AppendSpec for ListBox {
             .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
         ui.register_scroll_target(id, scroll_state);
         ui.set_layout(id, Layout::new().relative().logical_size(width, height));
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for ListBox {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -357,7 +373,7 @@ impl AppendSpec for ListBoxScrollArea {
             .size
             .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
         self.list.size = Some((width, height));
-        let enabled = self.list.state.enabled;
+        let enabled = self.list.control_state().enabled;
 
         let (frame, _, _) = append_reserved_vertical_scroll_area(
             ui,

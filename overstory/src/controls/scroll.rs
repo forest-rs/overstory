@@ -35,7 +35,9 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `ScrollView`.
 pub const TYPE_SCROLL_VIEW: TypeTag = TypeTag(13);
@@ -65,7 +67,7 @@ pub(crate) fn normalize_scroll_offset_y(offset_y: f64) -> f64 {
 pub struct ScrollView {
     size: Option<(f32, f32)>,
     state: ScrollState,
-    control_state: ControlState,
+    element: ElementConfig,
 }
 
 impl core::fmt::Debug for ScrollView {
@@ -73,7 +75,7 @@ impl core::fmt::Debug for ScrollView {
         f.debug_struct("ScrollView")
             .field("size", &self.size)
             .field("state", &self.state)
-            .field("control_state", &self.control_state)
+            .field("element", &self.element)
             .finish()
     }
 }
@@ -82,10 +84,12 @@ impl ScrollView {
     /// Starts a new scroll view builder.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             size: None,
             state: ScrollState::new(),
-            control_state: ControlState::interactive().focusable(false),
+            element,
         }
     }
 
@@ -106,7 +110,8 @@ impl ScrollView {
     /// Sets whether the scroll view starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.control_state = self.control_state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -139,8 +144,14 @@ impl AppendSpec for ScrollView {
         }
         ui.register_scroll_target(id, state);
         ui.set_layout(id, layout);
-        ui.set_control_state(id, self.control_state);
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for ScrollView {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -277,7 +288,7 @@ pub struct ScrollArea {
     scrollbar_thickness: f32,
     thumb_extent: f32,
     scroll_offset_y: f64,
-    control_state: ControlState,
+    element: ElementConfig,
 }
 
 impl core::fmt::Debug for ScrollArea {
@@ -290,7 +301,7 @@ impl core::fmt::Debug for ScrollArea {
             .field("scrollbar_thickness", &self.scrollbar_thickness)
             .field("thumb_extent", &self.thumb_extent)
             .field("scroll_offset_y", &self.scroll_offset_y)
-            .field("control_state", &self.control_state)
+            .field("element", &self.element)
             .finish()
     }
 }
@@ -299,6 +310,8 @@ impl ScrollArea {
     /// Starts a scroll area with a reserved vertical scrollbar.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             size: None,
             vertical_scrollbar: true,
@@ -307,7 +320,7 @@ impl ScrollArea {
             scrollbar_thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
             scroll_offset_y: 0.0,
-            control_state: ControlState::interactive().focusable(false),
+            element,
         }
     }
 
@@ -363,7 +376,8 @@ impl ScrollArea {
     /// Sets whether the area starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.control_state = self.control_state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -382,29 +396,42 @@ impl Default for ScrollArea {
 
 impl AppendSpec for ScrollArea {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let Self {
+            size,
+            vertical_scrollbar,
+            horizontal_scrollbar,
+            gap,
+            scrollbar_thickness,
+            thumb_extent,
+            scroll_offset_y,
+            element,
+        } = self;
+        let control_state = element
+            .control_state()
+            .unwrap_or_else(|| ControlState::interactive().focusable(false));
+
         let widget = ScrollAreaWidget::default();
         let area = ui.append_widget(parent, Box::new(widget));
 
-        let (width, height) = self
-            .size
-            .unwrap_or((DEFAULT_SCROLL_AREA_WIDTH, DEFAULT_SCROLL_AREA_HEIGHT));
+        let (width, height) =
+            size.unwrap_or((DEFAULT_SCROLL_AREA_WIDTH, DEFAULT_SCROLL_AREA_HEIGHT));
         let metrics = ScrollAreaMetrics::new(
             width,
             height,
-            self.gap,
-            self.scrollbar_thickness,
-            self.vertical_scrollbar,
-            self.horizontal_scrollbar,
+            gap,
+            scrollbar_thickness,
+            vertical_scrollbar,
+            horizontal_scrollbar,
         );
 
-        ui.set_layout(area, Layout::row(self.gap).logical_size(width, height));
-        ui.set_control_state(area, self.control_state);
+        ui.set_layout(area, Layout::row(gap).logical_size(width, height));
+        element.apply_to(ui, area);
 
-        let body = if self.horizontal_scrollbar {
+        let body = if horizontal_scrollbar {
             let body = ui.append_widget(area, Box::new(ScrollAreaBodyWidget));
             ui.set_layout(
                 body,
-                Layout::column(self.gap)
+                Layout::column(gap)
                     .logical_size(metrics.viewport_width, metrics.body_height)
                     .flex_shrink(0.0),
             );
@@ -417,33 +444,39 @@ impl AppendSpec for ScrollArea {
             body,
             ScrollView::new()
                 .size(metrics.viewport_width, metrics.viewport_height)
-                .scroll_offset_y(self.scroll_offset_y)
-                .enabled(self.control_state.enabled),
+                .scroll_offset_y(scroll_offset_y)
+                .enabled(control_state.enabled),
         );
-        if self.horizontal_scrollbar {
+        if horizontal_scrollbar {
             let bar = ui.append(
                 body,
                 ScrollBar::horizontal(viewport)
                     .length(metrics.viewport_width)
-                    .thickness(self.scrollbar_thickness)
-                    .thumb_extent(self.thumb_extent)
-                    .enabled(self.control_state.enabled),
+                    .thickness(scrollbar_thickness)
+                    .thumb_extent(thumb_extent)
+                    .enabled(control_state.enabled),
             );
             set_scroll_area_horizontal_bar(ui, area, bar);
         }
-        if self.vertical_scrollbar {
+        if vertical_scrollbar {
             let bar = ui.append(
                 area,
                 ScrollBar::vertical(viewport)
                     .length(metrics.viewport_height)
-                    .thickness(self.scrollbar_thickness)
-                    .thumb_extent(self.thumb_extent)
-                    .enabled(self.control_state.enabled),
+                    .thickness(scrollbar_thickness)
+                    .thumb_extent(thumb_extent)
+                    .enabled(control_state.enabled),
             );
             set_scroll_area_vertical_bar(ui, area, bar);
         }
         set_scroll_area_viewport(ui, area, viewport);
         area
+    }
+}
+
+impl ElementSpec for ScrollArea {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -556,7 +589,7 @@ pub struct ScrollBar {
     length: f32,
     thickness: f32,
     thumb_extent: f32,
-    control_state: ControlState,
+    element: ElementConfig,
     template: Option<&'static dyn Template>,
 }
 
@@ -568,7 +601,7 @@ impl core::fmt::Debug for ScrollBar {
             .field("length", &self.length)
             .field("thickness", &self.thickness)
             .field("thumb_extent", &self.thumb_extent)
-            .field("control_state", &self.control_state)
+            .field("control_state", &self.control_state())
             .finish_non_exhaustive()
     }
 }
@@ -589,13 +622,15 @@ impl ScrollBar {
     /// Starts a scrollbar on `axis` bound to `viewport`.
     #[must_use]
     pub fn new(axis: Axis, viewport: ElementId) -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             axis,
             viewport,
             length: DEFAULT_SCROLL_BAR_LENGTH,
             thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
-            control_state: ControlState::interactive().focusable(false),
+            element,
             template: None,
         }
     }
@@ -625,7 +660,8 @@ impl ScrollBar {
     /// Sets whether the scrollbar starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.control_state = self.control_state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -643,6 +679,12 @@ impl ScrollBar {
     pub fn template(mut self, template: &'static dyn Template) -> Self {
         self.template = Some(template);
         self
+    }
+
+    fn control_state(&self) -> ControlState {
+        self.element
+            .control_state()
+            .unwrap_or_else(|| ControlState::interactive().focusable(false))
     }
 }
 
@@ -669,10 +711,16 @@ impl AppendSpec for ScrollBar {
             id,
             scroll_bar_layout(self.axis, self.length, self.thickness),
         );
-        ui.set_control_state(id, self.control_state);
+        self.element.apply_to(ui, id);
         ui.expand_default_template(id);
         sync_scroll_bar_thumb_size(ui, id);
         id
+    }
+}
+
+impl ElementSpec for ScrollBar {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

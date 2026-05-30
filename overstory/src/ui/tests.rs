@@ -3641,6 +3641,128 @@ fn element_spec_ext_applies_shared_settings() {
     );
 }
 
+#[test]
+fn more_control_specs_share_element_settings() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let class = ClassId(88);
+    let layout_size = crate::LayoutSize::logical(72.0, 24.0);
+    let layout = Layout::new().size(layout_size);
+
+    let divider = ui.append(
+        root,
+        crate::Divider::horizontal()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let spinner = ui.append(
+        root,
+        crate::Spinner::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let viewport = ui.append(
+        root,
+        crate::Viewport::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let splitter = ui.append(
+        root,
+        crate::Splitter::vertical()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let list = ui.append(
+        root,
+        crate::ListBox::new()
+            .items(["A", "B"])
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let select = ui.append(
+        root,
+        crate::Select::new()
+            .items(["A", "B"])
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let outline = ui.append(
+        root,
+        crate::OutlineView::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let scroll_view = ui.append(
+        root,
+        crate::ScrollView::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let scroll_area = ui.append(
+        root,
+        crate::ScrollArea::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let scroll_bar = ui.append(
+        root,
+        crate::ScrollBar::vertical(scroll_view)
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let popup = ui.append(
+        root,
+        crate::Popup::new()
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+    let tooltip = ui.append(
+        root,
+        crate::Tooltip::new("Details")
+            .class(class)
+            .layout(layout.clone())
+            .disabled(),
+    );
+
+    for id in [
+        divider,
+        spinner,
+        viewport,
+        splitter,
+        list,
+        select,
+        outline,
+        scroll_view,
+        scroll_area,
+        scroll_bar,
+        popup,
+        tooltip,
+    ] {
+        assert!(ui.get(id).unwrap().classes().contains(&class));
+        assert!(!ui.is_enabled(id));
+        assert_eq!(
+            ui.get(id)
+                .unwrap()
+                .get_local_value(ui.properties().layout_size),
+            Some(&layout_size)
+        );
+    }
+}
+
 fn slider_value(ui: &Ui, slider: ElementId) -> Option<f64> {
     ui.get(slider)
         .and_then(|el| el.get_local_value(ui.properties().value).copied())

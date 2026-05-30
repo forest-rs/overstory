@@ -49,7 +49,7 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `OutlineView`.
 pub const TYPE_OUTLINE_VIEW: TypeTag = TypeTag(21);
@@ -210,7 +210,7 @@ pub struct OutlineView {
     overscan: f64,
     selected_key: Option<OutlineNodeKey>,
     scroll_offset_y: f64,
-    state: ControlState,
+    element: ElementConfig,
     on_selection_changed: Option<OutlineSelectionChangedHandler>,
     on_expansion_changed: Option<OutlineExpansionChangedHandler>,
 }
@@ -226,7 +226,7 @@ impl core::fmt::Debug for OutlineView {
             .field("overscan", &self.overscan)
             .field("selected_key", &self.selected_key)
             .field("scroll_offset_y", &self.scroll_offset_y)
-            .field("state", &self.state)
+            .field("control_state", &self.control_state())
             .finish_non_exhaustive()
     }
 }
@@ -235,6 +235,8 @@ impl OutlineView {
     /// Starts a new empty outline view.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             nodes: Vec::new(),
             first_root: None,
@@ -244,7 +246,7 @@ impl OutlineView {
             overscan: DEFAULT_OUTLINE_OVERSCAN,
             selected_key: None,
             scroll_offset_y: 0.0,
-            state: ControlState::interactive(),
+            element,
             on_selection_changed: None,
             on_expansion_changed: None,
         }
@@ -313,14 +315,16 @@ impl OutlineView {
     /// Sets whether the outline participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the outline starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -354,6 +358,12 @@ impl OutlineView {
     #[must_use]
     pub fn with_vertical_scrollbar(self) -> OutlineViewScrollArea {
         OutlineViewScrollArea::new(self)
+    }
+
+    fn control_state(&self) -> ControlState {
+        self.element
+            .control_state()
+            .unwrap_or_else(ControlState::interactive)
     }
 }
 
@@ -403,8 +413,14 @@ impl AppendSpec for OutlineView {
             .unwrap_or((DEFAULT_OUTLINE_WIDTH, DEFAULT_OUTLINE_HEIGHT));
         ui.register_scroll_target(id, scroll_state);
         ui.set_layout(id, Layout::new().relative().logical_size(width, height));
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for OutlineView {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -468,7 +484,7 @@ impl AppendSpec for OutlineViewScrollArea {
             .size
             .unwrap_or((DEFAULT_OUTLINE_WIDTH, DEFAULT_OUTLINE_HEIGHT));
         self.outline.size = Some((width, height));
-        let enabled = self.outline.state.enabled;
+        let enabled = self.outline.control_state().enabled;
 
         let (frame, _, _) = append_reserved_vertical_scroll_area(
             ui,

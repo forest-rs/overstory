@@ -32,7 +32,7 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Select`.
 pub const TYPE_SELECT: TypeTag = TypeTag(18);
@@ -76,7 +76,7 @@ pub struct Select {
     width: Option<f32>,
     popup_height: f32,
     item_extent: f64,
-    state: ControlState,
+    element: ElementConfig,
     on_selection_changed: Option<SelectSelectionChangedHandler>,
 }
 
@@ -96,6 +96,8 @@ impl Select {
     /// Starts a new empty `Select` builder.
     #[must_use]
     pub fn new() -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
         Self {
             items: Vec::new(),
             selected_index: None,
@@ -103,7 +105,7 @@ impl Select {
             width: None,
             popup_height: DEFAULT_SELECT_POPUP_HEIGHT,
             item_extent: DEFAULT_SELECT_ITEM_EXTENT,
-            state: ControlState::interactive(),
+            element,
             on_selection_changed: None,
         }
     }
@@ -164,14 +166,16 @@ impl Select {
     /// Sets whether the select participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.state = self.state.focusable(focusable);
+        self.element
+            .update_control_state(|state| state.focusable(focusable));
         self
     }
 
     /// Sets whether the select starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.state = self.state.enabled(enabled);
+        self.element
+            .update_control_state(|state| state.enabled(enabled));
         self
     }
 
@@ -227,8 +231,14 @@ impl AppendSpec for Select {
                     .height(LayoutDimension::Logical(DEFAULT_SELECT_HEIGHT)),
             );
         }
-        ui.set_control_state(id, self.state);
+        self.element.apply_to(ui, id);
         id
+    }
+}
+
+impl ElementSpec for Select {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 

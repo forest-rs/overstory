@@ -38,7 +38,7 @@ use crate::template::{
     TemplateWidgetFactory,
 };
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Tooltip`.
 pub const TYPE_TOOLTIP: TypeTag = TypeTag(15);
@@ -57,6 +57,7 @@ pub struct Tooltip {
     offset: Vec2,
     padding_x: f32,
     padding_y: f32,
+    element: ElementConfig,
 }
 
 impl Tooltip {
@@ -70,6 +71,7 @@ impl Tooltip {
             offset: Vec2::new(0.0, 8.0),
             padding_x: 10.0,
             padding_y: 6.0,
+            element: ElementConfig::default(),
         }
     }
 
@@ -139,6 +141,12 @@ impl Tooltip {
 impl AppendSpec for Tooltip {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         append_tooltip(ui, parent, &self, Point::ZERO)
+    }
+}
+
+impl ElementSpec for Tooltip {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -235,6 +243,7 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
         ui.set_local(id, properties.font_size, font_size);
     }
     ui.set_layout(id, tooltip.layout_for(origin));
+    tooltip.element.clone().apply_to(ui, id);
     id
 }
 
