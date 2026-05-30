@@ -9,8 +9,13 @@
 //!   choices.
 //! - Share checked-state events, focus, accessibility, and theme state with
 //!   `CheckBox` / `ToggleSwitch` rather than adding radio-specific machinery.
-//! - Grow toward item templates and validation once the broader `ItemsControl`
-//!   shape exists.
+//! - Keep the first `RadioGroup` API index-based and string-backed until
+//!   `ListBox`, `Select`, segmented selection, and future `ItemsControl`
+//!   agree on typed option keys, item metadata, and templates. The likely next
+//!   shape is `RadioOption<T>` where `T: Clone + Eq + 'static`, but that should
+//!   be shared selection infrastructure rather than radio-only machinery.
+//! - Grow toward item templates, per-option disabled state, validation, and
+//!   orientation/wrap policies once the broader `ItemsControl` shape exists.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::cell::RefCell;

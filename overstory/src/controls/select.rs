@@ -9,6 +9,9 @@
 //!   opened popup delegates list realization and selection to `ListBox`.
 //! - Add richer item templating through the existing template/slot system
 //!   instead of inventing a separate menu-item visual model.
+//! - Move string/index-only selection toward shared typed option keys with
+//!   `RadioGroup`, `ListBox`, and segmented selection. `Select` should not grow
+//!   a private item model just because it is the first popup-backed picker.
 //! - Grow mature combo-box behavior deliberately: typeahead, editable variants,
 //!   async item sources, validation, accessibility roles, and explicit
 //!   open/closed routed events.

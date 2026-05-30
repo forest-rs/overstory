@@ -15,10 +15,14 @@
 //! at the crate root via `lib.rs`.
 //!
 //! Roadmap:
-//! - Add `RadioButton` / `RadioGroup` soon to prove shared checked-state,
-//!   selection, focus, and form semantics across mutually exclusive choices.
+//! - Keep `RadioButton` / `RadioGroup`, `ListBox`, `Select`, and the eventual
+//!   segmented control on a shared selection path. String/index APIs are fine
+//!   for today's demos, but typed option keys, per-option metadata, validation,
+//!   and item templates should arrive as common item-control infrastructure.
 //! - Add `Select` / `ComboBox` as a composition of `Button`, `Popup`,
-//!   `ListBox`, `ScrollView`, and `understory_selection`.
+//!   `ListBox`, `ScrollView`, and `understory_selection`, then fold any shared
+//!   keyed-option behavior back into list/radio controls instead of letting
+//!   each control invent its own option model.
 //! - Add menu-family controls (`Menu`, `MenuItem`, `ContextMenu`, `Flyout`) to
 //!   exercise popup placement, focus scopes, dismiss routing, keyboard
 //!   navigation, and command-style activation.

@@ -7,7 +7,9 @@
 //! - Keep lists virtualized by default, with `understory_virtual_list` owning
 //!   viewport math and Overstory owning realized elements and interaction.
 //! - Replace string-only items with keyed item data and item templates so the
-//!   control can grow toward `ItemsControl` / `ListView` patterns.
+//!   control can grow toward `ItemsControl` / `ListView` patterns. This should
+//!   also provide the typed option-key shape used by `RadioGroup`, `Select`,
+//!   segmented controls, and other single-selection controls.
 //! - Keep selection backed by `understory_selection`: focus, current item,
 //!   anchor, primary selection, and realized containers must not drift apart.
 //! - Add mature keyboard behavior: typeahead, Home / End / Page movement,
