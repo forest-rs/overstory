@@ -60,6 +60,64 @@ fn insert_child_appends_to_parent_and_marks_dirty() {
 }
 
 #[test]
+fn child_ui_adds_children_under_one_parent() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let (panel, (label, nested, nested_label)) =
+        ui.children(root, crate::Panel::column(4.0), |children| {
+            let label = children.add(crate::Text::new("Scoped"));
+            let (nested, nested_label) = children.children(crate::Panel::row(2.0), |children| {
+                children.add(crate::Text::new("Nested"))
+            });
+            (label, nested, nested_label)
+        });
+
+    assert_eq!(ui.get(root).unwrap().children(), &[panel]);
+    assert_eq!(ui.get(panel).unwrap().children(), &[label, nested]);
+    assert_eq!(ui.get(nested).unwrap().children(), &[nested_label]);
+    assert_eq!(ui.get(label).unwrap().parent(), Some(panel));
+    assert_eq!(ui.get(nested_label).unwrap().parent(), Some(nested));
+}
+
+#[test]
+fn child_ui_add_with_configures_inserted_element() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let button = ui.with_children(root, |root| {
+        root.add_with(crate::Button::new("Apply"), |ui, id| {
+            ui.add_class(id, ClassId(42));
+        })
+    });
+
+    assert!(ui.get(button).unwrap().classes().contains(&ClassId(42)));
+}
+
+#[test]
+fn child_ui_panel_helpers_keep_parentage_lexical() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let (title, row, action, flag, progress) = ui.with_children(root, |root| {
+        let title = root.add(crate::Text::new("Controls"));
+        let (row, (action, flag, progress)) = root.row(6.0, |row| {
+            let action = row.add(crate::Button::new("Apply"));
+            let flag = row.add(crate::CheckBox::new("Enabled"));
+            let progress = row.add(crate::ProgressBar::new());
+            (action, flag, progress)
+        });
+        (title, row, action, flag, progress)
+    });
+
+    assert_eq!(ui.get(root).unwrap().children(), &[title, row]);
+    assert_eq!(ui.get(row).unwrap().children(), &[action, flag, progress]);
+    assert_eq!(ui.get(action).unwrap().parent(), Some(row));
+    assert_eq!(ui.get(flag).unwrap().parent(), Some(row));
+    assert_eq!(ui.get(progress).unwrap().parent(), Some(row));
+}
+
+#[test]
 fn remove_drops_subtree_and_invalidates_handles() {
     let mut ui = Ui::new();
     let root = ui.root();

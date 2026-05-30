@@ -72,6 +72,8 @@ mod transition_planner;
 mod tree;
 mod visual;
 
+pub use tree::ChildUi;
+
 use transition_planner::MotionPolicy;
 
 #[cfg(test)]

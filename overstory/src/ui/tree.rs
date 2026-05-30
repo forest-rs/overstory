@@ -10,11 +10,105 @@ use understory_box_tree::NodeFlags;
 use understory_style::PartTag;
 
 use crate::channels::{COMPOSE, LAYOUT};
+use crate::controls::panel::Panel;
 use crate::element::ElementId;
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::widget::Widget;
 
 use super::Ui;
+
+/// Scoped authoring helper for adding children under one parent.
+///
+/// `ChildUi` does not own a separate tree or state model. It only remembers a
+/// parent element and forwards to the same [`Ui::append`] primitive app code
+/// can call directly. Custom controls remain first-class because [`Self::add`]
+/// and [`Self::children`] accept any [`AppendSpec`](crate::AppendSpec).
+#[derive(Debug)]
+pub struct ChildUi<'a> {
+    ui: &'a mut Ui,
+    parent: ElementId,
+}
+
+impl<'a> ChildUi<'a> {
+    pub(in crate::ui) fn new(ui: &'a mut Ui, parent: ElementId) -> Self {
+        Self { ui, parent }
+    }
+
+    /// Returns the element new children are appended under.
+    #[must_use]
+    pub const fn parent(&self) -> ElementId {
+        self.parent
+    }
+
+    /// Returns a shared reference to the underlying [`Ui`].
+    #[must_use]
+    pub fn ui(&self) -> &Ui {
+        self.ui
+    }
+
+    /// Returns a mutable reference to the underlying [`Ui`].
+    pub fn ui_mut(&mut self) -> &mut Ui {
+        self.ui
+    }
+
+    /// Adds `spec` under this builder's parent.
+    pub fn add<S>(&mut self, spec: S) -> ElementId
+    where
+        S: crate::widget::AppendSpec,
+    {
+        self.ui.append(self.parent, spec)
+    }
+
+    /// Adds `spec` under this builder's parent, then runs `f` with the
+    /// inserted element id.
+    ///
+    /// Use this for element-level setup that is not part of the spec's builder
+    /// surface yet, such as registering shared runtime state. Prefer ordinary
+    /// builder methods for values that belong to the spec itself.
+    pub fn add_with<S>(&mut self, spec: S, f: impl FnOnce(&mut Ui, ElementId)) -> ElementId
+    where
+        S: crate::widget::AppendSpec,
+    {
+        let id = self.add(spec);
+        f(&mut *self.ui, id);
+        id
+    }
+
+    /// Adds `spec`, scopes `f` to the inserted element's children, and returns
+    /// the inserted element id with the closure's result.
+    pub fn children<S, R>(
+        &mut self,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R)
+    where
+        S: crate::widget::AppendSpec,
+    {
+        let child = self.add(spec);
+        let result = self.ui.with_children(child, f);
+        (child, result)
+    }
+
+    /// Adds `panel`, scopes `f` to the inserted panel's children, and returns
+    /// the panel id with the closure's result.
+    pub fn panel<R>(
+        &mut self,
+        panel: Panel,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R) {
+        self.children(panel, f)
+    }
+
+    /// Adds a horizontal flex row with `gap` and scopes `f` to its children.
+    pub fn row<R>(&mut self, gap: f32, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
+        self.panel(Panel::row(gap), f)
+    }
+
+    /// Adds a vertical flex column with `gap` and scopes `f` to its children.
+    pub fn column<R>(&mut self, gap: f32, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
+        self.panel(Panel::column(gap), f)
+    }
+}
 
 impl Ui {
     /// Returns the retained template expansion for `owner`, if it has one.
@@ -64,6 +158,40 @@ impl Ui {
         spec: S,
     ) -> ElementId {
         spec.append_to(self, parent)
+    }
+
+    /// Runs `f` with a scoped builder that adds children under `parent`.
+    ///
+    /// This is an authoring convenience over [`Self::append`]. It preserves the
+    /// same retained element ids, template expansion, style matching, and
+    /// runtime mirroring as direct append calls.
+    pub fn with_children<R>(
+        &mut self,
+        parent: ElementId,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> R {
+        assert!(
+            self.get(parent).is_some(),
+            "with_children: parent id is stale"
+        );
+        let mut children = ChildUi::new(self, parent);
+        f(&mut children)
+    }
+
+    /// Adds `spec` under `parent`, scopes `f` to the inserted element's
+    /// children, and returns the inserted element id with the closure's result.
+    pub fn children<S, R>(
+        &mut self,
+        parent: ElementId,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R)
+    where
+        S: crate::widget::AppendSpec,
+    {
+        let child = self.append(parent, spec);
+        let result = self.with_children(child, f);
+        (child, result)
     }
 
     /// Lower-level entry point used by [`AppendSpec`](crate::widget::AppendSpec)
