@@ -25,6 +25,10 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
+use crate::controls::choice::{
+    ChoiceOption, collect_options, enabled_selection_target, last_enabled_index, option_label,
+    selected_enabled_index, wrapping_next_enabled_index, wrapping_previous_enabled_index,
+};
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
 };
@@ -206,7 +210,7 @@ impl ElementSpec for RadioButton {
 
 /// Builder + spec for a mutually-exclusive radio button group.
 pub struct RadioGroup {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     selected_index: Option<usize>,
     gap: f32,
     horizontal: bool,
@@ -217,7 +221,7 @@ pub struct RadioGroup {
 impl core::fmt::Debug for RadioGroup {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("RadioGroup")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("selected_index", &self.selected_index)
             .field("gap", &self.gap)
             .field("horizontal", &self.horizontal)
@@ -233,7 +237,7 @@ impl RadioGroup {
         element.set_control_state(ControlState::interactive().focusable(false));
         element.set_layout(Layout::column(DEFAULT_RADIO_GROUP_GAP));
         Self {
-            items: Vec::new(),
+            options: Vec::new(),
             selected_index: None,
             gap: DEFAULT_RADIO_GROUP_GAP,
             horizontal: false,
@@ -242,22 +246,38 @@ impl RadioGroup {
         }
     }
 
-    /// Replaces the group's item strings.
+    /// Replaces the group's options.
     #[must_use]
-    pub fn items<I, S>(mut self, items: I) -> Self
+    pub fn options<I, O>(mut self, options: I) -> Self
     where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
     {
-        self.items = items.into_iter().map(Into::into).collect();
+        self.options = collect_options(options);
         self
     }
 
-    /// Appends one item string.
+    /// Replaces the group's item labels.
     #[must_use]
-    pub fn item(mut self, item: impl Into<String>) -> Self {
-        self.items.push(item.into());
+    pub fn items<I, O>(self, items: I) -> Self
+    where
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
+    {
+        self.options(items)
+    }
+
+    /// Appends one option.
+    #[must_use]
+    pub fn option(mut self, option: impl Into<ChoiceOption>) -> Self {
+        self.options.push(option.into());
         self
+    }
+
+    /// Appends one item label.
+    #[must_use]
+    pub fn item(self, item: impl Into<ChoiceOption>) -> Self {
+        self.option(item)
     }
 
     /// Sets the initially selected item index.
@@ -337,9 +357,7 @@ impl Default for RadioGroup {
 
 impl AppendSpec for RadioGroup {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let selected_index = self
-            .selected_index
-            .filter(|index| *index < self.items.len());
+        let selected_index = selected_enabled_index(&self.options, self.selected_index);
         let enabled = self
             .element
             .control_state()
@@ -348,7 +366,7 @@ impl AppendSpec for RadioGroup {
         let id = ui.append_widget(
             parent,
             Box::new(RadioGroupWidget {
-                items: self.items.clone(),
+                options: self.options.clone(),
                 radios: Vec::new(),
                 selected_index,
                 selection_changed: RadioSelectionChangedSlot::new(self.on_selection_changed),
@@ -356,13 +374,14 @@ impl AppendSpec for RadioGroup {
         );
         self.element.apply_to(ui, id);
 
-        let mut radios = Vec::with_capacity(self.items.len());
-        for (index, item) in self.items.into_iter().enumerate() {
+        let mut radios = Vec::with_capacity(self.options.len());
+        for (index, option) in self.options.into_iter().enumerate() {
+            let option_enabled = option.is_enabled();
             let radio = ui.append(
                 id,
-                RadioButton::new(item)
+                RadioButton::new(option.into_label())
                     .checked(Some(index) == selected_radio_group_index(ui, id))
-                    .enabled(enabled)
+                    .enabled(enabled && option_enabled)
                     .on_checked_changed(move |ui, event| {
                         if event.checked {
                             let _ = set_radio_group_selected_index_internal(ui, id, Some(index));
@@ -482,7 +501,7 @@ impl Widget for RadioButtonWidget {
 }
 
 pub(crate) struct RadioGroupWidget {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     radios: Vec<ElementId>,
     selected_index: Option<usize>,
     selection_changed: RadioSelectionChangedSlot,
@@ -491,7 +510,7 @@ pub(crate) struct RadioGroupWidget {
 impl core::fmt::Debug for RadioGroupWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("RadioGroupWidget")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("radios", &self.radios)
             .field("selected_index", &self.selected_index)
             .finish_non_exhaustive()
@@ -523,8 +542,7 @@ impl Widget for RadioGroupWidget {
         let Some(current_index) = self.radio_index(event.source) else {
             return;
         };
-        let Some(next_index) = next_radio_index(&event.key.key, current_index, self.radios.len())
-        else {
+        let Some(next_index) = self.next_radio_index(&event.key.key, current_index) else {
             return;
         };
         if self.set_selected_index(ctx, group, Some(next_index)) {
@@ -543,7 +561,9 @@ impl RadioGroupWidget {
         if !ui.is_enabled(group) {
             return false;
         }
-        let index = index.filter(|index| *index < self.radios.len());
+        let Some(index) = enabled_selection_target(&self.options, index) else {
+            return false;
+        };
         if self.selected_index == index {
             return false;
         }
@@ -562,11 +582,32 @@ impl RadioGroupWidget {
             RadioSelectionChangedEvent {
                 group,
                 selected_index: index,
-                selected_item: index.and_then(|index| self.items.get(index).cloned()),
+                selected_item: option_label(&self.options, index),
                 selected_radio,
             },
         );
         true
+    }
+
+    fn next_radio_index(&self, key: &ui_events::keyboard::Key, current: usize) -> Option<usize> {
+        use ui_events::keyboard::{Key, NamedKey};
+        match key {
+            Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
+                wrapping_next_enabled_index(&self.options, Some(current))
+            }
+            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
+                wrapping_previous_enabled_index(&self.options, Some(current))
+            }
+            Key::Named(NamedKey::Home) => selected_enabled_index(&self.options, Some(0))
+                .or_else(|| wrapping_next_enabled_index(&self.options, None)),
+            Key::Named(NamedKey::End) => self
+                .options
+                .len()
+                .checked_sub(1)
+                .and_then(|index| selected_enabled_index(&self.options, Some(index)))
+                .or_else(|| last_enabled_index(&self.options)),
+            _ => None,
+        }
     }
 }
 
@@ -667,8 +708,7 @@ pub fn selected_radio_group_index(ui: &Ui, group: ElementId) -> Option<usize> {
 #[must_use]
 pub fn selected_radio_group_item(ui: &Ui, group: ElementId) -> Option<String> {
     let widget = radio_group_widget(ui, group)?;
-    let index = widget.selected_index?;
-    widget.items.get(index).cloned()
+    option_label(&widget.options, widget.selected_index)
 }
 
 fn with_radio_group_mut<R>(
@@ -703,20 +743,6 @@ fn dispatch_radio_selection_changed(
     let should_restore = handler.borrow().is_none();
     if should_restore {
         *handler.borrow_mut() = Some(callback);
-    }
-}
-
-fn next_radio_index(key: &ui_events::keyboard::Key, current: usize, len: usize) -> Option<usize> {
-    use ui_events::keyboard::{Key, NamedKey};
-    if len == 0 {
-        return None;
-    }
-    match key {
-        Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => Some((current + 1) % len),
-        Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => Some((current + len - 1) % len),
-        Key::Named(NamedKey::Home) => Some(0),
-        Key::Named(NamedKey::End) => Some(len - 1),
-        _ => None,
     }
 }
 
@@ -838,6 +864,35 @@ mod tests {
         assert!(result.handled);
         assert_eq!(selected_radio_group_index(&ui, group), Some(1));
         assert_eq!(ui.focused(), Some(radios[1]));
+    }
+
+    #[test]
+    fn radio_group_skips_disabled_options() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let group = ui.append(
+            root,
+            RadioGroup::new()
+                .options([
+                    ChoiceOption::new("Draft"),
+                    ChoiceOption::new("Review").disabled(),
+                    ChoiceOption::new("Ready"),
+                ])
+                .selected_index(0),
+        );
+        let radios = radio_group_widget(&ui, group).unwrap().radios.clone();
+
+        assert!(!ui.is_enabled(radios[1]));
+        assert!(!set_radio_group_selected_index(&mut ui, group, 1));
+        assert_eq!(selected_radio_group_index(&ui, group), Some(0));
+
+        ui.set_focus(Some(radios[0]));
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert_eq!(selected_radio_group_index(&ui, group), Some(2));
+        assert_eq!(ui.focused(), Some(radios[2]));
     }
 
     #[test]

@@ -31,6 +31,11 @@ use understory_virtual_list::ScrollAlign;
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::channels::LAYOUT;
+use crate::controls::choice::{
+    ChoiceOption, collect_options, enabled_index_at_or_after, enabled_index_at_or_before,
+    first_enabled_index, last_enabled_index, next_enabled_index, option_enabled,
+    previous_enabled_index, selected_enabled_index,
+};
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
@@ -104,7 +109,7 @@ pub enum ListSelectionMode {
 /// containers. Selection and keyboard navigation are expressed in stable item
 /// indices rather than transient realized [`ElementId`] values.
 pub struct ListBox {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     size: Option<(f32, f32)>,
     item_extent: f64,
     overscan: f64,
@@ -118,7 +123,7 @@ pub struct ListBox {
 impl core::fmt::Debug for ListBox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListBox")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("size", &self.size)
             .field("item_extent", &self.item_extent)
             .field("overscan", &self.overscan)
@@ -136,7 +141,7 @@ impl ListBox {
         let mut element = ElementConfig::default();
         element.set_control_state(ControlState::interactive());
         Self {
-            items: Vec::new(),
+            options: Vec::new(),
             size: None,
             item_extent: DEFAULT_LIST_ITEM_EXTENT,
             overscan: DEFAULT_LIST_OVERSCAN,
@@ -148,22 +153,38 @@ impl ListBox {
         }
     }
 
-    /// Replaces the list's item strings.
+    /// Replaces the list's options.
     #[must_use]
-    pub fn items<I, S>(mut self, items: I) -> Self
+    pub fn options<I, O>(mut self, options: I) -> Self
     where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
     {
-        self.items = items.into_iter().map(Into::into).collect();
+        self.options = collect_options(options);
         self
     }
 
-    /// Appends one item string to the list.
+    /// Replaces the list's item labels.
     #[must_use]
-    pub fn item(mut self, item: impl Into<String>) -> Self {
-        self.items.push(item.into());
+    pub fn items<I, O>(self, items: I) -> Self
+    where
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
+    {
+        self.options(items)
+    }
+
+    /// Appends one option to the list.
+    #[must_use]
+    pub fn option(mut self, option: impl Into<ChoiceOption>) -> Self {
+        self.options.push(option.into());
         self
+    }
+
+    /// Appends one item label to the list.
+    #[must_use]
+    pub fn item(self, item: impl Into<ChoiceOption>) -> Self {
+        self.option(item)
     }
 
     /// Sets the list's fixed logical-pixel size.
@@ -271,14 +292,14 @@ impl AppendSpec for ListBox {
         let mut selection = Selection::new();
         if let Some(index) = self
             .selected_index
-            .filter(|index| *index < self.items.len())
+            .filter(|index| option_enabled(&self.options, *index))
         {
             let _ = selection.select_only(index);
         }
 
         let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
         let virtual_list = fixed_virtualizer(
-            self.items.len(),
+            self.options.len(),
             self.item_extent,
             self.scroll_offset_y,
             self.overscan,
@@ -287,7 +308,7 @@ impl AppendSpec for ListBox {
         let id = ui.append_widget(
             parent,
             Box::new(ListBoxWidget {
-                items: self.items,
+                options: self.options,
                 selection,
                 scroll_state: scroll_state.clone(),
                 selection_mode: self.selection_mode,
@@ -408,7 +429,7 @@ pub fn list_box_scroll_area_scrollbar(ui: &Ui, frame: ElementId) -> Option<Eleme
 
 /// Per-element widget for `ListBox`.
 pub(crate) struct ListBoxWidget {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     selection: Selection<usize>,
     scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
@@ -422,7 +443,7 @@ pub(crate) struct ListBoxWidget {
 impl core::fmt::Debug for ListBoxWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListBoxWidget")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("selection_mode", &self.selection_mode)
             .field("item_extent", &self.item_extent)
             .field("realized", &self.realized)
@@ -452,7 +473,7 @@ impl Widget for ListBoxWidget {
         if self.selection_mode == ListSelectionMode::Multiple {
             node.set_multiselectable();
         }
-        node.set_size_of_set(self.items.len());
+        node.set_size_of_set(self.options.len());
         configure_vertical_scroll_accessibility(element, ctx, node, &self.scroll_state);
         if let Some(primary) = self.selected_index()
             && let Some(item) = self.realized.iter().find(|item| item.index == primary)
@@ -494,7 +515,7 @@ impl Widget for ListBoxWidget {
         if event.key.state != KeyState::Down || !ctx.is_enabled(listbox) {
             return;
         }
-        if self.items.is_empty() {
+        if self.options.is_empty() {
             return;
         }
 
@@ -513,19 +534,17 @@ impl Widget for ListBoxWidget {
 
         let next = match &event.key.key {
             Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
-                Some(next_index(current, self.items.len()))
+                next_enabled_index(&self.options, current)
             }
             Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
-                Some(previous_index(current, self.items.len()))
+                previous_enabled_index(&self.options, current)
             }
-            Key::Named(NamedKey::PageDown) => Some(page_down_index(
-                current,
-                self.items.len(),
-                self.visible_item_count(),
-            )),
-            Key::Named(NamedKey::PageUp) => Some(page_up_index(current, self.visible_item_count())),
-            Key::Named(NamedKey::Home) => Some(0),
-            Key::Named(NamedKey::End) => Some(self.items.len() - 1),
+            Key::Named(NamedKey::PageDown) => {
+                self.page_down_index(current, self.visible_item_count())
+            }
+            Key::Named(NamedKey::PageUp) => self.page_up_index(current, self.visible_item_count()),
+            Key::Named(NamedKey::Home) => first_enabled_index(&self.options),
+            Key::Named(NamedKey::End) => last_enabled_index(&self.options),
             Key::Named(NamedKey::Enter) => current,
             Key::Character(s) if s == " " => current,
             _ => None,
@@ -597,7 +616,7 @@ impl ListBoxWidget {
             ui,
             &mut self.virtual_list,
             &self.scroll_state,
-            self.items.len(),
+            self.options.len(),
             &mut self.last_viewport,
         )
     }
@@ -624,10 +643,10 @@ impl ListBoxWidget {
             if self.realized.iter().any(|item| item.index == index) {
                 continue;
             }
-            let Some(content) = self.items.get(index) else {
+            let Some(option) = self.options.get(index) else {
                 continue;
             };
-            let element = append_realized_list_item(ui, listbox, index, content.clone());
+            let element = append_realized_list_item(ui, listbox, index, option);
             self.realized.push(RealizedListItem { index, element });
             changed = true;
         }
@@ -681,7 +700,7 @@ impl ListBoxWidget {
     }
 
     fn scroll_index_into_view(&mut self, listbox: ElementId, ui: &mut Ui, index: usize) -> bool {
-        if index >= self.items.len() {
+        if index >= self.options.len() {
             return false;
         }
         self.virtual_list
@@ -698,7 +717,7 @@ impl ListBoxWidget {
         self.selection
             .primary()
             .copied()
-            .filter(|index| *index < self.items.len())
+            .filter(|index| option_enabled(&self.options, *index))
     }
 
     fn selected_indices(&self) -> Vec<usize> {
@@ -706,12 +725,12 @@ impl ListBoxWidget {
             .items()
             .iter()
             .copied()
-            .filter(|index| *index < self.items.len())
+            .filter(|index| option_enabled(&self.options, *index))
             .collect()
     }
 
     fn select_index(&mut self, ui: &mut Ui, listbox: ElementId, index: usize) -> bool {
-        if !ui.is_enabled(listbox) || index >= self.items.len() {
+        if !ui.is_enabled(listbox) || !option_enabled(&self.options, index) {
             return false;
         }
         self.mutate_selection(ui, listbox, |selection| selection.select_only(index))
@@ -725,7 +744,7 @@ impl ListBoxWidget {
         index: usize,
         extend_existing: bool,
     ) -> bool {
-        if !ui.is_enabled(listbox) || index >= self.items.len() {
+        if !ui.is_enabled(listbox) || !option_enabled(&self.options, index) {
             return false;
         }
 
@@ -733,9 +752,12 @@ impl ListBoxWidget {
             .selection
             .anchor()
             .copied()
-            .filter(|anchor| *anchor < self.items.len())
+            .filter(|anchor| option_enabled(&self.options, *anchor))
             .unwrap_or(index);
-        let range = ordered_index_range(anchor, index);
+        let range = ordered_index_range(anchor, index)
+            .into_iter()
+            .filter(|index| option_enabled(&self.options, *index))
+            .collect::<Vec<_>>();
 
         self.mutate_selection(ui, listbox, move |selection| {
             if !extend_existing {
@@ -751,7 +773,7 @@ impl ListBoxWidget {
     }
 
     fn toggle_index(&mut self, ui: &mut Ui, listbox: ElementId, index: usize) -> bool {
-        if !ui.is_enabled(listbox) || index >= self.items.len() {
+        if !ui.is_enabled(listbox) || !option_enabled(&self.options, index) {
             return false;
         }
 
@@ -773,10 +795,15 @@ impl ListBoxWidget {
     }
 
     fn select_all(&mut self, ui: &mut Ui, listbox: ElementId) -> bool {
-        if self.items.is_empty() {
+        if self.options.is_empty() {
             return false;
         }
-        let items: Vec<usize> = (0..self.items.len()).collect();
+        let items: Vec<usize> = (0..self.options.len())
+            .filter(|index| option_enabled(&self.options, *index))
+            .collect();
+        if items.is_empty() {
+            return false;
+        }
         self.mutate_selection(ui, listbox, move |selection| selection.replace_with(items))
             .is_some()
     }
@@ -816,6 +843,22 @@ impl ListBoxWidget {
 
     fn visible_item_count(&self) -> usize {
         fixed_visible_item_count(self.item_extent, self.virtual_list.viewport_extent())
+    }
+
+    fn page_down_index(&self, current: Option<usize>, page: usize) -> Option<usize> {
+        let current = selected_enabled_index(&self.options, current);
+        let start = current.unwrap_or(0);
+        let target = start.saturating_add(page).min(self.options.len() - 1);
+        enabled_index_at_or_after(&self.options, target)
+            .or_else(|| enabled_index_at_or_before(&self.options, target))
+    }
+
+    fn page_up_index(&self, current: Option<usize>, page: usize) -> Option<usize> {
+        let current = selected_enabled_index(&self.options, current);
+        let start = current.unwrap_or(0);
+        let target = start.saturating_sub(page);
+        enabled_index_at_or_before(&self.options, target)
+            .or_else(|| enabled_index_at_or_after(&self.options, target))
     }
 }
 
@@ -923,11 +966,16 @@ fn append_realized_list_item(
     ui: &mut Ui,
     listbox: ElementId,
     index: usize,
-    content: String,
+    option: &ChoiceOption,
 ) -> ElementId {
     let id = ui.append_widget(listbox, Box::new(ListItemWidget { index }));
-    ui.set_local(id, ui.properties().content, content);
-    ui.set_control_state(id, ControlState::interactive().focusable(false));
+    ui.set_local(id, ui.properties().content, String::from(option.label()));
+    ui.set_control_state(
+        id,
+        ControlState::interactive()
+            .focusable(false)
+            .enabled(option.is_enabled()),
+    );
     id
 }
 
@@ -998,22 +1046,6 @@ pub fn realized_list_item_index(ui: &Ui, item: ElementId) -> Option<usize> {
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ListItemWidget>())
         .map(|widget| widget.index)
-}
-
-fn next_index(current: Option<usize>, len: usize) -> usize {
-    current.map(|idx| (idx + 1).min(len - 1)).unwrap_or(0)
-}
-
-fn previous_index(current: Option<usize>, len: usize) -> usize {
-    current.map(|idx| idx.saturating_sub(1)).unwrap_or(len - 1)
-}
-
-fn page_down_index(current: Option<usize>, len: usize, page: usize) -> usize {
-    current.map(|idx| (idx + page).min(len - 1)).unwrap_or(0)
-}
-
-fn page_up_index(current: Option<usize>, page: usize) -> usize {
-    current.map(|idx| idx.saturating_sub(page)).unwrap_or(0)
 }
 
 fn select_list_index_for_click(
@@ -1266,6 +1298,42 @@ mod tests {
             selected_list_indices(&ui, listbox),
             vec![0, 1, 2, 3, 4, 5, 6]
         );
+    }
+
+    #[test]
+    fn disabled_options_are_not_selectable() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(
+            root,
+            ListBox::new()
+                .options([
+                    ChoiceOption::new("Draft"),
+                    ChoiceOption::new("Review").disabled(),
+                    ChoiceOption::new("Ready"),
+                ])
+                .selected_index(1)
+                .size(180.0, 90.0)
+                .item_extent(24.0)
+                .overscan(0.0),
+        );
+
+        assert_eq!(selected_list_index(&ui, listbox), None);
+        assert!(!select_list_index(&mut ui, listbox, 1));
+
+        realize(&mut ui);
+        let disabled = realized_list_item(&ui, listbox, 1).unwrap();
+        assert!(!ui.is_enabled(disabled));
+
+        ui.synthesize_click(disabled, Point::ZERO);
+        assert_eq!(selected_list_index(&ui, listbox), None);
+
+        ui.set_focus(Some(listbox));
+        let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        assert!(ui.dispatch_key(&down).handled);
+        assert_eq!(selected_list_index(&ui, listbox), Some(0));
+        assert!(ui.dispatch_key(&down).handled);
+        assert_eq!(selected_list_index(&ui, listbox), Some(2));
     }
 
     #[test]

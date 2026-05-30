@@ -703,6 +703,9 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
+    let list_item_disabled = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
     let outline_view_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
@@ -1187,6 +1190,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::state(TYPE_LIST_ITEM, PSEUDO_SELECTED),
             list_item_selected,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_LIST_ITEM, PSEUDO_DISABLED),
+            list_item_disabled,
         )
         .push_rule(
             StyleOrigin::Base,

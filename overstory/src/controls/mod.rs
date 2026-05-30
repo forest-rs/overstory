@@ -40,6 +40,7 @@
 
 pub(crate) mod button;
 pub(crate) mod checkbox;
+pub(crate) mod choice;
 pub(crate) mod divider;
 pub(crate) mod expander;
 pub(crate) mod list;

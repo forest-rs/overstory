@@ -24,6 +24,11 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
+use crate::controls::choice::{
+    ChoiceOption, collect_options, enabled_selection_target, first_enabled_index,
+    last_enabled_index, next_enabled_index, option_label, previous_enabled_index,
+    selected_enabled_index,
+};
 use crate::controls::list::{ListBox, ListSelectionChangedEvent};
 use crate::controls::popup::Popup;
 use crate::controls::text::TextWidget;
@@ -73,7 +78,7 @@ pub struct SelectSelectionChangedEvent {
 
 /// Builder + spec for a collapsed single-choice `Select`.
 pub struct Select {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     selected_index: Option<usize>,
     placeholder: String,
     width: Option<f32>,
@@ -86,7 +91,7 @@ pub struct Select {
 impl core::fmt::Debug for Select {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Select")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("selected_index", &self.selected_index)
             .field("width", &self.width)
             .field("popup_height", &self.popup_height)
@@ -102,7 +107,7 @@ impl Select {
         let mut element = ElementConfig::default();
         element.set_control_state(ControlState::interactive());
         Self {
-            items: Vec::new(),
+            options: Vec::new(),
             selected_index: None,
             placeholder: String::from(DEFAULT_SELECT_PLACEHOLDER),
             width: None,
@@ -113,22 +118,38 @@ impl Select {
         }
     }
 
-    /// Replaces the select's item strings.
+    /// Replaces the select's options.
     #[must_use]
-    pub fn items<I, S>(mut self, items: I) -> Self
+    pub fn options<I, O>(mut self, options: I) -> Self
     where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
     {
-        self.items = items.into_iter().map(Into::into).collect();
+        self.options = collect_options(options);
         self
     }
 
-    /// Appends one item string.
+    /// Replaces the select's item labels.
     #[must_use]
-    pub fn item(mut self, item: impl Into<String>) -> Self {
-        self.items.push(item.into());
+    pub fn items<I, O>(self, items: I) -> Self
+    where
+        I: IntoIterator<Item = O>,
+        O: Into<ChoiceOption>,
+    {
+        self.options(items)
+    }
+
+    /// Appends one option.
+    #[must_use]
+    pub fn option(mut self, option: impl Into<ChoiceOption>) -> Self {
+        self.options.push(option.into());
         self
+    }
+
+    /// Appends one item label.
+    #[must_use]
+    pub fn item(self, item: impl Into<ChoiceOption>) -> Self {
+        self.option(item)
     }
 
     /// Sets the initially selected item index.
@@ -207,13 +228,11 @@ impl Default for Select {
 
 impl AppendSpec for Select {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let selected_index = self
-            .selected_index
-            .filter(|index| *index < self.items.len());
-        let content = item_label(&self.items, selected_index, &self.placeholder);
+        let selected_index = selected_enabled_index(&self.options, self.selected_index);
+        let content = item_label(&self.options, selected_index, &self.placeholder);
         let width = self.width.unwrap_or(DEFAULT_SELECT_WIDTH);
         let widget = SelectWidget {
-            items: self.items,
+            options: self.options,
             placeholder: self.placeholder,
             popup: Cell::new(None),
             popup_height: self.popup_height,
@@ -247,7 +266,7 @@ impl ElementSpec for Select {
 
 /// Per-element widget for `Select`.
 pub(crate) struct SelectWidget {
-    items: Vec<String>,
+    options: Vec<ChoiceOption>,
     placeholder: String,
     popup: Cell<Option<ElementId>>,
     popup_height: f32,
@@ -258,7 +277,7 @@ pub(crate) struct SelectWidget {
 impl core::fmt::Debug for SelectWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SelectWidget")
-            .field("items_len", &self.items.len())
+            .field("options_len", &self.options.len())
             .field("popup", &self.popup.get())
             .field("popup_height", &self.popup_height)
             .field("item_extent", &self.item_extent)
@@ -359,12 +378,11 @@ impl Widget for SelectWidget {
                 event.mark_handled();
             }
             Key::Named(NamedKey::Home) => {
-                let _ = self.set_selected_index(ctx, select, Some(0));
+                let _ = self.set_selected_index(ctx, select, first_enabled_index(&self.options));
                 event.mark_handled();
             }
             Key::Named(NamedKey::End) => {
-                let last = self.items.len().checked_sub(1);
-                let _ = self.set_selected_index(ctx, select, last);
+                let _ = self.set_selected_index(ctx, select, last_enabled_index(&self.options));
                 event.mark_handled();
             }
             _ => {}
@@ -402,15 +420,15 @@ impl SelectWidget {
     }
 
     fn open_popup(&self, ui: &mut Ui, select: ElementId) {
-        if self.items.is_empty() || ui.get(select).is_none() {
+        if self.options.is_empty() || ui.get(select).is_none() {
             return;
         }
         let popup_height = self.popup_list_height();
         let popup_width = self.popup_width(ui, select);
         let item_extent = self.item_extent;
         let selected_index =
-            selected_select_index_local(ui, select).filter(|index| *index < self.items.len());
-        let items = self.items.clone();
+            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
+        let options = self.options.clone();
         let popup = ui.open_popup(
             select,
             Popup::new().padding(0.0, 0.0).offset(0.0, 4.0),
@@ -418,7 +436,7 @@ impl SelectWidget {
                 let _list = ui.append(
                     popup,
                     ListBox::new()
-                        .items(items)
+                        .options(options)
                         .size(popup_width, popup_height)
                         .item_extent(item_extent)
                         .selected_index(selected_index.unwrap_or(usize::MAX))
@@ -438,31 +456,31 @@ impl SelectWidget {
     }
 
     fn move_selection(&mut self, ui: &mut Ui, select: ElementId, direction: i8) {
-        if self.items.is_empty() {
+        if self.options.is_empty() {
             return;
         }
         let current =
-            selected_select_index_local(ui, select).filter(|index| *index < self.items.len());
-        let next = match (current, direction.is_positive()) {
-            (Some(index), true) => (index + 1).min(self.items.len() - 1),
-            (Some(index), false) => index.saturating_sub(1),
-            (None, true) => 0,
-            (None, false) => self.items.len() - 1,
+            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
+        let next = match direction.is_positive() {
+            true => next_enabled_index(&self.options, current),
+            false => previous_enabled_index(&self.options, current),
         };
-        let _ = self.set_selected_index(ui, select, Some(next));
+        let _ = self.set_selected_index(ui, select, next);
     }
 
     fn set_selected_index(&mut self, ui: &mut Ui, select: ElementId, index: Option<usize>) -> bool {
         if !ui.is_enabled(select) {
             return false;
         }
-        let index = index.filter(|index| *index < self.items.len());
+        let Some(index) = enabled_selection_target(&self.options, index) else {
+            return false;
+        };
         let current =
-            selected_select_index_local(ui, select).filter(|index| *index < self.items.len());
+            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
         if current == index {
             return false;
         }
-        let item = index.and_then(|index| self.items.get(index).cloned());
+        let item = option_label(&self.options, index);
         let content = item.clone().unwrap_or_else(|| self.placeholder.clone());
         let props = *ui.properties();
         ui.set_local(select, props.selected_index, index);
@@ -480,7 +498,7 @@ impl SelectWidget {
     }
 
     fn popup_list_height(&self) -> f32 {
-        if self.items.is_empty() {
+        if self.options.is_empty() {
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "normalized list item extent is used only as a fallback f32 height"
@@ -493,7 +511,7 @@ impl SelectWidget {
             clippy::cast_precision_loss,
             reason = "item counts that can fit in a popup preserve enough precision for height"
         )]
-        let item_count = self.items.len() as f64;
+        let item_count = self.options.len() as f64;
         let content_height = self.item_extent * item_count;
         #[expect(
             clippy::cast_possible_truncation,
@@ -577,14 +595,14 @@ pub fn clear_select_selection(ui: &mut Ui, select: ElementId) -> bool {
 #[must_use]
 pub fn selected_select_index(ui: &Ui, select: ElementId) -> Option<usize> {
     let widget = select_widget(ui, select)?;
-    selected_select_index_local(ui, select).filter(|index| *index < widget.items.len())
+    selected_enabled_index(&widget.options, selected_select_index_local(ui, select))
 }
 
 /// Returns the currently selected item text in `select`, if any.
 #[must_use]
 pub fn selected_select_item(ui: &Ui, select: ElementId) -> Option<String> {
-    let index = selected_select_index(ui, select)?;
-    select_widget(ui, select)?.items.get(index).cloned()
+    let widget = select_widget(ui, select)?;
+    option_label(&widget.options, selected_select_index(ui, select))
 }
 
 fn select_commit_handler(
@@ -658,11 +676,8 @@ fn with_select_widget_mut<R>(
     output
 }
 
-fn item_label(items: &[String], index: Option<usize>, placeholder: &str) -> String {
-    index
-        .and_then(|index| items.get(index))
-        .cloned()
-        .unwrap_or_else(|| String::from(placeholder))
+fn item_label(options: &[ChoiceOption], index: Option<usize>, placeholder: &str) -> String {
+    option_label(options, index).unwrap_or_else(|| String::from(placeholder))
 }
 
 fn normalize_item_extent(extent: f64) -> f64 {
@@ -737,6 +752,32 @@ mod tests {
         let end = KeyboardEvent::key_down(Key::Named(NamedKey::End), Code::End);
         assert!(ui.dispatch_key(&end).handled);
         assert_eq!(selected_select_index(&ui, select), Some(ITEMS.len() - 1));
+    }
+
+    #[test]
+    fn disabled_options_are_skipped_by_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            Select::new()
+                .options([
+                    ChoiceOption::new("Draft"),
+                    ChoiceOption::new("Review").disabled(),
+                    ChoiceOption::new("Ready"),
+                ])
+                .selected_index(1),
+        );
+
+        assert_eq!(selected_select_index(&ui, select), None);
+        assert!(!set_select_index(&mut ui, select, 1));
+
+        ui.set_focus(Some(select));
+        let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        assert!(ui.dispatch_key(&down).handled);
+        assert_eq!(selected_select_index(&ui, select), Some(0));
+        assert!(ui.dispatch_key(&down).handled);
+        assert_eq!(selected_select_index(&ui, select), Some(2));
     }
 
     #[test]

@@ -101,6 +101,7 @@ pub use controls::checkbox::{
     CheckBox, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, SLOT_CHECK_BOX_BOX,
     SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX, set_check_box_checked,
 };
+pub use controls::choice::ChoiceOption;
 pub use controls::divider::{Divider, TYPE_DIVIDER};
 pub use controls::expander::{
     ExpandedChangedEvent, Expander, PART_EXPANDER_CONTENT, PART_EXPANDER_DISCLOSURE,
