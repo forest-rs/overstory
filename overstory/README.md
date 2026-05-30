@@ -24,21 +24,25 @@ Overstory: a WPF / WinUI 3-inspired UI toolkit built on
 
 Each control is a struct that implements [`AppendSpec`] (the
 builder + entry point) and produces a [`Widget`] instance that
-lives on the element. Application code uses
-`Ui::append` to insert controls into the
-tree:
+lives on the element. Application code can use `Ui::with_children`
+/ `Ui::children` and `ChildUi::add` to keep parentage lexical while
+preserving the same retained tree machinery:
 
 ```rust
-ui.append(parent, Button::new("Click me").on_click(|_, _| {}));
-ui.append(parent, ToggleSwitch::new().checked(true));
-ui.append(parent, Slider::new().value(0.4));
+ui.children(root, Panel::column(12.0), |ui| {
+    ui.add(Text::new("Inputs"));
+    ui.add(Button::new("Apply").on_click(|_, _| {}));
+    ui.children(Panel::row(8.0), |row| {
+        row.add(ToggleSwitch::new().checked(true));
+        row.add(Text::new("Live rendering"));
+    });
+});
 ```
 
-`Ui::append` is the only public path for adding controls;
-`insert_child` lives on the toolkit-internal side for templates
-building their own parts. `set_local` remains public for power
-users (bindings, dynamic theming, custom controls), but isn't
-the typical app-level entry point.
+`Ui::append` remains the primitive explicit-parent path; `insert_child`
+lives on the toolkit-internal side for templates building their own parts.
+`set_local` remains public for power users (bindings, dynamic theming,
+custom controls), but isn't the typical app-level entry point.
 
 Roadmap:
 - Keep `overstory` itself as the no-std core toolkit: retained UI tree,
