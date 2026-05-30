@@ -82,6 +82,32 @@ pub(super) fn with_demo_card<R>(
     )
 }
 
+pub(super) fn with_demo_fit_card<R>(
+    ui: &mut Ui,
+    parent: ElementId,
+    title: &str,
+    width: f32,
+    min_height: f32,
+    f: impl FnOnce(&mut ChildUi<'_>) -> R,
+) -> (ElementId, R) {
+    ui.children(
+        parent,
+        Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
+            Layout::column(14.0)
+                .size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Logical(width))
+                        .min_height(LayoutDimension::Logical(min_height)),
+                )
+                .padding_all(18.0),
+        ),
+        |card| {
+            card.add(card_title(title));
+            f(card)
+        },
+    )
+}
+
 pub(super) fn demo_row(ui: &mut Ui, parent: ElementId) -> ElementId {
     ui.append(
         parent,

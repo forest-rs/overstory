@@ -203,6 +203,53 @@ fn gallery_pages_keep_primary_cards_on_one_line_at_narrow_width() {
     }
 }
 
+#[test]
+fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Inputs);
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
+
+    let stage_children = ui
+        .get(stage)
+        .expect("stage should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        stage_children.len(),
+        3,
+        "Inputs should have a header plus two rows"
+    );
+
+    let primary_cards = ui
+        .get(stage_children[1])
+        .expect("primary input row should exist")
+        .children()
+        .to_vec();
+    let secondary_cards = ui
+        .get(stage_children[2])
+        .expect("secondary input row should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        primary_cards.len(),
+        2,
+        "text/actions should be separate cards"
+    );
+    assert_eq!(
+        secondary_cards.len(),
+        2,
+        "radio/expander should be separate cards"
+    );
+
+    for card in primary_cards.into_iter().chain(secondary_cards) {
+        assert_card_contains_subtree(&ui, card);
+    }
+}
+
 fn assert_subtree_inside_width(ui: &Ui, element: ElementId, max_x: f64) {
     let bounds = ui.effective_bounds(element);
     assert!(
@@ -216,6 +263,30 @@ fn assert_subtree_inside_width(ui: &Ui, element: ElementId, max_x: f64) {
         .to_vec();
     for child in children {
         assert_subtree_inside_width(ui, child, max_x);
+    }
+}
+
+fn assert_card_contains_subtree(ui: &Ui, card: ElementId) {
+    let card_bounds = ui.effective_bounds(card);
+    let children = ui.get(card).expect("card should exist").children().to_vec();
+    for child in children {
+        assert_subtree_inside_bottom(ui, child, card_bounds.y1);
+    }
+}
+
+fn assert_subtree_inside_bottom(ui: &Ui, element: ElementId, max_y: f64) {
+    let bounds = ui.effective_bounds(element);
+    assert!(
+        bounds.y1 <= max_y + 0.01,
+        "{element:?} overflows card height: {bounds:?} > {max_y}",
+    );
+    let children = ui
+        .get(element)
+        .expect("element should exist")
+        .children()
+        .to_vec();
+    for child in children {
+        assert_subtree_inside_bottom(ui, child, max_y);
     }
 }
 

@@ -155,7 +155,7 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         ));
     });
 
-    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 344.0, |actions| {
+    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
         actions.children(Panel::row(10.0).align_center(), |buttons| {
             buttons.add_with(
                 Button::new("Deploy")
@@ -178,9 +178,12 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         actions.add(CheckBox::new("Enable staged rollout").checked(true));
         actions.add(CheckBox::new("Collect timing traces"));
         actions.add(CheckBox::new("Send diagnostics").disabled());
-        actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-        let summary = actions.add(caption("Release lane: Balanced"));
-        actions.add(
+    });
+
+    let row = demo_row(ui, stage);
+    with_demo_fit_card(ui, row, "RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
+        let summary = radios.add(caption("Release lane: Balanced"));
+        radios.add(
             RadioGroup::new()
                 .items(["Balanced", "Quality", "Low latency"])
                 .selected_index(0)
@@ -193,12 +196,22 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                     );
                 }),
         );
-        actions.children_in_slot(
-            Expander::new("Advanced routing"),
+    });
+    with_demo_fit_card(ui, row, "EXPANDER", PAGE_CARD_WIDTH, 184.0, |expanders| {
+        expanders.children_in_slot(
+            Expander::new("Advanced routing").expanded(true),
             SLOT_EXPANDER_CONTENT,
             |advanced| {
                 advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
                 advanced.add(CheckBox::new("Pause on anomaly"));
+            },
+        );
+        expanders.children_in_slot(
+            Expander::new("Audit trail"),
+            SLOT_EXPANDER_CONTENT,
+            |advanced| {
+                advanced.add(CheckBox::new("Record detailed timing"));
+                advanced.add(CheckBox::new("Attach render snapshots"));
             },
         );
     });
