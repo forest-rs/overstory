@@ -215,6 +215,29 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
             },
         );
     });
+
+    let row = demo_row(ui, stage);
+    with_demo_fit_card(ui, row, "SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
+        let summary = segments.add(caption("View mode: Preview"));
+        segments.add(
+            SegmentedControl::new()
+                .options([
+                    ChoiceOption::new("Preview"),
+                    ChoiceOption::new("Code"),
+                    ChoiceOption::new("Metrics"),
+                    ChoiceOption::new("Trace").disabled(),
+                ])
+                .selected_index(0)
+                .on_selection_changed(move |ui, event| {
+                    let selected_item = event.selected_item.unwrap_or_else(|| "None".to_owned());
+                    ui.set_local(
+                        summary,
+                        ui.properties().content,
+                        format!("View mode: {selected_item}"),
+                    );
+                }),
+        );
+    });
 }
 
 fn build_systems_page(ui: &mut Ui, stage: ElementId) {

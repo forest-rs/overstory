@@ -78,6 +78,7 @@ use crate::controls::radio::{
     PART_RADIO_BUTTON_DOT, PART_RADIO_BUTTON_INDICATOR, PART_RADIO_BUTTON_LABEL, TYPE_RADIO_BUTTON,
 };
 use crate::controls::scroll::{PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR};
+use crate::controls::segmented::{TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM};
 use crate::controls::select::{PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT};
 use crate::controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
@@ -706,6 +707,51 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
     let list_item_disabled = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
+    let segmented_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 9.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_spacing, LayoutSpacing::padding_all(2.0))
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
+        .build();
+    let segmented_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let segmented_item_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            background_transition_rules(properties),
+        )
+        .set(properties.font_size, 14.0_f64)
+        .set(properties.corner_radius, 7.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(12.0, 6.0),
+        )
+        .set(properties.layout_alignment, centered_alignment())
+        .build();
+    let segmented_item_hover = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .build();
+    let segmented_item_selected = StyleBuilder::new()
+        .set_resource(properties.background, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .build();
+    let segmented_item_disabled = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
     let outline_view_idle = StyleBuilder::new()
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
@@ -1195,6 +1241,36 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::state(TYPE_LIST_ITEM, PSEUDO_DISABLED),
             list_item_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_SEGMENTED_CONTROL),
+            segmented_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SEGMENTED_CONTROL, PSEUDO_FOCUS_VISIBLE),
+            segmented_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_SEGMENTED_ITEM),
+            segmented_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SEGMENTED_ITEM, PSEUDO_HOVER),
+            segmented_item_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SEGMENTED_ITEM, PSEUDO_SELECTED),
+            segmented_item_selected,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_SEGMENTED_ITEM, PSEUDO_DISABLED),
+            segmented_item_disabled,
         )
         .push_rule(
             StyleOrigin::Base,

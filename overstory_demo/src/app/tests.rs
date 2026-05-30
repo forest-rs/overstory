@@ -220,8 +220,8 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
         .to_vec();
     assert_eq!(
         stage_children.len(),
-        3,
-        "Inputs should have a header plus two rows"
+        4,
+        "Inputs should have a header plus three rows"
     );
 
     let primary_cards = ui
@@ -234,6 +234,11 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
         .expect("secondary input row should exist")
         .children()
         .to_vec();
+    let tertiary_cards = ui
+        .get(stage_children[3])
+        .expect("tertiary input row should exist")
+        .children()
+        .to_vec();
     assert_eq!(
         primary_cards.len(),
         2,
@@ -244,8 +249,17 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
         2,
         "radio/expander should be separate cards"
     );
+    assert_eq!(
+        tertiary_cards.len(),
+        1,
+        "segmented control gets its own card"
+    );
 
-    for card in primary_cards.into_iter().chain(secondary_cards) {
+    for card in primary_cards
+        .into_iter()
+        .chain(secondary_cards)
+        .chain(tertiary_cards)
+    {
         assert_card_contains_subtree(&ui, card);
     }
 }

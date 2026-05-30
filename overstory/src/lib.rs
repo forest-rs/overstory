@@ -145,6 +145,12 @@ pub use controls::scroll::{
     scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y, scroll_view_offset_y,
     set_scroll_offset_y, set_scroll_view_offset_y,
 };
+pub use controls::segmented::{
+    PART_SEGMENTED_ITEM_LABEL, SLOT_SEGMENTED_ITEM_LABEL, SegmentedControl,
+    SegmentedSelectionChangedEvent, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
+    clear_segmented_selection, segmented_item, selected_segmented_index, selected_segmented_item,
+    set_segmented_index,
+};
 pub use controls::select::{
     PART_SELECT_INDICATOR, PART_SELECT_LABEL, SLOT_SELECT_INDICATOR, SLOT_SELECT_LABEL, Select,
     SelectSelectionChangedEvent, TYPE_SELECT, clear_select_selection, selected_select_index,
@@ -210,8 +216,9 @@ pub mod prelude {
     pub use crate::{
         AppendSpec, Button, CheckBox, ChildUi, Color, CursorIcon, Divider, ElementId, ElementSpec,
         ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar,
-        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, Select, Size, Slider, Spinner,
-        Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size,
+        Slider, Spinner, Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui,
+        VectorPath, Viewport,
     };
 }
 
