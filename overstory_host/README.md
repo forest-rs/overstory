@@ -49,11 +49,11 @@ If you want to run a native desktop app directly, use
 
 ```rust
 use overstory::Ui;
-use overstory_host::{logical_viewport, UiHost};
+use overstory_host::{FrameViewport, UiHost};
 
 let mut host = UiHost::new(Ui::new());
-let viewport = logical_viewport(1280, 720, 2.0);
-let _scene = host.prepare_frame(viewport, 2.0);
+let viewport = FrameViewport::from_physical_size(1280, 720, 2.0);
+let _scene = host.prepare_frame(viewport);
 ```
 
 ## Minimum Supported Rust Version (MSRV)

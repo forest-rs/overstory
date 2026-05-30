@@ -280,7 +280,9 @@ impl Ui {
         }
         self.frame_stats.measured_widgets += measured_widgets;
 
-        // Walk the tree and write absolute bounds for every element.
+        // Walk the tree and write absolute logical bounds for every element.
+        // Physical pixels remain a host/backend projection so layout, hit
+        // testing, composition, and accessibility share one coordinate space.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
         self.run_post_layout_widgets()
     }

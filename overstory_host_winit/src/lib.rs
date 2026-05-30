@@ -18,7 +18,7 @@ use accesskit_winit::{
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use overstory::Ui;
-use overstory_host::{UiHost, logical_viewport};
+use overstory_host::{FrameViewport, UiHost};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use web_time::Instant;
 use winit::application::ApplicationHandler;
@@ -323,9 +323,8 @@ impl WindowState {
 
         self.blit.ensure_offscreen(&self.device, width, height);
 
-        let scale = self.window.scale_factor();
-        let viewport = logical_viewport(width, height, scale);
-        let mut scaled_scene = self.host.prepare_frame(viewport, scale);
+        let viewport = FrameViewport::from_physical_size(width, height, self.window.scale_factor());
+        let mut scaled_scene = self.host.prepare_frame(viewport);
 
         let offscreen_view = self
             .blit

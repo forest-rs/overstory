@@ -8,13 +8,12 @@ use core::{fmt, time::Duration};
 use accesskit::{ActionRequest, TreeUpdate};
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
-use kurbo::{Affine, Size};
 use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use web_time::Instant;
 
-use crate::{FrameDiagnostics, FrameTimings, HostDispatchResult};
+use crate::{FrameDiagnostics, FrameTimings, FrameViewport, HostDispatchResult};
 
 /// Drives one [`Ui`] instance between platform events and rendering.
 pub struct UiHost {
@@ -147,15 +146,15 @@ impl UiHost {
         }
     }
 
-    /// Lays out and paints the hosted UI, then returns a scene scaled for a
-    /// physical render target.
+    /// Lays out and paints the hosted UI for `viewport`, then returns a scene
+    /// scaled for its physical render target.
     ///
-    /// `logical_viewport` is the UI layout size in logical pixels.
-    /// `scale_factor` maps those logical coordinates into the physical
-    /// texture that the backend renderer will target.
-    pub fn prepare_frame(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
+    /// The UI tree is laid out and composed in logical coordinates. Scaling is
+    /// applied once at the host boundary so core Overstory geometry remains
+    /// independent from device pixel density.
+    pub fn prepare_frame(&mut self, viewport: FrameViewport) -> &Scene {
         self.ui.reset_frame_stats();
-        self.prepare_frame_inner(logical_viewport, scale_factor)
+        self.prepare_frame_inner(viewport)
     }
 
     /// Lays out and paints without clearing existing UI frame counters first.
@@ -163,15 +162,11 @@ impl UiHost {
     /// Use this for latency probes that reset counters before dispatching or
     /// mutating input, then want the prepared-frame diagnostics to include that
     /// input's invalidation marks.
-    pub fn prepare_frame_preserving_stats(
-        &mut self,
-        logical_viewport: Size,
-        scale_factor: f64,
-    ) -> &Scene {
-        self.prepare_frame_inner(logical_viewport, scale_factor)
+    pub fn prepare_frame_preserving_stats(&mut self, viewport: FrameViewport) -> &Scene {
+        self.prepare_frame_inner(viewport)
     }
 
-    fn prepare_frame_inner(&mut self, logical_viewport: Size, scale_factor: f64) -> &Scene {
+    fn prepare_frame_inner(&mut self, viewport: FrameViewport) -> &Scene {
         let total_start = Instant::now();
 
         let phase_start = Instant::now();
@@ -179,7 +174,7 @@ impl UiHost {
         let set_now = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        self.ui.compute_layout(logical_viewport);
+        self.ui.compute_layout(viewport.logical_size());
         let layout = phase_start.elapsed();
 
         let phase_start = Instant::now();
@@ -196,11 +191,11 @@ impl UiHost {
         let compose = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        let use_scaled_scene = scale_factor != 1.0;
+        let use_scaled_scene = viewport.needs_output_scale();
         if use_scaled_scene {
             self.scaled_scene.clear();
             self.scaled_scene
-                .append_transformed(&self.scene, Affine::scale(scale_factor));
+                .append_transformed(&self.scene, viewport.logical_to_physical());
         }
         let scale = phase_start.elapsed();
         let output_empty = if use_scaled_scene {
@@ -261,6 +256,7 @@ mod tests {
     use accesskit::{Action, ActionRequest, Affine, NodeId, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
+    use kurbo::Size;
     use overstory::{Button, ElementId};
 
     #[test]
@@ -274,7 +270,10 @@ mod tests {
         ui.append(root, overstory::Text::new("Hello"));
 
         let mut host = UiHost::new(ui);
-        let frame = host.prepare_frame(Size::new(100.0, 50.0), 1.0);
+        let frame = host.prepare_frame(FrameViewport::from_logical_size(
+            Size::new(100.0, 50.0),
+            1.0,
+        ));
 
         assert!(!frame.is_empty());
         assert!(!host.surface_scenes.is_empty());
@@ -291,7 +290,10 @@ mod tests {
         ui.append(root, overstory::Text::new("Hello"));
 
         let mut host = UiHost::new(ui);
-        let _ = host.prepare_frame(Size::new(100.0, 50.0), 1.0);
+        let _ = host.prepare_frame(FrameViewport::from_logical_size(
+            Size::new(100.0, 50.0),
+            1.0,
+        ));
         let diagnostics = host.last_frame_diagnostics();
 
         assert!(diagnostics.timings.total >= diagnostics.timings.layout);

@@ -10,6 +10,16 @@
 //! an `imaging` scene for a physical render target. Window creation, event
 //! loop ownership, and GPU presentation are intentionally left to backend
 //! crates such as `overstory_host_winit`.
+//!
+//! # Coordinate Spaces
+//!
+//! Core Overstory geometry is logical: layout bounds, hit testing,
+//! presentation primitives, composition layers, and accessibility bounds all
+//! use logical coordinates. Hosts project that logical scene into physical
+//! device pixels at the final render-target boundary. Future device-aware
+//! snapping should follow the same rule: map candidate geometry into physical
+//! space to make snapping decisions, then write logical geometry back into the
+//! UI.
 
 extern crate alloc;
 
@@ -21,4 +31,4 @@ mod viewport;
 pub use diagnostics::{FrameDiagnostics, FrameTimings};
 pub use dispatch::HostDispatchResult;
 pub use host::UiHost;
-pub use viewport::logical_viewport;
+pub use viewport::{FrameViewport, PhysicalSize};
