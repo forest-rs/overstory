@@ -125,6 +125,13 @@ pub use controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, ProgressBar, SLOT_PROGRESS_BAR_FILL,
     SLOT_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, set_progress_value,
 };
+pub use controls::radio::{
+    PART_RADIO_BUTTON_DOT, PART_RADIO_BUTTON_INDICATOR, PART_RADIO_BUTTON_LABEL, RadioButton,
+    RadioGroup, RadioSelectionChangedEvent, SLOT_RADIO_BUTTON_DOT, SLOT_RADIO_BUTTON_INDICATOR,
+    SLOT_RADIO_BUTTON_LABEL, TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP, clear_radio_group_selection,
+    radio_button_checked, selected_radio_group_index, selected_radio_group_item,
+    set_radio_button_checked, set_radio_group_selected_index,
+};
 pub use controls::scroll::{
     PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollView,
     TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_area_horizontal_bar,
@@ -146,6 +153,7 @@ pub use controls::spinner::{Spinner, TYPE_SPINNER};
 pub use controls::splitter::{
     Splitter, SplitterOrientation, SplitterResizeEvent, TYPE_SPLITTER, resize_split_pair,
 };
+pub use controls::support::CheckedChangedEvent;
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET,
@@ -194,9 +202,9 @@ pub use widget::{AppendSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GE
 pub mod prelude {
     pub use crate::{
         AppendSpec, Button, CheckBox, ChildUi, Color, CursorIcon, Divider, ElementId, ElementSpec,
-        ElementSpecExt, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar, ScrollArea,
-        ScrollBar, ScrollView, Select, Size, Slider, Spinner, Splitter, Text, TextInput,
-        TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+        ElementSpecExt, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar, RadioButton,
+        RadioGroup, ScrollArea, ScrollBar, ScrollView, Select, Size, Slider, Spinner, Splitter,
+        Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
     };
 }
 

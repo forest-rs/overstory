@@ -24,6 +24,9 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
+use crate::controls::support::{
+    CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
@@ -47,6 +50,7 @@ pub struct ToggleSwitch {
     initial_checked: bool,
     element: ElementConfig,
     template: Option<&'static dyn Template>,
+    on_checked_changed: Option<CheckedChangedHandler>,
 }
 
 impl core::fmt::Debug for ToggleSwitch {
@@ -67,6 +71,7 @@ impl ToggleSwitch {
             initial_checked: false,
             element,
             template: None,
+            on_checked_changed: None,
         }
     }
 
@@ -74,6 +79,16 @@ impl ToggleSwitch {
     #[must_use]
     pub fn checked(mut self, checked: bool) -> Self {
         self.initial_checked = checked;
+        self
+    }
+
+    /// Registers a handler fired after user input changes the checked state.
+    #[must_use]
+    pub fn on_checked_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, CheckedChangedEvent) + 'static,
+    {
+        self.on_checked_changed = Some(Box::new(handler));
         self
     }
 
@@ -129,15 +144,16 @@ impl Default for ToggleSwitch {
 impl AppendSpec for ToggleSwitch {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(ToggleWidget, template)),
-            None => Box::new(ToggleWidget),
+            Some(template) => Box::new(TemplateOverrideWidget::new(
+                ToggleWidget::new(self.on_checked_changed),
+                template,
+            )),
+            None => Box::new(ToggleWidget::new(self.on_checked_changed)),
         };
         let id = ui.append_widget(parent, widget);
         self.element.apply_to(ui, id);
         if self.initial_checked {
-            let is_checked_prop = ui.properties().is_checked;
-            ui.set_local(id, is_checked_prop, true);
-            ui.add_pseudo(id, PSEUDO_CHECKED);
+            set_toggle_checked(ui, id, true);
         }
         id
     }
@@ -150,8 +166,35 @@ impl ElementSpec for ToggleSwitch {
 }
 
 /// Per-element widget for `ToggleSwitch`.
-#[derive(Debug, Default)]
-pub(crate) struct ToggleWidget;
+pub(crate) struct ToggleWidget {
+    checked_changed: CheckedChangedSlot,
+}
+
+impl ToggleWidget {
+    fn new(checked_changed: Option<CheckedChangedHandler>) -> Self {
+        Self {
+            checked_changed: CheckedChangedSlot::new(checked_changed),
+        }
+    }
+
+    fn toggle_checked(&self, ui: &mut Ui, toggle: ElementId) {
+        let next = toggle_checked_state(ui, toggle);
+        dispatch_checked_changed(
+            ui,
+            &self.checked_changed,
+            CheckedChangedEvent {
+                element: toggle,
+                checked: next,
+            },
+        );
+    }
+}
+
+impl core::fmt::Debug for ToggleWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ToggleWidget").finish_non_exhaustive()
+    }
+}
 
 impl Widget for ToggleWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -188,7 +231,7 @@ impl Widget for ToggleWidget {
         if !ctx.is_enabled(toggle) {
             return;
         }
-        toggle_checked(ctx, toggle);
+        self.toggle_checked(ctx, toggle);
         event.mark_handled();
     }
 
@@ -210,7 +253,7 @@ impl Widget for ToggleWidget {
             _ => false,
         };
         if activate {
-            toggle_checked(ctx, toggle);
+            self.toggle_checked(ctx, toggle);
             event.mark_handled();
         }
     }
@@ -239,14 +282,24 @@ impl Template for ToggleTemplate {
 /// pseudoclass in sync. Available as `pub` so app code or other
 /// behaviors can drive a toggle without going through user input.
 pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
+    let _ = toggle_checked_state(ui, toggle);
+}
+
+fn toggle_checked_state(ui: &mut Ui, toggle: ElementId) -> bool {
     let is_checked = ui.properties().is_checked;
     let was_checked = ui
         .get(toggle)
         .and_then(|el| el.get_local_value(is_checked).copied())
         .unwrap_or(false);
     let next = !was_checked;
-    ui.set_local(toggle, is_checked, next);
-    if next {
+    set_toggle_checked(ui, toggle, next);
+    next
+}
+
+fn set_toggle_checked(ui: &mut Ui, toggle: ElementId, checked: bool) {
+    let is_checked = ui.properties().is_checked;
+    ui.set_local(toggle, is_checked, checked);
+    if checked {
         ui.add_pseudo(toggle, PSEUDO_CHECKED);
     } else {
         ui.remove_pseudo(toggle, PSEUDO_CHECKED);
@@ -276,4 +329,30 @@ fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
         ChangeCause::Other
     };
     ui.set_presentation_target(thumb, property, target, cause)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use kurbo::Point;
+
+    #[test]
+    fn toggle_checked_changed_reports_new_state() {
+        let observed = Rc::new(Cell::new(None));
+        let observed_for_handler = Rc::clone(&observed);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let toggle = ui.append(
+            root,
+            ToggleSwitch::new().on_checked_changed(move |_ui, event| {
+                observed_for_handler.set(Some((event.element, event.checked)));
+            }),
+        );
+
+        ui.synthesize_click(toggle, Point::ZERO);
+
+        assert_eq!(observed.get(), Some((toggle, true)));
+    }
 }

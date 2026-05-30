@@ -70,6 +70,9 @@ use crate::controls::popup::TYPE_POPUP;
 use crate::controls::progress::{
     PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
 };
+use crate::controls::radio::{
+    PART_RADIO_BUTTON_DOT, PART_RADIO_BUTTON_INDICATOR, PART_RADIO_BUTTON_LABEL, TYPE_RADIO_BUTTON,
+};
 use crate::controls::scroll::{PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR};
 use crate::controls::select::{PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT};
 use crate::controls::slider::{
@@ -449,6 +452,48 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let checkbox_label = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .build();
+    let radio_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 15.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_spacing, LayoutSpacing::gap(10.0))
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
+        .build();
+    let radio_disabled = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
+    let radio_indicator_idle = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 11.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
+        .set(properties.layout_alignment, centered_alignment())
+        .build();
+    let radio_indicator_hover = StyleBuilder::new()
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .build();
+    let radio_indicator_checked = StyleBuilder::new()
+        .set_resource(properties.border_brush, SUCCESS_BG)
+        .build();
+    let radio_indicator_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let radio_dot_idle = StyleBuilder::new()
+        .set(properties.corner_radius, 5.0_f64)
+        .set(properties.layout_size, LayoutSize::logical(10.0, 10.0))
+        .build();
+    let radio_dot_checked = StyleBuilder::new()
+        .set_resource(properties.background, SUCCESS_BG)
+        .build();
+    let radio_label = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .build();
 
@@ -865,6 +910,60 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
+            selectors::type_tag(TYPE_RADIO_BUTTON),
+            radio_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_RADIO_BUTTON, PSEUDO_DISABLED),
+            radio_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_INDICATOR),
+            radio_indicator_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_HOVER),
+                PART_RADIO_BUTTON_INDICATOR,
+            ),
+            radio_indicator_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_CHECKED),
+                PART_RADIO_BUTTON_INDICATOR,
+            ),
+            radio_indicator_checked,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_FOCUS_VISIBLE),
+                PART_RADIO_BUTTON_INDICATOR,
+            ),
+            radio_indicator_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            nested_radio_dot_selector(false),
+            radio_dot_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            nested_radio_dot_selector(true),
+            radio_dot_checked,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_LABEL),
+            radio_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
             selectors::type_tag(TYPE_PROGRESS_BAR),
             progress_idle,
         )
@@ -1147,6 +1246,19 @@ fn nested_check_mark_selector(checked: bool) -> Selector {
         owner,
         SelectorStep::part_tag(PART_CHECK_BOX_BOX),
         SelectorStep::part_tag(PART_CHECK_BOX_MARK),
+    ])
+}
+
+fn nested_radio_dot_selector(checked: bool) -> Selector {
+    let owner = if checked {
+        SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_CHECKED)
+    } else {
+        SelectorStep::type_tag(TYPE_RADIO_BUTTON)
+    };
+    Selector::from([
+        owner,
+        SelectorStep::part_tag(PART_RADIO_BUTTON_INDICATOR),
+        SelectorStep::part_tag(PART_RADIO_BUTTON_DOT),
     ])
 }
 

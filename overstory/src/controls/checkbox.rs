@@ -22,6 +22,9 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
+use crate::controls::support::{
+    CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
+};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -60,6 +63,7 @@ pub struct CheckBox {
     font_size: Option<f64>,
     element: ElementConfig,
     template: Option<&'static dyn Template>,
+    on_checked_changed: Option<CheckedChangedHandler>,
 }
 
 impl core::fmt::Debug for CheckBox {
@@ -83,6 +87,7 @@ impl CheckBox {
             font_size: None,
             element,
             template: None,
+            on_checked_changed: None,
         }
     }
 
@@ -90,6 +95,16 @@ impl CheckBox {
     #[must_use]
     pub fn checked(mut self, checked: bool) -> Self {
         self.initial_checked = checked;
+        self
+    }
+
+    /// Registers a handler fired after user input changes the checked state.
+    #[must_use]
+    pub fn on_checked_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, CheckedChangedEvent) + 'static,
+    {
+        self.on_checked_changed = Some(Box::new(handler));
         self
     }
 
@@ -146,8 +161,11 @@ impl CheckBox {
 impl AppendSpec for CheckBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(CheckBoxWidget, template)),
-            None => Box::new(CheckBoxWidget),
+            Some(template) => Box::new(TemplateOverrideWidget::new(
+                CheckBoxWidget::new(self.on_checked_changed),
+                template,
+            )),
+            None => Box::new(CheckBoxWidget::new(self.on_checked_changed)),
         };
         let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
@@ -169,8 +187,35 @@ impl ElementSpec for CheckBox {
 }
 
 /// Per-element widget for `CheckBox`.
-#[derive(Debug, Default)]
-pub(crate) struct CheckBoxWidget;
+pub(crate) struct CheckBoxWidget {
+    checked_changed: CheckedChangedSlot,
+}
+
+impl CheckBoxWidget {
+    fn new(checked_changed: Option<CheckedChangedHandler>) -> Self {
+        Self {
+            checked_changed: CheckedChangedSlot::new(checked_changed),
+        }
+    }
+
+    fn toggle_checked(&self, ui: &mut Ui, checkbox: ElementId) {
+        let next = toggle_check_box(ui, checkbox);
+        dispatch_checked_changed(
+            ui,
+            &self.checked_changed,
+            CheckedChangedEvent {
+                element: checkbox,
+                checked: next,
+            },
+        );
+    }
+}
+
+impl core::fmt::Debug for CheckBoxWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("CheckBoxWidget").finish_non_exhaustive()
+    }
+}
 
 impl Widget for CheckBoxWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -207,7 +252,7 @@ impl Widget for CheckBoxWidget {
         if !ctx.is_enabled(checkbox) {
             return;
         }
-        toggle_check_box(ctx, checkbox);
+        self.toggle_checked(ctx, checkbox);
         event.mark_handled();
     }
 
@@ -229,7 +274,7 @@ impl Widget for CheckBoxWidget {
             _ => false,
         };
         if activate {
-            toggle_check_box(ctx, checkbox);
+            self.toggle_checked(ctx, checkbox);
             event.mark_handled();
         }
     }
@@ -292,17 +337,21 @@ pub fn set_check_box_checked(ui: &mut Ui, checkbox: ElementId, checked: bool) {
     }
 }
 
-fn toggle_check_box(ui: &mut Ui, checkbox: ElementId) {
+fn toggle_check_box(ui: &mut Ui, checkbox: ElementId) -> bool {
     let checked = ui
         .get(checkbox)
         .and_then(|el| el.get_local_value(ui.properties().is_checked).copied())
         .unwrap_or(false);
-    set_check_box_checked(ui, checkbox, !checked);
+    let next = !checked;
+    set_check_box_checked(ui, checkbox, next);
+    next
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::rc::Rc;
+    use core::cell::Cell;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     #[test]
@@ -336,5 +385,23 @@ mod tests {
                 .and_then(|el| el.get_local_value(ui.properties().is_checked).copied()),
             Some(true)
         );
+    }
+
+    #[test]
+    fn checkbox_checked_changed_reports_new_state() {
+        let observed = Rc::new(Cell::new(None));
+        let observed_for_handler = Rc::clone(&observed);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let checkbox = ui.append(
+            root,
+            CheckBox::new("Ship it").on_checked_changed(move |_ui, event| {
+                observed_for_handler.set(Some((event.element, event.checked)));
+            }),
+        );
+
+        ui.synthesize_click(checkbox, kurbo::Point::ZERO);
+
+        assert_eq!(observed.get(), Some((checkbox, true)));
     }
 }

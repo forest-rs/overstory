@@ -155,7 +155,7 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         ));
     });
 
-    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
+    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 300.0, |actions| {
         actions.children(Panel::row(10.0).align_center(), |buttons| {
             buttons.add_with(
                 Button::new("Deploy")
@@ -178,6 +178,21 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         actions.add(CheckBox::new("Enable staged rollout").checked(true));
         actions.add(CheckBox::new("Collect timing traces"));
         actions.add(CheckBox::new("Send diagnostics").disabled());
+        actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+        let summary = actions.add(caption("Release lane: Balanced"));
+        actions.add(
+            RadioGroup::new()
+                .items(["Balanced", "Quality", "Low latency"])
+                .selected_index(0)
+                .on_selection_changed(move |ui, event| {
+                    let selected_item = event.selected_item.unwrap_or_else(|| "None".to_owned());
+                    ui.set_local(
+                        summary,
+                        ui.properties().content,
+                        format!("Release lane: {selected_item}"),
+                    );
+                }),
+        );
     });
 }
 

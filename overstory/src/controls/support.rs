@@ -4,6 +4,7 @@
 //! Small shared helpers for built-in controls.
 
 use alloc::boxed::Box;
+use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Axis, Point, Rect, Size, Vec2};
@@ -17,6 +18,33 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::ScrollState;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
+
+/// Event delivered after a checked-state control changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CheckedChangedEvent {
+    /// The control whose checked state changed.
+    pub element: ElementId,
+    /// The checked state after the change.
+    pub checked: bool,
+}
+
+pub(crate) type CheckedChangedHandler = Box<dyn FnMut(&mut Ui, CheckedChangedEvent) + 'static>;
+pub(crate) type CheckedChangedSlot = RefCell<Option<CheckedChangedHandler>>;
+
+pub(crate) fn dispatch_checked_changed(
+    ui: &mut Ui,
+    handler: &CheckedChangedSlot,
+    event: CheckedChangedEvent,
+) {
+    let Some(mut callback) = handler.borrow_mut().take() else {
+        return;
+    };
+    callback(ui, event);
+    let should_restore = handler.borrow().is_none();
+    if should_restore {
+        *handler.borrow_mut() = Some(callback);
+    }
+}
 
 pub(crate) type FixedVirtualizer = VirtualList<FixedExtentModel<f64>>;
 
