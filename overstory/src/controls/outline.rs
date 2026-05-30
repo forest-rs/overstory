@@ -35,7 +35,7 @@ use crate::controls::scroll::{
 use crate::controls::support::{
     FixedVirtualizer, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
     configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
-    fixed_virtualizer, fixed_visible_item_count, layout_fixed_virtual_rows,
+    fixed_virtualizer, fixed_visible_item_count, is_descendant_or_self, layout_fixed_virtual_rows,
     reserved_scroll_frame_widget, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
@@ -1141,21 +1141,6 @@ fn click_source_is_disclosure(
         return false;
     };
     is_descendant_or_self(ctx, source, disclosure)
-}
-
-fn is_descendant_or_self(
-    ctx: &WidgetEventContext<'_>,
-    descendant: ElementId,
-    ancestor: ElementId,
-) -> bool {
-    let mut current = Some(descendant);
-    while let Some(id) = current {
-        if id == ancestor {
-            return true;
-        }
-        current = ctx.get(id).and_then(Element::parent);
-    }
-    false
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

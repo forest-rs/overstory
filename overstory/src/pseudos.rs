@@ -12,8 +12,8 @@
 //!
 //! Roadmap:
 //! - Keep pseudoclasses for dynamic state that affects selector matching:
-//!   hover, pressed, focused, disabled, checked, selected, read-only, and
-//!   placeholder-shown.
+//!   hover, pressed, focused, disabled, checked, expanded, selected,
+//!   read-only, and placeholder-shown.
 //! - Revisit placeholder and part styling once pseudo-elements exist; not every
 //!   visual subpart should become a pseudoclass.
 //! - Add states only with a clear owner responsible for keeping the state in
@@ -50,3 +50,6 @@ pub const PSEUDO_SELECTED: PseudoClassId = PseudoClassId(8);
 
 /// `:placeholder-shown` — this text input is currently showing placeholder text.
 pub const PSEUDO_PLACEHOLDER_SHOWN: PseudoClassId = PseudoClassId(9);
+
+/// `:expanded` — this element is currently showing expandable content.
+pub const PSEUDO_EXPANDED: PseudoClassId = PseudoClassId(10);

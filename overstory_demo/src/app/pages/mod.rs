@@ -155,7 +155,7 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         ));
     });
 
-    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 300.0, |actions| {
+    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 344.0, |actions| {
         actions.children(Panel::row(10.0).align_center(), |buttons| {
             buttons.add_with(
                 Button::new("Deploy")
@@ -192,6 +192,14 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                         format!("Release lane: {selected_item}"),
                     );
                 }),
+        );
+        actions.children_in_slot(
+            Expander::new("Advanced routing"),
+            SLOT_EXPANDER_CONTENT,
+            |advanced| {
+                advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
+                advanced.add(CheckBox::new("Pause on anomaly"));
+            },
         );
     });
 }

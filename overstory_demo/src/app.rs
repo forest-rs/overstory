@@ -18,11 +18,12 @@ use overstory::motion::{
 };
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
-    Affine, BuiltInProperties, Button, CheckBox, ChildUi, CursorIcon, Divider, ElementId,
+    Affine, BuiltInProperties, Button, CheckBox, ChildUi, CursorIcon, Divider, ElementId, Expander,
     FontFeature, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox,
-    OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioGroup, Rect, Select, Size,
-    Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TimerDuration, TimerId,
-    ToggleSwitch, Tooltip, Ui, Viewport, layouts, set_progress_value, theme,
+    OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioGroup, Rect,
+    SLOT_EXPANDER_CONTENT, Select, Size, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text,
+    TextInput, TimerDuration, TimerId, ToggleSwitch, Tooltip, Ui, Viewport, layouts,
+    set_progress_value, theme,
 };
 use overstory_devtools::{
     DevtoolsSession, DevtoolsSessionHandle, DevtoolsSnapshot, append_session_view,

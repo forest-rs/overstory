@@ -1,0 +1,547 @@
+// Copyright 2026 the Overstory Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! `Expander`: a disclosure header with a templated content slot.
+//!
+//! Roadmap:
+//! - Keep `Expander` as the first small headered-content control: the widget
+//!   owns disclosure state, focus, accessibility, and keyboard/pointer
+//!   activation; the template owns header, disclosure, label, and content
+//!   slots.
+//! - Use [`crate::Ui::children_in_slot`] / [`crate::ChildUi::children_in_slot`]
+//!   as the generic content-slot authoring surface instead of adding one-off
+//!   helpers for every future content control.
+//! - Grow toward animation, retained content transitions, and richer header
+//!   templates once content controls have a more complete authoring story.
+
+use alloc::{boxed::Box, string::String};
+use core::cell::RefCell;
+
+use understory_style::{PartTag, TypeTag};
+
+use crate::Phase;
+use crate::behavior::WidgetEventContext;
+use crate::controls::support::is_descendant_or_self;
+use crate::controls::text::TextWidget;
+use crate::element::{Element, ElementId};
+use crate::event_runtime::{ClickEvent, KeyEvent};
+use crate::layouts::{LayoutContainer, LayoutDisplay};
+use crate::pseudos::PSEUDO_EXPANDED;
+use crate::template::{
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
+    TemplateWidgetFactory,
+};
+use crate::ui::{ControlState, Ui};
+use crate::widget::{
+    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+};
+
+/// Selector identity for `Expander`.
+pub const TYPE_EXPANDER: TypeTag = TypeTag(25);
+/// Owner-local part identity for the clickable header row.
+pub const PART_EXPANDER_HEADER: PartTag = PartTag(1);
+/// Owner-local part identity for the disclosure glyph.
+pub const PART_EXPANDER_DISCLOSURE: PartTag = PartTag(2);
+/// Owner-local part identity for the visible header label.
+pub const PART_EXPANDER_LABEL: PartTag = PartTag(3);
+/// Owner-local part identity for the content host.
+pub const PART_EXPANDER_CONTENT: PartTag = PartTag(4);
+/// Semantic slot for the clickable header row.
+pub const SLOT_EXPANDER_HEADER: TemplateSlot =
+    TemplateSlot::new("expander-header").with_part_tag(PART_EXPANDER_HEADER);
+/// Semantic slot for the disclosure glyph.
+pub const SLOT_EXPANDER_DISCLOSURE: TemplateSlot =
+    TemplateSlot::new("expander-disclosure").with_part_tag(PART_EXPANDER_DISCLOSURE);
+/// Semantic slot for the visible header label.
+pub const SLOT_EXPANDER_LABEL: TemplateSlot =
+    TemplateSlot::new("expander-label").with_part_tag(PART_EXPANDER_LABEL);
+/// Semantic slot for the content host.
+pub const SLOT_EXPANDER_CONTENT: TemplateSlot =
+    TemplateSlot::new("expander-content").with_part_tag(PART_EXPANDER_CONTENT);
+
+type ExpandedChangedHandler = Box<dyn FnMut(&mut Ui, ExpandedChangedEvent) + 'static>;
+type ExpandedChangedSlot = RefCell<Option<ExpandedChangedHandler>>;
+
+/// Event delivered after an [`Expander`] changes expansion state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExpandedChangedEvent {
+    /// The expander whose state changed.
+    pub expander: ElementId,
+    /// Whether the expander is open after the change.
+    pub expanded: bool,
+}
+
+/// Builder + spec for a headered disclosure container.
+pub struct Expander {
+    header: String,
+    expanded: bool,
+    font_size: Option<f64>,
+    element: ElementConfig,
+    template: Option<&'static dyn Template>,
+    on_expanded_changed: Option<ExpandedChangedHandler>,
+}
+
+impl core::fmt::Debug for Expander {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Expander")
+            .field("header", &self.header)
+            .field("expanded", &self.expanded)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Expander {
+    /// Starts a new expander with the given header text.
+    #[must_use]
+    pub fn new(header: impl Into<String>) -> Self {
+        let mut element = ElementConfig::default();
+        element.set_control_state(ControlState::interactive());
+        Self {
+            header: header.into(),
+            expanded: false,
+            font_size: None,
+            element,
+            template: None,
+            on_expanded_changed: None,
+        }
+    }
+
+    /// Sets the initial expansion state.
+    #[must_use]
+    pub fn expanded(mut self, expanded: bool) -> Self {
+        self.expanded = expanded;
+        self
+    }
+
+    /// Overrides the header label font size.
+    #[must_use]
+    pub fn font_size(mut self, font_size: f64) -> Self {
+        self.font_size = Some(font_size);
+        self
+    }
+
+    /// Registers a handler fired after the expansion state changes.
+    #[must_use]
+    pub fn on_expanded_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, ExpandedChangedEvent) + 'static,
+    {
+        self.on_expanded_changed = Some(Box::new(handler));
+        self
+    }
+
+    /// Overrides the visual template used when this expander is inserted.
+    #[must_use]
+    pub fn template(mut self, template: &'static dyn Template) -> Self {
+        self.template = Some(template);
+        self
+    }
+}
+
+impl AppendSpec for Expander {
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let widget = ExpanderWidget {
+            expanded: self.expanded,
+            expanded_changed: ExpandedChangedSlot::new(self.on_expanded_changed),
+        };
+        let widget: Box<dyn Widget> = match self.template {
+            Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
+            None => Box::new(widget),
+        };
+        let id = ui.append_widget_deferred_template(parent, widget);
+        let content_prop = ui.properties().content;
+        let font_size_prop = ui.properties().font_size;
+        ui.set_local(id, content_prop, self.header);
+        if let Some(font_size) = self.font_size {
+            ui.set_local(id, font_size_prop, font_size);
+        }
+        self.element.apply_to(ui, id);
+        ui.expand_default_template(id);
+        sync_expander_state(ui, id, self.expanded);
+        id
+    }
+}
+
+impl ElementSpec for Expander {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
+    }
+}
+
+pub(crate) struct ExpanderWidget {
+    expanded: bool,
+    expanded_changed: ExpandedChangedSlot,
+}
+
+impl core::fmt::Debug for ExpanderWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ExpanderWidget")
+            .field("expanded", &self.expanded)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Widget for ExpanderWidget {
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_EXPANDER)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &crate::AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::DisclosureTriangle)
+    }
+
+    fn configure_accessibility(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+    ) {
+        ctx.add_click_action_if_enabled(element, node);
+        node.set_expanded(self.expanded);
+        if self.expanded {
+            node.add_action(accesskit::Action::Collapse);
+        } else {
+            node.add_action(accesskit::Action::Expand);
+        }
+    }
+
+    fn default_template(&self) -> Option<&'static dyn Template> {
+        Some(&EXPANDER_TEMPLATE)
+    }
+
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let expander = ctx.id();
+        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(expander) {
+            return;
+        }
+        if !click_source_is_header(ctx, expander, event.source) {
+            return;
+        }
+        let _ = self.set_expanded(ctx, expander, !self.expanded);
+        event.mark_handled();
+    }
+
+    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
+        use ui_events::keyboard::{Key, KeyState, NamedKey};
+        let expander = ctx.id();
+        if !matches!(event.phase, Phase::Target) {
+            return;
+        }
+        if event.key.state != KeyState::Down || !ctx.is_enabled(expander) {
+            return;
+        }
+        let next = match &event.key.key {
+            Key::Named(NamedKey::Enter) => Some(!self.expanded),
+            Key::Character(s) if s == " " => Some(!self.expanded),
+            Key::Named(NamedKey::ArrowRight) => Some(true),
+            Key::Named(NamedKey::ArrowLeft) => Some(false),
+            _ => None,
+        };
+        if let Some(expanded) = next
+            && self.set_expanded(ctx, expander, expanded)
+        {
+            event.mark_handled();
+        }
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let expander = ctx.id();
+        if !ctx.is_enabled(expander) {
+            return false;
+        }
+        match request.action {
+            accesskit::Action::Click => self.set_expanded(ctx, expander, !self.expanded),
+            accesskit::Action::Expand => self.set_expanded(ctx, expander, true),
+            accesskit::Action::Collapse => self.set_expanded(ctx, expander, false),
+            _ => false,
+        }
+    }
+}
+
+impl ExpanderWidget {
+    fn set_expanded(&mut self, ui: &mut Ui, expander: ElementId, expanded: bool) -> bool {
+        if self.expanded == expanded {
+            return false;
+        }
+        self.expanded = expanded;
+        sync_expander_state(ui, expander, expanded);
+        dispatch_expanded_changed(
+            ui,
+            &self.expanded_changed,
+            ExpandedChangedEvent { expander, expanded },
+        );
+        true
+    }
+}
+
+type ExpanderTemplate = TemplateSpec;
+
+static EXPANDER_TEMPLATE: ExpanderTemplate = TemplateSpec::new(EXPANDER_TEMPLATE_NODES);
+
+const EXPANDER_LABEL_BINDINGS: &[TemplateBinding] = &[
+    TemplateBinding::owner_to_part(
+        TemplateBuiltInProperty::Content,
+        TemplateBuiltInProperty::Content,
+    ),
+    TemplateBinding::owner_to_part(
+        TemplateBuiltInProperty::FontSize,
+        TemplateBuiltInProperty::FontSize,
+    ),
+];
+
+const EXPANDER_TEMPLATE_NODES: &[TemplateNode] = &[
+    TemplateNode::widget(TemplateWidgetFactory::new(expander_header_widget))
+        .with_slot(SLOT_EXPANDER_HEADER)
+        .with_children(EXPANDER_HEADER_CHILDREN),
+    TemplateNode::widget(TemplateWidgetFactory::new(expander_content_widget))
+        .with_slot(SLOT_EXPANDER_CONTENT),
+];
+
+const EXPANDER_HEADER_CHILDREN: &[TemplateNode] = &[
+    TemplateNode::widget(TemplateWidgetFactory::new(expander_disclosure_widget))
+        .with_slot(SLOT_EXPANDER_DISCLOSURE),
+    TemplateNode::widget(TemplateWidgetFactory::new(expander_label_widget))
+        .with_slot(SLOT_EXPANDER_LABEL)
+        .with_bindings(EXPANDER_LABEL_BINDINGS),
+];
+
+fn expander_header_widget() -> Box<dyn Widget> {
+    Box::new(SurfacePartWidget)
+}
+
+fn expander_disclosure_widget() -> Box<dyn Widget> {
+    Box::new(TextWidget)
+}
+
+fn expander_label_widget() -> Box<dyn Widget> {
+    Box::new(TextWidget)
+}
+
+fn expander_content_widget() -> Box<dyn Widget> {
+    Box::new(SurfacePartWidget)
+}
+
+/// Sets whether `expander` is expanded.
+///
+/// Returns `false` if `expander` is stale, disabled, not an [`Expander`], or
+/// already has the requested state.
+pub fn set_expander_expanded(ui: &mut Ui, expander: ElementId, expanded: bool) -> bool {
+    with_expander_mut(ui, expander, |widget, ui| {
+        widget.set_expanded(ui, expander, expanded)
+    })
+    .unwrap_or(false)
+}
+
+/// Toggles whether `expander` is expanded.
+///
+/// Returns `false` if `expander` is stale, disabled, or not an [`Expander`].
+pub fn toggle_expander(ui: &mut Ui, expander: ElementId) -> bool {
+    with_expander_mut(ui, expander, |widget, ui| {
+        widget.set_expanded(ui, expander, !widget.expanded)
+    })
+    .unwrap_or(false)
+}
+
+/// Returns whether `expander` is currently expanded.
+#[must_use]
+pub fn expander_expanded(ui: &Ui, expander: ElementId) -> Option<bool> {
+    expander_widget(ui, expander).map(|widget| widget.expanded)
+}
+
+/// Returns the content host generated by `expander`'s current template.
+#[must_use]
+pub fn expander_content(ui: &Ui, expander: ElementId) -> Option<ElementId> {
+    ui.slot(expander, SLOT_EXPANDER_CONTENT)
+}
+
+fn with_expander_mut<R>(
+    ui: &mut Ui,
+    expander: ElementId,
+    f: impl FnOnce(&mut ExpanderWidget, &mut Ui) -> R,
+) -> Option<R> {
+    let mut output = None;
+    ui.with_widget_mut(expander, |widget, ui| {
+        if let Some(expander) = widget.downcast_mut::<ExpanderWidget>() {
+            output = Some(f(expander, ui));
+        }
+    });
+    output
+}
+
+fn expander_widget(ui: &Ui, expander: ElementId) -> Option<&ExpanderWidget> {
+    ui.get(expander)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ExpanderWidget>())
+}
+
+fn sync_expander_state(ui: &mut Ui, expander: ElementId, expanded: bool) {
+    ui.set_local(expander, ui.properties().is_expanded, expanded);
+    if expanded {
+        ui.add_pseudo(expander, PSEUDO_EXPANDED);
+    } else {
+        ui.remove_pseudo(expander, PSEUDO_EXPANDED);
+    }
+    if let Some(disclosure) = ui.slot(expander, SLOT_EXPANDER_DISCLOSURE) {
+        ui.set_local(
+            disclosure,
+            ui.properties().content,
+            String::from(disclosure_text(expanded)),
+        );
+    }
+    if let Some(content) = ui.slot(expander, SLOT_EXPANDER_CONTENT) {
+        let display = if expanded {
+            LayoutContainer::column()
+        } else {
+            LayoutContainer::new().display(LayoutDisplay::None)
+        };
+        ui.set_layout_container(content, display);
+    }
+}
+
+fn disclosure_text(expanded: bool) -> &'static str {
+    if expanded { "▾" } else { "▸" }
+}
+
+fn click_source_is_header(
+    ctx: &WidgetEventContext<'_>,
+    expander: ElementId,
+    source: ElementId,
+) -> bool {
+    let Some(header) = ctx.slot(expander, SLOT_EXPANDER_HEADER) else {
+        return source == expander;
+    };
+    is_descendant_or_self(ctx, source, header)
+}
+
+fn dispatch_expanded_changed(
+    ui: &mut Ui,
+    handler: &ExpandedChangedSlot,
+    event: ExpandedChangedEvent,
+) {
+    let Some(mut callback) = handler.borrow_mut().take() else {
+        return;
+    };
+    callback(ui, event);
+    let should_restore = handler.borrow().is_none();
+    if should_restore {
+        *handler.borrow_mut() = Some(callback);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use accesskit::{Action, ActionRequest, NodeId, Role, TreeId};
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use kurbo::{Point, Size};
+    use ui_events::keyboard::{Code, Key, KeyboardEvent};
+
+    #[test]
+    fn expander_hides_and_shows_content_slot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, crate::Layout::column(0.0).logical_size(240.0, 140.0));
+        let (expander, _) = ui.children_in_slot(
+            root,
+            Expander::new("Advanced"),
+            SLOT_EXPANDER_CONTENT,
+            |content| {
+                content.add(crate::Text::new("Details"));
+            },
+        );
+        let content = expander_content(&ui, expander).unwrap();
+
+        ui.compute_layout(Size::new(240.0, 140.0));
+        assert_eq!(ui.effective_bounds(content).height(), 0.0);
+
+        assert!(set_expander_expanded(&mut ui, expander, true));
+        ui.compute_layout(Size::new(240.0, 140.0));
+        assert!(ui.effective_bounds(content).height() > 0.0);
+    }
+
+    #[test]
+    fn expander_clicking_header_toggles_and_reports_state() {
+        let observed = Rc::new(Cell::new(None));
+        let observed_for_handler = Rc::clone(&observed);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let expander = ui.append(
+            root,
+            Expander::new("Advanced").on_expanded_changed(move |_ui, event| {
+                observed_for_handler.set(Some((event.expander, event.expanded)));
+            }),
+        );
+        let header = ui.slot(expander, SLOT_EXPANDER_HEADER).unwrap();
+
+        ui.synthesize_click(header, Point::ZERO);
+
+        assert_eq!(expander_expanded(&ui, expander), Some(true));
+        assert_eq!(observed.get(), Some((expander, true)));
+    }
+
+    #[test]
+    fn expander_keyboard_toggles_on_space() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let expander = ui.append(root, Expander::new("Advanced"));
+        ui.set_focus(Some(expander));
+
+        let key = KeyboardEvent::key_down(Key::Character(String::from(" ")), Code::Space);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert_eq!(expander_expanded(&ui, expander), Some(true));
+    }
+
+    #[test]
+    fn expander_accessibility_exposes_disclosure_state_and_actions() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let expander = ui.append(root, Expander::new("Advanced"));
+        ui.compute_layout(Size::new(240.0, 120.0));
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, expander);
+
+        assert_eq!(node.role(), Role::DisclosureTriangle);
+        assert_eq!(node.is_expanded(), Some(false));
+        assert!(node.supports_action(Action::Expand));
+
+        assert!(ui.handle_accesskit_action(&action(expander, Action::Expand)));
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, expander);
+        assert_eq!(node.is_expanded(), Some(true));
+        assert!(node.supports_action(Action::Collapse));
+    }
+
+    fn action(id: ElementId, action: Action) -> ActionRequest {
+        ActionRequest {
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(id),
+            action,
+            data: None,
+        }
+    }
+
+    fn node_for(update: &accesskit::TreeUpdate, id: ElementId) -> &accesskit::Node {
+        let node_id = accesskit_node_id(id);
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id)
+            .map(|(_, node)| node)
+            .expect("node should be emitted")
+    }
+
+    fn accesskit_node_id(id: ElementId) -> NodeId {
+        NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
+    }
+}

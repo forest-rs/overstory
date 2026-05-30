@@ -161,6 +161,11 @@ pub struct BuiltInProperties {
     /// the cascade reflects the new state.
     pub is_checked: Property<bool>,
 
+    /// Boolean expanded state for disclosure-style controls. Default `false`.
+    /// Writers should pair the value change with adding / removing the
+    /// `:expanded` pseudoclass so the cascade reflects the new state.
+    pub is_expanded: Property<bool>,
+
     /// Whether an element can participate in control interaction. Default
     /// `true`. Controls should keep this in sync with the `:disabled`
     /// pseudoclass through [`crate::Ui::set_enabled`].
@@ -422,6 +427,13 @@ impl BuiltInProperties {
                     // No direct paint impact — state lives in the
                     // pseudoclass. The control's click handler is
                     // responsible for keeping `:checked` in sync.
+                    .build(),
+            ),
+            is_expanded: registry.register(
+                "IsExpanded",
+                PropertyMetadataBuilder::new(false)
+                    // No direct visual impact. Expander-like controls update
+                    // `:expanded` and synchronize their content slot.
                     .build(),
             ),
             is_enabled: registry.register(

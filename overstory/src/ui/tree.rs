@@ -89,6 +89,39 @@ impl<'a> ChildUi<'a> {
         (child, result)
     }
 
+    /// Scopes `f` to a template slot exposed by `owner`.
+    ///
+    /// This is the generic content-control escape hatch: controls can expose
+    /// named slots without adding one-off `ChildUi` methods for every built-in
+    /// or downstream widget.
+    pub fn slot_children<R>(
+        &mut self,
+        owner: ElementId,
+        slot: TemplateSlot,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> Option<R> {
+        self.ui.slot_children(owner, slot, f)
+    }
+
+    /// Adds `spec`, scopes `f` to one of its template slots, and returns the
+    /// inserted owner id with the optional closure result.
+    ///
+    /// The result is `None` when the inserted control's template does not
+    /// expose `slot`, which can happen with custom templates.
+    pub fn children_in_slot<S, R>(
+        &mut self,
+        spec: S,
+        slot: TemplateSlot,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, Option<R>)
+    where
+        S: crate::widget::AppendSpec,
+    {
+        let child = self.add(spec);
+        let result = self.slot_children(child, slot, f);
+        (child, result)
+    }
+
     /// Adds `panel`, scopes `f` to the inserted panel's children, and returns
     /// the panel id with the closure's result.
     pub fn panel<R>(
@@ -191,6 +224,40 @@ impl Ui {
     {
         let child = self.append(parent, spec);
         let result = self.with_children(child, f);
+        (child, result)
+    }
+
+    /// Scopes `f` to a template slot exposed by `owner`.
+    ///
+    /// Returns `None` when `owner` is stale or the current template does not
+    /// expose `slot`.
+    pub fn slot_children<R>(
+        &mut self,
+        owner: ElementId,
+        slot: TemplateSlot,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> Option<R> {
+        let slot_child = self.slot(owner, slot)?;
+        Some(self.with_children(slot_child, f))
+    }
+
+    /// Adds `spec` under `parent`, scopes `f` to one of its template slots, and
+    /// returns the owner id with the optional closure result.
+    ///
+    /// The result is `None` when the inserted control's template does not
+    /// expose `slot`, which can happen with custom templates.
+    pub fn children_in_slot<S, R>(
+        &mut self,
+        parent: ElementId,
+        spec: S,
+        slot: TemplateSlot,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, Option<R>)
+    where
+        S: crate::widget::AppendSpec,
+    {
+        let child = self.append(parent, spec);
+        let result = self.slot_children(child, slot, f);
         (child, result)
     }
 

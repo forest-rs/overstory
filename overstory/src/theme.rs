@@ -61,6 +61,10 @@ use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
 };
 use crate::controls::divider::TYPE_DIVIDER;
+use crate::controls::expander::{
+    PART_EXPANDER_CONTENT, PART_EXPANDER_DISCLOSURE, PART_EXPANDER_HEADER, PART_EXPANDER_LABEL,
+    TYPE_EXPANDER,
+};
 use crate::controls::list::{PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM};
 use crate::controls::outline::{
     PART_OUTLINE_ITEM_CONTENT, PART_OUTLINE_ITEM_DISCLOSURE, PART_OUTLINE_ITEM_LABEL,
@@ -86,8 +90,8 @@ use crate::controls::text_input::{
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
 use crate::controls::tooltip::TYPE_TOOLTIP;
 use crate::layouts::{
-    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutSize,
-    LayoutSpacing,
+    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutGap, LayoutJustify,
+    LayoutSize, LayoutSpacing,
 };
 use crate::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
@@ -95,8 +99,8 @@ use crate::motion::{
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
-    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
-    PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_EXPANDED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED,
+    PSEUDO_HOVER, PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
 use crate::selectors;
 use understory_timing::TimerDuration;
@@ -495,6 +499,63 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
     let radio_label = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
+        .build();
+    let expander_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 15.0_f64)
+        .set(properties.layout_container, LayoutContainer::column())
+        .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
+        .build();
+    let expander_header = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(10.0, 7.0),
+        )
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
+        .build();
+    let expander_header_expanded = StyleBuilder::new()
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .build();
+    let expander_header_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let expander_disclosure = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 18.0_f64)
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .width(LayoutDimension::Logical(20.0))
+                .flex_shrink(0.0),
+        )
+        .build();
+    let expander_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let expander_content = StyleBuilder::new()
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(30.0, 0.0).with_gap(LayoutGap::all(8.0)),
+        )
         .build();
 
     let progress_idle = StyleBuilder::new()
@@ -961,6 +1022,47 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_LABEL),
             radio_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_EXPANDER),
+            expander_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_EXPANDER, PART_EXPANDER_HEADER),
+            expander_header,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_EXPANDER).with_pseudo(PSEUDO_EXPANDED),
+                PART_EXPANDER_HEADER,
+            ),
+            expander_header_expanded,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_EXPANDER).with_pseudo(PSEUDO_FOCUS_VISIBLE),
+                PART_EXPANDER_HEADER,
+            ),
+            expander_header_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_EXPANDER, PART_EXPANDER_DISCLOSURE),
+            expander_disclosure,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_EXPANDER, PART_EXPANDER_LABEL),
+            expander_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_EXPANDER, PART_EXPANDER_CONTENT),
+            expander_content,
         )
         .push_rule(
             StyleOrigin::Base,

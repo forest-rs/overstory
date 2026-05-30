@@ -102,6 +102,12 @@ pub use controls::checkbox::{
     SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX, set_check_box_checked,
 };
 pub use controls::divider::{Divider, TYPE_DIVIDER};
+pub use controls::expander::{
+    ExpandedChangedEvent, Expander, PART_EXPANDER_CONTENT, PART_EXPANDER_DISCLOSURE,
+    PART_EXPANDER_HEADER, PART_EXPANDER_LABEL, SLOT_EXPANDER_CONTENT, SLOT_EXPANDER_DISCLOSURE,
+    SLOT_EXPANDER_HEADER, SLOT_EXPANDER_LABEL, TYPE_EXPANDER, expander_content, expander_expanded,
+    set_expander_expanded, toggle_expander,
+};
 pub use controls::list::{
     ListBox, ListBoxScrollArea, ListSelectionChangedEvent, ListSelectionMode,
     PART_LIST_ITEM_CONTENT, PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX,
@@ -202,9 +208,9 @@ pub use widget::{AppendSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GE
 pub mod prelude {
     pub use crate::{
         AppendSpec, Button, CheckBox, ChildUi, Color, CursorIcon, Divider, ElementId, ElementSpec,
-        ElementSpecExt, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar, RadioButton,
-        RadioGroup, ScrollArea, ScrollBar, ScrollView, Select, Size, Slider, Spinner, Splitter,
-        Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+        ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar,
+        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, Select, Size, Slider, Spinner,
+        Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
     };
 }
 

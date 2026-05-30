@@ -37,6 +37,7 @@
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod divider;
+pub(crate) mod expander;
 pub(crate) mod list;
 pub(crate) mod outline;
 pub(crate) mod panel;

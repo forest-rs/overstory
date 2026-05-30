@@ -46,6 +46,17 @@ pub(crate) fn dispatch_checked_changed(
     }
 }
 
+pub(crate) fn is_descendant_or_self(ui: &Ui, descendant: ElementId, ancestor: ElementId) -> bool {
+    let mut current = Some(descendant);
+    while let Some(id) = current {
+        if id == ancestor {
+            return true;
+        }
+        current = ui.get(id).and_then(Element::parent);
+    }
+    false
+}
+
 pub(crate) type FixedVirtualizer = VirtualList<FixedExtentModel<f64>>;
 
 #[derive(Clone, Debug)]
