@@ -8,9 +8,9 @@ use crate::pseudos::{
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
-    CompositionPolicy, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
-    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
-    TemplateSlot, UiResolveLookup,
+    CompositionPolicy, ElementRef, ElementRefSpecExt, FocusChangeReason, KeyDispatchResult, Layout,
+    LayoutPlacement, Navigation, Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions,
+    TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -131,6 +131,63 @@ fn child_ui_content_scopes_children_to_declared_slot() {
     assert_eq!(ui.get(root).unwrap().children(), &[expander]);
     assert_eq!(ui.get(content).unwrap().children(), &[nested]);
     assert_eq!(ui.get(nested).unwrap().parent(), Some(content));
+}
+
+#[test]
+fn element_ref_records_inserted_element_and_ignores_stale_ids() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let action = ElementRef::<crate::Button>::new();
+
+    let button = ui.append(root, crate::Button::new("Apply").reference(action.clone()));
+
+    assert_eq!(action.current_id(), Some(button));
+    assert_eq!(action.resolve(&ui), Some(button));
+
+    ui.remove(button);
+
+    assert_eq!(action.current_id(), Some(button));
+    assert_eq!(action.resolve(&ui), None);
+    assert!(!action.is_live(&ui));
+}
+
+#[test]
+fn element_ref_can_write_properties_without_raw_element_id() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let label = ElementRef::<crate::Text>::new();
+
+    ui.append(root, crate::Text::new("Before").reference(label.clone()));
+    let content = ui.properties().content;
+
+    label.set_local(&mut ui, content, String::from("After"));
+
+    let id = label.resolve(&ui).expect("label ref should resolve");
+    assert_eq!(
+        ui.resolve_value_for(ui.get(id).unwrap(), content),
+        String::from("After")
+    );
+}
+
+#[test]
+fn tooltip_spec_ext_attaches_tooltip_during_append() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let button = ui.append(
+        root,
+        crate::Button::new("Apply").tooltip("Runs the workflow"),
+    );
+    ui.set_layout(root, Layout::new().logical_size(240.0, 120.0));
+    ui.set_layout(button, Layout::new().logical_size(80.0, 30.0));
+    ui.compute_layout(Size::new(240.0, 120.0));
+    let result = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
+
+    assert!(result.changed());
+    assert_eq!(
+        ui.overlays.active_tooltip().map(|active| active.target),
+        Some(button)
+    );
 }
 
 #[test]

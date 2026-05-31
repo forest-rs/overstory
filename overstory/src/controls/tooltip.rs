@@ -150,6 +150,69 @@ impl ElementSpec for Tooltip {
     }
 }
 
+/// Append wrapper that attaches a tooltip to the inserted element.
+pub struct TooltipSpec<S> {
+    spec: S,
+    tooltip: Tooltip,
+}
+
+impl<S> core::fmt::Debug for TooltipSpec<S>
+where
+    S: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TooltipSpec")
+            .field("spec", &self.spec)
+            .field("tooltip", &self.tooltip)
+            .finish()
+    }
+}
+
+impl<S> TooltipSpec<S> {
+    /// Creates a wrapper that attaches `tooltip` after `spec` is appended.
+    #[must_use]
+    pub fn new(spec: S, tooltip: Tooltip) -> Self {
+        Self { spec, tooltip }
+    }
+}
+
+impl<S> AppendSpec for TooltipSpec<S>
+where
+    S: AppendSpec,
+{
+    fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
+        let id = self.spec.append_to(ui, parent);
+        ui.set_tooltip(id, self.tooltip);
+        id
+    }
+}
+
+impl<S> ElementSpec for TooltipSpec<S>
+where
+    S: ElementSpec,
+{
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        self.spec.element_config_mut()
+    }
+}
+
+/// Extension trait for attaching a tooltip at the same call-site as a spec.
+pub trait TooltipSpecExt: AppendSpec + Sized {
+    /// Attaches a default tooltip with text content to the inserted element.
+    #[must_use]
+    fn tooltip(self, content: impl Into<String>) -> TooltipSpec<Self> {
+        self.with_tooltip(Tooltip::new(content))
+    }
+
+    /// Attaches a fully configured tooltip to the inserted element.
+    #[must_use]
+    fn with_tooltip(self, tooltip: Tooltip) -> TooltipSpec<Self> {
+        TooltipSpec::new(self, tooltip)
+    }
+}
+
+impl<S> TooltipSpecExt for S where S: AppendSpec {}
+
 /// Per-element widget for `Tooltip`.
 #[derive(Debug, Default)]
 pub(crate) struct TooltipWidget;

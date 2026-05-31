@@ -59,6 +59,7 @@ mod composition;
 mod controls;
 pub mod diagnostics;
 mod element;
+mod element_ref;
 mod element_side_map;
 mod element_store;
 mod event_runtime;
@@ -184,12 +185,15 @@ pub use controls::text_input::{
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, toggle_checked,
 };
-pub use controls::tooltip::{PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip};
+pub use controls::tooltip::{
+    PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip, TooltipSpec, TooltipSpecExt,
+};
 pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use cursor_icon::CursorIcon;
 pub use diagnostics::{ChannelMarkStats, UiFrameStats};
 pub use element::{Element, ElementId};
+pub use element_ref::{ElementRef, ElementRefSpecExt, ReferencedSpec};
 pub use event_runtime::{
     ClickEvent, DragEvent, FocusChangeReason, FocusEvent, KeyDispatchResult, KeyEvent,
     PointerDispatchResult, PointerEventKind, PointerRoutedEvent, RoutedDispatchResult,
@@ -225,11 +229,11 @@ pub use widget::{
 pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec, Button,
-        CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider, ElementId, ElementSpec,
-        ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar,
-        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size,
-        Slider, Spinner, Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui,
-        VectorPath, Viewport,
+        CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider, ElementId, ElementRef,
+        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, Layout, ListBox, OutlineView,
+        Panel, Popup, ProgressBar, RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView,
+        SegmentedControl, Select, Size, Slider, Spinner, Splitter, Text, TextInput, TimerDuration,
+        ToggleSwitch, Tooltip, TooltipSpecExt, Ui, VectorPath, Viewport,
     };
 }
 
