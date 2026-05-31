@@ -17,7 +17,7 @@
 //!   open/closed routed events.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
@@ -31,6 +31,7 @@ use crate::controls::choice::{
 };
 use crate::controls::list::{ListBox, ListSelectionChangedEvent};
 use crate::controls::popup::Popup;
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -62,8 +63,8 @@ const DEFAULT_SELECT_ITEM_EXTENT: f64 = 30.0;
 const DEFAULT_SELECT_PLACEHOLDER: &str = "Select...";
 const SELECT_INDICATOR: &str = "▾";
 
-type SelectSelectionChangedHandler = Box<dyn FnMut(&mut Ui, SelectSelectionChangedEvent) + 'static>;
-type SharedSelectSelectionChangedHandler = RefCell<Option<SelectSelectionChangedHandler>>;
+type SelectSelectionChangedHandler = EventHandler<SelectSelectionChangedEvent>;
+type SharedSelectSelectionChangedHandler = CallbackSlot<SelectSelectionChangedEvent>;
 
 /// Selection change payload emitted by [`Select`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -633,16 +634,8 @@ fn dispatch_select_selection_changed(
     handler: Option<&SharedSelectSelectionChangedHandler>,
     event: SelectSelectionChangedEvent,
 ) {
-    let Some(handler) = handler else {
-        return;
-    };
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
+    if let Some(handler) = handler {
+        handler.dispatch(ui, event);
     }
 }
 
@@ -694,6 +687,7 @@ mod tests {
     use crate::controls::list::{realized_list_item, selected_list_index};
     use accesskit::{Action, ActionRequest, HasPopup, Node, NodeId, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
+    use core::cell::RefCell;
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 

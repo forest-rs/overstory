@@ -13,7 +13,6 @@
 //!   templates when the broader item-control API exists.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::RefCell;
 
 use understory_style::{PartTag, TypeTag};
 
@@ -24,6 +23,7 @@ use crate::controls::choice::{
     last_enabled_index, option_label, selected_enabled_index, wrapping_next_enabled_index,
     wrapping_previous_enabled_index,
 };
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -48,9 +48,8 @@ pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
 
 const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
 
-type SegmentedSelectionChangedHandler =
-    Box<dyn FnMut(&mut Ui, SegmentedSelectionChangedEvent) + 'static>;
-type SegmentedSelectionChangedSlot = RefCell<Option<SegmentedSelectionChangedHandler>>;
+type SegmentedSelectionChangedHandler = EventHandler<SegmentedSelectionChangedEvent>;
+type SegmentedSelectionChangedSlot = CallbackSlot<SegmentedSelectionChangedEvent>;
 
 /// Selection change payload emitted by [`SegmentedControl`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -345,9 +344,8 @@ impl SegmentedControlWidget {
         if let Some(selected_segment) = selected_segment {
             set_segmented_item_selected(ui, selected_segment, true);
         }
-        dispatch_segmented_selection_changed(
+        self.selection_changed.dispatch(
             ui,
-            &self.selection_changed,
             SegmentedSelectionChangedEvent {
                 segmented,
                 selected_index: index,
@@ -564,21 +562,6 @@ fn segmented_control_widget(ui: &Ui, segmented: ElementId) -> Option<&SegmentedC
     ui.get(segmented)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<SegmentedControlWidget>())
-}
-
-fn dispatch_segmented_selection_changed(
-    ui: &mut Ui,
-    handler: &SegmentedSelectionChangedSlot,
-    event: SegmentedSelectionChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
 }
 
 #[cfg(test)]

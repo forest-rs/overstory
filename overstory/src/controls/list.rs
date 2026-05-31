@@ -20,7 +20,6 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Size, Vec2};
@@ -40,10 +39,10 @@ use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    FixedVirtualizer, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
-    configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
-    fixed_virtualizer, fixed_visible_item_count, layout_fixed_virtual_rows,
-    reserved_scroll_frame_widget, sync_fixed_virtual_rows,
+    CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
+    append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
+    fixed_virtual_accessibility_scroll_delta, fixed_virtualizer, fixed_visible_item_count,
+    layout_fixed_virtual_rows, reserved_scroll_frame_widget, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -78,8 +77,8 @@ const DEFAULT_LIST_BOX_SCROLLBAR_GAP: f32 = 8.0;
 const DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS: f32 = 10.0;
 const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 
-type ListSelectionChangedHandler = Box<dyn FnMut(&mut Ui, ListSelectionChangedEvent)>;
-type ListSelectionChangedSlot = RefCell<Option<ListSelectionChangedHandler>>;
+type ListSelectionChangedHandler = EventHandler<ListSelectionChangedEvent>;
+type ListSelectionChangedSlot = CallbackSlot<ListSelectionChangedEvent>;
 
 /// Event delivered when a [`ListBox`] selection changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -818,9 +817,8 @@ impl ListBoxWidget {
 
         self.sync_realized_selected_pseudos(ui);
         if changed {
-            dispatch_list_selection_changed(
+            self.selection_changed.dispatch(
                 ui,
-                &self.selection_changed,
                 ListSelectionChangedEvent {
                     listbox,
                     selected_indices: self.selected_indices(),
@@ -1064,21 +1062,6 @@ fn select_list_index_for_click(
     .unwrap_or(false)
 }
 
-fn dispatch_list_selection_changed(
-    ui: &mut Ui,
-    handler: &ListSelectionChangedSlot,
-    event: ListSelectionChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
-}
-
 fn listbox_parent(ui: &Ui, item: ElementId) -> Option<ElementId> {
     let parent = ui.get(item)?.parent()?;
     direct_list_box_widget(ui, parent)
@@ -1153,6 +1136,7 @@ mod tests {
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
+    use core::cell::RefCell;
     use kurbo::Point;
     use peniko::{Brush, Color};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};

@@ -14,13 +14,13 @@
 //!   item templates, and section-level commands.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::RefCell;
 
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::disclosure;
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -59,9 +59,8 @@ pub const SLOT_ACCORDION_SECTION_LABEL: TemplateSlot =
 pub const SLOT_ACCORDION_SECTION_CONTENT: TemplateSlot =
     TemplateSlot::new("accordion-section-content").with_part_tag(PART_ACCORDION_SECTION_CONTENT);
 
-type AccordionExpandedChangedHandler =
-    Box<dyn FnMut(&mut Ui, AccordionExpandedChangedEvent) + 'static>;
-type AccordionExpandedChangedSlot = RefCell<Option<AccordionExpandedChangedHandler>>;
+type AccordionExpandedChangedHandler = EventHandler<AccordionExpandedChangedEvent>;
+type AccordionExpandedChangedSlot = CallbackSlot<AccordionExpandedChangedEvent>;
 
 /// Expansion policy for sections inside an [`Accordion`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -445,9 +444,8 @@ impl AccordionSectionWidget {
         self.expanded = expanded;
         sync_accordion_section_state(ui, section, expanded);
         if notify {
-            dispatch_accordion_expanded_changed(
+            self.expanded_changed.dispatch(
                 ui,
-                &self.expanded_changed,
                 AccordionExpandedChangedEvent {
                     accordion,
                     section,
@@ -700,21 +698,6 @@ fn click_source_is_section_header(
     source: ElementId,
 ) -> bool {
     disclosure::source_is_header(ctx, section, source, SLOT_ACCORDION_SECTION_HEADER)
-}
-
-fn dispatch_accordion_expanded_changed(
-    ui: &mut Ui,
-    handler: &AccordionExpandedChangedSlot,
-    event: AccordionExpandedChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
 }
 
 #[cfg(test)]

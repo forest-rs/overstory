@@ -19,6 +19,31 @@ use crate::scroll_runtime::ScrollState;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
 
+pub(crate) type EventHandler<E> = Box<dyn FnMut(&mut Ui, E) + 'static>;
+
+pub(crate) struct CallbackSlot<E> {
+    handler: RefCell<Option<EventHandler<E>>>,
+}
+
+impl<E> CallbackSlot<E> {
+    pub(crate) const fn new(handler: Option<EventHandler<E>>) -> Self {
+        Self {
+            handler: RefCell::new(handler),
+        }
+    }
+
+    pub(crate) fn dispatch(&self, ui: &mut Ui, event: E) {
+        let Some(mut callback) = self.handler.borrow_mut().take() else {
+            return;
+        };
+        callback(ui, event);
+        let should_restore = self.handler.borrow().is_none();
+        if should_restore {
+            *self.handler.borrow_mut() = Some(callback);
+        }
+    }
+}
+
 /// Event delivered after a checked-state control changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CheckedChangedEvent {
@@ -28,22 +53,15 @@ pub struct CheckedChangedEvent {
     pub checked: bool,
 }
 
-pub(crate) type CheckedChangedHandler = Box<dyn FnMut(&mut Ui, CheckedChangedEvent) + 'static>;
-pub(crate) type CheckedChangedSlot = RefCell<Option<CheckedChangedHandler>>;
+pub(crate) type CheckedChangedHandler = EventHandler<CheckedChangedEvent>;
+pub(crate) type CheckedChangedSlot = CallbackSlot<CheckedChangedEvent>;
 
 pub(crate) fn dispatch_checked_changed(
     ui: &mut Ui,
     handler: &CheckedChangedSlot,
     event: CheckedChangedEvent,
 ) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
+    handler.dispatch(ui, event);
 }
 
 pub(crate) fn is_descendant_or_self(ui: &Ui, descendant: ElementId, ancestor: ElementId) -> bool {

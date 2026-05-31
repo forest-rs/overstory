@@ -17,7 +17,6 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
 use core::ops::Range;
 
 use kurbo::{Size, Vec2};
@@ -33,10 +32,11 @@ use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    FixedVirtualizer, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
-    configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
-    fixed_virtualizer, fixed_visible_item_count, is_descendant_or_self, layout_fixed_virtual_rows,
-    reserved_scroll_frame_widget, sync_fixed_virtual_rows,
+    CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
+    append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
+    fixed_virtual_accessibility_scroll_delta, fixed_virtualizer, fixed_visible_item_count,
+    is_descendant_or_self, layout_fixed_virtual_rows, reserved_scroll_frame_widget,
+    sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -78,10 +78,10 @@ const DEFAULT_OUTLINE_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 const OUTLINE_INDENT_PER_DEPTH: f32 = 18.0;
 const OUTLINE_DISCLOSURE_WIDTH: f32 = 26.0;
 
-type OutlineSelectionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineSelectionChangedEvent)>;
-type OutlineSelectionChangedSlot = RefCell<Option<OutlineSelectionChangedHandler>>;
-type OutlineExpansionChangedHandler = Box<dyn FnMut(&mut Ui, OutlineExpansionChangedEvent)>;
-type OutlineExpansionChangedSlot = RefCell<Option<OutlineExpansionChangedHandler>>;
+type OutlineSelectionChangedHandler = EventHandler<OutlineSelectionChangedEvent>;
+type OutlineSelectionChangedSlot = CallbackSlot<OutlineSelectionChangedEvent>;
+type OutlineExpansionChangedHandler = EventHandler<OutlineExpansionChangedEvent>;
+type OutlineExpansionChangedSlot = CallbackSlot<OutlineExpansionChangedEvent>;
 
 /// Stable key for a dense [`OutlineView`] node.
 ///
@@ -1004,9 +1004,8 @@ impl OutlineViewWidget {
             .set_offset_y_raw(self.virtual_list.scroll_offset());
         ui.mark_channels(outline, LAYOUT.into());
         let _ = self.sync_virtual_items(outline, ui);
-        dispatch_outline_expansion_changed(
+        self.expansion_changed.dispatch(
             ui,
-            &self.expansion_changed,
             OutlineExpansionChangedEvent {
                 outline,
                 key,
@@ -1025,9 +1024,8 @@ impl OutlineViewWidget {
         let changed = mutate(&mut self.selection);
         self.sync_realized_selected_pseudos(ui);
         if changed {
-            dispatch_outline_selection_changed(
+            self.selection_changed.dispatch(
                 ui,
-                &self.selection_changed,
                 OutlineSelectionChangedEvent {
                     outline,
                     selected_key: self.selected_key(),
@@ -1358,36 +1356,6 @@ pub fn realized_outline_item_info(ui: &Ui, item: ElementId) -> Option<OutlineIte
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<OutlineItemWidget>())
         .map(|widget| widget.info)
-}
-
-fn dispatch_outline_selection_changed(
-    ui: &mut Ui,
-    handler: &OutlineSelectionChangedSlot,
-    event: OutlineSelectionChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
-}
-
-fn dispatch_outline_expansion_changed(
-    ui: &mut Ui,
-    handler: &OutlineExpansionChangedSlot,
-    event: OutlineExpansionChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
 }
 
 #[cfg(test)]

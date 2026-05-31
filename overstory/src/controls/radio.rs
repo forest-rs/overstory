@@ -18,7 +18,6 @@
 //!   orientation/wrap policies once the broader `ItemsControl` shape exists.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::RefCell;
 
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
@@ -30,7 +29,8 @@ use crate::controls::choice::{
     selected_enabled_index, wrapping_next_enabled_index, wrapping_previous_enabled_index,
 };
 use crate::controls::support::{
-    CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
+    CallbackSlot, CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, EventHandler,
+    dispatch_checked_changed,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -68,8 +68,8 @@ pub const SLOT_RADIO_BUTTON_LABEL: TemplateSlot =
 
 const DEFAULT_RADIO_GROUP_GAP: f32 = 8.0;
 
-type RadioSelectionChangedHandler = Box<dyn FnMut(&mut Ui, RadioSelectionChangedEvent) + 'static>;
-type RadioSelectionChangedSlot = RefCell<Option<RadioSelectionChangedHandler>>;
+type RadioSelectionChangedHandler = EventHandler<RadioSelectionChangedEvent>;
+type RadioSelectionChangedSlot = CallbackSlot<RadioSelectionChangedEvent>;
 
 /// Event delivered after a [`RadioGroup`] selection changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -576,9 +576,8 @@ impl RadioGroupWidget {
         if let Some(selected_radio) = selected_radio {
             set_radio_button_checked(ui, selected_radio, true);
         }
-        dispatch_radio_selection_changed(
+        self.selection_changed.dispatch(
             ui,
-            &self.selection_changed,
             RadioSelectionChangedEvent {
                 group,
                 selected_index: index,
@@ -731,27 +730,12 @@ fn radio_group_widget(ui: &Ui, group: ElementId) -> Option<&RadioGroupWidget> {
         .and_then(|widget| widget.downcast_ref::<RadioGroupWidget>())
 }
 
-fn dispatch_radio_selection_changed(
-    ui: &mut Ui,
-    handler: &RadioSelectionChangedSlot,
-    event: RadioSelectionChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use accesskit::{NodeId, Role};
     use alloc::rc::Rc;
-    use core::cell::Cell;
+    use core::cell::{Cell, RefCell};
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 

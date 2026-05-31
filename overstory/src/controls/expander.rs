@@ -16,13 +16,13 @@
 //!   templates once content controls have a more complete authoring story.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::RefCell;
 
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::disclosure;
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -59,8 +59,8 @@ pub const SLOT_EXPANDER_LABEL: TemplateSlot =
 pub const SLOT_EXPANDER_CONTENT: TemplateSlot =
     TemplateSlot::new("expander-content").with_part_tag(PART_EXPANDER_CONTENT);
 
-type ExpandedChangedHandler = Box<dyn FnMut(&mut Ui, ExpandedChangedEvent) + 'static>;
-type ExpandedChangedSlot = RefCell<Option<ExpandedChangedHandler>>;
+type ExpandedChangedHandler = EventHandler<ExpandedChangedEvent>;
+type ExpandedChangedSlot = CallbackSlot<ExpandedChangedEvent>;
 
 /// Event delivered after an [`Expander`] changes expansion state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -277,11 +277,8 @@ impl ExpanderWidget {
         }
         self.expanded = expanded;
         sync_expander_state(ui, expander, expanded);
-        dispatch_expanded_changed(
-            ui,
-            &self.expanded_changed,
-            ExpandedChangedEvent { expander, expanded },
-        );
+        self.expanded_changed
+            .dispatch(ui, ExpandedChangedEvent { expander, expanded });
         true
     }
 }
@@ -402,21 +399,6 @@ fn click_source_is_header(
     source: ElementId,
 ) -> bool {
     disclosure::source_is_header(ctx, expander, source, SLOT_EXPANDER_HEADER)
-}
-
-fn dispatch_expanded_changed(
-    ui: &mut Ui,
-    handler: &ExpandedChangedSlot,
-    event: ExpandedChangedEvent,
-) {
-    let Some(mut callback) = handler.borrow_mut().take() else {
-        return;
-    };
-    callback(ui, event);
-    let should_restore = handler.borrow().is_none();
-    if should_restore {
-        *handler.borrow_mut() = Some(callback);
-    }
 }
 
 #[cfg(test)]
