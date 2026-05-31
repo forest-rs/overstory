@@ -19,7 +19,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::choice::{
-    ChoiceOption, collect_options, enabled_selection_target, first_enabled_index,
+    ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
     last_enabled_index, option_label, selected_enabled_index, wrapping_next_enabled_index,
     wrapping_previous_enabled_index,
 };
@@ -329,12 +329,13 @@ impl SegmentedControlWidget {
         if !ui.is_enabled(segmented) {
             return false;
         }
-        let Some(index) = enabled_selection_target(&self.options, index) else {
+        let current = self.selected_index;
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+            .and_then(|selection| selection.changed_from(current))
+        else {
             return false;
         };
-        if self.selected_index == index {
-            return false;
-        }
+        let index = selection.index;
         if let Some(previous) = self.selected_index {
             set_segmented_item_selected(ui, self.segments[previous], false);
         }
@@ -349,7 +350,7 @@ impl SegmentedControlWidget {
             SegmentedSelectionChangedEvent {
                 segmented,
                 selected_index: index,
-                selected_item: option_label(&self.options, index),
+                selected_item: selection.label,
                 selected_segment,
             },
         );

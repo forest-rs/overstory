@@ -25,7 +25,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::choice::{
-    ChoiceOption, collect_options, enabled_selection_target, first_enabled_index,
+    ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
     last_enabled_index, next_enabled_index, option_label, previous_enabled_index,
     selected_enabled_index,
 };
@@ -473,26 +473,27 @@ impl SelectWidget {
         if !ui.is_enabled(select) {
             return false;
         }
-        let Some(index) = enabled_selection_target(&self.options, index) else {
-            return false;
-        };
         let current =
             selected_enabled_index(&self.options, selected_select_index_local(ui, select));
-        if current == index {
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+            .and_then(|selection| selection.changed_from(current))
+        else {
             return false;
-        }
-        let item = option_label(&self.options, index);
-        let content = item.clone().unwrap_or_else(|| self.placeholder.clone());
+        };
+        let content = selection
+            .label
+            .clone()
+            .unwrap_or_else(|| self.placeholder.clone());
         let props = *ui.properties();
-        ui.set_local(select, props.selected_index, index);
+        ui.set_local(select, props.selected_index, selection.index);
         ui.set_local(select, props.content, content);
         dispatch_select_selection_changed(
             ui,
             Some(&self.selection_changed),
             SelectSelectionChangedEvent {
                 select,
-                selected_index: index,
-                selected_item: item,
+                selected_index: selection.index,
+                selected_item: selection.label,
             },
         );
         true

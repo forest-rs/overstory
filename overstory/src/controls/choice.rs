@@ -105,6 +105,29 @@ pub(crate) fn enabled_selection_target(
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ResolvedChoiceSelection {
+    pub(crate) index: Option<usize>,
+    pub(crate) label: Option<String>,
+}
+
+impl ResolvedChoiceSelection {
+    pub(crate) fn from_enabled_target(
+        options: &[ChoiceOption],
+        index: Option<usize>,
+    ) -> Option<Self> {
+        let index = enabled_selection_target(options, index)?;
+        Some(Self {
+            index,
+            label: option_label(options, index),
+        })
+    }
+
+    pub(crate) fn changed_from(self, current: Option<usize>) -> Option<Self> {
+        (self.index != current).then_some(self)
+    }
+}
+
 pub(crate) fn option_label(options: &[ChoiceOption], index: Option<usize>) -> Option<String> {
     options.get(index?).map(|option| option.label.clone())
 }
@@ -195,6 +218,7 @@ fn wrapping_enabled_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::String;
 
     #[test]
     fn navigation_skips_disabled_options_without_wrapping() {
@@ -220,5 +244,31 @@ mod tests {
 
         assert_eq!(wrapping_next_enabled_index(&options, Some(2)), Some(0));
         assert_eq!(wrapping_previous_enabled_index(&options, Some(0)), Some(2));
+    }
+
+    #[test]
+    fn resolved_choice_selection_filters_disabled_targets_and_detects_change() {
+        let options = collect_options([
+            ChoiceOption::new("A"),
+            ChoiceOption::new("B").disabled(),
+            ChoiceOption::new("C"),
+        ]);
+
+        assert_eq!(
+            ResolvedChoiceSelection::from_enabled_target(&options, Some(2)),
+            Some(ResolvedChoiceSelection {
+                index: Some(2),
+                label: Some(String::from("C")),
+            })
+        );
+        assert_eq!(
+            ResolvedChoiceSelection::from_enabled_target(&options, Some(1)),
+            None
+        );
+        assert!(
+            ResolvedChoiceSelection::from_enabled_target(&options, Some(2))
+                .and_then(|selection| selection.changed_from(Some(2)))
+                .is_none()
+        );
     }
 }

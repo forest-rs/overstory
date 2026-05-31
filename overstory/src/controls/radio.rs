@@ -25,7 +25,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::choice::{
-    ChoiceOption, collect_options, enabled_selection_target, last_enabled_index, option_label,
+    ChoiceOption, ResolvedChoiceSelection, collect_options, last_enabled_index, option_label,
     selected_enabled_index, wrapping_next_enabled_index, wrapping_previous_enabled_index,
 };
 use crate::controls::support::{
@@ -561,12 +561,13 @@ impl RadioGroupWidget {
         if !ui.is_enabled(group) {
             return false;
         }
-        let Some(index) = enabled_selection_target(&self.options, index) else {
+        let current = self.selected_index;
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+            .and_then(|selection| selection.changed_from(current))
+        else {
             return false;
         };
-        if self.selected_index == index {
-            return false;
-        }
+        let index = selection.index;
         if let Some(previous) = self.selected_index {
             set_radio_button_checked(ui, self.radios[previous], false);
         }
@@ -581,7 +582,7 @@ impl RadioGroupWidget {
             RadioSelectionChangedEvent {
                 group,
                 selected_index: index,
-                selected_item: option_label(&self.options, index),
+                selected_item: selection.label,
                 selected_radio,
             },
         );
