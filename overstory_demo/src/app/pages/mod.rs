@@ -605,16 +605,18 @@ fn append_tabular_counter_to(
     step: u32,
 ) -> ElementId {
     parent.add(caption(label));
+    let value = parent.ui_mut().state(0_u32);
     let (_, counter) = parent.children(Panel::row(8.0).align_center(), |row| {
         let counter = row.add(
-            number_text("0000")
+            number_text("")
                 .font_features(tabular_number_features())
+                .bind_content(value.map(|value| format!("{value:04}")))
                 .tooltip("Tabular figures keep neighboring text steady"),
         );
         row.add(caption(suffix));
         counter
     });
-    drive_counter(parent.ui_mut(), counter, interval, step);
+    drive_counter(parent.ui_mut(), counter, value, interval, step);
     counter
 }
 
@@ -626,25 +628,33 @@ fn append_large_counter_to(
     step: u32,
 ) -> ElementId {
     parent.add(caption(label));
+    let value = parent.ui_mut().state(0_u32);
     let (_, counter) = parent.children(Panel::row(12.0).align_center(), |row| {
         let counter = row.add(
-            large_number_text("0000")
+            large_number_text("")
                 .font_features(tabular_number_features())
+                .bind_content(value.map(|value| format!("{value:04}")))
                 .tooltip("Tabular figures keep neighboring text steady"),
         );
         row.add(caption(suffix));
         counter
     });
-    drive_counter(parent.ui_mut(), counter, interval, step);
+    drive_counter(parent.ui_mut(), counter, value, interval, step);
     counter
 }
 
-fn drive_counter(ui: &mut Ui, counter: ElementId, interval: u64, step: u32) {
+fn drive_counter(
+    ui: &mut Ui,
+    counter: ElementId,
+    state: LocalState<u32>,
+    interval: u64,
+    step: u32,
+) {
     let _ = ui.schedule_timer_repeating(counter, interval);
     let mut value = 0_u32;
     ui.on_timer(counter, move |ui, _event| {
         value = (value + step) % 10_000;
-        ui.set_local(counter, ui.properties().content, format!("{value:04}"));
+        state.set(ui, value);
     });
 }
 
