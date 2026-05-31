@@ -19,11 +19,11 @@ use overstory::motion::{
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Accordion, AccordionChildUiExt, AccordionSection, Affine, BuiltInProperties, Button, CheckBox,
-    ChildUi, ChoiceOption, CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, Expander,
-    FontFeature, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize, ListBox,
-    OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioGroup, Rect, SegmentedControl,
-    Select, Size, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text, TextInput,
-    TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, Viewport, layouts,
+    ChildUi, ChoiceOption, CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt,
+    ElementSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment, LayoutDimension,
+    LayoutSize, ListBox, OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioGroup, Rect,
+    SegmentedControl, Select, Size, Slider, Spinner, Splitter, TYPE_GENERIC, TYPE_TEXT, Text,
+    TextInput, TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, Viewport, layouts,
     set_progress_value, theme,
 };
 use overstory_devtools::{

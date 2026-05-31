@@ -436,24 +436,18 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     let state = SvgViewportDemo::new(&tree, SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT);
     let host = ui.append(
         parent,
-        Viewport::new().cursor_icon(CursorIcon::Grab).layout(
-            Layout::new()
-                .relative()
-                .logical_size(SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT),
-        ),
+        Viewport::new()
+            .cursor_icon(CursorIcon::Grab)
+            .layout(
+                Layout::new()
+                    .relative()
+                    .logical_size(SVG_VIEWPORT_WIDTH, SVG_VIEWPORT_HEIGHT),
+            )
+            .background(opt_solid(0x13, 0x13, 0x1b, 0xff))
+            .border_brush(opt_solid(0x44, 0x46, 0x54, 0xff))
+            .border_width(1.0)
+            .corner_radius(12.0),
     );
-    ui.set_local(
-        host,
-        ui.properties().background,
-        opt_solid(0x13, 0x13, 0x1b, 0xff),
-    );
-    ui.set_local(
-        host,
-        ui.properties().border_brush,
-        opt_solid(0x44, 0x46, 0x54, 0xff),
-    );
-    ui.set_local(host, ui.properties().border_width, 1.0_f64);
-    ui.set_local(host, ui.properties().corner_radius, 12.0_f64);
 
     let grid = ui.append(
         host,
@@ -480,15 +474,12 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     );
     let selection = ui.append(
         host,
-        Panel::new().layout(Layout::new().absolute_at(0.0, 0.0).logical_size(0.0, 0.0)),
+        Panel::new()
+            .layout(Layout::new().absolute_at(0.0, 0.0).logical_size(0.0, 0.0))
+            .border_brush(opt_solid(0x6f, 0x8f, 0xff, 0xff))
+            .border_width(1.5)
+            .corner_radius(4.0),
     );
-    ui.set_local(
-        selection,
-        ui.properties().border_brush,
-        opt_solid(0x6f, 0x8f, 0xff, 0xff),
-    );
-    ui.set_local(selection, ui.properties().border_width, 1.5_f64);
-    ui.set_local(selection, ui.properties().corner_radius, 4.0_f64);
 
     let status = ui.append(parent, caption(&state.status()));
     let viewer = SvgViewer {

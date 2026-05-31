@@ -557,15 +557,14 @@ fn append_tabular_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let (_, counter) = parent.children(Panel::row(8.0).align_center(), |row| {
-        let counter =
-            row.add(number_text("0000").tooltip("Tabular figures keep neighboring text steady"));
+        let counter = row.add(
+            number_text("0000")
+                .font_features(tabular_number_features())
+                .tooltip("Tabular figures keep neighboring text steady"),
+        );
         row.add(caption(suffix));
         counter
     });
-    let font_features = parent.ui().properties().font_features;
-    parent
-        .ui_mut()
-        .set_local(counter, font_features, tabular_number_features());
     drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }
@@ -579,15 +578,14 @@ fn append_large_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let (_, counter) = parent.children(Panel::row(12.0).align_center(), |row| {
-        let counter = row
-            .add(large_number_text("0000").tooltip("Tabular figures keep neighboring text steady"));
+        let counter = row.add(
+            large_number_text("0000")
+                .font_features(tabular_number_features())
+                .tooltip("Tabular figures keep neighboring text steady"),
+        );
         row.add(caption(suffix));
         counter
     });
-    let font_features = parent.ui().properties().font_features;
-    parent
-        .ui_mut()
-        .set_local(counter, font_features, tabular_number_features());
     drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }
