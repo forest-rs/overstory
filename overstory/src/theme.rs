@@ -56,6 +56,11 @@ use understory_style::{
 };
 use understory_style::{Theme, ThemeBuilder};
 
+use crate::controls::accordion::{
+    PART_ACCORDION_SECTION_CONTENT, PART_ACCORDION_SECTION_DISCLOSURE,
+    PART_ACCORDION_SECTION_HEADER, PART_ACCORDION_SECTION_LABEL, TYPE_ACCORDION,
+    TYPE_ACCORDION_SECTION,
+};
 use crate::controls::button::TYPE_BUTTON;
 use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
@@ -553,6 +558,68 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let expander_content = StyleBuilder::new()
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(30.0, 0.0).with_gap(LayoutGap::all(8.0)),
+        )
+        .build();
+    let accordion_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.font_size, 15.0_f64)
+        .set(properties.layout_container, LayoutContainer::column())
+        .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
+        .build();
+    let accordion_section_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.layout_container, LayoutContainer::column())
+        .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
+        .build();
+    let accordion_section_header = StyleBuilder::new()
+        .set_resource(properties.background, CONTROL_BG)
+        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.border_width, 1.0_f64)
+        .set(properties.corner_radius, 8.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(
+            properties.layout_spacing,
+            LayoutSpacing::padding_xy(10.0, 7.0),
+        )
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new().align_items(LayoutAlign::Center),
+        )
+        .build();
+    let accordion_section_header_expanded = StyleBuilder::new()
+        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .build();
+    let accordion_section_header_focused = StyleBuilder::new()
+        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
+        .set(properties.border_width, 2.0_f64)
+        .build();
+    let accordion_section_disclosure = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 18.0_f64)
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .width(LayoutDimension::Logical(20.0))
+                .flex_shrink(0.0),
+        )
+        .build();
+    let accordion_section_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let accordion_section_content = StyleBuilder::new()
         .set(
             properties.layout_spacing,
             LayoutSpacing::padding_xy(30.0, 0.0).with_gap(LayoutGap::all(8.0)),
@@ -1112,6 +1179,52 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part(TYPE_EXPANDER, PART_EXPANDER_CONTENT),
             expander_content,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_ACCORDION),
+            accordion_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_ACCORDION_SECTION),
+            accordion_section_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_HEADER),
+            accordion_section_header,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_ACCORDION_SECTION).with_pseudo(PSEUDO_EXPANDED),
+                PART_ACCORDION_SECTION_HEADER,
+            ),
+            accordion_section_header_expanded,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part_when(
+                SelectorStep::type_tag(TYPE_ACCORDION_SECTION).with_pseudo(PSEUDO_FOCUS_VISIBLE),
+                PART_ACCORDION_SECTION_HEADER,
+            ),
+            accordion_section_header_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_DISCLOSURE),
+            accordion_section_disclosure,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_LABEL),
+            accordion_section_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_CONTENT),
+            accordion_section_content,
         )
         .push_rule(
             StyleOrigin::Base,

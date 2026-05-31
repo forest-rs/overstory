@@ -96,6 +96,14 @@ pub use behavior::{
     WidgetEventContext,
 };
 pub use composition::{CompositionPolicy, CompositionSurface, SurfaceId};
+pub use controls::accordion::{
+    Accordion, AccordionChildUiExt, AccordionExpandedChangedEvent, AccordionMode, AccordionSection,
+    PART_ACCORDION_SECTION_CONTENT, PART_ACCORDION_SECTION_DISCLOSURE,
+    PART_ACCORDION_SECTION_HEADER, PART_ACCORDION_SECTION_LABEL, SLOT_ACCORDION_SECTION_CONTENT,
+    SLOT_ACCORDION_SECTION_DISCLOSURE, SLOT_ACCORDION_SECTION_HEADER, SLOT_ACCORDION_SECTION_LABEL,
+    TYPE_ACCORDION, TYPE_ACCORDION_SECTION, accordion_section_content, accordion_section_expanded,
+    set_accordion_section_expanded, toggle_accordion_section,
+};
 pub use controls::button::{Button, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON};
 pub use controls::checkbox::{
     CheckBox, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, SLOT_CHECK_BOX_BOX,
@@ -216,11 +224,12 @@ pub use widget::{
 /// element configuration methods available.
 pub mod prelude {
     pub use crate::{
-        AppendSpec, Button, CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider,
-        ElementId, ElementSpec, ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel,
-        Popup, ProgressBar, RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView,
-        SegmentedControl, Select, Size, Slider, Spinner, Splitter, Text, TextInput, TimerDuration,
-        ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
+        Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec, Button,
+        CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider, ElementId, ElementSpec,
+        ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar,
+        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size,
+        Slider, Spinner, Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui,
+        VectorPath, Viewport,
     };
 }
 

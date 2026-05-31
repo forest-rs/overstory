@@ -38,6 +38,7 @@
 //!
 //! Detailed control-family ticket: `ove-pgfg`.
 
+pub(crate) mod accordion;
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod choice;

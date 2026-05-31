@@ -233,6 +233,22 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                 }),
         );
     });
+    with_demo_fit_card(ui, row, "ACCORDION", PAGE_CARD_WIDTH, 196.0, |card| {
+        card.children(Accordion::new().single_required(), |accordion| {
+            accordion.section_with(AccordionSection::new("Routing").expanded(true), |section| {
+                section.add(CheckBox::new("Require reviewer sign-off").checked(true));
+                section.add(CheckBox::new("Pause on anomaly"));
+            });
+            accordion.section("Audit trail", |section| {
+                section.add(CheckBox::new("Record detailed timing"));
+                section.add(CheckBox::new("Attach render snapshots"));
+            });
+            accordion.section("Delivery window", |section| {
+                section.add(CheckBox::new("Prefer low-traffic regions"));
+                section.add(CheckBox::new("Hold for business hours"));
+            });
+        });
+    });
 }
 
 fn build_systems_page(ui: &mut Ui, stage: ElementId) {

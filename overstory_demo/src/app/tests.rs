@@ -251,8 +251,8 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
     );
     assert_eq!(
         tertiary_cards.len(),
-        1,
-        "segmented control gets its own card"
+        2,
+        "segmented/accordion should be separate cards"
     );
 
     for card in primary_cards
