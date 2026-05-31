@@ -99,6 +99,21 @@ impl Layout {
         self
     }
 
+    /// Fills the available inline space while allowing flex layout to shrink
+    /// the element below its intrinsic content width.
+    ///
+    /// This is the common "take the row width, but do not force overflow"
+    /// constraint for wrapping rows and scrollable page bodies.
+    #[must_use]
+    pub fn fill_width(mut self) -> Self {
+        self.size.merge_from(
+            LayoutSize::new()
+                .width(LayoutDimension::Percent(1.0))
+                .min_width(LayoutDimension::Logical(0.0)),
+        );
+        self
+    }
+
     /// Sets a fixed logical-pixel minimum width and height.
     #[must_use]
     pub fn min_logical_size(mut self, width: f32, height: f32) -> Self {
@@ -338,4 +353,23 @@ pub fn row_with_gap(gap: f32) -> Layout {
 #[must_use]
 pub fn column_with_gap(gap: f32) -> Layout {
     Layout::column(gap)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fill_width_sets_percent_width_and_zero_min_width() {
+        let parts = Layout::new().fill_width().into_parts();
+
+        assert_eq!(
+            parts.size,
+            Some(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0))
+            )
+        );
+    }
 }
