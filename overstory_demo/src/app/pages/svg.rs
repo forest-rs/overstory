@@ -704,7 +704,7 @@ fn append_svg_view_button(
     viewer: SvgViewer,
     action: impl Fn(&mut SvgViewportDemo) + 'static,
 ) {
-    let button = parent.add(
+    parent.add(
         Button::new(label)
             .font_size(13.0)
             .on_click(move |ui, event| {
@@ -717,11 +717,9 @@ fn append_svg_view_button(
                 action(&mut viewer.runtime.state.borrow_mut());
                 refresh_svg_viewer(ui, &viewer);
                 event.mark_handled();
-            }),
+            })
+            .tooltip("Adjust the SVG viewport"),
     );
-    parent
-        .ui_mut()
-        .set_tooltip(button, Tooltip::new("Adjust the SVG viewport"));
 }
 
 fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {

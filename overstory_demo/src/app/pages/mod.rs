@@ -80,16 +80,11 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
                             .width(OVERVIEW_CONTROL_WIDTH),
                     );
                     inputs.children(Panel::row(10.0).align_center(), |actions| {
-                        actions.add_with(
+                        actions.add(
                             Button::new("Deploy")
                                 .font_size(15.0)
-                                .on_click(cycling_click_handler()),
-                            |ui, deploy| {
-                                ui.set_tooltip(
-                                    deploy,
-                                    Tooltip::new("Button content is template-bound"),
-                                );
-                            },
+                                .on_click(cycling_click_handler())
+                                .tooltip("Button content is template-bound"),
                         );
                         actions.add(Button::new("Preview").font_size(15.0));
                     });
@@ -102,14 +97,12 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
                         toggle_row.add(control_label("Rendering enabled"));
                     });
                     systems.add(caption("GPU Budget"));
-                    systems.add_with(
+                    let progress = systems.add(
                         ProgressBar::new()
                             .value(0.62)
                             .size(OVERVIEW_CONTROL_WIDTH, 18.0),
-                        |ui, progress| {
-                            drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
-                        },
                     );
+                    drive_progress(systems.ui_mut(), progress, 0.62, 0.015, 120_000_000);
                     append_tabular_counter_to(systems, "Frames", "fps", 120_000_000, 7);
                 });
 
@@ -155,24 +148,17 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
 
                 row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
                     actions.children(Panel::row(10.0).align_center(), |buttons| {
-                        buttons.add_with(
+                        buttons.add(
                             Button::new("Deploy")
                                 .font_size(15.0)
-                                .on_click(cycling_click_handler()),
-                            |ui, deploy| {
-                                ui.set_tooltip(
-                                    deploy,
-                                    Tooltip::new("Run the staged deployment workflow"),
-                                );
-                            },
+                                .on_click(cycling_click_handler())
+                                .tooltip("Run the staged deployment workflow"),
                         );
-                        buttons.add_with(
+                        buttons.add(
                             Button::new("Review")
                                 .font_size(15.0)
-                                .on_click(popup_click_handler()),
-                            |ui, review| {
-                                ui.set_tooltip(review, Tooltip::new("Toggle an anchored popup"));
-                            },
+                                .on_click(popup_click_handler())
+                                .tooltip("Toggle an anchored popup"),
                         );
                     });
                     actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
@@ -187,7 +173,8 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
-                    let summary = radios.add(caption("Release lane: Balanced"));
+                    let summary = ElementRef::<Text>::new();
+                    radios.add(caption("Release lane: Balanced").reference(summary.clone()));
                     radios.add(
                         RadioGroup::new()
                             .items(["Balanced", "Quality", "Low latency"])
@@ -195,16 +182,18 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                ui.set_local(
-                                    summary,
-                                    ui.properties().content,
+                                let content = ui.properties().content;
+                                summary.set_local(
+                                    ui,
+                                    content,
                                     format!("Release lane: {selected_item}"),
                                 );
                             }),
                     );
                 });
                 row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
-                    let summary = segments.add(caption("View mode: Preview"));
+                    let summary = ElementRef::<Text>::new();
+                    segments.add(caption("View mode: Preview").reference(summary.clone()));
                     segments.add(
                         SegmentedControl::new()
                             .options([
@@ -217,9 +206,10 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                ui.set_local(
-                                    summary,
-                                    ui.properties().content,
+                                let content = ui.properties().content;
+                                summary.set_local(
+                                    ui,
+                                    content,
                                     format!("View mode: {selected_item}"),
                                 );
                             }),
@@ -294,25 +284,19 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId) {
                     });
                     controls.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
                     controls.add(caption("GPU Budget"));
-                    controls.add_with(
+                    let progress = controls.add(
                         ProgressBar::new()
                             .value(0.62)
-                            .size(PAGE_CONTROL_WIDTH, 18.0),
-                        |ui, progress| {
-                            ui.set_tooltip(
-                                progress,
-                                Tooltip::new("Animated by the retained timer queue"),
-                            );
-                            drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
-                        },
+                            .size(PAGE_CONTROL_WIDTH, 18.0)
+                            .tooltip("Animated by the retained timer queue"),
                     );
+                    drive_progress(controls.ui_mut(), progress, 0.62, 0.015, 120_000_000);
                     controls.add(caption("Volume"));
-                    controls.add_with(Slider::new().value(0.42), |ui, volume| {
-                        ui.set_tooltip(
-                            volume,
-                            Tooltip::new("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
-                        );
-                    });
+                    controls.add(
+                        Slider::new()
+                            .value(0.42)
+                            .tooltip("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
+                    );
                     controls.children(Panel::row(12.0).align_center(), |spinner_row| {
                         spinner_row.add(Spinner::new());
                         spinner_row.add(caption("Streaming updates"));
@@ -343,8 +327,9 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
                         "Selected: {}",
                         renderer_queue_label(INITIAL_RENDERER_SELECTION)
                     );
-                    let summary = list_card.add(caption(&initial_summary));
-                    list_card.add_with(
+                    let summary = ElementRef::<Text>::new();
+                    list_card.add(caption(&initial_summary).reference(summary.clone()));
+                    list_card.add(
                         ListBox::new()
                             .items(renderer_queue_items())
                             .size(PAGE_LIST_WIDTH, 178.0)
@@ -353,18 +338,14 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
                             .scroll_offset_y(34.0)
                             .on_selection_changed(move |ui, event| {
                                 let label = selection_summary(&event);
-                                ui.set_local(summary, ui.properties().content, label);
+                                let content = ui.properties().content;
+                                summary.set_local(ui, content, label);
                             })
                             .with_vertical_scrollbar()
                             .gap(10.0)
                             .scrollbar_thickness(10.0)
-                            .thumb_extent(40.0),
-                        |ui, renderer_list| {
-                            ui.set_tooltip(
-                                renderer_list,
-                                Tooltip::new("Multi-select list with viewport clipping"),
-                            );
-                        },
+                            .thumb_extent(40.0)
+                            .tooltip("Multi-select list with viewport clipping"),
                     )
                 });
 
@@ -374,7 +355,7 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
                         "Only visible rows are realized. Selection and scrolling stay keyed to item indices.",
                     ));
                     detail.add(control_label("Inspection target"));
-                    detail.add_with(
+                    detail.add(
                         Select::new()
                             .items([
                                 "Renderer queue",
@@ -384,13 +365,8 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
                             ])
                             .selected_index(1)
                             .width(PAGE_CONTROL_WIDTH)
-                            .popup_height(124.0),
-                        |ui, select| {
-                            ui.set_tooltip(
-                                select,
-                                Tooltip::new("Popup-backed select using the ListBox path"),
-                            );
-                        },
+                            .popup_height(124.0)
+                            .tooltip("Popup-backed select using the ListBox path"),
                     )
                 });
             },
@@ -408,7 +384,7 @@ fn build_outline_page(ui: &mut Ui, stage: ElementId) {
                     tree.add(body_text(
                         "Click a parent row or use Left/Right, Enter, and Space to expand and collapse.",
                     ));
-                    tree.add_with(
+                    tree.add(
                         OutlineView::new()
                             .nodes(renderer_outline_nodes(), Some(0))
                             .expanded(0)
@@ -421,13 +397,8 @@ fn build_outline_page(ui: &mut Ui, stage: ElementId) {
                             .with_vertical_scrollbar()
                             .gap(10.0)
                             .scrollbar_thickness(10.0)
-                            .thumb_extent(34.0),
-                        |ui, outline| {
-                            ui.set_tooltip(
-                                outline,
-                                Tooltip::new("Virtualized tree projection from understory_outline"),
-                            );
-                        },
+                            .thumb_extent(34.0)
+                            .tooltip("Virtualized tree projection from understory_outline"),
                     )
                 });
 
@@ -475,18 +446,15 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
 
                         let right_pane_slot = Rc::new(Cell::new(None));
                         let right_pane_for_splitter = Rc::clone(&right_pane_slot);
-                        let splitter = split_row.add(
+                        split_row.add(
                             Splitter::vertical()
                                 .length(SPLIT_PANE_HEIGHT)
                                 .on_resize(move |ui, event| {
                                     if let Some(right_pane) = right_pane_for_splitter.get() {
                                         event.resize_pair(ui, left_pane, right_pane, 88.0, 88.0);
                                     }
-                                }),
-                        );
-                        split_row.ui_mut().set_tooltip(
-                            splitter,
-                            Tooltip::new("Drag or focus and use arrow keys"),
+                                })
+                                .tooltip("Drag or focus and use arrow keys"),
                         );
 
                         let right_pane = split_row
@@ -589,7 +557,8 @@ fn append_tabular_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let (_, counter) = parent.children(Panel::row(8.0).align_center(), |row| {
-        let counter = row.add(number_text("0000"));
+        let counter =
+            row.add(number_text("0000").tooltip("Tabular figures keep neighboring text steady"));
         row.add(caption(suffix));
         counter
     });
@@ -597,10 +566,6 @@ fn append_tabular_counter_to(
     parent
         .ui_mut()
         .set_local(counter, font_features, tabular_number_features());
-    parent.ui_mut().set_tooltip(
-        counter,
-        Tooltip::new("Tabular figures keep neighboring text steady"),
-    );
     drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }
@@ -614,7 +579,8 @@ fn append_large_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let (_, counter) = parent.children(Panel::row(12.0).align_center(), |row| {
-        let counter = row.add(large_number_text("0000"));
+        let counter = row
+            .add(large_number_text("0000").tooltip("Tabular figures keep neighboring text steady"));
         row.add(caption(suffix));
         counter
     });
@@ -622,10 +588,6 @@ fn append_large_counter_to(
     parent
         .ui_mut()
         .set_local(counter, font_features, tabular_number_features());
-    parent.ui_mut().set_tooltip(
-        counter,
-        Tooltip::new("Tabular figures keep neighboring text steady"),
-    );
     drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }

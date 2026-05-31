@@ -62,14 +62,11 @@ pub(super) fn build_motion_page(ui: &mut Ui, stage: ElementId) {
                                 strip.add(
                                     Panel::new()
                                         .class(CLASS_RETARGET_SWATCH)
-                                        .layout(Layout::new().logical_size(96.0, 74.0)),
+                                        .layout(Layout::new().logical_size(96.0, 74.0))
+                                        .tooltip("Retargeting starts a new transition from the current sampled value"),
                                 ),
                             ]
                         },
-                    );
-                    composition.ui_mut().set_tooltip(
-                        retarget,
-                        Tooltip::new("Retargeting starts a new transition from the current sampled value"),
                     );
 
                     let (_, mover) = composition.children(
