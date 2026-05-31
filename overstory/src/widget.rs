@@ -725,11 +725,11 @@ pub trait ElementSpec: AppendSpec {
     fn element_config_mut(&mut self) -> &mut ElementConfig;
 }
 
-/// Shared builder methods available to element specs.
+/// Core builder methods available to element specs.
 ///
 /// Import this trait, or use `overstory::prelude::*`, to get a uniform
-/// `.class(...)`, `.layout(...)`, `.background(...)`, `.font_features(...)`,
-/// `.enabled(...)`, `.disabled()`, and `.focusable(...)` surface on specs that
+/// `.class(...)`, `.layout(...)`, `.enabled(...)`, `.disabled()`,
+/// `.focusable(...)`, and low-level `.local(...)` surface on specs that
 /// implement [`ElementSpec`].
 pub trait ElementSpecExt: ElementSpec + Sized {
     /// Writes an initial local dependency-property value when the element is
@@ -774,14 +774,43 @@ pub trait ElementSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets the initial textual content property.
+    /// Sets the resulting element's shared interactive control state.
     #[must_use]
-    fn content(mut self, content: impl Into<String>) -> Self {
-        self.element_config_mut()
-            .set_built_in_local(BuiltInPropertyKey::Content, content.into());
+    fn control_state(mut self, state: ControlState) -> Self {
+        self.element_config_mut().set_control_state(state);
         self
     }
 
+    /// Sets whether the resulting element starts enabled.
+    #[must_use]
+    fn enabled(mut self, enabled: bool) -> Self {
+        self.element_config_mut()
+            .update_control_state(|state| state.enabled(enabled));
+        self
+    }
+
+    /// Convenience for [`Self::enabled`] with `false`.
+    #[must_use]
+    fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    /// Sets whether the resulting element participates in focus traversal.
+    #[must_use]
+    fn focusable(mut self, focusable: bool) -> Self {
+        self.element_config_mut()
+            .update_control_state(|state| state.focusable(focusable));
+        self
+    }
+}
+
+impl<T> ElementSpecExt for T where T: ElementSpec {}
+
+/// Surface and composition builder methods available to element specs.
+///
+/// This trait covers properties that affect the visual surface of an element
+/// rather than its identity, layout tree position, or semantic state.
+pub trait SurfaceSpecExt: ElementSpec + Sized {
     /// Sets the initial background brush.
     ///
     /// Pass `None` to explicitly author no background as a local value.
@@ -847,6 +876,22 @@ pub trait ElementSpecExt: ElementSpec + Sized {
     fn transitions(mut self, transitions: TransitionRules) -> Self {
         self.element_config_mut()
             .set_built_in_local(BuiltInPropertyKey::Transitions, transitions);
+        self
+    }
+}
+
+impl<T> SurfaceSpecExt for T where T: ElementSpec {}
+
+/// Text and font builder methods available to element specs.
+///
+/// These helpers write Overstory's built-in text style properties without
+/// requiring the caller to fetch a [`BuiltInProperties`] handle from a `Ui`.
+pub trait TextSpecExt: ElementSpec + Sized {
+    /// Sets the initial textual content property.
+    #[must_use]
+    fn content(mut self, content: impl Into<String>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Content, content.into());
         self
     }
 
@@ -961,7 +1006,15 @@ pub trait ElementSpecExt: ElementSpec + Sized {
             .set_built_in_local(BuiltInPropertyKey::TextWrapMode, wrap_mode);
         self
     }
+}
 
+impl<T> TextSpecExt for T where T: ElementSpec {}
+
+/// Semantic state builder methods available to element specs.
+///
+/// Controls usually provide domain-specific inherent methods for these values.
+/// This shared trait is useful for composed specs and generic authoring code.
+pub trait ControlStateSpecExt: ElementSpec + Sized {
     /// Sets the initial checked state property.
     #[must_use]
     fn checked(mut self, checked: bool) -> Self {
@@ -993,7 +1046,16 @@ pub trait ElementSpecExt: ElementSpec + Sized {
             .set_built_in_local(BuiltInPropertyKey::SelectedIndex, index.into());
         self
     }
+}
 
+impl<T> ControlStateSpecExt for T where T: ElementSpec {}
+
+/// Numeric range builder methods available to element specs.
+///
+/// Range controls such as sliders and progress bars usually expose
+/// control-specific inherent methods as well. This trait supplies the shared
+/// dependency-property language for generic authoring code.
+pub trait RangeSpecExt: ElementSpec + Sized {
     /// Sets the initial numeric value property.
     #[must_use]
     fn value(mut self, value: f64) -> Self {
@@ -1043,35 +1105,6 @@ pub trait ElementSpecExt: ElementSpec + Sized {
             .set_built_in_local(BuiltInPropertyKey::LargeChange, large_change);
         self
     }
-
-    /// Sets the resulting element's shared interactive control state.
-    #[must_use]
-    fn control_state(mut self, state: ControlState) -> Self {
-        self.element_config_mut().set_control_state(state);
-        self
-    }
-
-    /// Sets whether the resulting element starts enabled.
-    #[must_use]
-    fn enabled(mut self, enabled: bool) -> Self {
-        self.element_config_mut()
-            .update_control_state(|state| state.enabled(enabled));
-        self
-    }
-
-    /// Convenience for [`Self::enabled`] with `false`.
-    #[must_use]
-    fn disabled(self) -> Self {
-        self.enabled(false)
-    }
-
-    /// Sets whether the resulting element participates in focus traversal.
-    #[must_use]
-    fn focusable(mut self, focusable: bool) -> Self {
-        self.element_config_mut()
-            .update_control_state(|state| state.focusable(focusable));
-        self
-    }
 }
 
-impl<T> ElementSpecExt for T where T: ElementSpec {}
+impl<T> RangeSpecExt for T where T: ElementSpec {}

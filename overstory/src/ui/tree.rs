@@ -13,6 +13,7 @@ use crate::channels::{COMPOSE, LAYOUT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
+use crate::view::View;
 use crate::widget::{AppendSpec, ContentSlotSpec, Widget};
 
 use super::Ui;
@@ -160,6 +161,18 @@ impl<'a> ChildUi<'a> {
     pub fn column<R>(&mut self, gap: f32, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
         self.panel(Panel::column(gap), f)
     }
+
+    /// Builds `view` under this builder's parent.
+    ///
+    /// Views are reusable authoring units, not runtime widgets. They receive
+    /// the same scoped builder and append ordinary controls into the retained
+    /// tree.
+    pub fn view<V>(&mut self, view: V) -> V::Output
+    where
+        V: View,
+    {
+        view.build(self)
+    }
 }
 
 impl Ui {
@@ -224,6 +237,17 @@ impl Ui {
         );
         let mut children = ChildUi::new(self, parent);
         f(&mut children)
+    }
+
+    /// Builds `view` under `parent` and returns the view's output.
+    ///
+    /// This is a convenience over [`Self::with_children`] for reusable
+    /// app-authoring components.
+    pub fn view<V>(&mut self, parent: ElementId, view: V) -> V::Output
+    where
+        V: View,
+    {
+        self.with_children(parent, |children| children.view(view))
     }
 
     /// Adds `spec` under `parent`, scopes `f` to the inserted element's

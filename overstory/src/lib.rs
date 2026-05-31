@@ -23,6 +23,9 @@
 //! });
 //! ```
 //!
+//! Reusable app sections can implement [`View`] and build through the same
+//! scoped child API. A view is an authoring component, not a runtime widget.
+//!
 //! [`Ui::append`] remains the primitive explicit-parent path; `insert_child`
 //! lives on the toolkit-internal side for templates building their own parts.
 //! `set_local` remains public for power users (bindings, dynamic theming,
@@ -88,6 +91,7 @@ mod timeline_properties;
 mod timeline_runtime;
 mod timer_runtime;
 mod ui;
+mod view;
 mod widget;
 
 pub use accessibility::AccessibilityContext;
@@ -217,8 +221,10 @@ pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, Ui};
+pub use view::View;
 pub use widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GENERIC, Widget,
+    AppendSpec, ContentSlotSpec, ControlStateSpecExt, ElementConfig, ElementSpec, ElementSpecExt,
+    RangeSpecExt, SurfaceSpecExt, TYPE_GENERIC, TextSpecExt, Widget,
 };
 
 /// Common imports for authoring Overstory UI trees.
@@ -229,11 +235,12 @@ pub use widget::{
 pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec, Button,
-        CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider, ElementId, ElementRef,
-        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, Layout, ListBox, OutlineView,
-        Panel, Popup, ProgressBar, RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView,
-        SegmentedControl, Select, Size, Slider, Spinner, Splitter, Text, TextInput, TimerDuration,
-        ToggleSwitch, Tooltip, TooltipSpecExt, Ui, VectorPath, Viewport,
+        CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt, CursorIcon, Divider,
+        ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, Layout,
+        ListBox, OutlineView, Panel, Popup, ProgressBar, RadioButton, RadioGroup, RangeSpecExt,
+        ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size, Slider, Spinner,
+        Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch,
+        Tooltip, TooltipSpecExt, Ui, VectorPath, View, Viewport,
     };
 }
 

@@ -118,6 +118,32 @@ fn child_ui_panel_helpers_keep_parentage_lexical() {
 }
 
 #[test]
+fn child_ui_view_builds_reusable_authoring_units() {
+    struct StatusView(&'static str);
+
+    impl crate::View for StatusView {
+        type Output = ElementId;
+
+        fn build(self, ui: &mut ChildUi<'_>) -> Self::Output {
+            ui.column(4.0, |status| {
+                status.add(crate::Text::new("Status"));
+                status.add(crate::Text::new(self.0))
+            })
+            .1
+        }
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let value = ui.view(root, StatusView("Ready"));
+    let panel = ui.get(root).unwrap().children()[0];
+
+    assert_eq!(ui.get(root).unwrap().children(), &[panel]);
+    assert_eq!(ui.get(panel).unwrap().children().len(), 2);
+    assert_eq!(ui.get(value).unwrap().parent(), Some(panel));
+}
+
+#[test]
 fn child_ui_content_scopes_children_to_declared_slot() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -3716,7 +3742,7 @@ fn element_spec_ext_applies_shared_settings() {
 
 #[test]
 fn element_spec_ext_applies_initial_local_properties() {
-    use crate::ElementSpecExt;
+    use crate::{SurfaceSpecExt, TextSpecExt};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -3759,7 +3785,7 @@ fn element_spec_ext_applies_initial_local_properties() {
 
 #[test]
 fn element_spec_ext_applies_text_and_range_property_helpers() {
-    use crate::ElementSpecExt;
+    use crate::{RangeSpecExt, TextSpecExt};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -3853,7 +3879,7 @@ fn element_spec_ext_local_property_accepts_registered_property_handles() {
 
 #[test]
 fn element_spec_ext_replaces_repeated_initial_property_writes() {
-    use crate::ElementSpecExt;
+    use crate::SurfaceSpecExt;
 
     let mut ui = Ui::new();
     let root = ui.root();
