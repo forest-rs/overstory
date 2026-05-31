@@ -94,6 +94,7 @@ pub(crate) fn run() -> overstory_host_winit::HostResult<()> {
 enum DemoPage {
     Overview,
     Inputs,
+    Disclosure,
     Systems,
     Selection,
     Outline,
@@ -105,9 +106,10 @@ enum DemoPage {
 }
 
 impl DemoPage {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Overview,
         Self::Inputs,
+        Self::Disclosure,
         Self::Systems,
         Self::Selection,
         Self::Outline,
@@ -126,14 +128,15 @@ impl DemoPage {
         match self {
             Self::Overview => 0,
             Self::Inputs => 1,
-            Self::Systems => 2,
-            Self::Selection => 3,
-            Self::Outline => 4,
-            Self::Layout => 5,
-            Self::Svg => 6,
-            Self::Typography => 7,
-            Self::Motion => 8,
-            Self::Devtools => 9,
+            Self::Disclosure => 2,
+            Self::Systems => 3,
+            Self::Selection => 4,
+            Self::Outline => 5,
+            Self::Layout => 6,
+            Self::Svg => 7,
+            Self::Typography => 8,
+            Self::Motion => 9,
+            Self::Devtools => 10,
         }
     }
 
@@ -141,6 +144,7 @@ impl DemoPage {
         match self {
             Self::Overview => "Overview",
             Self::Inputs => "Inputs",
+            Self::Disclosure => "Disclosure",
             Self::Systems => "Systems",
             Self::Selection => "Selection",
             Self::Outline => "Outline",
@@ -156,6 +160,7 @@ impl DemoPage {
         match self {
             Self::Overview => "Overstory Control Gallery",
             Self::Inputs => "Inputs and Command Surfaces",
+            Self::Disclosure => "Disclosure Containers",
             Self::Systems => "Controls and Values",
             Self::Selection => "Selection and Virtualization",
             Self::Outline => "Expandable Outline",
@@ -174,6 +179,9 @@ impl DemoPage {
             }
             Self::Inputs => {
                 "Buttons, text fields, popups, checkboxes, disabled state, focus, hover, and tooltips."
+            }
+            Self::Disclosure => {
+                "Independent expanders and coordinated accordion sections share typed content-slot authoring."
             }
             Self::Systems => {
                 "Timer-driven values, slider ticks, progress, toggles, and a stable tabular counter."

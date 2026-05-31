@@ -22,6 +22,7 @@ pub(super) fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
     match page {
         DemoPage::Overview => build_overview_page(ui, stage),
         DemoPage::Inputs => build_inputs_page(ui, stage),
+        DemoPage::Disclosure => build_disclosure_page(ui, stage),
         DemoPage::Systems => build_systems_page(ui, stage),
         DemoPage::Selection => build_selection_page(ui, stage),
         DemoPage::Outline => build_outline_page(ui, stage),
@@ -197,21 +198,6 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                 }),
         );
     });
-    with_demo_fit_card(ui, row, "EXPANDER", PAGE_CARD_WIDTH, 184.0, |expanders| {
-        expanders.content(
-            Expander::new("Advanced routing").expanded(true),
-            |advanced| {
-                advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
-                advanced.add(CheckBox::new("Pause on anomaly"));
-            },
-        );
-        expanders.content(Expander::new("Audit trail"), |advanced| {
-            advanced.add(CheckBox::new("Record detailed timing"));
-            advanced.add(CheckBox::new("Attach render snapshots"));
-        });
-    });
-
-    let row = demo_row(ui, stage);
     with_demo_fit_card(ui, row, "SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
         let summary = segments.add(caption("View mode: Preview"));
         segments.add(
@@ -233,7 +219,33 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                 }),
         );
     });
-    with_demo_fit_card(ui, row, "ACCORDION", PAGE_CARD_WIDTH, 196.0, |card| {
+}
+
+fn build_disclosure_page(ui: &mut Ui, stage: ElementId) {
+    let row = demo_row(ui, stage);
+    with_demo_card(ui, row, "EXPANDER", PAGE_CARD_WIDTH, 326.0, |expanders| {
+        expanders.add(
+            caption("Each Expander owns one disclosure state and a typed content slot. Opening one does not affect the other.")
+                .wrap(),
+        );
+        expanders.content(
+            Expander::new("Advanced routing").expanded(true),
+            |advanced| {
+                advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
+                advanced.add(CheckBox::new("Pause on anomaly"));
+            },
+        );
+        expanders.content(Expander::new("Audit trail"), |advanced| {
+            advanced.add(CheckBox::new("Record detailed timing"));
+            advanced.add(CheckBox::new("Attach render snapshots"));
+        });
+    });
+
+    with_demo_card(ui, row, "ACCORDION", PAGE_CARD_WIDTH, 326.0, |card| {
+        card.add(
+            caption("Accordion coordinates several sections. This one is single-required, so one section remains open.")
+                .wrap(),
+        );
         card.children(Accordion::new().single_required(), |accordion| {
             accordion.section_with(AccordionSection::new("Routing").expanded(true), |section| {
                 section.add(CheckBox::new("Require reviewer sign-off").checked(true));

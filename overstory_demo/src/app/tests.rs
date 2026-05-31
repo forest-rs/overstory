@@ -60,7 +60,7 @@ fn gallery_nav_uses_shell_rows_instead_of_a_list_box() {
         );
     }
 
-    let systems_row = nav_rows[2];
+    let systems_row = nav_rows[DemoPage::Systems.index()];
     let point = nav_row_activation_point(&mut ui, systems_row);
     let down = ui.dispatch_pointer_event(&pointer_down(point, 1));
     assert!(down.changed(), "pointer down should focus the nav row");
@@ -108,8 +108,8 @@ fn gallery_nav_supports_focus_and_keyboard_controls() {
     let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
     let result = ui.dispatch_key(&down);
     assert!(result.handled, "ArrowDown should move and activate nav");
-    assert_eq!(ui.focused(), Some(nav_rows[2]));
-    assert_first_page_card_height(&mut ui, 322.0, "ArrowDown should switch to Systems");
+    assert_eq!(ui.focused(), Some(nav_rows[DemoPage::Disclosure.index()]));
+    assert_first_page_card_height(&mut ui, 326.0, "ArrowDown should switch to Disclosure");
 
     let home = KeyboardEvent::key_down(Key::Named(NamedKey::Home), Code::Home);
     let result = ui.dispatch_key(&home);
@@ -204,7 +204,7 @@ fn gallery_pages_keep_primary_cards_on_one_line_at_narrow_width() {
 }
 
 #[test]
-fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
+fn inputs_page_groups_input_and_choice_cards_without_card_spill() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Inputs);
@@ -220,8 +220,8 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
         .to_vec();
     assert_eq!(
         stage_children.len(),
-        4,
-        "Inputs should have a header plus three rows"
+        3,
+        "Inputs should have a header plus two rows"
     );
 
     let primary_cards = ui
@@ -234,11 +234,6 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
         .expect("secondary input row should exist")
         .children()
         .to_vec();
-    let tertiary_cards = ui
-        .get(stage_children[3])
-        .expect("tertiary input row should exist")
-        .children()
-        .to_vec();
     assert_eq!(
         primary_cards.len(),
         2,
@@ -247,19 +242,47 @@ fn inputs_page_splits_radio_and_expander_cards_without_card_spill() {
     assert_eq!(
         secondary_cards.len(),
         2,
-        "radio/expander should be separate cards"
-    );
-    assert_eq!(
-        tertiary_cards.len(),
-        2,
-        "segmented/accordion should be separate cards"
+        "radio/segmented should be separate cards"
     );
 
-    for card in primary_cards
-        .into_iter()
-        .chain(secondary_cards)
-        .chain(tertiary_cards)
-    {
+    for card in primary_cards.into_iter().chain(secondary_cards) {
+        assert_card_contains_subtree(&ui, card);
+    }
+}
+
+#[test]
+fn disclosure_page_keeps_expander_and_accordion_cards_together() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Disclosure);
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
+
+    let stage_children = ui
+        .get(stage)
+        .expect("stage should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        stage_children.len(),
+        2,
+        "Disclosure should have a header plus one row"
+    );
+
+    let cards = ui
+        .get(stage_children[1])
+        .expect("disclosure row should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        cards.len(),
+        2,
+        "expander/accordion should be separate cards"
+    );
+
+    for card in cards {
         assert_card_contains_subtree(&ui, card);
     }
 }
