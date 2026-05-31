@@ -198,22 +198,17 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
         );
     });
     with_demo_fit_card(ui, row, "EXPANDER", PAGE_CARD_WIDTH, 184.0, |expanders| {
-        expanders.children_in_slot(
+        expanders.content(
             Expander::new("Advanced routing").expanded(true),
-            SLOT_EXPANDER_CONTENT,
             |advanced| {
                 advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
                 advanced.add(CheckBox::new("Pause on anomaly"));
             },
         );
-        expanders.children_in_slot(
-            Expander::new("Audit trail"),
-            SLOT_EXPANDER_CONTENT,
-            |advanced| {
-                advanced.add(CheckBox::new("Record detailed timing"));
-                advanced.add(CheckBox::new("Attach render snapshots"));
-            },
-        );
+        expanders.content(Expander::new("Audit trail"), |advanced| {
+            advanced.add(CheckBox::new("Record detailed timing"));
+            advanced.add(CheckBox::new("Attach render snapshots"));
+        });
     });
 
     let row = demo_row(ui, stage);

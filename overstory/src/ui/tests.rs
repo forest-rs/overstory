@@ -118,6 +118,22 @@ fn child_ui_panel_helpers_keep_parentage_lexical() {
 }
 
 #[test]
+fn child_ui_content_scopes_children_to_declared_slot() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let (expander, nested) = ui.content(root, crate::Expander::new("Advanced"), |content| {
+        content.add(crate::Text::new("Nested"))
+    });
+    let nested = nested.expect("default expander template exposes content slot");
+    let content = crate::expander_content(&ui, expander).expect("content slot should exist");
+
+    assert_eq!(ui.get(root).unwrap().children(), &[expander]);
+    assert_eq!(ui.get(content).unwrap().children(), &[nested]);
+    assert_eq!(ui.get(nested).unwrap().parent(), Some(content));
+}
+
+#[test]
 fn remove_drops_subtree_and_invalidates_handles() {
     let mut ui = Ui::new();
     let root = ui.root();

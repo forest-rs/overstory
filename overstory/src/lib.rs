@@ -205,7 +205,9 @@ pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, Ui};
-pub use widget::{AppendSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GENERIC, Widget};
+pub use widget::{
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GENERIC, Widget,
+};
 
 /// Common imports for authoring Overstory UI trees.
 ///
@@ -214,11 +216,11 @@ pub use widget::{AppendSpec, ElementConfig, ElementSpec, ElementSpecExt, TYPE_GE
 /// element configuration methods available.
 pub mod prelude {
     pub use crate::{
-        AppendSpec, Button, CheckBox, ChildUi, Color, CursorIcon, Divider, ElementId, ElementSpec,
-        ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel, Popup, ProgressBar,
-        RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size,
-        Slider, Spinner, Splitter, Text, TextInput, TimerDuration, ToggleSwitch, Tooltip, Ui,
-        VectorPath, Viewport,
+        AppendSpec, Button, CheckBox, ChildUi, Color, ContentSlotSpec, CursorIcon, Divider,
+        ElementId, ElementSpec, ElementSpecExt, Expander, Layout, ListBox, OutlineView, Panel,
+        Popup, ProgressBar, RadioButton, RadioGroup, ScrollArea, ScrollBar, ScrollView,
+        SegmentedControl, Select, Size, Slider, Spinner, Splitter, Text, TextInput, TimerDuration,
+        ToggleSwitch, Tooltip, Ui, VectorPath, Viewport,
     };
 }
 

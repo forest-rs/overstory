@@ -61,7 +61,7 @@ use crate::event_runtime::{
 };
 use crate::generic::present_surface;
 use crate::layouts::Layout;
-use crate::template::Template;
+use crate::template::{Template, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
@@ -479,6 +479,18 @@ pub trait AppendSpec {
     /// Inserts the configured control under `parent` and returns
     /// the resulting element id. Called by [`Ui::append`].
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId;
+}
+
+/// Append spec with a declared default content slot.
+///
+/// This is the small common surface for content controls. It lets app code use
+/// [`Ui::content`](crate::Ui::content) or
+/// [`ChildUi::content`](crate::ChildUi::content) without spelling the control's
+/// template slot constant at every call-site, while still preserving the
+/// lower-level named-slot APIs for templates with multiple app-facing slots.
+pub trait ContentSlotSpec: AppendSpec {
+    /// Template slot that receives ordinary authored content for this spec.
+    const CONTENT_SLOT: TemplateSlot;
 }
 
 /// Common construction-time element settings shared by append specs.

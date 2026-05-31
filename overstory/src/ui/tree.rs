@@ -13,7 +13,7 @@ use crate::channels::{COMPOSE, LAYOUT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
 use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
-use crate::widget::Widget;
+use crate::widget::{AppendSpec, ContentSlotSpec, Widget};
 
 use super::Ui;
 
@@ -54,7 +54,7 @@ impl<'a> ChildUi<'a> {
     /// Adds `spec` under this builder's parent.
     pub fn add<S>(&mut self, spec: S) -> ElementId
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         self.ui.append(self.parent, spec)
     }
@@ -67,7 +67,7 @@ impl<'a> ChildUi<'a> {
     /// builder methods for values that belong to the spec itself.
     pub fn add_with<S>(&mut self, spec: S, f: impl FnOnce(&mut Ui, ElementId)) -> ElementId
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         let id = self.add(spec);
         f(&mut *self.ui, id);
@@ -82,7 +82,7 @@ impl<'a> ChildUi<'a> {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> (ElementId, R)
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         let child = self.add(spec);
         let result = self.ui.with_children(child, f);
@@ -115,10 +115,29 @@ impl<'a> ChildUi<'a> {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> (ElementId, Option<R>)
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         let child = self.add(spec);
         let result = self.slot_children(child, slot, f);
+        (child, result)
+    }
+
+    /// Adds a content control, scopes `f` to its declared content slot, and
+    /// returns the owner id with the optional closure result.
+    ///
+    /// The result is `None` when a custom template omits the declared content
+    /// slot. Use [`Self::children_in_slot`] for controls with multiple named
+    /// app-facing slots.
+    pub fn content<S, R>(
+        &mut self,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, Option<R>)
+    where
+        S: ContentSlotSpec,
+    {
+        let child = self.add(spec);
+        let result = self.slot_children(child, S::CONTENT_SLOT, f);
         (child, result)
     }
 
@@ -185,11 +204,7 @@ impl Ui {
     /// to the tree. See [`crate::Button`], [`crate::ToggleSwitch`],
     /// [`crate::Slider`], [`crate::Spinner`], [`crate::Panel`],
     /// [`crate::Text`].
-    pub fn append<S: crate::widget::AppendSpec>(
-        &mut self,
-        parent: ElementId,
-        spec: S,
-    ) -> ElementId {
+    pub fn append<S: AppendSpec>(&mut self, parent: ElementId, spec: S) -> ElementId {
         spec.append_to(self, parent)
     }
 
@@ -220,7 +235,7 @@ impl Ui {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> (ElementId, R)
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         let child = self.append(parent, spec);
         let result = self.with_children(child, f);
@@ -254,10 +269,30 @@ impl Ui {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> (ElementId, Option<R>)
     where
-        S: crate::widget::AppendSpec,
+        S: AppendSpec,
     {
         let child = self.append(parent, spec);
         let result = self.slot_children(child, slot, f);
+        (child, result)
+    }
+
+    /// Adds a content control under `parent`, scopes `f` to its declared
+    /// content slot, and returns the owner id with the optional closure result.
+    ///
+    /// The result is `None` when a custom template omits the declared content
+    /// slot. Use [`Self::children_in_slot`] for controls with multiple named
+    /// app-facing slots.
+    pub fn content<S, R>(
+        &mut self,
+        parent: ElementId,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, Option<R>)
+    where
+        S: ContentSlotSpec,
+    {
+        let child = self.append(parent, spec);
+        let result = self.slot_children(child, S::CONTENT_SLOT, f);
         (child, result)
     }
 

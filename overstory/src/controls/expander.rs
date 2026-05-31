@@ -8,9 +8,10 @@
 //!   owns disclosure state, focus, accessibility, and keyboard/pointer
 //!   activation; the template owns header, disclosure, label, and content
 //!   slots.
-//! - Use [`crate::Ui::children_in_slot`] / [`crate::ChildUi::children_in_slot`]
-//!   as the generic content-slot authoring surface instead of adding one-off
-//!   helpers for every future content control.
+//! - Use [`crate::Ui::content`] / [`crate::ChildUi::content`] as the typed
+//!   authoring surface for the primary content slot. Keep
+//!   [`crate::Ui::children_in_slot`] / [`crate::ChildUi::children_in_slot`] as
+//!   the named-slot escape hatch for controls with multiple app-facing slots.
 //! - Grow toward animation, retained content transitions, and richer header
 //!   templates once content controls have a more complete authoring story.
 
@@ -33,7 +34,8 @@ use crate::template::{
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, SurfacePartWidget,
+    TemplateOverrideWidget, Widget,
 };
 
 /// Selector identity for `Expander`.
@@ -160,6 +162,10 @@ impl AppendSpec for Expander {
         sync_expander_state(ui, id, self.expanded);
         id
     }
+}
+
+impl ContentSlotSpec for Expander {
+    const CONTENT_SLOT: TemplateSlot = SLOT_EXPANDER_CONTENT;
 }
 
 impl ElementSpec for Expander {
@@ -450,14 +456,9 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, crate::Layout::column(0.0).logical_size(240.0, 140.0));
-        let (expander, _) = ui.children_in_slot(
-            root,
-            Expander::new("Advanced"),
-            SLOT_EXPANDER_CONTENT,
-            |content| {
-                content.add(crate::Text::new("Details"));
-            },
-        );
+        let (expander, _) = ui.content(root, Expander::new("Advanced"), |content| {
+            content.add(crate::Text::new("Details"));
+        });
         let content = expander_content(&ui, expander).unwrap();
 
         ui.compute_layout(Size::new(240.0, 140.0));
