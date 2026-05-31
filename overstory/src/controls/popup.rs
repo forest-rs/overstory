@@ -40,7 +40,7 @@ use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 pub const TYPE_POPUP: TypeTag = TypeTag(16);
 
 /// Builder + retained configuration for an anchored popup.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Popup {
     placement: Placement,
     offset: Vec2,

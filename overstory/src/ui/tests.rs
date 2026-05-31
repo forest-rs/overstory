@@ -3715,6 +3715,159 @@ fn element_spec_ext_applies_shared_settings() {
 }
 
 #[test]
+fn element_spec_ext_applies_initial_local_properties() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let background = Brush::from(Color::from_rgba8(0x22, 0x33, 0x44, 0xff));
+    let foreground = Brush::from(Color::from_rgba8(0xee, 0xdd, 0xcc, 0xff));
+    let panel = ui.append(
+        root,
+        crate::Panel::new()
+            .background(background.clone())
+            .foreground(foreground.clone())
+            .border_width(2.0)
+            .corner_radius(6.0)
+            .opacity(0.5)
+            .content("Configured"),
+    );
+    let element = ui.get(panel).unwrap();
+
+    assert_eq!(
+        element.get_local_value(ui.properties().background),
+        Some(&Some(background))
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().foreground),
+        Some(&foreground)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().border_width),
+        Some(&2.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().corner_radius),
+        Some(&6.0)
+    );
+    assert_eq!(element.get_local_value(ui.properties().opacity), Some(&0.5));
+    assert_eq!(
+        element.get_local_value(ui.properties().content),
+        Some(&String::from("Configured"))
+    );
+}
+
+#[test]
+fn element_spec_ext_applies_text_and_range_property_helpers() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let feature = parley::FontFeature::parse_css_list("\"tnum\" on")
+        .next()
+        .expect("feature should parse")
+        .expect("feature should be valid");
+    let text = ui.append(
+        root,
+        crate::Text::new("0000")
+            .font_features(Box::from([feature]))
+            .letter_spacing(1.25)
+            .text_wrap_mode(crate::TextWrapMode::Wrap),
+    );
+    let slider = ui.append(
+        root,
+        crate::Panel::new()
+            .range(-1.0, 1.0)
+            .value(0.25)
+            .small_change(0.1)
+            .large_change(0.5),
+    );
+
+    assert_eq!(
+        ui.get(text)
+            .unwrap()
+            .get_local_value(ui.properties().font_features)
+            .map(|features| features.as_ref()),
+        Some(&[feature][..])
+    );
+    assert_eq!(
+        ui.get(text)
+            .unwrap()
+            .get_local_value(ui.properties().letter_spacing),
+        Some(&1.25)
+    );
+    assert_eq!(
+        ui.get(text)
+            .unwrap()
+            .get_local_value(ui.properties().text_wrap_mode),
+        Some(&crate::TextWrapMode::Wrap)
+    );
+    assert_eq!(
+        ui.get(slider)
+            .unwrap()
+            .get_local_value(ui.properties().minimum),
+        Some(&-1.0)
+    );
+    assert_eq!(
+        ui.get(slider)
+            .unwrap()
+            .get_local_value(ui.properties().maximum),
+        Some(&1.0)
+    );
+    assert_eq!(
+        ui.get(slider)
+            .unwrap()
+            .get_local_value(ui.properties().value),
+        Some(&0.25)
+    );
+    assert_eq!(
+        ui.get(slider)
+            .unwrap()
+            .get_local_value(ui.properties().small_change),
+        Some(&0.1)
+    );
+    assert_eq!(
+        ui.get(slider)
+            .unwrap()
+            .get_local_value(ui.properties().large_change),
+        Some(&0.5)
+    );
+}
+
+#[test]
+fn element_spec_ext_local_property_accepts_registered_property_handles() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let letter_spacing = ui.properties().letter_spacing;
+    let text = ui.append(root, crate::Text::new("Tracked").local(letter_spacing, 2.5));
+
+    assert_eq!(
+        ui.get(text)
+            .unwrap()
+            .get_local_value(ui.properties().letter_spacing),
+        Some(&2.5)
+    );
+}
+
+#[test]
+fn element_spec_ext_replaces_repeated_initial_property_writes() {
+    use crate::ElementSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(root, crate::Panel::new().opacity(0.25).opacity(0.75));
+
+    assert_eq!(
+        ui.get(panel)
+            .unwrap()
+            .get_local_value(ui.properties().opacity),
+        Some(&0.75)
+    );
+}
+
+#[test]
 fn more_control_specs_share_element_settings() {
     use crate::ElementSpecExt;
 

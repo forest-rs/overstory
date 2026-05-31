@@ -3,7 +3,9 @@
 
 //! Property writes and dependency-property binding integration.
 
-use understory_property::{DependencyObject, DependencyObjectExt, ErasedValue, Property};
+use understory_property::{
+    DependencyObject, DependencyObjectExt, ErasedValue, LocalValueSource, Property, PropertyId,
+};
 use understory_property_binding::{
     BindingDrainError, BindingError, BindingHost, BindingId, BindingReport, BindingWrite,
     EndpointKey, PropertyEndpoint,
@@ -35,6 +37,34 @@ impl Ui {
         self.mark_channels(id, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(id, property.id()));
+    }
+
+    pub(crate) fn set_local_erased(
+        &mut self,
+        id: ElementId,
+        property: PropertyId,
+        value: ErasedValue,
+    ) {
+        let channels = {
+            let registry = &self.registry;
+            let Some(element) = self.elements.get_mut(id) else {
+                return;
+            };
+            match element
+                .property_store_mut()
+                .set_local_erased_with_source_notifying(
+                    property,
+                    value,
+                    LocalValueSource::Local,
+                    registry,
+                ) {
+                Ok(channels) => channels,
+                Err(_) => return,
+            }
+        };
+        self.mark_channels(id, channels);
+        self.bindings
+            .mark_endpoint_changed(EndpointKey::new(id, property));
     }
 
     /// Registers a one-way binding from `source` to `target`. Both
@@ -100,7 +130,7 @@ impl BindingHost<ElementId> for Ui {
                 .set_local_erased_with_source_notifying(
                     prop_id,
                     value,
-                    understory_property::LocalValueSource::TemplateBinding,
+                    LocalValueSource::TemplateBinding,
                     registry,
                 ) {
                 Ok(channels) => channels,

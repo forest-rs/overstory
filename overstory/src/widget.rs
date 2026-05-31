@@ -42,12 +42,20 @@
 use core::any::Any;
 
 use accesskit::{ActionRequest, Node, NodeId as AccessNodeId, Role};
+use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 use cursor_icon::CursorIcon;
-use kurbo::{Size, Vec2};
+use kurbo::{Affine, Size, Vec2};
+use parley::{FontFeature, FontVariation};
+use peniko::Brush;
 use smallvec::SmallVec;
 use understory_box_tree::NodeId;
-use understory_presentation::PresentationStore;
+use understory_presentation::{
+    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, PresentationStore,
+    TextLineHeight, TextWrapMode, WordBreak,
+};
+use understory_property::{ErasedValue, Property, PropertyId};
 use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
@@ -61,6 +69,8 @@ use crate::event_runtime::{
 };
 use crate::generic::present_surface;
 use crate::layouts::Layout;
+use crate::motion::TransitionRules;
+use crate::properties::BuiltInProperties;
 use crate::template::{Template, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
@@ -496,14 +506,15 @@ pub trait ContentSlotSpec: AppendSpec {
 /// Common construction-time element settings shared by append specs.
 ///
 /// `ElementConfig` stores only settings that belong to the resulting element
-/// regardless of its concrete widget: layout contribution, style classes, and
-/// optional interactive control state. Control-specific values still live on
-/// the control builder.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// regardless of its concrete widget: layout contribution, style classes,
+/// initial local property values, and optional interactive control state.
+/// Control-specific values still live on the control builder.
+#[derive(Clone, Debug, Default)]
 pub struct ElementConfig {
     layout: Option<Layout>,
     classes: SmallVec<[ClassId; 1]>,
     control_state: Option<ControlState>,
+    local_properties: SmallVec<[InitialPropertyWrite; 4]>,
 }
 
 impl ElementConfig {
@@ -520,6 +531,22 @@ impl ElementConfig {
     #[must_use]
     pub fn layout(&self) -> Option<&Layout> {
         self.layout.as_ref()
+    }
+
+    /// Adds or replaces a construction-time local property value.
+    ///
+    /// These values are written after the element is inserted and after its
+    /// explicit layout contribution, but before ordinary runtime interaction.
+    /// They use dependency-property `Local` precedence, just like
+    /// [`Ui::set_local`].
+    pub fn set_local<T>(&mut self, property: Property<T>, value: T)
+    where
+        T: Clone + 'static,
+    {
+        self.set_initial_property(
+            InitialPropertyTarget::Registered(property.id()),
+            ErasedValue::new(value),
+        );
     }
 
     /// Adds a style class to the resulting element.
@@ -556,11 +583,134 @@ impl ElementConfig {
         if let Some(layout) = self.layout {
             ui.set_layout(id, layout);
         }
+        for write in self.local_properties {
+            let property = write.target.resolve(ui.properties());
+            ui.set_local_erased(id, property, write.value);
+        }
         for class in self.classes {
             ui.add_class(id, class);
         }
         if let Some(state) = self.control_state {
             ui.set_control_state(id, state);
+        }
+    }
+
+    fn set_built_in_local<T>(&mut self, property: BuiltInPropertyKey, value: T)
+    where
+        T: Clone + 'static,
+    {
+        self.set_initial_property(
+            InitialPropertyTarget::BuiltIn(property),
+            ErasedValue::new(value),
+        );
+    }
+
+    fn set_initial_property(&mut self, target: InitialPropertyTarget, value: ErasedValue) {
+        if let Some(write) = self
+            .local_properties
+            .iter_mut()
+            .find(|write| write.target == target)
+        {
+            write.value = value;
+        } else {
+            self.local_properties
+                .push(InitialPropertyWrite { target, value });
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct InitialPropertyWrite {
+    target: InitialPropertyTarget,
+    value: ErasedValue,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum InitialPropertyTarget {
+    Registered(PropertyId),
+    BuiltIn(BuiltInPropertyKey),
+}
+
+impl InitialPropertyTarget {
+    fn resolve(self, properties: &BuiltInProperties) -> PropertyId {
+        match self {
+            Self::Registered(property) => property,
+            Self::BuiltIn(property) => property.resolve(properties),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum BuiltInPropertyKey {
+    Background,
+    BorderBrush,
+    BorderWidth,
+    Content,
+    CornerRadius,
+    FontFamily,
+    FontFeatures,
+    FontSize,
+    FontStyle,
+    FontVariations,
+    FontWeight,
+    FontWidth,
+    Foreground,
+    IsChecked,
+    IsExpanded,
+    IsReadOnly,
+    LargeChange,
+    LetterSpacing,
+    LineHeight,
+    Maximum,
+    Minimum,
+    Opacity,
+    OverflowWrap,
+    SelectedIndex,
+    SmallChange,
+    TextLanguage,
+    TextWrapMode,
+    Transitions,
+    Value,
+    VisualTransform,
+    WordBreak,
+    WordSpacing,
+}
+
+impl BuiltInPropertyKey {
+    fn resolve(self, properties: &BuiltInProperties) -> PropertyId {
+        match self {
+            Self::Background => properties.background.id(),
+            Self::BorderBrush => properties.border_brush.id(),
+            Self::BorderWidth => properties.border_width.id(),
+            Self::Content => properties.content.id(),
+            Self::CornerRadius => properties.corner_radius.id(),
+            Self::FontFamily => properties.font_family.id(),
+            Self::FontFeatures => properties.font_features.id(),
+            Self::FontSize => properties.font_size.id(),
+            Self::FontStyle => properties.font_style.id(),
+            Self::FontVariations => properties.font_variations.id(),
+            Self::FontWeight => properties.font_weight.id(),
+            Self::FontWidth => properties.font_width.id(),
+            Self::Foreground => properties.foreground.id(),
+            Self::IsChecked => properties.is_checked.id(),
+            Self::IsExpanded => properties.is_expanded.id(),
+            Self::IsReadOnly => properties.is_read_only.id(),
+            Self::LargeChange => properties.large_change.id(),
+            Self::LetterSpacing => properties.letter_spacing.id(),
+            Self::LineHeight => properties.line_height.id(),
+            Self::Maximum => properties.maximum.id(),
+            Self::Minimum => properties.minimum.id(),
+            Self::Opacity => properties.opacity.id(),
+            Self::OverflowWrap => properties.overflow_wrap.id(),
+            Self::SelectedIndex => properties.selected_index.id(),
+            Self::SmallChange => properties.small_change.id(),
+            Self::TextLanguage => properties.text_language.id(),
+            Self::TextWrapMode => properties.text_wrap_mode.id(),
+            Self::Transitions => properties.transitions.id(),
+            Self::Value => properties.value.id(),
+            Self::VisualTransform => properties.visual_transform.id(),
+            Self::WordBreak => properties.word_break.id(),
+            Self::WordSpacing => properties.word_spacing.id(),
         }
     }
 }
@@ -578,9 +728,26 @@ pub trait ElementSpec: AppendSpec {
 /// Shared builder methods available to element specs.
 ///
 /// Import this trait, or use `overstory::prelude::*`, to get a uniform
-/// `.class(...)`, `.layout(...)`, `.enabled(...)`, `.disabled()`, and
-/// `.focusable(...)` surface on specs that implement [`ElementSpec`].
+/// `.class(...)`, `.layout(...)`, `.background(...)`, `.font_features(...)`,
+/// `.enabled(...)`, `.disabled()`, and `.focusable(...)` surface on specs that
+/// implement [`ElementSpec`].
 pub trait ElementSpecExt: ElementSpec + Sized {
+    /// Writes an initial local dependency-property value when the element is
+    /// appended.
+    ///
+    /// Use this for custom properties or for built-ins that do not yet have a
+    /// dedicated helper. Dedicated helpers such as [`Self::background`] and
+    /// [`Self::font_features`] keep common call-sites independent from a
+    /// particular [`Ui`]'s registered property handles.
+    #[must_use]
+    fn local<T>(mut self, property: Property<T>, value: T) -> Self
+    where
+        T: Clone + 'static,
+    {
+        self.element_config_mut().set_local(property, value);
+        self
+    }
+
     /// Adds a style class to the resulting element.
     #[must_use]
     fn class(mut self, class: ClassId) -> Self {
@@ -604,6 +771,276 @@ pub trait ElementSpecExt: ElementSpec + Sized {
     #[must_use]
     fn layout(mut self, layout: impl Into<Layout>) -> Self {
         self.element_config_mut().set_layout(layout);
+        self
+    }
+
+    /// Sets the initial textual content property.
+    #[must_use]
+    fn content(mut self, content: impl Into<String>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Content, content.into());
+        self
+    }
+
+    /// Sets the initial background brush.
+    ///
+    /// Pass `None` to explicitly author no background as a local value.
+    #[must_use]
+    fn background(mut self, brush: impl Into<Option<Brush>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Background, brush.into());
+        self
+    }
+
+    /// Sets the initial foreground brush.
+    #[must_use]
+    fn foreground(mut self, brush: impl Into<Brush>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Foreground, brush.into());
+        self
+    }
+
+    /// Sets the initial border brush.
+    ///
+    /// Pass `None` to explicitly author no border brush as a local value.
+    #[must_use]
+    fn border_brush(mut self, brush: impl Into<Option<Brush>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::BorderBrush, brush.into());
+        self
+    }
+
+    /// Sets the initial border width in logical pixels.
+    #[must_use]
+    fn border_width(mut self, width: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::BorderWidth, width);
+        self
+    }
+
+    /// Sets the initial corner radius in logical pixels.
+    #[must_use]
+    fn corner_radius(mut self, radius: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::CornerRadius, radius);
+        self
+    }
+
+    /// Sets the initial layer opacity.
+    #[must_use]
+    fn opacity(mut self, opacity: f32) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Opacity, opacity);
+        self
+    }
+
+    /// Sets the initial visual transform applied after layout.
+    #[must_use]
+    fn visual_transform(mut self, transform: Affine) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::VisualTransform, transform);
+        self
+    }
+
+    /// Sets initial style-authored transition rules.
+    #[must_use]
+    fn transitions(mut self, transitions: TransitionRules) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Transitions, transitions);
+        self
+    }
+
+    /// Sets the initial font size in logical pixels.
+    #[must_use]
+    fn font_size(mut self, font_size: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontSize, font_size);
+        self
+    }
+
+    /// Sets the initial font family list.
+    #[must_use]
+    fn font_family(mut self, family: FontFamily<'static>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontFamily, family);
+        self
+    }
+
+    /// Sets the initial font width.
+    #[must_use]
+    fn font_width(mut self, width: FontWidth) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontWidth, width);
+        self
+    }
+
+    /// Sets the initial font weight.
+    #[must_use]
+    fn font_weight(mut self, weight: FontWeight) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontWeight, weight);
+        self
+    }
+
+    /// Sets the initial font style.
+    #[must_use]
+    fn font_style(mut self, style: FontStyle) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontStyle, style);
+        self
+    }
+
+    /// Sets initial font variation settings.
+    #[must_use]
+    fn font_variations(mut self, variations: impl Into<Box<[FontVariation]>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontVariations, variations.into());
+        self
+    }
+
+    /// Sets initial OpenType font feature settings.
+    #[must_use]
+    fn font_features(mut self, features: impl Into<Box<[FontFeature]>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::FontFeatures, features.into());
+        self
+    }
+
+    /// Sets the initial text language hint.
+    #[must_use]
+    fn text_language(mut self, language: impl Into<Option<Language>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::TextLanguage, language.into());
+        self
+    }
+
+    /// Sets the initial text line-height policy.
+    #[must_use]
+    fn line_height(mut self, line_height: TextLineHeight) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::LineHeight, line_height);
+        self
+    }
+
+    /// Sets the initial extra letter spacing in logical pixels.
+    #[must_use]
+    fn letter_spacing(mut self, spacing: f32) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::LetterSpacing, spacing);
+        self
+    }
+
+    /// Sets the initial extra word spacing in logical pixels.
+    #[must_use]
+    fn word_spacing(mut self, spacing: f32) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::WordSpacing, spacing);
+        self
+    }
+
+    /// Sets the initial word-break policy.
+    #[must_use]
+    fn word_break(mut self, word_break: WordBreak) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::WordBreak, word_break);
+        self
+    }
+
+    /// Sets the initial emergency wrapping policy.
+    #[must_use]
+    fn overflow_wrap(mut self, overflow_wrap: OverflowWrap) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::OverflowWrap, overflow_wrap);
+        self
+    }
+
+    /// Sets the initial text line-wrapping policy.
+    #[must_use]
+    fn text_wrap_mode(mut self, wrap_mode: TextWrapMode) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::TextWrapMode, wrap_mode);
+        self
+    }
+
+    /// Sets the initial checked state property.
+    #[must_use]
+    fn checked(mut self, checked: bool) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::IsChecked, checked);
+        self
+    }
+
+    /// Sets the initial expanded state property.
+    #[must_use]
+    fn expanded(mut self, expanded: bool) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::IsExpanded, expanded);
+        self
+    }
+
+    /// Sets whether an editable text-like control starts read-only.
+    #[must_use]
+    fn read_only(mut self, read_only: bool) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::IsReadOnly, read_only);
+        self
+    }
+
+    /// Sets the initial selected index property.
+    #[must_use]
+    fn selected_index(mut self, index: impl Into<Option<usize>>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::SelectedIndex, index.into());
+        self
+    }
+
+    /// Sets the initial numeric value property.
+    #[must_use]
+    fn value(mut self, value: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Value, value);
+        self
+    }
+
+    /// Sets the initial minimum numeric value.
+    #[must_use]
+    fn minimum(mut self, minimum: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Minimum, minimum);
+        self
+    }
+
+    /// Sets the initial maximum numeric value.
+    #[must_use]
+    fn maximum(mut self, maximum: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Maximum, maximum);
+        self
+    }
+
+    /// Sets the initial numeric value range.
+    #[must_use]
+    fn range(mut self, minimum: f64, maximum: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Minimum, minimum);
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Maximum, maximum);
+        self
+    }
+
+    /// Sets the initial small change value for range controls.
+    #[must_use]
+    fn small_change(mut self, small_change: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::SmallChange, small_change);
+        self
+    }
+
+    /// Sets the initial large change value for range controls.
+    #[must_use]
+    fn large_change(mut self, large_change: f64) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::LargeChange, large_change);
         self
     }
 

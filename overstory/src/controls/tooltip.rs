@@ -49,7 +49,7 @@ pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_TOOLTIP_LABEL);
 
 /// Builder + retained configuration for a tooltip.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Tooltip {
     content: String,
     font_size: Option<f64>,
