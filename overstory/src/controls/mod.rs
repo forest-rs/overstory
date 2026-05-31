@@ -42,6 +42,7 @@ pub(crate) mod accordion;
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod choice;
+pub(crate) mod disclosure;
 pub(crate) mod divider;
 pub(crate) mod expander;
 pub(crate) mod list;

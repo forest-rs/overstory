@@ -22,12 +22,10 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::is_descendant_or_self;
+use crate::controls::disclosure;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::layouts::{LayoutContainer, LayoutDisplay};
-use crate::pseudos::PSEUDO_EXPANDED;
 use crate::template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
@@ -206,13 +204,7 @@ impl Widget for ExpanderWidget {
         ctx: &crate::AccessibilityContext<'_>,
         node: &mut accesskit::Node,
     ) {
-        ctx.add_click_action_if_enabled(element, node);
-        node.set_expanded(self.expanded);
-        if self.expanded {
-            node.add_action(accesskit::Action::Collapse);
-        } else {
-            node.add_action(accesskit::Action::Expand);
-        }
+        disclosure::configure_accessibility(element, ctx, node, self.expanded);
     }
 
     fn append_accessibility_children(
@@ -222,9 +214,14 @@ impl Widget for ExpanderWidget {
         node: &mut accesskit::Node,
         nodes: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
-        if self.expanded {
-            ctx.append_slot_children(element.id(), SLOT_EXPANDER_CONTENT, node, nodes);
-        }
+        disclosure::append_expanded_slot_accessibility(
+            element,
+            ctx,
+            node,
+            nodes,
+            SLOT_EXPANDER_CONTENT,
+            self.expanded,
+        );
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {
@@ -244,21 +241,14 @@ impl Widget for ExpanderWidget {
     }
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
-        use ui_events::keyboard::{Key, KeyState, NamedKey};
         let expander = ctx.id();
         if !matches!(event.phase, Phase::Target) {
             return;
         }
-        if event.key.state != KeyState::Down || !ctx.is_enabled(expander) {
+        if !ctx.is_enabled(expander) {
             return;
         }
-        let next = match &event.key.key {
-            Key::Named(NamedKey::Enter) => Some(!self.expanded),
-            Key::Character(s) if s == " " => Some(!self.expanded),
-            Key::Named(NamedKey::ArrowRight) => Some(true),
-            Key::Named(NamedKey::ArrowLeft) => Some(false),
-            _ => None,
-        };
+        let next = disclosure::key_target(&event, self.expanded);
         if let Some(expanded) = next
             && self.set_expanded(ctx, expander, expanded)
         {
@@ -275,12 +265,8 @@ impl Widget for ExpanderWidget {
         if !ctx.is_enabled(expander) {
             return false;
         }
-        match request.action {
-            accesskit::Action::Click => self.set_expanded(ctx, expander, !self.expanded),
-            accesskit::Action::Expand => self.set_expanded(ctx, expander, true),
-            accesskit::Action::Collapse => self.set_expanded(ctx, expander, false),
-            _ => false,
-        }
+        disclosure::action_target(request.action, self.expanded)
+            .is_some_and(|expanded| self.set_expanded(ctx, expander, expanded))
     }
 }
 
@@ -401,31 +387,13 @@ fn expander_widget(ui: &Ui, expander: ElementId) -> Option<&ExpanderWidget> {
 }
 
 fn sync_expander_state(ui: &mut Ui, expander: ElementId, expanded: bool) {
-    ui.set_local(expander, ui.properties().is_expanded, expanded);
-    if expanded {
-        ui.add_pseudo(expander, PSEUDO_EXPANDED);
-    } else {
-        ui.remove_pseudo(expander, PSEUDO_EXPANDED);
-    }
-    if let Some(disclosure) = ui.slot(expander, SLOT_EXPANDER_DISCLOSURE) {
-        ui.set_local(
-            disclosure,
-            ui.properties().content,
-            String::from(disclosure_text(expanded)),
-        );
-    }
-    if let Some(content) = ui.slot(expander, SLOT_EXPANDER_CONTENT) {
-        let display = if expanded {
-            LayoutContainer::column()
-        } else {
-            LayoutContainer::new().display(LayoutDisplay::None)
-        };
-        ui.set_layout_container(content, display);
-    }
-}
-
-fn disclosure_text(expanded: bool) -> &'static str {
-    if expanded { "▾" } else { "▸" }
+    disclosure::sync_state(
+        ui,
+        expander,
+        SLOT_EXPANDER_DISCLOSURE,
+        SLOT_EXPANDER_CONTENT,
+        expanded,
+    );
 }
 
 fn click_source_is_header(
@@ -433,10 +401,7 @@ fn click_source_is_header(
     expander: ElementId,
     source: ElementId,
 ) -> bool {
-    let Some(header) = ctx.slot(expander, SLOT_EXPANDER_HEADER) else {
-        return source == expander;
-    };
-    is_descendant_or_self(ctx, source, header)
+    disclosure::source_is_header(ctx, expander, source, SLOT_EXPANDER_HEADER)
 }
 
 fn dispatch_expanded_changed(
