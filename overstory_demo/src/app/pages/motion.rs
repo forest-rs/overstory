@@ -1,89 +1,122 @@
 use super::super::*;
 
 pub(super) fn build_motion_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("COLOR MOTION", PAGE_CARD_WIDTH, 326.0, |color| {
+                    let (_, [oklab, srgb]) = color.children(
+                        Panel::row(12.0)
+                            .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
+                        |lanes| {
+                            [
+                                lanes.add(
+                                    Panel::new()
+                                        .class(CLASS_OKLAB_SWATCH)
+                                        .layout(Layout::new().logical_size(158.0, 128.0)),
+                                ),
+                                lanes.add(
+                                    Panel::new()
+                                        .class(CLASS_SRGB_SWATCH)
+                                        .layout(Layout::new().logical_size(158.0, 128.0)),
+                                ),
+                            ]
+                        },
+                    );
+                    color.children(
+                        Panel::row(12.0)
+                            .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 16.0)),
+                        |labels| {
+                            motion_lane_label(labels, "OKLab");
+                            motion_lane_label(labels, "sRGB");
+                        },
+                    );
+                    color.add(
+                        body_text("Both lanes share endpoints. The middle of the journey exposes the interpolation policy."),
+                    );
+                    schedule_pair_toggle(
+                        color.ui_mut(),
+                        [oklab, srgb],
+                        PSEUDO_SELECTED,
+                        millis(5_200),
+                    );
+                });
 
-    let color = demo_card(ui, row, "COLOR MOTION", PAGE_CARD_WIDTH, 326.0);
-    let color_lanes = ui.append(
-        color,
-        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
-    );
-    let oklab = ui.append(
-        color_lanes,
-        Panel::new()
-            .class(CLASS_OKLAB_SWATCH)
-            .layout(Layout::new().logical_size(158.0, 128.0)),
-    );
-    let srgb = ui.append(
-        color_lanes,
-        Panel::new()
-            .class(CLASS_SRGB_SWATCH)
-            .layout(Layout::new().logical_size(158.0, 128.0)),
-    );
-    let labels = ui.append(
-        color,
-        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 16.0)),
-    );
-    motion_lane_label(ui, labels, "OKLab");
-    motion_lane_label(ui, labels, "sRGB");
-    ui.append(
-        color,
-        body_text("Both lanes share endpoints. The middle of the journey exposes the interpolation policy."),
-    );
-    schedule_pair_toggle(ui, [oklab, srgb], PSEUDO_SELECTED, millis(5_200));
+                row.demo_card("COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0, |composition| {
+                    let (_, [opacity, border, retarget]) = composition.children(
+                        Panel::row(12.0)
+                            .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
+                        |strip| {
+                            [
+                                strip.add(
+                                    Panel::new()
+                                        .class(CLASS_OPACITY_SWATCH)
+                                        .layout(Layout::new().logical_size(96.0, 74.0)),
+                                ),
+                                strip.add(
+                                    Panel::new()
+                                        .class(CLASS_BORDER_SWATCH)
+                                        .layout(Layout::new().logical_size(96.0, 74.0)),
+                                ),
+                                strip.add(
+                                    Panel::new()
+                                        .class(CLASS_RETARGET_SWATCH)
+                                        .layout(Layout::new().logical_size(96.0, 74.0)),
+                                ),
+                            ]
+                        },
+                    );
+                    composition.ui_mut().set_tooltip(
+                        retarget,
+                        Tooltip::new("Retargeting starts a new transition from the current sampled value"),
+                    );
 
-    let composition = demo_card(ui, row, "COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0);
-    let strip = ui.append(
-        composition,
-        Panel::row(12.0).layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
-    );
-    let opacity = motion_tile(ui, strip, CLASS_OPACITY_SWATCH);
-    let border = motion_tile(ui, strip, CLASS_BORDER_SWATCH);
-    let retarget = motion_tile(ui, strip, CLASS_RETARGET_SWATCH);
-    ui.set_tooltip(
-        retarget,
-        Tooltip::new("Retargeting starts a new transition from the current sampled value"),
-    );
+                    let (_, mover) = composition.children(
+                        Panel::new().class(CLASS_DEMO_MOTION_STAGE).layout(
+                            Layout::new()
+                                .relative()
+                                .logical_size(PAGE_CONTROL_WIDTH, 102.0)
+                                .padding_all(0.0),
+                        ),
+                        |motion_stage| {
+                            motion_stage.add(
+                                Panel::new()
+                                    .class(CLASS_MOVER_SWATCH)
+                                    .layout(mover_layout(false)),
+                            )
+                        },
+                    );
+                    composition.add(
+                        caption("Opacity, border, retargeting, and layer offset all sample presentation values.")
+                            .wrap(),
+                    );
 
-    let motion_stage = ui.append(
-        composition,
-        Panel::new().class(CLASS_DEMO_MOTION_STAGE).layout(
-            Layout::new()
-                .relative()
-                .logical_size(PAGE_CONTROL_WIDTH, 102.0)
-                .padding_all(0.0),
-        ),
-    );
-    let mover = ui.append(
-        motion_stage,
-        Panel::new()
-            .class(CLASS_MOVER_SWATCH)
-            .layout(mover_layout(false)),
-    );
-    ui.append(
-        composition,
-        caption("Opacity, border, retargeting, and layer offset all sample presentation values.")
-            .wrap(),
-    );
-
-    schedule_toggle(ui, opacity, PSEUDO_PRESSED, millis(1_100));
-    schedule_toggle(ui, border, PSEUDO_FOCUS_VISIBLE, millis(1_450));
-    schedule_toggle(ui, retarget, PSEUDO_SELECTED, millis(180));
-    schedule_movement(ui, mover, millis(1_250));
+                    schedule_toggle(
+                        composition.ui_mut(),
+                        opacity,
+                        PSEUDO_PRESSED,
+                        millis(1_100),
+                    );
+                    schedule_toggle(
+                        composition.ui_mut(),
+                        border,
+                        PSEUDO_FOCUS_VISIBLE,
+                        millis(1_450),
+                    );
+                    schedule_toggle(composition.ui_mut(), retarget, PSEUDO_SELECTED, millis(180));
+                    schedule_movement(composition.ui_mut(), mover, millis(1_250));
+                });
+            },
+        );
+    });
 }
 
-fn motion_tile(ui: &mut Ui, parent: ElementId, class: ClassId) -> ElementId {
-    ui.append(
-        parent,
-        Panel::new()
-            .class(class)
-            .layout(Layout::new().logical_size(96.0, 74.0)),
-    )
-}
-
-fn motion_lane_label(ui: &mut Ui, parent: ElementId, text: &str) -> ElementId {
-    let id = ui.append(parent, Text::new(text).class(CLASS_DEMO_CARD_TITLE));
-    ui.set_layout(id, Layout::new().logical_size(158.0, 16.0));
+fn motion_lane_label(parent: &mut ChildUi<'_>, text: &str) -> ElementId {
+    let id = parent.add(Text::new(text).class(CLASS_DEMO_CARD_TITLE));
+    parent
+        .ui_mut()
+        .set_layout(id, Layout::new().logical_size(158.0, 16.0));
     id
 }
 

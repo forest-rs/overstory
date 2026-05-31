@@ -69,458 +69,503 @@ fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
 }
 
 fn build_overview_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(ui, row, "INPUTS", OVERVIEW_CARD_WIDTH, 222.0, |inputs| {
-        inputs.add(
-            TextInput::new()
-                .placeholder("Search actions")
-                .width(OVERVIEW_CONTROL_WIDTH),
-        );
-        inputs.children(Panel::row(10.0).align_center(), |actions| {
-            actions.add_with(
-                Button::new("Deploy")
-                    .font_size(15.0)
-                    .on_click(cycling_click_handler()),
-                |ui, deploy| {
-                    ui.set_tooltip(deploy, Tooltip::new("Button content is template-bound"));
-                },
-            );
-            actions.add(Button::new("Preview").font_size(15.0));
-        });
-        inputs.add(CheckBox::new("Record diagnostics").checked(true));
-    });
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("INPUTS", OVERVIEW_CARD_WIDTH, 222.0, |inputs| {
+                    inputs.add(
+                        TextInput::new()
+                            .placeholder("Search actions")
+                            .width(OVERVIEW_CONTROL_WIDTH),
+                    );
+                    inputs.children(Panel::row(10.0).align_center(), |actions| {
+                        actions.add_with(
+                            Button::new("Deploy")
+                                .font_size(15.0)
+                                .on_click(cycling_click_handler()),
+                            |ui, deploy| {
+                                ui.set_tooltip(
+                                    deploy,
+                                    Tooltip::new("Button content is template-bound"),
+                                );
+                            },
+                        );
+                        actions.add(Button::new("Preview").font_size(15.0));
+                    });
+                    inputs.add(CheckBox::new("Record diagnostics").checked(true));
+                });
 
-    with_demo_card(ui, row, "SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0, |systems| {
-        systems.children(Panel::row(12.0).align_center(), |toggle_row| {
-            toggle_row.add(ToggleSwitch::new().checked(true));
-            toggle_row.add(control_label("Rendering enabled"));
-        });
-        systems.add(caption("GPU Budget"));
-        systems.add_with(
-            ProgressBar::new()
-                .value(0.62)
-                .size(OVERVIEW_CONTROL_WIDTH, 18.0),
-            |ui, progress| {
-                drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
+                row.demo_card("SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0, |systems| {
+                    systems.children(Panel::row(12.0).align_center(), |toggle_row| {
+                        toggle_row.add(ToggleSwitch::new().checked(true));
+                        toggle_row.add(control_label("Rendering enabled"));
+                    });
+                    systems.add(caption("GPU Budget"));
+                    systems.add_with(
+                        ProgressBar::new()
+                            .value(0.62)
+                            .size(OVERVIEW_CONTROL_WIDTH, 18.0),
+                        |ui, progress| {
+                            drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
+                        },
+                    );
+                    append_tabular_counter_to(systems, "Frames", "fps", 120_000_000, 7);
+                });
+
+                row.demo_card("SELECTION", OVERVIEW_CARD_WIDTH, 222.0, |selection| {
+                    selection.add(
+                        ListBox::new()
+                            .items(renderer_queue_items())
+                            .size(OVERVIEW_LIST_WIDTH, 132.0)
+                            .multiple_selection()
+                            .selected_index(INITIAL_RENDERER_SELECTION)
+                            .scroll_offset_y(28.0)
+                            .with_vertical_scrollbar()
+                            .scrollbar_thickness(10.0)
+                            .thumb_extent(34.0),
+                    );
+                });
             },
         );
-        let systems_id = systems.parent();
-        append_tabular_counter(
-            systems.ui_mut(),
-            systems_id,
-            "Frames",
-            "fps",
-            120_000_000,
-            7,
-        );
     });
-
-    with_demo_card(
-        ui,
-        row,
-        "SELECTION",
-        OVERVIEW_CARD_WIDTH,
-        222.0,
-        |selection| {
-            selection.add(
-                ListBox::new()
-                    .items(renderer_queue_items())
-                    .size(OVERVIEW_LIST_WIDTH, 132.0)
-                    .multiple_selection()
-                    .selected_index(INITIAL_RENDERER_SELECTION)
-                    .scroll_offset_y(28.0)
-                    .with_vertical_scrollbar()
-                    .scrollbar_thickness(10.0)
-                    .thumb_extent(34.0),
-            );
-        },
-    );
 }
 
 fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(ui, row, "TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
-        forms.add(
-            TextInput::new()
-                .placeholder("Search command palette")
-                .width(PAGE_CONTROL_WIDTH),
-        );
-        forms.add(
-            TextInput::new()
-                .text("Read-only selection")
-                .read_only(true)
-                .width(PAGE_CONTROL_WIDTH),
-        );
-        forms.add(caption(
-            "Focus rings, hover borders, selection, and read-only state",
-        ));
-    });
-
-    with_demo_card(ui, row, "ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
-        actions.children(Panel::row(10.0).align_center(), |buttons| {
-            buttons.add_with(
-                Button::new("Deploy")
-                    .font_size(15.0)
-                    .on_click(cycling_click_handler()),
-                |ui, deploy| {
-                    ui.set_tooltip(deploy, Tooltip::new("Run the staged deployment workflow"));
-                },
-            );
-            buttons.add_with(
-                Button::new("Review")
-                    .font_size(15.0)
-                    .on_click(popup_click_handler()),
-                |ui, review| {
-                    ui.set_tooltip(review, Tooltip::new("Toggle an anchored popup"));
-                },
-            );
-        });
-        actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-        actions.add(CheckBox::new("Enable staged rollout").checked(true));
-        actions.add(CheckBox::new("Collect timing traces"));
-        actions.add(CheckBox::new("Send diagnostics").disabled());
-    });
-
-    let row = demo_row(ui, stage);
-    with_demo_fit_card(ui, row, "RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
-        let summary = radios.add(caption("Release lane: Balanced"));
-        radios.add(
-            RadioGroup::new()
-                .items(["Balanced", "Quality", "Low latency"])
-                .selected_index(0)
-                .on_selection_changed(move |ui, event| {
-                    let selected_item = event.selected_item.unwrap_or_else(|| "None".to_owned());
-                    ui.set_local(
-                        summary,
-                        ui.properties().content,
-                        format!("Release lane: {selected_item}"),
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
+                    forms.add(
+                        TextInput::new()
+                            .placeholder("Search command palette")
+                            .width(PAGE_CONTROL_WIDTH),
                     );
-                }),
-        );
-    });
-    with_demo_fit_card(ui, row, "SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
-        let summary = segments.add(caption("View mode: Preview"));
-        segments.add(
-            SegmentedControl::new()
-                .options([
-                    ChoiceOption::new("Preview"),
-                    ChoiceOption::new("Code"),
-                    ChoiceOption::new("Metrics"),
-                    ChoiceOption::new("Trace").disabled(),
-                ])
-                .selected_index(0)
-                .on_selection_changed(move |ui, event| {
-                    let selected_item = event.selected_item.unwrap_or_else(|| "None".to_owned());
-                    ui.set_local(
-                        summary,
-                        ui.properties().content,
-                        format!("View mode: {selected_item}"),
+                    forms.add(
+                        TextInput::new()
+                            .text("Read-only selection")
+                            .read_only(true)
+                            .width(PAGE_CONTROL_WIDTH),
                     );
-                }),
+                    forms.add(caption(
+                        "Focus rings, hover borders, selection, and read-only state",
+                    ));
+                });
+
+                row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
+                    actions.children(Panel::row(10.0).align_center(), |buttons| {
+                        buttons.add_with(
+                            Button::new("Deploy")
+                                .font_size(15.0)
+                                .on_click(cycling_click_handler()),
+                            |ui, deploy| {
+                                ui.set_tooltip(
+                                    deploy,
+                                    Tooltip::new("Run the staged deployment workflow"),
+                                );
+                            },
+                        );
+                        buttons.add_with(
+                            Button::new("Review")
+                                .font_size(15.0)
+                                .on_click(popup_click_handler()),
+                            |ui, review| {
+                                ui.set_tooltip(review, Tooltip::new("Toggle an anchored popup"));
+                            },
+                        );
+                    });
+                    actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+                    actions.add(CheckBox::new("Enable staged rollout").checked(true));
+                    actions.add(CheckBox::new("Collect timing traces"));
+                    actions.add(CheckBox::new("Send diagnostics").disabled());
+                });
+            },
+        );
+
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
+                    let summary = radios.add(caption("Release lane: Balanced"));
+                    radios.add(
+                        RadioGroup::new()
+                            .items(["Balanced", "Quality", "Low latency"])
+                            .selected_index(0)
+                            .on_selection_changed(move |ui, event| {
+                                let selected_item =
+                                    event.selected_item.unwrap_or_else(|| "None".to_owned());
+                                ui.set_local(
+                                    summary,
+                                    ui.properties().content,
+                                    format!("Release lane: {selected_item}"),
+                                );
+                            }),
+                    );
+                });
+                row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
+                    let summary = segments.add(caption("View mode: Preview"));
+                    segments.add(
+                        SegmentedControl::new()
+                            .options([
+                                ChoiceOption::new("Preview"),
+                                ChoiceOption::new("Code"),
+                                ChoiceOption::new("Metrics"),
+                                ChoiceOption::new("Trace").disabled(),
+                            ])
+                            .selected_index(0)
+                            .on_selection_changed(move |ui, event| {
+                                let selected_item =
+                                    event.selected_item.unwrap_or_else(|| "None".to_owned());
+                                ui.set_local(
+                                    summary,
+                                    ui.properties().content,
+                                    format!("View mode: {selected_item}"),
+                                );
+                            }),
+                    );
+                });
+            },
         );
     });
 }
 
 fn build_disclosure_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(ui, row, "EXPANDER", PAGE_CARD_WIDTH, 326.0, |expanders| {
-        expanders.add(
-            caption("Each Expander owns one disclosure state and a typed content slot. Opening one does not affect the other.")
-                .wrap(),
-        );
-        expanders.content(
-            Expander::new("Advanced routing").expanded(true),
-            |advanced| {
-                advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
-                advanced.add(CheckBox::new("Pause on anomaly"));
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("EXPANDER", PAGE_CARD_WIDTH, 326.0, |expanders| {
+                    expanders.add(
+                        caption("Each Expander owns one disclosure state and a typed content slot. Opening one does not affect the other.")
+                            .wrap(),
+                    );
+                    expanders.content(
+                        Expander::new("Advanced routing").expanded(true),
+                        |advanced| {
+                            advanced.add(CheckBox::new("Require reviewer sign-off").checked(true));
+                            advanced.add(CheckBox::new("Pause on anomaly"));
+                        },
+                    );
+                    expanders.content(Expander::new("Audit trail"), |advanced| {
+                        advanced.add(CheckBox::new("Record detailed timing"));
+                        advanced.add(CheckBox::new("Attach render snapshots"));
+                    });
+                });
+
+                row.demo_card("ACCORDION", PAGE_CARD_WIDTH, 326.0, |card| {
+                    card.add(
+                        caption("Accordion coordinates several sections. This one is single-required, so one section remains open.")
+                            .wrap(),
+                    );
+                    card.children(Accordion::new().single_required(), |accordion| {
+                        accordion.section_with(
+                            AccordionSection::new("Routing").expanded(true),
+                            |section| {
+                                section
+                                    .add(CheckBox::new("Require reviewer sign-off").checked(true));
+                                section.add(CheckBox::new("Pause on anomaly"));
+                            },
+                        );
+                        accordion.section("Audit trail", |section| {
+                            section.add(CheckBox::new("Record detailed timing"));
+                            section.add(CheckBox::new("Attach render snapshots"));
+                        });
+                        accordion.section("Delivery window", |section| {
+                            section.add(CheckBox::new("Prefer low-traffic regions"));
+                            section.add(CheckBox::new("Hold for business hours"));
+                        });
+                    });
+                });
             },
         );
-        expanders.content(Expander::new("Audit trail"), |advanced| {
-            advanced.add(CheckBox::new("Record detailed timing"));
-            advanced.add(CheckBox::new("Attach render snapshots"));
-        });
-    });
-
-    with_demo_card(ui, row, "ACCORDION", PAGE_CARD_WIDTH, 326.0, |card| {
-        card.add(
-            caption("Accordion coordinates several sections. This one is single-required, so one section remains open.")
-                .wrap(),
-        );
-        card.children(Accordion::new().single_required(), |accordion| {
-            accordion.section_with(AccordionSection::new("Routing").expanded(true), |section| {
-                section.add(CheckBox::new("Require reviewer sign-off").checked(true));
-                section.add(CheckBox::new("Pause on anomaly"));
-            });
-            accordion.section("Audit trail", |section| {
-                section.add(CheckBox::new("Record detailed timing"));
-                section.add(CheckBox::new("Attach render snapshots"));
-            });
-            accordion.section("Delivery window", |section| {
-                section.add(CheckBox::new("Prefer low-traffic regions"));
-                section.add(CheckBox::new("Hold for business hours"));
-            });
-        });
     });
 }
 
 fn build_systems_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(
-        ui,
-        row,
-        "CONTROL SURFACE",
-        PAGE_CARD_WIDTH,
-        322.0,
-        |controls| {
-            controls.children(Panel::row(12.0).align_center(), |toggle_row| {
-                toggle_row.add(ToggleSwitch::new().checked(true));
-                toggle_row.add(control_label("Rendering enabled"));
-            });
-            controls.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-            controls.add(caption("GPU Budget"));
-            controls.add_with(
-                ProgressBar::new()
-                    .value(0.62)
-                    .size(PAGE_CONTROL_WIDTH, 18.0),
-                |ui, progress| {
-                    ui.set_tooltip(
-                        progress,
-                        Tooltip::new("Animated by the retained timer queue"),
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("CONTROL SURFACE", PAGE_CARD_WIDTH, 322.0, |controls| {
+                    controls.children(Panel::row(12.0).align_center(), |toggle_row| {
+                        toggle_row.add(ToggleSwitch::new().checked(true));
+                        toggle_row.add(control_label("Rendering enabled"));
+                    });
+                    controls.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+                    controls.add(caption("GPU Budget"));
+                    controls.add_with(
+                        ProgressBar::new()
+                            .value(0.62)
+                            .size(PAGE_CONTROL_WIDTH, 18.0),
+                        |ui, progress| {
+                            ui.set_tooltip(
+                                progress,
+                                Tooltip::new("Animated by the retained timer queue"),
+                            );
+                            drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
+                        },
                     );
-                    drive_progress(ui, progress, 0.62, 0.015, 120_000_000);
-                },
-            );
-            controls.add(caption("Volume"));
-            controls.add_with(Slider::new().value(0.42), |ui, volume| {
-                ui.set_tooltip(
-                    volume,
-                    Tooltip::new("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
-                );
-            });
-            controls.children(Panel::row(12.0).align_center(), |spinner_row| {
-                spinner_row.add(Spinner::new());
-                spinner_row.add(caption("Streaming updates"));
-            });
-        },
-    );
+                    controls.add(caption("Volume"));
+                    controls.add_with(Slider::new().value(0.42), |ui, volume| {
+                        ui.set_tooltip(
+                            volume,
+                            Tooltip::new("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
+                        );
+                    });
+                    controls.children(Panel::row(12.0).align_center(), |spinner_row| {
+                        spinner_row.add(Spinner::new());
+                        spinner_row.add(caption("Streaming updates"));
+                    });
+                });
 
-    let telemetry = demo_card(ui, row, "TELEMETRY", PAGE_CARD_WIDTH, 218.0);
-    append_large_counter(ui, telemetry, "Throughput", "events / min", 90_000_000, 137);
+                row.demo_card("TELEMETRY", PAGE_CARD_WIDTH, 218.0, |telemetry| {
+                    append_large_counter_to(
+                        telemetry,
+                        "Throughput",
+                        "events / min",
+                        90_000_000,
+                        137,
+                    );
+                });
+            },
+        );
+    });
 }
 
 fn build_selection_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(
-        ui,
-        row,
-        "RENDERER QUEUE",
-        PAGE_CARD_WIDTH,
-        326.0,
-        |list_card| {
-            let initial_summary = format!(
-                "Selected: {}",
-                renderer_queue_label(INITIAL_RENDERER_SELECTION)
-            );
-            let summary = list_card.add(caption(&initial_summary));
-            list_card.add_with(
-                ListBox::new()
-                    .items(renderer_queue_items())
-                    .size(PAGE_LIST_WIDTH, 178.0)
-                    .multiple_selection()
-                    .selected_index(INITIAL_RENDERER_SELECTION)
-                    .scroll_offset_y(34.0)
-                    .on_selection_changed(move |ui, event| {
-                        let label = selection_summary(&event);
-                        ui.set_local(summary, ui.properties().content, label);
-                    })
-                    .with_vertical_scrollbar()
-                    .gap(10.0)
-                    .scrollbar_thickness(10.0)
-                    .thumb_extent(40.0),
-                |ui, renderer_list| {
-                    ui.set_tooltip(
-                        renderer_list,
-                        Tooltip::new("Multi-select list with viewport clipping"),
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0, |list_card| {
+                    let initial_summary = format!(
+                        "Selected: {}",
+                        renderer_queue_label(INITIAL_RENDERER_SELECTION)
                     );
-                },
-            )
-        },
-    );
+                    let summary = list_card.add(caption(&initial_summary));
+                    list_card.add_with(
+                        ListBox::new()
+                            .items(renderer_queue_items())
+                            .size(PAGE_LIST_WIDTH, 178.0)
+                            .multiple_selection()
+                            .selected_index(INITIAL_RENDERER_SELECTION)
+                            .scroll_offset_y(34.0)
+                            .on_selection_changed(move |ui, event| {
+                                let label = selection_summary(&event);
+                                ui.set_local(summary, ui.properties().content, label);
+                            })
+                            .with_vertical_scrollbar()
+                            .gap(10.0)
+                            .scrollbar_thickness(10.0)
+                            .thumb_extent(40.0),
+                        |ui, renderer_list| {
+                            ui.set_tooltip(
+                                renderer_list,
+                                Tooltip::new("Multi-select list with viewport clipping"),
+                            );
+                        },
+                    )
+                });
 
-    with_demo_card(ui, row, "DETAIL", PAGE_CARD_WIDTH, 326.0, |detail| {
-        detail.add(page_heading("Virtualized by default"));
-        detail.add(body_text(
-            "Only visible rows are realized. Selection and scrolling stay keyed to item indices.",
-        ));
-        detail.add(control_label("Inspection target"));
-        detail.add_with(
-            Select::new()
-                .items([
-                    "Renderer queue",
-                    "Layer composition",
-                    "Text shaping",
-                    "Input routing",
-                ])
-                .selected_index(1)
-                .width(PAGE_CONTROL_WIDTH)
-                .popup_height(124.0),
-            |ui, select| {
-                ui.set_tooltip(
-                    select,
-                    Tooltip::new("Popup-backed select using the ListBox path"),
-                );
+                row.demo_card("DETAIL", PAGE_CARD_WIDTH, 326.0, |detail| {
+                    detail.add(page_heading("Virtualized by default"));
+                    detail.add(body_text(
+                        "Only visible rows are realized. Selection and scrolling stay keyed to item indices.",
+                    ));
+                    detail.add(control_label("Inspection target"));
+                    detail.add_with(
+                        Select::new()
+                            .items([
+                                "Renderer queue",
+                                "Layer composition",
+                                "Text shaping",
+                                "Input routing",
+                            ])
+                            .selected_index(1)
+                            .width(PAGE_CONTROL_WIDTH)
+                            .popup_height(124.0),
+                        |ui, select| {
+                            ui.set_tooltip(
+                                select,
+                                Tooltip::new("Popup-backed select using the ListBox path"),
+                            );
+                        },
+                    )
+                });
             },
-        )
+        );
     });
 }
 
 fn build_outline_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    with_demo_card(
-        ui,
-        row,
-        "PIPELINE OUTLINE",
-        PAGE_CARD_WIDTH,
-        374.0,
-        |tree| {
-            tree.add(page_heading("Expandable retained rows"));
-            tree.add(body_text(
-                "Click a parent row or use Left/Right, Enter, and Space to expand and collapse.",
-            ));
-            tree.add_with(
-                OutlineView::new()
-                    .nodes(renderer_outline_nodes(), Some(0))
-                    .expanded(0)
-                    .expanded(5)
-                    .expanded(9)
-                    .selected_key(10)
-                    .size(PAGE_LIST_WIDTH, 194.0)
-                    .item_extent(30.0)
-                    .overscan(60.0)
-                    .with_vertical_scrollbar()
-                    .gap(10.0)
-                    .scrollbar_thickness(10.0)
-                    .thumb_extent(34.0),
-                |ui, outline| {
-                    ui.set_tooltip(
-                        outline,
-                        Tooltip::new("Virtualized tree projection from understory_outline"),
-                    );
-                },
-            )
-        },
-    );
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("PIPELINE OUTLINE", PAGE_CARD_WIDTH, 374.0, |tree| {
+                    tree.add(page_heading("Expandable retained rows"));
+                    tree.add(body_text(
+                        "Click a parent row or use Left/Right, Enter, and Space to expand and collapse.",
+                    ));
+                    tree.add_with(
+                        OutlineView::new()
+                            .nodes(renderer_outline_nodes(), Some(0))
+                            .expanded(0)
+                            .expanded(5)
+                            .expanded(9)
+                            .selected_key(10)
+                            .size(PAGE_LIST_WIDTH, 194.0)
+                            .item_extent(30.0)
+                            .overscan(60.0)
+                            .with_vertical_scrollbar()
+                            .gap(10.0)
+                            .scrollbar_thickness(10.0)
+                            .thumb_extent(34.0),
+                        |ui, outline| {
+                            ui.set_tooltip(
+                                outline,
+                                Tooltip::new("Virtualized tree projection from understory_outline"),
+                            );
+                        },
+                    )
+                });
 
-    with_demo_card(ui, row, "NODE DETAIL", PAGE_CARD_WIDTH, 374.0, |detail| {
-        detail.add(page_heading("Motion"));
-        detail.add(body_text(
-            "The selected branch represents scheduled presentation work: implicit transitions, timeline cues, and compositor-ready offsets.",
-        ));
-        detail.add(control_label("Row behavior"));
-        detail.add(body_text(
-            "Expansion state is held by the outline control; scroll metrics still come from the shared scroll target registry.",
-        ));
+                row.demo_card("NODE DETAIL", PAGE_CARD_WIDTH, 374.0, |detail| {
+                    detail.add(page_heading("Motion"));
+                    detail.add(body_text(
+                        "The selected branch represents scheduled presentation work: implicit transitions, timeline cues, and compositor-ready offsets.",
+                    ));
+                    detail.add(control_label("Row behavior"));
+                    detail.add(body_text(
+                        "Expansion state is held by the outline control; scroll metrics still come from the shared scroll target registry.",
+                    ));
+                });
+            },
+        );
     });
 }
 
 fn build_layout_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    let panes = demo_card(ui, row, "RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0);
-    let split_row = ui.append(panes, Panel::row(8.0).align_center());
-    let left_pane = ui.append(
-        split_row,
-        Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
-            Layout::column(8.0)
-                .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
-                .padding_all(14.0),
-        ),
-    );
-    ui.append(left_pane, control_label("Scene"));
-    if let Ok(svg) = SvgElementTree::from_bytes(SCENE_GRAPH_SVG, SvgImportOptions::default()) {
-        ui.append(left_pane, svg);
-    }
-    ui.append(left_pane, caption("Retained graph"));
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0, |panes| {
+                    panes.children(Panel::row(8.0).align_center(), |split_row| {
+                        let left_pane = split_row
+                            .children(
+                                Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
+                                    Layout::column(8.0)
+                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
+                                        .padding_all(14.0),
+                                ),
+                                |left_pane| {
+                                    left_pane.add(control_label("Scene"));
+                                    if let Ok(svg) = SvgElementTree::from_bytes(
+                                        SCENE_GRAPH_SVG,
+                                        SvgImportOptions::default(),
+                                    ) {
+                                        left_pane.add(svg);
+                                    }
+                                    left_pane.add(caption("Retained graph"));
+                                },
+                            )
+                            .0;
 
-    let right_pane_slot = Rc::new(Cell::new(None));
-    let right_pane_for_splitter = Rc::clone(&right_pane_slot);
-    let splitter = ui.append(
-        split_row,
-        Splitter::vertical()
-            .length(SPLIT_PANE_HEIGHT)
-            .on_resize(move |ui, event| {
-                if let Some(right_pane) = right_pane_for_splitter.get() {
-                    event.resize_pair(ui, left_pane, right_pane, 88.0, 88.0);
-                }
-            }),
-    );
-    ui.set_tooltip(splitter, Tooltip::new("Drag or focus and use arrow keys"));
-    let right_pane = ui.append(
-        split_row,
-        Panel::column(8.0).class(CLASS_DEMO_SPLIT_INSPECTOR).layout(
-            Layout::column(8.0)
-                .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
-                .padding_all(14.0),
-        ),
-    );
-    right_pane_slot.set(Some(right_pane));
-    ui.append(right_pane, control_label("Inspector"));
-    ui.append(right_pane, caption("Keyboard resize"));
+                        let right_pane_slot = Rc::new(Cell::new(None));
+                        let right_pane_for_splitter = Rc::clone(&right_pane_slot);
+                        let splitter = split_row.add(
+                            Splitter::vertical()
+                                .length(SPLIT_PANE_HEIGHT)
+                                .on_resize(move |ui, event| {
+                                    if let Some(right_pane) = right_pane_for_splitter.get() {
+                                        event.resize_pair(ui, left_pane, right_pane, 88.0, 88.0);
+                                    }
+                                }),
+                        );
+                        split_row.ui_mut().set_tooltip(
+                            splitter,
+                            Tooltip::new("Drag or focus and use arrow keys"),
+                        );
 
-    let ruler = demo_card(ui, row, "AXIS RULER", PAGE_CARD_WIDTH, 326.0);
-    ui.append(ruler, caption("Slider ticks come from understory_axis"));
-    ui.append(
-        ruler,
-        Slider::new()
-            .min(-24.0)
-            .max(24.0)
-            .value(6.0)
-            .small_change(1.0)
-            .large_change(8.0),
-    );
-    ui.append(ruler, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-    ui.append(
-        ruler,
-        body_text("Longhand layout properties keep slider ticks, labels, and thumbs independently positioned without replacing the rest of the style."),
-    );
+                        let right_pane = split_row
+                            .children(
+                                Panel::column(8.0).class(CLASS_DEMO_SPLIT_INSPECTOR).layout(
+                                    Layout::column(8.0)
+                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
+                                        .padding_all(14.0),
+                                ),
+                                |right_pane| {
+                                    right_pane.add(control_label("Inspector"));
+                                    right_pane.add(caption("Keyboard resize"));
+                                },
+                            )
+                            .0;
+                        right_pane_slot.set(Some(right_pane));
+                    });
+                });
+
+                row.demo_card("AXIS RULER", PAGE_CARD_WIDTH, 326.0, |ruler| {
+                    ruler.add(caption("Slider ticks come from understory_axis"));
+                    ruler.add(
+                        Slider::new()
+                            .min(-24.0)
+                            .max(24.0)
+                            .value(6.0)
+                            .small_change(1.0)
+                            .large_change(8.0),
+                    );
+                    ruler.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+                    ruler.add(
+                        body_text("Longhand layout properties keep slider ticks, labels, and thumbs independently positioned without replacing the rest of the style."),
+                    );
+                });
+            },
+        );
+    });
 }
 
 fn build_typography_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
-    let counter = demo_card(ui, row, "TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0);
-    append_large_counter(
-        ui,
-        counter,
-        "Steady suffix",
-        "events / min",
-        85_000_000,
-        257,
-    );
-    ui.append(
-        counter,
-        body_text("The number text uses the OpenType tabular-figures feature, so its measured width stays steady as digits change."),
-    );
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card("TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0, |counter| {
+                    append_large_counter_to(
+                        counter,
+                        "Steady suffix",
+                        "events / min",
+                        85_000_000,
+                        257,
+                    );
+                    counter.add(
+                        body_text("The number text uses the OpenType tabular-figures feature, so its measured width stays steady as digits change."),
+                    );
+                });
 
-    let text = demo_card(ui, row, "TEXT SURFACES", PAGE_CARD_WIDTH, 326.0);
-    ui.append(
-        text,
-        Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
-            .font_size(16.0)
-            .class(CLASS_DEMO_BODY)
-            .wrap(),
-    );
-    ui.append(text, Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-    ui.append(
-        text,
-        TextInput::new()
-            .text("PlainEditor-backed editing")
-            .width(PAGE_CONTROL_WIDTH),
-    );
-    ui.append(
-        text,
-        TextInput::new()
-            .placeholder("IME, clipboard, accessibility next")
-            .width(PAGE_CONTROL_WIDTH),
-    );
+                row.demo_card("TEXT SURFACES", PAGE_CARD_WIDTH, 326.0, |text| {
+                    text.add(
+                        Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
+                            .font_size(16.0)
+                            .class(CLASS_DEMO_BODY)
+                            .wrap(),
+                    );
+                    text.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+                    text.add(
+                        TextInput::new()
+                            .text("PlainEditor-backed editing")
+                            .width(PAGE_CONTROL_WIDTH),
+                    );
+                    text.add(
+                        TextInput::new()
+                            .placeholder("IME, clipboard, accessibility next")
+                            .width(PAGE_CONTROL_WIDTH),
+                    );
+                });
+            },
+        );
+    });
 }
 
 fn drive_progress(ui: &mut Ui, progress: ElementId, initial: f64, step: f64, interval: u64) {
@@ -535,53 +580,53 @@ fn drive_progress(ui: &mut Ui, progress: ElementId, initial: f64, step: f64, int
     });
 }
 
-fn append_tabular_counter(
-    ui: &mut Ui,
-    parent: ElementId,
+fn append_tabular_counter_to(
+    parent: &mut ChildUi<'_>,
     label: &str,
     suffix: &str,
     interval: u64,
     step: u32,
 ) -> ElementId {
-    ui.append(parent, caption(label));
-    let row = ui.append(parent, Panel::row(8.0).align_center());
-    let counter = ui.append(row, number_text("0000"));
-    ui.set_local(
-        counter,
-        ui.properties().font_features,
-        tabular_number_features(),
-    );
-    ui.append(row, caption(suffix));
-    ui.set_tooltip(
+    parent.add(caption(label));
+    let (_, counter) = parent.children(Panel::row(8.0).align_center(), |row| {
+        let counter = row.add(number_text("0000"));
+        row.add(caption(suffix));
+        counter
+    });
+    let font_features = parent.ui().properties().font_features;
+    parent
+        .ui_mut()
+        .set_local(counter, font_features, tabular_number_features());
+    parent.ui_mut().set_tooltip(
         counter,
         Tooltip::new("Tabular figures keep neighboring text steady"),
     );
-    drive_counter(ui, counter, interval, step);
+    drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }
 
-fn append_large_counter(
-    ui: &mut Ui,
-    parent: ElementId,
+fn append_large_counter_to(
+    parent: &mut ChildUi<'_>,
     label: &str,
     suffix: &str,
     interval: u64,
     step: u32,
 ) -> ElementId {
-    ui.append(parent, caption(label));
-    let row = ui.append(parent, Panel::row(12.0).align_center());
-    let counter = ui.append(row, large_number_text("0000"));
-    ui.set_local(
-        counter,
-        ui.properties().font_features,
-        tabular_number_features(),
-    );
-    ui.append(row, caption(suffix));
-    ui.set_tooltip(
+    parent.add(caption(label));
+    let (_, counter) = parent.children(Panel::row(12.0).align_center(), |row| {
+        let counter = row.add(large_number_text("0000"));
+        row.add(caption(suffix));
+        counter
+    });
+    let font_features = parent.ui().properties().font_features;
+    parent
+        .ui_mut()
+        .set_local(counter, font_features, tabular_number_features());
+    parent.ui_mut().set_tooltip(
         counter,
         Tooltip::new("Tabular figures keep neighboring text steady"),
     );
-    drive_counter(ui, counter, interval, step);
+    drive_counter(parent.ui_mut(), counter, interval, step);
     counter
 }
 

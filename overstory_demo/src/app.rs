@@ -257,34 +257,34 @@ fn build_ui() -> Ui {
             .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
     );
 
-    let nav = ui.append(
-        root,
-        Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
-            Layout::column(18.0)
-                .size(
-                    LayoutSize::new()
-                        .width(LayoutDimension::Logical(NAV_WIDTH))
-                        .height(LayoutDimension::Percent(1.0)),
-                )
-                .padding_all(NAV_PADDING)
-                .flex_shrink(0.0),
-        ),
-    );
-    let nav_chrome = build_nav(&mut ui, nav);
-
-    let stage = ui.append(
-        root,
-        Panel::column(18.0).class(CLASS_DEMO_STAGE).layout(
-            Layout::column(18.0)
-                .size(
-                    LayoutSize::new()
-                        .height(LayoutDimension::Percent(1.0))
-                        .min_width(LayoutDimension::Logical(0.0)),
-                )
-                .flex_grow(1.0)
-                .flex_shrink(1.0),
-        ),
-    );
+    let (nav, nav_chrome, stage) = ui.with_children(root, |root| {
+        let nav = root.add(
+            Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
+                Layout::column(18.0)
+                    .size(
+                        LayoutSize::new()
+                            .width(LayoutDimension::Logical(NAV_WIDTH))
+                            .height(LayoutDimension::Percent(1.0)),
+                    )
+                    .padding_all(NAV_PADDING)
+                    .flex_shrink(0.0),
+            ),
+        );
+        let nav_chrome = build_nav(root.ui_mut(), nav);
+        let stage = root.add(
+            Panel::column(18.0).class(CLASS_DEMO_STAGE).layout(
+                Layout::column(18.0)
+                    .size(
+                        LayoutSize::new()
+                            .height(LayoutDimension::Percent(1.0))
+                            .min_width(LayoutDimension::Logical(0.0)),
+                    )
+                    .flex_grow(1.0)
+                    .flex_shrink(1.0),
+            ),
+        );
+        (nav, nav_chrome, stage)
+    });
 
     let nav_rows = build_nav_rows(&mut ui, nav);
     wire_nav_rows(&mut ui, &nav_rows, stage, Rc::clone(&shell));

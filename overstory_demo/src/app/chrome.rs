@@ -14,26 +14,30 @@ pub(super) enum NavKeyAction {
     MoveTo(DemoPage),
 }
 pub(super) fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
-    ui.append(nav, heading("Overstory"));
-    ui.append(nav, caption("Focused widget gallery"));
+    let mode_toggle = ui.with_children(nav, |nav| {
+        nav.add(heading("Overstory"));
+        nav.add(caption("Focused widget gallery"));
 
-    ui.append(
-        nav,
-        Panel::new()
-            .class(CLASS_DEMO_NAV_MARKER)
-            .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
-    );
+        nav.add(
+            Panel::new()
+                .class(CLASS_DEMO_NAV_MARKER)
+                .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
+        );
 
-    let mode_row = ui.append(
-        nav,
-        Panel::row(12.0).layout(
-            Layout::row(12.0)
-                .logical_size(NAV_CONTENT_WIDTH, 36.0)
-                .align_center(),
-        ),
-    );
-    let mode_toggle = ui.append(mode_row, ToggleSwitch::new());
-    ui.append(mode_row, control_label("Light mode"));
+        nav.children(
+            Panel::row(12.0).layout(
+                Layout::row(12.0)
+                    .logical_size(NAV_CONTENT_WIDTH, 36.0)
+                    .align_center(),
+            ),
+            |mode_row| {
+                let mode_toggle = mode_row.add(ToggleSwitch::new());
+                mode_row.add(control_label("Light mode"));
+                mode_toggle
+            },
+        )
+        .1
+    });
 
     NavChrome { mode_toggle }
 }
@@ -41,26 +45,23 @@ pub(super) fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
 pub(super) fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
     let row_count = DemoPage::ALL.len() as f32;
     let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
-    let stack = ui.append(
-        nav,
-        Panel::column(4.0)
-            .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
-    );
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
-    for page in DemoPage::ALL {
-        rows.push(append_nav_row(ui, stack, page, page == DemoPage::Overview));
-    }
+    ui.with_children(nav, |nav| {
+        nav.children(
+            Panel::column(4.0)
+                .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
+            |stack| {
+                for page in DemoPage::ALL {
+                    rows.push(append_nav_row(stack, page, page == DemoPage::Overview));
+                }
+            },
+        );
+    });
     Rc::from(rows.into_boxed_slice())
 }
 
-pub(super) fn append_nav_row(
-    ui: &mut Ui,
-    stack: ElementId,
-    page: DemoPage,
-    selected: bool,
-) -> ElementId {
-    let row = ui.append(
-        stack,
+pub(super) fn append_nav_row(stack: &mut ChildUi<'_>, page: DemoPage, selected: bool) -> ElementId {
+    let row = stack.add(
         Panel::row(0.0).class(CLASS_DEMO_NAV_ROW).layout(
             Layout::row(0.0)
                 .logical_size(NAV_CONTENT_WIDTH, 40.0)
@@ -68,8 +69,10 @@ pub(super) fn append_nav_row(
                 .align_center(),
         ),
     );
-    ui.append(row, Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
-    style_nav_row(ui, row, selected);
+    stack.ui_mut().with_children(row, |row| {
+        row.add(Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
+    });
+    style_nav_row(stack.ui_mut(), row, selected);
     row
 }
 

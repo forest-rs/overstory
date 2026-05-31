@@ -1,67 +1,75 @@
 use super::super::*;
-use super::svg::append_svg_inspector_row;
+use super::svg::append_svg_inspector_row_to;
 
 pub(super) fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
-    let row = demo_row(ui, stage);
     let (snapshot, selected) = devtools_target_snapshot();
     let session = DevtoolsSessionHandle::new(
         DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
     );
 
-    let inspector = demo_card(
-        ui,
-        row,
-        "INSPECTION SNAPSHOT",
-        DEVTOOLS_INSPECTOR_WIDTH,
-        DEVTOOLS_CARD_HEIGHT,
-    );
-    ui.add_class(inspector, CLASS_DEVTOOLS_INSPECTOR_CARD);
-    append_session_view(ui, inspector, session.clone());
+    ui.with_children(stage, |stage| {
+        stage.children(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_card(
+                    "INSPECTION SNAPSHOT",
+                    DEVTOOLS_INSPECTOR_WIDTH,
+                    DEVTOOLS_CARD_HEIGHT,
+                    |inspector| {
+                        let inspector_id = inspector.parent();
+                        inspector
+                            .ui_mut()
+                            .add_class(inspector_id, CLASS_DEVTOOLS_INSPECTOR_CARD);
+                        append_session_view(inspector.ui_mut(), inspector_id, session.clone());
+                    },
+                );
 
-    let summary = demo_card(
-        ui,
-        row,
-        "PROTOCOL BOUNDARY",
-        DEVTOOLS_SUMMARY_WIDTH,
-        DEVTOOLS_CARD_HEIGHT,
-    );
-    ui.add_class(summary, CLASS_DEVTOOLS_SUMMARY_CARD);
-    ui.append(summary, page_heading("Snapshot, not a borrow"));
-    ui.append(
-        summary,
-        body_text(
-            "The inspector receives owned rows. The target UI can keep running, repainting, or move out-of-process later.",
-        ),
-    );
-    ui.append(summary, Divider::horizontal().length(220.0));
+                row.demo_card(
+                    "PROTOCOL BOUNDARY",
+                    DEVTOOLS_SUMMARY_WIDTH,
+                    DEVTOOLS_CARD_HEIGHT,
+                    |summary| {
+                        let summary_id = summary.parent();
+                        summary
+                            .ui_mut()
+                            .add_class(summary_id, CLASS_DEVTOOLS_SUMMARY_CARD);
+                        append_devtools_summary(summary, &session);
+                    },
+                );
+            },
+        );
+    });
+}
+
+fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionHandle) {
+    summary.add(page_heading("Snapshot, not a borrow"));
+    summary.add(body_text(
+        "The inspector receives owned rows. The target UI can keep running, repainting, or move out-of-process later.",
+    ));
+    summary.add(Divider::horizontal().length(220.0));
 
     let inspection = session.with(|session| session.snapshot().inspection().clone());
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Elements",
         &format!("{}", inspection.elements.len()),
     );
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Layers",
         &format!("{}", inspection.composition.layers.len()),
     );
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Surfaces",
         &format!("{}", inspection.composition.surfaces.len()),
     );
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Spoor envelopes",
         &session.with(|session| format!("{}", session.spoor_summary().envelope_count)),
     );
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Spoor rows",
         &session.with(|session| {
@@ -72,17 +80,15 @@ pub(super) fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
             )
         }),
     );
-    append_svg_inspector_row(
-        ui,
+    append_svg_inspector_row_to(
         summary,
         "Timeline",
         &format!("{} cues", inspection.timeline.pending_cues),
     );
-    ui.append(summary, Divider::horizontal().length(220.0));
-    ui.append(
-        summary,
-        body_text("Next: stream snapshots beside Spoor telemetry for frame phases, traces, cache pressure, and timeline tracks."),
-    );
+    summary.add(Divider::horizontal().length(220.0));
+    summary.add(body_text(
+        "Next: stream snapshots beside Spoor telemetry for frame phases, traces, cache pressure, and timeline tracks.",
+    ));
 }
 
 fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
@@ -96,35 +102,39 @@ fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
             .padding_all(18.0),
     );
 
-    let header = target.append(root, Panel::row(12.0).align_center());
-    target.append(header, ToggleSwitch::new().checked(true));
-    target.append(header, Text::new("Snapshot target").font_size(18.0));
+    let deploy = target.with_children(root, |root| {
+        root.children(Panel::row(12.0).align_center(), |header| {
+            header.add(ToggleSwitch::new().checked(true));
+            header.add(Text::new("Snapshot target").font_size(18.0));
+        });
 
-    let controls = target.append(root, Panel::row(12.0).align_center());
-    let deploy = target.append(controls, Button::new("Deploy").font_size(14.0));
-    target.append(controls, CheckBox::new("Collect traces").checked(true));
-    target.append(controls, ProgressBar::new().value(0.68).size(190.0, 18.0));
+        let (_, deploy) = root.children(Panel::row(12.0).align_center(), |controls| {
+            let deploy = controls.add(Button::new("Deploy").font_size(14.0));
+            controls.add(CheckBox::new("Collect traces").checked(true));
+            controls.add(ProgressBar::new().value(0.68).size(190.0, 18.0));
+            deploy
+        });
 
-    let content = target.append(root, Panel::row(14.0));
-    target.append(
-        content,
-        ListBox::new()
-            .items(renderer_queue_items().take(48))
-            .size(260.0, 190.0)
-            .selected_index(4)
-            .scroll_offset_y(54.0)
-            .with_vertical_scrollbar(),
-    );
-    let detail = target.append(
-        content,
-        Panel::column(8.0).layout(Layout::column(8.0).logical_size(260.0, 190.0)),
-    );
-    target.append(detail, Text::new("Composition").font_size(15.0));
-    target.append(
-        detail,
-        Text::new("Layer tree, surfaces, and timeline counters").wrap(),
-    );
-    target.append(detail, Slider::new().value(0.42));
+        root.children(Panel::row(14.0), |content| {
+            content.add(
+                ListBox::new()
+                    .items(renderer_queue_items().take(48))
+                    .size(260.0, 190.0)
+                    .selected_index(4)
+                    .scroll_offset_y(54.0)
+                    .with_vertical_scrollbar(),
+            );
+            content.children(
+                Panel::column(8.0).layout(Layout::column(8.0).logical_size(260.0, 190.0)),
+                |detail| {
+                    detail.add(Text::new("Composition").font_size(15.0));
+                    detail.add(Text::new("Layer tree, surfaces, and timeline counters").wrap());
+                    detail.add(Slider::new().value(0.42));
+                },
+            );
+        });
+        deploy
+    });
 
     target.schedule_timeline_cue(millis(800), 1);
     target.compute_layout(Size::new(

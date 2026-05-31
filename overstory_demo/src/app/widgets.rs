@@ -50,75 +50,69 @@ pub(super) fn tabular_number_features() -> Box<[FontFeature]> {
         .expect("tabular-number feature should be valid");
     Box::from([feature])
 }
-pub(super) fn demo_card(
-    ui: &mut Ui,
-    parent: ElementId,
-    title: &str,
-    width: f32,
-    height: f32,
-) -> ElementId {
-    with_demo_card(ui, parent, title, width, height, |_| ()).0
+
+pub(super) trait DemoChildUiExt {
+    fn demo_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        height: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R);
+
+    fn demo_fit_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        min_height: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R);
 }
 
-pub(super) fn with_demo_card<R>(
-    ui: &mut Ui,
-    parent: ElementId,
-    title: &str,
-    width: f32,
-    height: f32,
-    f: impl FnOnce(&mut ChildUi<'_>) -> R,
-) -> (ElementId, R) {
-    ui.children(
-        parent,
-        Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
-            Layout::column(14.0)
-                .logical_size(width, height)
-                .padding_all(18.0),
-        ),
-        |card| {
-            card.add(card_title(title));
-            f(card)
-        },
-    )
-}
-
-pub(super) fn with_demo_fit_card<R>(
-    ui: &mut Ui,
-    parent: ElementId,
-    title: &str,
-    width: f32,
-    min_height: f32,
-    f: impl FnOnce(&mut ChildUi<'_>) -> R,
-) -> (ElementId, R) {
-    ui.children(
-        parent,
-        Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
-            Layout::column(14.0)
-                .size(
-                    LayoutSize::new()
-                        .width(LayoutDimension::Logical(width))
-                        .min_height(LayoutDimension::Logical(min_height)),
-                )
-                .padding_all(18.0),
-        ),
-        |card| {
-            card.add(card_title(title));
-            f(card)
-        },
-    )
-}
-
-pub(super) fn demo_row(ui: &mut Ui, parent: ElementId) -> ElementId {
-    ui.append(
-        parent,
-        Panel::row(18.0).layout(
-            Layout::row(18.0).wrap().size(
-                LayoutSize::new()
-                    .width(LayoutDimension::Percent(1.0))
-                    .min_width(LayoutDimension::Logical(0.0)),
+impl DemoChildUiExt for ChildUi<'_> {
+    fn demo_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        height: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R) {
+        self.children(
+            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
+                Layout::column(14.0)
+                    .logical_size(width, height)
+                    .padding_all(18.0),
             ),
-        ),
-    )
+            |card| {
+                card.add(card_title(title));
+                f(card)
+            },
+        )
+    }
+
+    fn demo_fit_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        min_height: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> (ElementId, R) {
+        self.children(
+            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
+                Layout::column(14.0)
+                    .size(
+                        LayoutSize::new()
+                            .width(LayoutDimension::Logical(width))
+                            .min_height(LayoutDimension::Logical(min_height)),
+                    )
+                    .padding_all(18.0),
+            ),
+            |card| {
+                card.add(card_title(title));
+                f(card)
+            },
+        )
+    }
 }
 
 /// Builds a click handler that cycles the button's label each time it fires.
@@ -158,8 +152,10 @@ pub(super) fn popup_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent
             return;
         }
         let popup = ui.open_popup(event.current, Popup::new(), |ui, popup| {
-            ui.append(popup, Text::new("Review queue").font_size(13.0));
-            ui.append(popup, Text::new("3 items pending").font_size(13.0));
+            ui.with_children(popup, |popup| {
+                popup.add(Text::new("Review queue").font_size(13.0));
+                popup.add(Text::new("3 items pending").font_size(13.0));
+            });
         });
         open_popup.set(popup);
     }
