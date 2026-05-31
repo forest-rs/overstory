@@ -1,13 +1,18 @@
 use super::super::*;
 use super::svg::append_svg_inspector_row_to;
 
-pub(super) fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
-    let (snapshot, selected) = devtools_target_snapshot();
-    let session = DevtoolsSessionHandle::new(
-        DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
-    );
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DevtoolsPage;
 
-    ui.with_children(stage, |stage| {
+impl View for DevtoolsPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
+        let (snapshot, selected) = devtools_target_snapshot();
+        let session = DevtoolsSessionHandle::new(
+            DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
+        );
+
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -38,7 +43,7 @@ pub(super) fn build_devtools_page(ui: &mut Ui, stage: ElementId) {
                 );
             },
         );
-    });
+    }
 }
 
 fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionHandle) {

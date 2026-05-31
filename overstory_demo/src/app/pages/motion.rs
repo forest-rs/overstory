@@ -1,7 +1,12 @@
 use super::super::*;
 
-pub(super) fn build_motion_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+pub(super) struct MotionPage;
+
+impl View for MotionPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -106,7 +111,7 @@ pub(super) fn build_motion_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
 fn motion_lane_label(parent: &mut ChildUi<'_>, text: &str) -> ElementId {

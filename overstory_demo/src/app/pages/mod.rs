@@ -18,58 +18,72 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
 
 pub(super) fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
     clear_children(ui, stage);
-    build_page_header(ui, stage, page);
-    match page {
-        DemoPage::Overview => build_overview_page(ui, stage),
-        DemoPage::Inputs => build_inputs_page(ui, stage),
-        DemoPage::Disclosure => build_disclosure_page(ui, stage),
-        DemoPage::Systems => build_systems_page(ui, stage),
-        DemoPage::Selection => build_selection_page(ui, stage),
-        DemoPage::Outline => build_outline_page(ui, stage),
-        DemoPage::Layout => build_layout_page(ui, stage),
-        DemoPage::Svg => svg::build_svg_page(ui, stage),
-        DemoPage::Typography => build_typography_page(ui, stage),
-        DemoPage::Motion => motion::build_motion_page(ui, stage),
-        DemoPage::Devtools => devtools::build_devtools_page(ui, stage),
+    ui.with_children(stage, |stage| {
+        stage.view(PageHeader(page));
+        match page {
+            DemoPage::Overview => stage.view(OverviewPage),
+            DemoPage::Inputs => stage.view(InputsPage),
+            DemoPage::Disclosure => stage.view(DisclosurePage),
+            DemoPage::Systems => stage.view(SystemsPage),
+            DemoPage::Selection => stage.view(SelectionPage),
+            DemoPage::Outline => stage.view(OutlinePage),
+            DemoPage::Layout => stage.view(LayoutPage),
+            DemoPage::Svg => stage.view(svg::SvgPage),
+            DemoPage::Typography => stage.view(TypographyPage),
+            DemoPage::Motion => stage.view(motion::MotionPage),
+            DemoPage::Devtools => stage.view(devtools::DevtoolsPage),
+        }
+    });
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PageHeader(DemoPage);
+
+impl View for PageHeader {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
+        let page = self.0;
+        stage.children(
+            Panel::row(18.0).class(CLASS_DEMO_HEADER).layout(
+                Layout::row(18.0)
+                    .size(
+                        LayoutSize::new()
+                            .width(LayoutDimension::Percent(1.0))
+                            .height(LayoutDimension::Logical(PAGE_HEADER_HEIGHT)),
+                    )
+                    .padding_all(18.0),
+            ),
+            |header| {
+                header.add(
+                    Panel::new()
+                        .class(CLASS_DEMO_HEADER_ACCENT)
+                        .layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
+                );
+                header.children(
+                    Panel::column(8.0).layout(
+                        Layout::column(8.0)
+                            .size(LayoutSize::new().min_width(LayoutDimension::Logical(0.0)))
+                            .flex_grow(1.0)
+                            .flex_shrink(1.0),
+                    ),
+                    |copy| {
+                        copy.add(page_heading(page.title()));
+                        copy.add(caption(page.subtitle()).wrap());
+                    },
+                );
+            },
+        );
     }
 }
 
-fn build_page_header(ui: &mut Ui, stage: ElementId, page: DemoPage) {
-    ui.children(
-        stage,
-        Panel::row(18.0).class(CLASS_DEMO_HEADER).layout(
-            Layout::row(18.0)
-                .size(
-                    LayoutSize::new()
-                        .width(LayoutDimension::Percent(1.0))
-                        .height(LayoutDimension::Logical(PAGE_HEADER_HEIGHT)),
-                )
-                .padding_all(18.0),
-        ),
-        |header| {
-            header.add(
-                Panel::new()
-                    .class(CLASS_DEMO_HEADER_ACCENT)
-                    .layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
-            );
-            header.children(
-                Panel::column(8.0).layout(
-                    Layout::column(8.0)
-                        .size(LayoutSize::new().min_width(LayoutDimension::Logical(0.0)))
-                        .flex_grow(1.0)
-                        .flex_shrink(1.0),
-                ),
-                |copy| {
-                    copy.add(page_heading(page.title()));
-                    copy.add(caption(page.subtitle()).wrap());
-                },
-            );
-        },
-    );
-}
+#[derive(Clone, Copy, Debug)]
+struct OverviewPage;
 
-fn build_overview_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+impl View for OverviewPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -121,11 +135,16 @@ fn build_overview_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct InputsPage;
+
+impl View for InputsPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -217,11 +236,16 @@ fn build_inputs_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_disclosure_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct DisclosurePage;
+
+impl View for DisclosurePage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -269,11 +293,16 @@ fn build_disclosure_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_systems_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct SystemsPage;
+
+impl View for SystemsPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -314,11 +343,16 @@ fn build_systems_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_selection_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct SelectionPage;
+
+impl View for SelectionPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -371,11 +405,16 @@ fn build_selection_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_outline_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct OutlinePage;
+
+impl View for OutlinePage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -414,11 +453,16 @@ fn build_outline_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_layout_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct LayoutPage;
+
+impl View for LayoutPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -491,11 +535,16 @@ fn build_layout_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
-fn build_typography_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+struct TypographyPage;
+
+impl View for TypographyPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
@@ -533,7 +582,7 @@ fn build_typography_page(ui: &mut Ui, stage: ElementId) {
                 });
             },
         );
-    });
+    }
 }
 
 fn drive_progress(ui: &mut Ui, progress: ElementId, initial: f64, step: f64, interval: u64) {

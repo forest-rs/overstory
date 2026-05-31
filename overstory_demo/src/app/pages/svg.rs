@@ -111,8 +111,13 @@ impl SvgViewportDemo {
     }
 }
 
-pub(in crate::app) fn build_svg_page(ui: &mut Ui, stage: ElementId) {
-    ui.with_children(stage, |stage| {
+#[derive(Clone, Copy, Debug)]
+pub(in crate::app) struct SvgPage;
+
+impl View for SvgPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.children(
             Panel::new().layout(Layout::column(18.0).fill_width()),
             |page| {
@@ -167,7 +172,7 @@ pub(in crate::app) fn build_svg_page(ui: &mut Ui, stage: ElementId) {
                 );
             },
         );
-    });
+    }
 }
 
 fn append_svg_specimen(specimen: &mut ChildUi<'_>) -> Option<SvgViewer> {
