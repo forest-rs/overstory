@@ -33,6 +33,7 @@ use core::cell::RefCell;
 use invalidation::{ChannelSet, InvalidationTracker};
 use understory_property::PropertyRegistry;
 
+use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
@@ -109,6 +110,8 @@ pub struct Ui {
     text: RefCell<TextEngine>,
     /// One-way property binding graph and binding invalidation state.
     bindings: BindingRuntime,
+    /// Local app state and external value adapters that feed bindings.
+    binding_sources: BindingSourceRuntime,
     /// Routed event handlers, pointer capture, hover, click, and drag state.
     events: EventRuntime,
     /// Focused element, focusable preferences, and keyboard navigation policy.
@@ -286,6 +289,7 @@ impl Ui {
             templates: TemplateRuntime::new(),
             text: RefCell::new(text_engine),
             bindings: BindingRuntime::new(),
+            binding_sources: BindingSourceRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
             timeline: TimelineRuntime::new(),

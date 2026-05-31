@@ -56,6 +56,7 @@ extern crate alloc;
 
 pub mod accessibility;
 mod behavior;
+mod binding;
 mod binding_runtime;
 pub mod channels;
 mod composition;
@@ -99,6 +100,10 @@ pub use accesskit;
 pub use behavior::{
     KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
     WidgetEventContext,
+};
+pub use binding::{
+    BindingOwner, BindingSpecExt, BoundSpec, ExternalSource, ExternalSourceId, LocalState,
+    LocalStateId, ValueBinding,
 };
 pub use composition::{CompositionPolicy, CompositionSurface, SurfaceId};
 pub use controls::accordion::{
@@ -234,13 +239,14 @@ pub use widget::{
 /// element configuration methods available.
 pub mod prelude {
     pub use crate::{
-        Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec, Button,
-        CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt, CursorIcon, Divider,
-        ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, Layout,
-        ListBox, OutlineView, Panel, Popup, ProgressBar, RadioButton, RadioGroup, RangeSpecExt,
-        ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size, Slider, Spinner,
-        Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch,
-        Tooltip, TooltipSpecExt, Ui, VectorPath, View, Viewport,
+        Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
+        BindingSpecExt, Button, CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt,
+        CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt,
+        Expander, ExternalSource, Layout, ListBox, LocalState, OutlineView, Panel, Popup,
+        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView,
+        SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput,
+        TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding,
+        VectorPath, View, Viewport,
     };
 }
 

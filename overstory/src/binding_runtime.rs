@@ -17,8 +17,8 @@ use understory_property_binding::{
     BindingError, BindingId, BindingSet, EndpointKey, PropertyEndpoint,
 };
 
+use crate::binding::BindingOwner;
 use crate::channels::BINDING;
-use crate::element::ElementId;
 
 /// One-way property bindings and their internal invalidation tracker.
 pub(crate) struct BindingRuntime {
@@ -26,7 +26,7 @@ pub(crate) struct BindingRuntime {
     ///
     /// Temporarily `None` while `Ui::flush_bindings` owns the set and evaluates
     /// updates against `&mut Ui`.
-    bindings: Option<BindingSet<ElementId>>,
+    bindings: Option<BindingSet<BindingOwner>>,
 }
 
 impl BindingRuntime {
@@ -38,9 +38,9 @@ impl BindingRuntime {
 
     pub(crate) fn bind<T>(
         &mut self,
-        source: PropertyEndpoint<ElementId, T>,
-        target: PropertyEndpoint<ElementId, T>,
-    ) -> Result<BindingId, BindingError<ElementId>>
+        source: PropertyEndpoint<BindingOwner, T>,
+        target: PropertyEndpoint<BindingOwner, T>,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
     where
         T: Clone + 'static,
     {
@@ -53,31 +53,51 @@ impl BindingRuntime {
         Ok(id)
     }
 
+    pub(crate) fn bind_map<S, T, F>(
+        &mut self,
+        source: PropertyEndpoint<BindingOwner, S>,
+        target: PropertyEndpoint<BindingOwner, T>,
+        map: F,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
+    where
+        S: Clone + 'static,
+        T: Clone + 'static,
+        F: Fn(&S) -> T + 'static,
+    {
+        let bindings = self
+            .bindings
+            .as_mut()
+            .expect("bindings always Some outside flush_bindings");
+        let id = bindings.bind_map(source, target, map)?;
+        bindings.mark_binding_dirty(id);
+        Ok(id)
+    }
+
     /// Marks bindings that depend on `endpoint` dirty.
     ///
     /// No-ops while bindings are already being flushed; the active flush owns
     /// the binding set and records changes directly.
-    pub(crate) fn mark_endpoint_changed(&mut self, endpoint: EndpointKey<ElementId>) {
-        if let Some(bindings) = self.bindings.as_mut() {
-            bindings.mark_endpoint_changed(endpoint);
-        }
+    pub(crate) fn mark_endpoint_changed(&mut self, endpoint: EndpointKey<BindingOwner>) -> bool {
+        self.bindings
+            .as_mut()
+            .is_some_and(|bindings| bindings.mark_endpoint_changed(endpoint))
     }
 
-    pub(crate) fn clear_owner(&mut self, owner: ElementId) {
+    pub(crate) fn clear_owner(&mut self, owner: BindingOwner) {
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.clear_owner(owner);
         }
     }
 
     /// Takes the binding graph for a flush pass.
-    pub(crate) fn take(&mut self) -> BindingSet<ElementId> {
+    pub(crate) fn take(&mut self) -> BindingSet<BindingOwner> {
         self.bindings
             .take()
             .expect("bindings always Some outside flush_bindings")
     }
 
     /// Restores the binding graph after a flush pass.
-    pub(crate) fn restore(&mut self, bindings: BindingSet<ElementId>) {
+    pub(crate) fn restore(&mut self, bindings: BindingSet<BindingOwner>) {
         self.bindings = Some(bindings);
     }
 }

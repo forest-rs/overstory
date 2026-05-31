@@ -8,9 +8,10 @@ use crate::pseudos::{
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
-    CompositionPolicy, ElementRef, ElementRefSpecExt, FocusChangeReason, KeyDispatchResult, Layout,
-    LayoutPlacement, Navigation, Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions,
-    TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
+    BindingOwner, CompositionPolicy, ElementRef, ElementRefSpecExt, FocusChangeReason,
+    KeyDispatchResult, Layout, LayoutPlacement, Navigation, Phase, PointerEventKind,
+    RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext, TemplateSlot,
+    TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -2100,8 +2101,8 @@ fn flush_bindings_propagates_template_binding() {
 
     let content_prop = ui.properties().content;
     ui.bind(
-        PropertyEndpoint::new(source, content_prop),
-        PropertyEndpoint::new(target, content_prop),
+        PropertyEndpoint::new(BindingOwner::element(source), content_prop),
+        PropertyEndpoint::new(BindingOwner::element(target), content_prop),
     )
     .expect("binding registers");
 
@@ -2139,8 +2140,8 @@ fn flush_bindings_respects_local_precedence() {
     // User sets a Local first.
     ui.set_local(target, content_prop, String::from("user"));
     ui.bind(
-        PropertyEndpoint::new(source, content_prop),
-        PropertyEndpoint::new(target, content_prop),
+        PropertyEndpoint::new(BindingOwner::element(source), content_prop),
+        PropertyEndpoint::new(BindingOwner::element(target), content_prop),
     )
     .expect("binding registers");
     ui.set_local(source, content_prop, String::from("from-binding"));
@@ -2171,8 +2172,8 @@ fn try_flush_bindings_reports_type_mismatch() {
     let content_prop = ui.properties().content;
     let content_as_u32: Property<u32> = Property::from_id(content_prop.id());
     ui.bind(
-        PropertyEndpoint::new(source, content_as_u32),
-        PropertyEndpoint::new(target, content_as_u32),
+        PropertyEndpoint::new(BindingOwner::element(source), content_as_u32),
+        PropertyEndpoint::new(BindingOwner::element(target), content_as_u32),
     )
     .expect("binding registers because typed handles carry the same property id");
 
@@ -2199,8 +2200,8 @@ fn remove_clears_bindings_for_subtree() {
 
     let content_prop = ui.properties().content;
     ui.bind(
-        PropertyEndpoint::new(source, content_prop),
-        PropertyEndpoint::new(target, content_prop),
+        PropertyEndpoint::new(BindingOwner::element(source), content_prop),
+        PropertyEndpoint::new(BindingOwner::element(target), content_prop),
     )
     .expect("binding registers");
 
@@ -2211,6 +2212,96 @@ fn remove_clears_bindings_for_subtree() {
         .try_flush_bindings()
         .expect("removed target binding should have been cleared");
     assert_eq!(report.evaluated_bindings(), 0);
+}
+
+#[test]
+fn local_state_binding_updates_element_content() {
+    use crate::{BindingSpecExt, Text};
+    use alloc::format;
+
+    let mut ui = Ui::new();
+    let count = ui.state(0_u32);
+    let label = ui.append(
+        ui.root(),
+        Text::new("").bind_content(count.map(|count| format!("Count: {count}"))),
+    );
+
+    ui.flush_bindings();
+    assert_eq!(
+        ui.get(label)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(ui.properties().content.id())
+            .and_then(|value| value.downcast_ref::<String>().cloned())
+            .as_deref(),
+        Some("Count: 0")
+    );
+
+    assert!(count.set(&mut ui, 42));
+    ui.flush_bindings();
+    assert_eq!(
+        ui.get(label)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(ui.properties().content.id())
+            .and_then(|value| value.downcast_ref::<String>().cloned())
+            .as_deref(),
+        Some("Count: 42")
+    );
+}
+
+#[test]
+fn local_state_update_skips_unchanged_values() {
+    let mut ui = Ui::new();
+    let count = ui.state(7_u32);
+
+    assert!(!count.update(&mut ui, |_| {}));
+    assert!(count.update(&mut ui, |count| *count += 1));
+    assert_eq!(count.get(&ui), Some(8));
+}
+
+#[test]
+fn external_source_binding_refreshes_when_notified() {
+    use alloc::format;
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{BindingSpecExt, Text};
+
+    let mut ui = Ui::new();
+    let external_value = Rc::new(Cell::new(3_u32));
+    let external = ui.external_source({
+        let external_value = external_value.clone();
+        move || external_value.get()
+    });
+    let label = ui.append(
+        ui.root(),
+        Text::new("").bind_content(external.map(|value| format!("External: {value}"))),
+    );
+
+    ui.flush_bindings();
+    assert_eq!(
+        ui.get(label)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(ui.properties().content.id())
+            .and_then(|value| value.downcast_ref::<String>().cloned())
+            .as_deref(),
+        Some("External: 3")
+    );
+
+    external_value.set(9);
+    assert!(external.notify_changed(&mut ui));
+    ui.flush_bindings();
+    assert_eq!(
+        ui.get(label)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(ui.properties().content.id())
+            .and_then(|value| value.downcast_ref::<String>().cloned())
+            .as_deref(),
+        Some("External: 9")
+    );
 }
 
 #[test]
@@ -2355,15 +2446,15 @@ fn two_independent_bindings_both_propagate() {
 
     let content_prop = ui.properties().content;
     ui.bind(
-        PropertyEndpoint::new(s1, content_prop),
-        PropertyEndpoint::new(t1, content_prop),
+        PropertyEndpoint::new(BindingOwner::element(s1), content_prop),
+        PropertyEndpoint::new(BindingOwner::element(t1), content_prop),
     )
     .unwrap();
     ui.set_local(s1, content_prop, String::from("one"));
 
     ui.bind(
-        PropertyEndpoint::new(s2, content_prop),
-        PropertyEndpoint::new(t2, content_prop),
+        PropertyEndpoint::new(BindingOwner::element(s2), content_prop),
+        PropertyEndpoint::new(BindingOwner::element(t2), content_prop),
     )
     .unwrap();
     ui.set_local(s2, content_prop, String::from("two"));

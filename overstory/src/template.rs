@@ -32,6 +32,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use crate::binding::BindingOwner;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{
@@ -521,9 +522,9 @@ impl<'a> TemplateContext<'a> {
     /// Registers a one-way binding and records it on the retained instance.
     pub fn bind<T>(
         &mut self,
-        source: PropertyEndpoint<ElementId, T>,
-        target: PropertyEndpoint<ElementId, T>,
-    ) -> Result<BindingId, BindingError<ElementId>>
+        source: PropertyEndpoint<BindingOwner, T>,
+        target: PropertyEndpoint<BindingOwner, T>,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
     where
         T: Clone + 'static,
     {
@@ -538,13 +539,13 @@ impl<'a> TemplateContext<'a> {
         owner_property: Property<T>,
         part: ElementId,
         part_property: Property<T>,
-    ) -> Result<BindingId, BindingError<ElementId>>
+    ) -> Result<BindingId, BindingError<BindingOwner>>
     where
         T: Clone + 'static,
     {
         self.bind(
-            PropertyEndpoint::new(self.owner, owner_property),
-            PropertyEndpoint::new(part, part_property),
+            PropertyEndpoint::new(BindingOwner::element(self.owner), owner_property),
+            PropertyEndpoint::new(BindingOwner::element(part), part_property),
         )
     }
 

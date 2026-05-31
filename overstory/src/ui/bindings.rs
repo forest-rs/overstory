@@ -11,6 +11,7 @@ use understory_property_binding::{
     EndpointKey, PropertyEndpoint,
 };
 
+use crate::binding::{BindingOwner, ExternalSource, LocalState};
 use crate::element::ElementId;
 
 use super::Ui;
@@ -36,7 +37,7 @@ impl Ui {
         };
         self.mark_channels(id, channels);
         self.bindings
-            .mark_endpoint_changed(EndpointKey::new(id, property.id()));
+            .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
     }
 
     pub(crate) fn set_local_erased(
@@ -64,7 +65,72 @@ impl Ui {
         };
         self.mark_channels(id, channels);
         self.bindings
-            .mark_endpoint_changed(EndpointKey::new(id, property));
+            .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
+    }
+
+    /// Creates a UI-owned local state value that can feed property bindings.
+    ///
+    /// Local state is retained by this `Ui`; setting it marks dependent
+    /// bindings dirty, and those bindings write retained element properties
+    /// during the normal frame pipeline.
+    pub fn local_state<T>(&mut self, initial: T) -> LocalState<T>
+    where
+        T: Clone + PartialEq + 'static,
+    {
+        self.binding_sources.push_local(initial)
+    }
+
+    /// Short form of [`Self::local_state`].
+    pub fn state<T>(&mut self, initial: T) -> LocalState<T>
+    where
+        T: Clone + PartialEq + 'static,
+    {
+        self.local_state(initial)
+    }
+
+    /// Reads a local state value by handle.
+    #[must_use]
+    pub fn local_state_value<T>(&self, state: LocalState<T>) -> Option<T>
+    where
+        T: Clone + 'static,
+    {
+        self.binding_sources.local_value(state)
+    }
+
+    /// Writes a local state value by handle.
+    ///
+    /// Returns `true` when the stored value changed and dependent bindings were
+    /// marked dirty.
+    pub fn set_local_state<T>(&mut self, state: LocalState<T>, value: T) -> bool
+    where
+        T: Clone + PartialEq + 'static,
+    {
+        if !self.binding_sources.set_local(state, value) {
+            return false;
+        }
+        self.bindings.mark_endpoint_changed(state.endpoint().key());
+        true
+    }
+
+    /// Registers an external value source for bindings.
+    ///
+    /// The source is pull-based. Call [`ExternalSource::notify_changed`] after
+    /// the caller-owned value may have changed so the next binding drain reads
+    /// the latest value.
+    pub fn external_source<T, F>(&mut self, read: F) -> ExternalSource<T>
+    where
+        T: Clone + 'static,
+        F: Fn() -> T + 'static,
+    {
+        self.binding_sources.push_external(read)
+    }
+
+    /// Marks an external source dirty.
+    pub fn notify_external_source_changed<T>(&mut self, source: ExternalSource<T>) -> bool
+    where
+        T: Clone + 'static,
+    {
+        self.bindings.mark_endpoint_changed(source.endpoint().key())
     }
 
     /// Registers a one-way binding from `source` to `target`. Both
@@ -78,19 +144,34 @@ impl Ui {
     /// expansion via [`Template::instantiate`](crate::Template::instantiate).
     pub fn bind<T>(
         &mut self,
-        source: PropertyEndpoint<ElementId, T>,
-        target: PropertyEndpoint<ElementId, T>,
-    ) -> Result<BindingId, BindingError<ElementId>>
+        source: PropertyEndpoint<BindingOwner, T>,
+        target: PropertyEndpoint<BindingOwner, T>,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
     where
         T: Clone + 'static,
     {
         self.bindings.bind(source, target)
     }
 
+    /// Registers a mapped one-way binding from `source` to `target`.
+    pub fn bind_map<S, T, F>(
+        &mut self,
+        source: PropertyEndpoint<BindingOwner, S>,
+        target: PropertyEndpoint<BindingOwner, T>,
+        map: F,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
+    where
+        S: Clone + 'static,
+        T: Clone + 'static,
+        F: Fn(&S) -> T + 'static,
+    {
+        self.bindings.bind_map(source, target, map)
+    }
+
     /// Drains the binding set, propagating dirty bindings through the host.
     /// Channels affected by binding writes are unioned into the invalidation
     /// tracker as a side effect of the host's `set_erased` impl.
-    pub fn try_flush_bindings(&mut self) -> Result<BindingReport, BindingDrainError<ElementId>> {
+    pub fn try_flush_bindings(&mut self) -> Result<BindingReport, BindingDrainError<BindingOwner>> {
         let mut bindings = self.bindings.take();
         let result = bindings.drain(self);
         self.bindings.restore(bindings);
@@ -106,42 +187,64 @@ impl Ui {
     }
 }
 
-impl BindingHost<ElementId> for Ui {
-    fn get_erased(&self, endpoint: EndpointKey<ElementId>) -> Option<ErasedValue> {
-        let element = self.get(endpoint.owner())?;
-        element
-            .property_store()
-            .effective_local_erased(endpoint.property())
-            .cloned()
+impl BindingHost<BindingOwner> for Ui {
+    fn get_erased(&self, endpoint: EndpointKey<BindingOwner>) -> Option<ErasedValue> {
+        match endpoint.owner() {
+            BindingOwner::Element(id) => {
+                let element = self.get(id)?;
+                element
+                    .property_store()
+                    .effective_local_erased(endpoint.property())
+                    .cloned()
+            }
+            owner @ (BindingOwner::LocalState(_) | BindingOwner::ExternalSource(_)) => {
+                self.binding_sources.get_erased(owner, endpoint.property())
+            }
+        }
     }
 
-    fn set_erased(&mut self, endpoint: EndpointKey<ElementId>, value: ErasedValue) -> BindingWrite {
-        let id = endpoint.owner();
-        let prop_id = endpoint.property();
-        let channels = {
-            // Disjoint-field split-borrow: registry is read-only while the
-            // element store mutates only the target element.
-            let registry = &self.registry;
-            let Some(element) = self.elements.get_mut(id) else {
-                return BindingWrite::unchanged();
-            };
-            match element
-                .property_store_mut()
-                .set_local_erased_with_source_notifying(
-                    prop_id,
-                    value,
-                    LocalValueSource::TemplateBinding,
-                    registry,
-                ) {
-                Ok(channels) => channels,
-                Err(_) => return BindingWrite::unchanged(),
+    fn set_erased(
+        &mut self,
+        endpoint: EndpointKey<BindingOwner>,
+        value: ErasedValue,
+    ) -> BindingWrite {
+        match endpoint.owner() {
+            BindingOwner::Element(id) => {
+                let prop_id = endpoint.property();
+                let channels = {
+                    // Disjoint-field split-borrow: registry is read-only while
+                    // the element store mutates only the target element.
+                    let registry = &self.registry;
+                    let Some(element) = self.elements.get_mut(id) else {
+                        return BindingWrite::unchanged();
+                    };
+                    match element
+                        .property_store_mut()
+                        .set_local_erased_with_source_notifying(
+                            prop_id,
+                            value,
+                            LocalValueSource::TemplateBinding,
+                            registry,
+                        ) {
+                        Ok(channels) => channels,
+                        Err(_) => return BindingWrite::unchanged(),
+                    }
+                };
+                if channels.is_empty() {
+                    BindingWrite::unchanged()
+                } else {
+                    self.mark_channels(id, channels);
+                    BindingWrite::changed(channels)
+                }
             }
-        };
-        if channels.is_empty() {
-            BindingWrite::unchanged()
-        } else {
-            self.mark_channels(id, channels);
-            BindingWrite::changed(channels)
+            BindingOwner::LocalState(id) => {
+                if self.binding_sources.set_local_erased(id, value) {
+                    BindingWrite::changed(invalidation::ChannelSet::default())
+                } else {
+                    BindingWrite::unchanged()
+                }
+            }
+            BindingOwner::ExternalSource(_) => BindingWrite::unchanged(),
         }
     }
 }
