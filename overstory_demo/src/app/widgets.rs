@@ -116,8 +116,9 @@ impl DemoChildUiExt for ChildUi<'_> {
 }
 
 /// Builds a click handler that cycles the button's label each time it fires.
-pub(super) fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
-    let activations = Cell::new(0_u32);
+pub(super) fn cycling_click_handler(
+    activations: LocalState<u32>,
+) -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
     move |ui: &mut Ui, event| {
         if !matches!(
             event.phase,
@@ -125,14 +126,17 @@ pub(super) fn cycling_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEve
         ) {
             return;
         }
-        let n = activations.get() + 1;
-        activations.set(n);
-        let label = if n == 1 {
-            "Clicked!".to_owned()
-        } else {
-            format!("Clicked {n}×")
-        };
-        ui.set_local(event.current, ui.properties().content, label);
+        activations.update(ui, |count| *count += 1);
+    }
+}
+
+pub(super) fn cycling_click_label(initial: &str, activations: u32) -> String {
+    if activations == 0 {
+        initial.to_owned()
+    } else if activations == 1 {
+        "Clicked!".to_owned()
+    } else {
+        format!("Clicked {activations}×")
     }
 }
 

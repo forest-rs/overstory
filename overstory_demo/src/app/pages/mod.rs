@@ -94,10 +94,15 @@ impl View for OverviewPage {
                             .width(OVERVIEW_CONTROL_WIDTH),
                     );
                     inputs.children(Panel::row(10.0).align_center(), |actions| {
+                        let deploy_clicks = actions.ui_mut().state(0_u32);
                         actions.add(
-                            Button::new("Deploy")
+                            Button::new("")
                                 .font_size(15.0)
-                                .on_click(cycling_click_handler())
+                                .on_click(cycling_click_handler(deploy_clicks))
+                                .bind_content(
+                                    deploy_clicks
+                                        .map(|count| cycling_click_label("Deploy", *count)),
+                                )
                                 .tooltip("Button content is template-bound"),
                         );
                         actions.add(Button::new("Preview").font_size(15.0));
@@ -167,10 +172,15 @@ impl View for InputsPage {
 
                 row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
                     actions.children(Panel::row(10.0).align_center(), |buttons| {
+                        let deploy_clicks = buttons.ui_mut().state(0_u32);
                         buttons.add(
-                            Button::new("Deploy")
+                            Button::new("")
                                 .font_size(15.0)
-                                .on_click(cycling_click_handler())
+                                .on_click(cycling_click_handler(deploy_clicks))
+                                .bind_content(
+                                    deploy_clicks
+                                        .map(|count| cycling_click_label("Deploy", *count)),
+                                )
                                 .tooltip("Run the staged deployment workflow"),
                         );
                         buttons.add(
