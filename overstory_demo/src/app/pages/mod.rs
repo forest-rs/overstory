@@ -479,33 +479,33 @@ impl View for LayoutPage {
                             )
                             .0;
 
-                        let right_pane_slot = Rc::new(Cell::new(None));
-                        let right_pane_for_splitter = Rc::clone(&right_pane_slot);
+                        let right_pane_ref = ElementRef::<Panel>::new();
+                        let right_pane_for_splitter = right_pane_ref.clone();
                         split_row.add(
                             Splitter::vertical()
                                 .length(SPLIT_PANE_HEIGHT)
                                 .on_resize(move |ui, event| {
-                                    if let Some(right_pane) = right_pane_for_splitter.get() {
+                                    if let Some(right_pane) = right_pane_for_splitter.resolve(ui) {
                                         event.resize_pair(ui, left_pane, right_pane, 88.0, 88.0);
                                     }
                                 })
                                 .tooltip("Drag or focus and use arrow keys"),
                         );
 
-                        let right_pane = split_row
-                            .children(
-                                Panel::column(8.0).class(CLASS_DEMO_SPLIT_INSPECTOR).layout(
+                        split_row.children(
+                            Panel::column(8.0)
+                                .class(CLASS_DEMO_SPLIT_INSPECTOR)
+                                .layout(
                                     Layout::column(8.0)
                                         .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
                                         .padding_all(14.0),
-                                ),
-                                |right_pane| {
-                                    right_pane.add(control_label("Inspector"));
-                                    right_pane.add(caption("Keyboard resize"));
-                                },
-                            )
-                            .0;
-                        right_pane_slot.set(Some(right_pane));
+                                )
+                                .reference(right_pane_ref),
+                            |right_pane| {
+                                right_pane.add(control_label("Inspector"));
+                                right_pane.add(caption("Keyboard resize"));
+                            },
+                        );
                     });
                 });
 
