@@ -17,7 +17,6 @@
 //!   host layer.
 
 use alloc::boxed::Box;
-use core::cell::Cell;
 
 use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
@@ -26,8 +25,8 @@ use crate::Phase;
 use crate::behavior::{LayoutContext, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
-    PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value, action_scroll_unit,
-    is_initial_drag_move,
+    ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
+    action_scroll_unit, is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -483,9 +482,9 @@ impl ElementSpec for ScrollArea {
 /// Per-element widget for `ScrollArea`.
 #[derive(Debug, Default)]
 pub(crate) struct ScrollAreaWidget {
-    viewport: Cell<Option<ElementId>>,
-    vertical_bar: Cell<Option<ElementId>>,
-    horizontal_bar: Cell<Option<ElementId>>,
+    viewport: ElementSlot,
+    vertical_bar: ElementSlot,
+    horizontal_bar: ElementSlot,
 }
 
 impl Widget for ScrollAreaWidget {
@@ -541,19 +540,19 @@ fn scrollbar_gutter(enabled: bool, gap: f32, thickness: f32) -> f32 {
 
 fn set_scroll_area_viewport(ui: &Ui, area: ElementId, viewport: ElementId) {
     if let Some(widget) = scroll_area_widget(ui, area) {
-        widget.viewport.set(Some(viewport));
+        widget.viewport.set(viewport);
     }
 }
 
 fn set_scroll_area_vertical_bar(ui: &Ui, area: ElementId, bar: ElementId) {
     if let Some(widget) = scroll_area_widget(ui, area) {
-        widget.vertical_bar.set(Some(bar));
+        widget.vertical_bar.set(bar);
     }
 }
 
 fn set_scroll_area_horizontal_bar(ui: &Ui, area: ElementId, bar: ElementId) {
     if let Some(widget) = scroll_area_widget(ui, area) {
-        widget.horizontal_bar.set(Some(bar));
+        widget.horizontal_bar.set(bar);
     }
 }
 

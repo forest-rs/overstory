@@ -4,7 +4,7 @@
 //! Small shared helpers for built-in controls.
 
 use alloc::boxed::Box;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::ops::Range;
 
 use kurbo::{Axis, Point, Rect, Size, Vec2};
@@ -18,6 +18,35 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::ScrollState;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
+
+#[derive(Debug, Default)]
+pub(crate) struct ElementSlot {
+    element: Cell<Option<ElementId>>,
+}
+
+impl ElementSlot {
+    pub(crate) const fn new() -> Self {
+        Self {
+            element: Cell::new(None),
+        }
+    }
+
+    pub(crate) fn get(&self) -> Option<ElementId> {
+        self.element.get()
+    }
+
+    pub(crate) fn set(&self, element: ElementId) {
+        self.element.set(Some(element));
+    }
+
+    pub(crate) fn set_option(&self, element: Option<ElementId>) {
+        self.element.set(element);
+    }
+
+    pub(crate) fn clear(&self) {
+        self.element.set(None);
+    }
+}
 
 pub(crate) type EventHandler<E> = Box<dyn FnMut(&mut Ui, E) + 'static>;
 
@@ -159,8 +188,8 @@ pub(crate) fn fixed_virtual_accessibility_scroll_delta(
 
 #[derive(Debug, Default)]
 pub(crate) struct ReservedScrollFrameWidget {
-    target: core::cell::Cell<Option<ElementId>>,
-    scrollbar: core::cell::Cell<Option<ElementId>>,
+    target: ElementSlot,
+    scrollbar: ElementSlot,
 }
 
 impl ReservedScrollFrameWidget {
@@ -173,8 +202,8 @@ impl ReservedScrollFrameWidget {
     }
 
     fn set_parts(&self, target: ElementId, scrollbar: ElementId) {
-        self.target.set(Some(target));
-        self.scrollbar.set(Some(scrollbar));
+        self.target.set(target);
+        self.scrollbar.set(scrollbar);
     }
 }
 

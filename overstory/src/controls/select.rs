@@ -17,7 +17,6 @@
 //!   open/closed routed events.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::cell::Cell;
 
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
@@ -31,7 +30,7 @@ use crate::controls::choice::{
 };
 use crate::controls::list::{ListBox, ListSelectionChangedEvent};
 use crate::controls::popup::Popup;
-use crate::controls::support::{CallbackSlot, EventHandler};
+use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
@@ -235,7 +234,7 @@ impl AppendSpec for Select {
         let widget = SelectWidget {
             options: self.options,
             placeholder: self.placeholder,
-            popup: Cell::new(None),
+            popup: ElementSlot::new(),
             popup_height: self.popup_height,
             item_extent: self.item_extent,
             selection_changed: SharedSelectSelectionChangedHandler::new(self.on_selection_changed),
@@ -269,7 +268,7 @@ impl ElementSpec for Select {
 pub(crate) struct SelectWidget {
     options: Vec<ChoiceOption>,
     placeholder: String,
-    popup: Cell<Option<ElementId>>,
+    popup: ElementSlot,
     popup_height: f32,
     item_extent: f64,
     selection_changed: SharedSelectSelectionChangedHandler,
@@ -445,14 +444,14 @@ impl SelectWidget {
                 );
             },
         );
-        self.popup.set(popup);
+        self.popup.set_option(popup);
     }
 
     fn close_popup(&self, ui: &mut Ui) -> bool {
         let Some(popup) = self.popup.get() else {
             return false;
         };
-        self.popup.set(None);
+        self.popup.clear();
         ui.close_popup(popup)
     }
 
