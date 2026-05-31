@@ -23,20 +23,19 @@ use kurbo::{Size, Vec2};
 use understory_outline::{Outline, OutlineModel, VisibleRow};
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
-use understory_virtual_list::ScrollAlign;
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
-use crate::channels::LAYOUT;
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
     CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
-    append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
-    fixed_virtual_accessibility_scroll_delta, fixed_virtualizer, fixed_visible_item_count,
-    is_descendant_or_self, layout_fixed_virtual_rows, reserved_scroll_frame_widget,
-    sync_fixed_virtual_rows,
+    append_reserved_vertical_scroll_area, clamp_fixed_virtual_scroll_target,
+    configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
+    fixed_virtualizer, fixed_visible_item_count, is_descendant_or_self, layout_fixed_virtual_rows,
+    reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
+    set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -861,13 +860,13 @@ impl OutlineViewWidget {
     }
 
     fn set_scroll_offset_y(&mut self, outline: ElementId, ui: &mut Ui, offset: f64) {
-        self.virtual_list
-            .set_scroll_offset(normalize_scroll_offset_y(offset));
-        self.virtual_list.clamp_scroll_to_content();
-        let _ = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        ui.mark_channels(outline, LAYOUT.into());
+        set_fixed_virtual_scroll_offset_y(
+            outline,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            offset,
+        );
         let _ = self.sync_virtual_items(outline, ui);
     }
 
@@ -923,13 +922,17 @@ impl OutlineViewWidget {
     }
 
     fn scroll_index_into_view(&mut self, outline: ElementId, ui: &mut Ui, index: usize) {
-        self.virtual_list
-            .scroll_to_index(index, ScrollAlign::Nearest);
-        let _ = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        ui.mark_channels(outline, LAYOUT.into());
-        let _ = self.sync_virtual_items(outline, ui);
+        let visible_len = self.visible_len();
+        if scroll_fixed_virtual_index_into_view(
+            outline,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            index,
+            visible_len,
+        ) {
+            let _ = self.sync_virtual_items(outline, ui);
+        }
     }
 
     fn toggle_selected(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
@@ -998,11 +1001,7 @@ impl OutlineViewWidget {
         }
         let visible_len = self.update_visible_len();
         self.virtual_list.set_len(visible_len);
-        self.virtual_list.clamp_scroll_to_content();
-        let _ = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        ui.mark_channels(outline, LAYOUT.into());
+        clamp_fixed_virtual_scroll_target(outline, ui, &mut self.virtual_list, &self.scroll_state);
         let _ = self.sync_virtual_items(outline, ui);
         self.expansion_changed.dispatch(
             ui,

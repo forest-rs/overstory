@@ -9,9 +9,11 @@ use core::ops::Range;
 
 use kurbo::{Axis, Point, Rect, Size, Vec2};
 use understory_property::{DependencyObjectExt, Property};
-use understory_virtual_list::{FixedExtentModel, VirtualList};
+use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 
+use crate::channels::LAYOUT;
 use crate::controls::scroll::ScrollBar;
+use crate::controls::scroll::normalize_scroll_offset_y;
 use crate::element::Element;
 use crate::element::ElementId;
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
@@ -335,6 +337,54 @@ pub(crate) fn layout_fixed_virtual_rows<'a>(
         }
     }
     changed
+}
+
+pub(crate) fn set_fixed_virtual_scroll_offset_y(
+    owner: ElementId,
+    ui: &mut Ui,
+    virtualizer: &mut FixedVirtualizer,
+    scroll_state: &ScrollState,
+    offset: f64,
+) {
+    virtualizer.set_scroll_offset(normalize_scroll_offset_y(offset));
+    virtualizer.clamp_scroll_to_content();
+    sync_fixed_virtual_scroll_target(owner, ui, virtualizer, scroll_state);
+}
+
+pub(crate) fn scroll_fixed_virtual_index_into_view(
+    owner: ElementId,
+    ui: &mut Ui,
+    virtualizer: &mut FixedVirtualizer,
+    scroll_state: &ScrollState,
+    index: usize,
+    len: usize,
+) -> bool {
+    if index >= len {
+        return false;
+    }
+    virtualizer.scroll_to_index(index, ScrollAlign::Nearest);
+    sync_fixed_virtual_scroll_target(owner, ui, virtualizer, scroll_state);
+    true
+}
+
+pub(crate) fn clamp_fixed_virtual_scroll_target(
+    owner: ElementId,
+    ui: &mut Ui,
+    virtualizer: &mut FixedVirtualizer,
+    scroll_state: &ScrollState,
+) {
+    virtualizer.clamp_scroll_to_content();
+    sync_fixed_virtual_scroll_target(owner, ui, virtualizer, scroll_state);
+}
+
+fn sync_fixed_virtual_scroll_target(
+    owner: ElementId,
+    ui: &mut Ui,
+    virtualizer: &FixedVirtualizer,
+    scroll_state: &ScrollState,
+) {
+    let _ = scroll_state.set_offset_y_raw(virtualizer.scroll_offset());
+    ui.mark_channels(owner, LAYOUT.into());
 }
 
 pub(crate) fn fixed_visible_item_count(item_extent: f64, viewport_extent: f64) -> usize {

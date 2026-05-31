@@ -25,11 +25,9 @@ use core::ops::Range;
 use kurbo::{Size, Vec2};
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
-use understory_virtual_list::ScrollAlign;
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
-use crate::channels::LAYOUT;
 use crate::controls::choice::{
     ChoiceOption, collect_options, enabled_index_at_or_after, enabled_index_at_or_before,
     first_enabled_index, last_enabled_index, next_enabled_index, option_enabled,
@@ -42,7 +40,8 @@ use crate::controls::support::{
     CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
     append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
     fixed_virtual_accessibility_scroll_delta, fixed_virtualizer, fixed_visible_item_count,
-    layout_fixed_virtual_rows, reserved_scroll_frame_widget, sync_fixed_virtual_rows,
+    layout_fixed_virtual_rows, reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
+    set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
 };
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -688,26 +687,27 @@ impl ListBoxWidget {
     }
 
     fn set_scroll_offset_y(&mut self, listbox: ElementId, ui: &mut Ui, offset: f64) {
-        self.virtual_list
-            .set_scroll_offset(normalize_scroll_offset_y(offset));
-        self.virtual_list.clamp_scroll_to_content();
-        let _ = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        ui.mark_channels(listbox, LAYOUT.into());
+        set_fixed_virtual_scroll_offset_y(
+            listbox,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            offset,
+        );
         let _ = self.sync_virtual_items(listbox, ui);
     }
 
     fn scroll_index_into_view(&mut self, listbox: ElementId, ui: &mut Ui, index: usize) -> bool {
-        if index >= self.options.len() {
+        if !scroll_fixed_virtual_index_into_view(
+            listbox,
+            ui,
+            &mut self.virtual_list,
+            &self.scroll_state,
+            index,
+            self.options.len(),
+        ) {
             return false;
         }
-        self.virtual_list
-            .scroll_to_index(index, ScrollAlign::Nearest);
-        let _ = self
-            .scroll_state
-            .set_offset_y_raw(self.virtual_list.scroll_offset());
-        ui.mark_channels(listbox, LAYOUT.into());
         let _ = self.sync_virtual_items(listbox, ui);
         true
     }
