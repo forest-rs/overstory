@@ -24,6 +24,7 @@ use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::properties::BuiltInProperties;
 use crate::pseudos::PSEUDO_SELECTED;
+use crate::template::TemplateSlot;
 use crate::ui::Ui;
 
 /// Read-only context handed to widget accessibility hooks.
@@ -180,6 +181,30 @@ impl<'a> AccessibilityContext<'a> {
         let large = self.large_change(element);
         if large > 0.0 {
             node.set_numeric_value_jump(large);
+        }
+    }
+
+    /// Appends authored children from `owner`'s template `slot` to `node`.
+    ///
+    /// The core accessibility traversal skips template-owned visual parts.
+    /// Templated controls use this helper when a slot is semantically part of
+    /// the owner, such as expanded disclosure content.
+    pub fn append_slot_children(
+        &self,
+        owner: ElementId,
+        slot: TemplateSlot,
+        node: &mut Node,
+        nodes: &mut Vec<(NodeId, Node)>,
+    ) {
+        let Some(slot_host) = self.ui.slot(owner, slot) else {
+            return;
+        };
+        let Some(slot_element) = self.ui.get(slot_host) else {
+            return;
+        };
+        for child in self.ui.accessibility_children(slot_element) {
+            node.push_child(accesskit_node_id(child));
+            self.ui.push_accesskit_node(child, self, nodes);
         }
     }
 }

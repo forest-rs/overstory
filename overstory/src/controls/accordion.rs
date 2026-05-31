@@ -367,6 +367,18 @@ impl Widget for AccordionSectionWidget {
         }
     }
 
+    fn append_accessibility_children(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+        nodes: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        if self.expanded {
+            ctx.append_slot_children(element.id(), SLOT_ACCORDION_SECTION_CONTENT, node, nodes);
+        }
+    }
+
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&ACCORDION_SECTION_TEMPLATE)
     }
@@ -871,6 +883,31 @@ mod tests {
         assert!(node.supports_action(Action::Collapse));
     }
 
+    #[test]
+    fn accordion_section_accessibility_exposes_expanded_content_slot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let (_accordion, (section, details)) = ui.children(root, Accordion::new(), |accordion| {
+            accordion.section_with(AccordionSection::new("One").expanded(true), |section| {
+                section.add(crate::Text::new("Details"))
+            })
+        });
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, section);
+
+        assert!(node.children().contains(&accesskit_node_id(details)));
+        assert_eq!(node_for(&update, details).role(), Role::Label);
+
+        assert!(set_accordion_section_expanded(&mut ui, section, false));
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, section);
+
+        assert!(!node.children().contains(&accesskit_node_id(details)));
+        assert!(!has_node(&update, details));
+    }
+
     fn action(id: ElementId, action: Action) -> ActionRequest {
         ActionRequest {
             target_tree: TreeId::ROOT,
@@ -888,6 +925,11 @@ mod tests {
             .find(|(id, _)| *id == node_id)
             .map(|(_, node)| node)
             .expect("node should be emitted")
+    }
+
+    fn has_node(update: &accesskit::TreeUpdate, id: ElementId) -> bool {
+        let node_id = accesskit_node_id(id);
+        update.nodes.iter().any(|(id, _)| *id == node_id)
     }
 
     fn accesskit_node_id(id: ElementId) -> NodeId {

@@ -15,7 +15,7 @@
 //! - Grow toward animation, retained content transitions, and richer header
 //!   templates once content controls have a more complete authoring story.
 
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::cell::RefCell;
 
 use understory_style::{PartTag, TypeTag};
@@ -212,6 +212,18 @@ impl Widget for ExpanderWidget {
             node.add_action(accesskit::Action::Collapse);
         } else {
             node.add_action(accesskit::Action::Expand);
+        }
+    }
+
+    fn append_accessibility_children(
+        &self,
+        element: &Element,
+        ctx: &crate::AccessibilityContext<'_>,
+        node: &mut accesskit::Node,
+        nodes: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        if self.expanded {
+            ctx.append_slot_children(element.id(), SLOT_EXPANDER_CONTENT, node, nodes);
         }
     }
 
@@ -523,6 +535,31 @@ mod tests {
         assert!(node.supports_action(Action::Collapse));
     }
 
+    #[test]
+    fn expander_accessibility_exposes_expanded_content_slot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let (expander, details) =
+            ui.content(root, Expander::new("Advanced").expanded(true), |content| {
+                content.add(crate::Text::new("Details"))
+            });
+        let details = details.expect("expander template should expose content slot");
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, expander);
+
+        assert!(node.children().contains(&accesskit_node_id(details)));
+        assert_eq!(node_for(&update, details).role(), Role::Label);
+
+        assert!(set_expander_expanded(&mut ui, expander, false));
+        let update = ui.accesskit_tree_update();
+        let node = node_for(&update, expander);
+
+        assert!(!node.children().contains(&accesskit_node_id(details)));
+        assert!(!has_node(&update, details));
+    }
+
     fn action(id: ElementId, action: Action) -> ActionRequest {
         ActionRequest {
             target_tree: TreeId::ROOT,
@@ -540,6 +577,11 @@ mod tests {
             .find(|(id, _)| *id == node_id)
             .map(|(_, node)| node)
             .expect("node should be emitted")
+    }
+
+    fn has_node(update: &accesskit::TreeUpdate, id: ElementId) -> bool {
+        let node_id = accesskit_node_id(id);
+        update.nodes.iter().any(|(id, _)| *id == node_id)
     }
 
     fn accesskit_node_id(id: ElementId) -> NodeId {
