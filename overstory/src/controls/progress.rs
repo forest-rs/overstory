@@ -19,6 +19,7 @@ use alloc::{boxed::Box, format, string::String};
 
 use understory_style::{PartTag, TypeTag};
 
+use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
 use crate::controls::support::read_local_or;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
@@ -243,10 +244,11 @@ impl Template for ProgressTemplate {
 pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
     let min = read_local_or(ui, progress, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, progress, ui.properties().maximum, 1.0);
-    let clamped = value.clamp(min.min(max), min.max(max));
+    let range = ScalarRange::new(min, max);
+    let clamped = range.clamp(value);
     ui.set_local(progress, ui.properties().value, clamped);
 
-    let fraction = progress_fraction(clamped, min, max);
+    let fraction = range.fraction(clamped);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
         ui.set_layout_size(
             fill,
@@ -268,24 +270,8 @@ fn set_progress_label_visible(ui: &mut Ui, progress: ElementId, visible: bool) {
     }
 }
 
-fn progress_fraction(value: f64, min: f64, max: f64) -> f64 {
-    let range = max - min;
-    if !range.is_finite() || range.abs() <= f64::EPSILON {
-        return 0.0;
-    }
-    ((value - min) / range).clamp(0.0, 1.0)
-}
-
 fn label_for_fraction(fraction: f64) -> String {
     format!("{:.0}%", fraction * 100.0)
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "unit fractions fit f32 precisely enough for layout percentages"
-)]
-fn f32_from_unit_fraction(fraction: f64) -> f32 {
-    fraction as f32
 }
 
 #[cfg(test)]

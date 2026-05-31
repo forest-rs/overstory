@@ -26,6 +26,7 @@ use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::WidgetEventContext;
+use crate::controls::range::ScalarRange;
 use crate::controls::support::{
     action_numeric_value, f32_from_logical, is_initial_drag_move, read_local_or,
 };
@@ -247,7 +248,7 @@ impl AppendSpec for Slider {
         // Initial value: drive through the same setter the runtime
         // path uses so the thumb's Layout matches. The template has
         // already expanded by this point, so the thumb child exists.
-        let clamped = self.initial_value.clamp(self.min, self.max);
+        let clamped = ScalarRange::new(self.min, self.max).clamp(self.initial_value);
         let thumb = ui
             .slot(id, SLOT_SLIDER_THUMB)
             .expect("slider template should create SLOT_SLIDER_THUMB");
@@ -361,6 +362,7 @@ impl Widget for SliderWidget {
         }
         let min = read_local_or(ctx, slider, ctx.properties().minimum, 0.0);
         let max = read_local_or(ctx, slider, ctx.properties().maximum, 1.0);
+        let range = ScalarRange::new(min, max);
         let small = read_change_or(
             ctx,
             slider,
@@ -391,13 +393,7 @@ impl Widget for SliderWidget {
             Key::Named(NamedKey::End) => max,
             _ => return,
         };
-        set_value(
-            ctx,
-            slider,
-            thumb,
-            next.clamp(min, max),
-            ThumbMotion::Animate,
-        );
+        set_value(ctx, slider, thumb, range.clamp(next), ThumbMotion::Animate);
         event.mark_handled();
     }
 
@@ -562,21 +558,17 @@ fn read_change_or(
     max: f64,
     default_fraction: f64,
 ) -> f64 {
+    let range = ScalarRange::new(min, max);
     let configured = read_local_or(ui, slider, prop, 0.0);
-    if configured.is_finite() && configured > 0.0 {
-        configured
-    } else {
-        (max - min).abs() * default_fraction
-    }
+    range.change_or_fraction(configured, default_fraction)
 }
 
 fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
-    let span = (max - min).max(f64::EPSILON);
     #[expect(
         clippy::cast_possible_truncation,
         reason = "ratio is clamped to 0..=1, fits f32 with room to spare"
     )]
-    let t = ((value - min) / span).clamp(0.0, 1.0) as f32;
+    let t = ScalarRange::new(min, max).fraction(value) as f32;
     let travel = SLIDER_WIDTH - THUMB_DIAMETER;
     t * travel
 }
@@ -702,11 +694,11 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
 
 fn accessibility_step(ui: &WidgetEventContext<'_>, element: &Element, min: f64, max: f64) -> f64 {
     let explicit = ui.get_value(element, ui.properties().small_change);
-    if explicit > 0.0 {
-        explicit
-    } else {
-        ((max - min).abs() * DEFAULT_SMALL_CHANGE_FRACTION).max(0.01)
-    }
+    ScalarRange::new(min, max).positive_change_or_fraction(
+        explicit,
+        DEFAULT_SMALL_CHANGE_FRACTION,
+        0.01,
+    )
 }
 
 fn tick_key(index: usize) -> TemplateItemKey {
@@ -717,7 +709,8 @@ fn tick_key(index: usize) -> TemplateItemKey {
 fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motion: ThumbMotion) {
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
-    let clamped = value.clamp(min, max);
+    let range = ScalarRange::new(min, max);
+    let clamped = range.clamp(value);
     let value_prop = ui.properties().value;
     ui.set_local(slider, value_prop, clamped);
     if motion == ThumbMotion::Animate {
@@ -757,7 +750,7 @@ fn set_value_from_center_position(
     let t = ((center_x - usable_origin) / f64::from(track_width)).clamp(0.0, 1.0);
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
-    let value = min + t * (max - min);
+    let value = ScalarRange::new(min, max).value_at_fraction(t);
     set_value(ui, slider, thumb, value, motion);
 }
 

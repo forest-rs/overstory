@@ -51,6 +51,7 @@ pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress;
 pub(crate) mod radio;
+pub(crate) mod range;
 pub(crate) mod scroll;
 pub(crate) mod segmented;
 pub(crate) mod select;
