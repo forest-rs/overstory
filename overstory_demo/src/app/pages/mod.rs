@@ -192,8 +192,10 @@ impl View for InputsPage {
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
-                    let summary = ElementRef::<Text>::new();
-                    radios.add(caption("Release lane: Balanced").reference(summary.clone()));
+                    let summary = radios
+                        .ui_mut()
+                        .state(String::from("Release lane: Balanced"));
+                    radios.add(caption("").bind_content(summary.binding()));
                     radios.add(
                         RadioGroup::new()
                             .items(["Balanced", "Quality", "Low latency"])
@@ -201,18 +203,13 @@ impl View for InputsPage {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                let content = ui.properties().content;
-                                summary.set_local(
-                                    ui,
-                                    content,
-                                    format!("Release lane: {selected_item}"),
-                                );
+                                summary.set(ui, format!("Release lane: {selected_item}"));
                             }),
                     );
                 });
                 row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
-                    let summary = ElementRef::<Text>::new();
-                    segments.add(caption("View mode: Preview").reference(summary.clone()));
+                    let summary = segments.ui_mut().state(String::from("View mode: Preview"));
+                    segments.add(caption("").bind_content(summary.binding()));
                     segments.add(
                         SegmentedControl::new()
                             .options([
@@ -225,12 +222,7 @@ impl View for InputsPage {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                let content = ui.properties().content;
-                                summary.set_local(
-                                    ui,
-                                    content,
-                                    format!("View mode: {selected_item}"),
-                                );
+                                summary.set(ui, format!("View mode: {selected_item}"));
                             }),
                     );
                 });
@@ -361,8 +353,8 @@ impl View for SelectionPage {
                         "Selected: {}",
                         renderer_queue_label(INITIAL_RENDERER_SELECTION)
                     );
-                    let summary = ElementRef::<Text>::new();
-                    list_card.add(caption(&initial_summary).reference(summary.clone()));
+                    let summary = list_card.ui_mut().state(initial_summary);
+                    list_card.add(caption("").bind_content(summary.binding()));
                     list_card.add(
                         ListBox::new()
                             .items(renderer_queue_items())
@@ -372,8 +364,7 @@ impl View for SelectionPage {
                             .scroll_offset_y(34.0)
                             .on_selection_changed(move |ui, event| {
                                 let label = selection_summary(&event);
-                                let content = ui.properties().content;
-                                summary.set_local(ui, content, label);
+                                summary.set(ui, label);
                             })
                             .with_vertical_scrollbar()
                             .gap(10.0)
