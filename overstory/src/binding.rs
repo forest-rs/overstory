@@ -8,17 +8,17 @@
 //! local app state, and explicitly refreshed external sources.
 
 use alloc::boxed::Box;
-use core::marker::PhantomData;
 
 use understory_property::{ErasedValue, Property, PropertyId};
-use understory_property_binding::PropertyEndpoint;
+use understory_property_binding::{
+    ExternalSource as BindingExternalSource, ExternalSourceId as BindingExternalSourceId,
+    PropertyEndpoint, VALUE_SOURCE_PROPERTY_ID, ValueSource, ValueSourceId, ValueSourceStore,
+};
 
 use crate::element::ElementId;
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec};
-
-const SOURCE_VALUE_PROPERTY: PropertyId = PropertyId::new(u16::MAX);
 
 type BindingMap<Source, Target> = Box<dyn Fn(&Source) -> Target>;
 
@@ -65,25 +65,25 @@ impl From<ElementId> for BindingOwner {
 
 /// Stable id for a local state slot owned by one [`Ui`].
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct LocalStateId(usize);
+pub struct LocalStateId(ValueSourceId);
 
 impl LocalStateId {
     /// Returns the slot index inside the owning UI.
     #[must_use]
     pub const fn index(self) -> usize {
-        self.0
+        self.0.index()
     }
 }
 
 /// Stable id for an external binding source registered with one [`Ui`].
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ExternalSourceId(usize);
+pub struct ExternalSourceId(BindingExternalSourceId);
 
 impl ExternalSourceId {
     /// Returns the slot index inside the owning UI.
     #[must_use]
     pub const fn index(self) -> usize {
-        self.0
+        self.0.index()
     }
 }
 
@@ -95,8 +95,7 @@ impl ExternalSourceId {
 /// rerunning a view builder. It is deliberately just a binding source and
 /// optional binding target, not a component state model.
 pub struct LocalState<T> {
-    id: LocalStateId,
-    _marker: PhantomData<fn() -> T>,
+    source: ValueSource<T>,
 }
 
 impl<T> Copy for LocalState<T> {}
@@ -109,28 +108,27 @@ impl<T> Clone for LocalState<T> {
 
 impl<T> core::fmt::Debug for LocalState<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("LocalState").field("id", &self.id).finish()
+        f.debug_struct("LocalState")
+            .field("id", &self.source.id())
+            .finish()
     }
 }
 
 impl<T> LocalState<T> {
-    pub(crate) const fn new(id: LocalStateId) -> Self {
-        Self {
-            id,
-            _marker: PhantomData,
-        }
+    pub(crate) const fn new(source: ValueSource<T>) -> Self {
+        Self { source }
     }
 
     /// Returns this state's stable id.
     #[must_use]
     pub const fn id(self) -> LocalStateId {
-        self.id
+        LocalStateId(self.source.id())
     }
 
     /// Returns this state's typed binding endpoint.
     #[must_use]
     pub fn endpoint(self) -> PropertyEndpoint<BindingOwner, T> {
-        PropertyEndpoint::new(BindingOwner::local_state(self.id), state_value_property())
+        self.source.endpoint(BindingOwner::local_state(self.id()))
     }
 }
 
@@ -195,8 +193,7 @@ where
 /// External sources are pull-based: Overstory reads the value during binding
 /// drain after the caller explicitly marks the source changed.
 pub struct ExternalSource<T> {
-    id: ExternalSourceId,
-    _marker: PhantomData<fn() -> T>,
+    source: BindingExternalSource<T>,
 }
 
 impl<T> Copy for ExternalSource<T> {}
@@ -210,32 +207,27 @@ impl<T> Clone for ExternalSource<T> {
 impl<T> core::fmt::Debug for ExternalSource<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ExternalSource")
-            .field("id", &self.id)
+            .field("id", &self.source.id())
             .finish()
     }
 }
 
 impl<T> ExternalSource<T> {
-    pub(crate) const fn new(id: ExternalSourceId) -> Self {
-        Self {
-            id,
-            _marker: PhantomData,
-        }
+    pub(crate) const fn new(source: BindingExternalSource<T>) -> Self {
+        Self { source }
     }
 
     /// Returns this source's stable id.
     #[must_use]
     pub const fn id(self) -> ExternalSourceId {
-        self.id
+        ExternalSourceId(self.source.id())
     }
 
     /// Returns this source's typed binding endpoint.
     #[must_use]
     pub fn endpoint(self) -> PropertyEndpoint<BindingOwner, T> {
-        PropertyEndpoint::new(
-            BindingOwner::external_source(self.id),
-            state_value_property(),
-        )
+        self.source
+            .endpoint(BindingOwner::external_source(self.id()))
     }
 }
 
@@ -451,15 +443,13 @@ impl<T> BindingTarget<T> {
 }
 
 pub(crate) struct BindingSourceRuntime {
-    local_states: alloc::vec::Vec<LocalStateEntry>,
-    external_sources: alloc::vec::Vec<ExternalSourceEntry>,
+    sources: ValueSourceStore,
 }
 
 impl BindingSourceRuntime {
     pub(crate) fn new() -> Self {
         Self {
-            local_states: alloc::vec::Vec::new(),
-            external_sources: alloc::vec::Vec::new(),
+            sources: ValueSourceStore::new(),
         }
     }
 
@@ -467,11 +457,7 @@ impl BindingSourceRuntime {
     where
         T: Clone + 'static,
     {
-        let id = LocalStateId(self.local_states.len());
-        self.local_states.push(LocalStateEntry {
-            value: ErasedValue::new(value),
-        });
-        LocalState::new(id)
+        LocalState::new(self.sources.push_value(value))
     }
 
     pub(crate) fn push_external<T, F>(&mut self, read: F) -> ExternalSource<T>
@@ -479,44 +465,26 @@ impl BindingSourceRuntime {
         T: Clone + 'static,
         F: Fn() -> T + 'static,
     {
-        let id = ExternalSourceId(self.external_sources.len());
-        self.external_sources.push(ExternalSourceEntry {
-            read: Box::new(move || ErasedValue::new(read())),
-        });
-        ExternalSource::new(id)
+        ExternalSource::new(self.sources.push_external(read))
     }
 
     pub(crate) fn local_value<T>(&self, state: LocalState<T>) -> Option<T>
     where
         T: Clone + 'static,
     {
-        self.local_states
-            .get(state.id.index())?
-            .value
-            .downcast_ref::<T>()
-            .cloned()
+        self.sources.value(state.source)
     }
 
     pub(crate) fn set_local_erased(&mut self, id: LocalStateId, value: ErasedValue) -> bool {
-        let Some(entry) = self.local_states.get_mut(id.index()) else {
-            return false;
-        };
-        entry.value = value;
-        true
+        self.sources
+            .set_value_erased(id.0, VALUE_SOURCE_PROPERTY_ID, value)
     }
 
     pub(crate) fn set_local<T>(&mut self, state: LocalState<T>, value: T) -> bool
     where
         T: Clone + PartialEq + 'static,
     {
-        let Some(entry) = self.local_states.get_mut(state.id.index()) else {
-            return false;
-        };
-        if entry.value.downcast_ref::<T>() == Some(&value) {
-            return false;
-        }
-        entry.value = ErasedValue::new(value);
-        true
+        self.sources.set_value(state.source, value)
     }
 
     pub(crate) fn get_erased(
@@ -524,30 +492,15 @@ impl BindingSourceRuntime {
         owner: BindingOwner,
         property: PropertyId,
     ) -> Option<ErasedValue> {
-        if property != SOURCE_VALUE_PROPERTY {
+        if property != VALUE_SOURCE_PROPERTY_ID {
             return None;
         }
         match owner {
             BindingOwner::Element(_) => None,
-            BindingOwner::LocalState(id) => Some(self.local_states.get(id.index())?.value.clone()),
-            BindingOwner::ExternalSource(id) => {
-                let entry = self.external_sources.get(id.index())?;
-                Some((entry.read)())
-            }
+            BindingOwner::LocalState(id) => self.sources.value_erased(id.0, property),
+            BindingOwner::ExternalSource(id) => self.sources.external_erased(id.0, property),
         }
     }
-}
-
-struct LocalStateEntry {
-    value: ErasedValue,
-}
-
-struct ExternalSourceEntry {
-    read: Box<dyn Fn() -> ErasedValue>,
-}
-
-const fn state_value_property<T>() -> Property<T> {
-    Property::from_id(SOURCE_VALUE_PROPERTY)
 }
 
 fn content_property(properties: &BuiltInProperties) -> Property<alloc::string::String> {
