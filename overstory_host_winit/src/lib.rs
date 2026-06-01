@@ -68,6 +68,17 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 /// Result type used by the winit host.
 pub type HostResult<T> = Result<T, Box<dyn Error>>;
 
+#[derive(Debug)]
+struct SurfaceValidationError;
+
+impl core::fmt::Display for SurfaceValidationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("wgpu surface acquisition reported a validation error")
+    }
+}
+
+impl Error for SurfaceValidationError {}
+
 /// Window options for [`run`].
 #[derive(Clone, Debug)]
 pub struct WindowOptions {
@@ -336,12 +347,18 @@ impl WindowState {
         self.sync_accessibility();
 
         let output = match self.surface.get_current_texture() {
-            Ok(output) => output,
-            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+            wgpu::CurrentSurfaceTexture::Success(output)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.device, &self.surface_config);
                 return Ok(());
             }
-            Err(err) => return Err(Box::new(err)),
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(Box::new(SurfaceValidationError));
+            }
         };
         let output_view = output
             .texture
@@ -487,7 +504,7 @@ impl BlitState {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("overstory_host_winit blit pipeline layout"),
-            bind_group_layouts: &[&layout],
+            bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

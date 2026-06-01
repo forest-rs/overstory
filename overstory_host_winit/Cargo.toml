@@ -12,7 +12,7 @@ publish = false
 accesskit_winit.workspace = true
 imaging_vello.workspace = true
 imaging_wgpu.workspace = true
-overstory.workspace = true
+overstory = { features = ["std"], workspace = true }
 overstory_host.workspace = true
 pollster.workspace = true
 ui-events-winit.workspace = true

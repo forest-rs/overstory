@@ -61,8 +61,8 @@ understory_virtual_list = { default-features = false, git = "https://github.com/
 
 # Imaging — rendering backend.
 imaging = { default-features = false, features = ["libm"], version = "0.0.1" }
-imaging_vello = { default-features = false, features = ["vello-0-8"], version = "0.0.1" }
-imaging_wgpu = { default-features = false, features = ["wgpu-28"], version = "0.0.1" }
+imaging_vello = { default-features = false, features = ["vello-0-9"], version = "0.0.2" }
+imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.0.2" }
 
 # Input event normalization.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
@@ -88,7 +88,7 @@ parley = { default-features = false, features = ["libm"], version = "0.9" }
 # Host runtime for the demo binary.
 accesskit_winit = { version = "0.32.2" }
 pollster = { version = "0.4.0" }
-wgpu = { default-features = false, features = ["std"], version = "28.0.0" }
+wgpu = { default-features = false, features = ["std"], version = "29.0.3" }
 winit = { default-features = true, version = "0.30" }
 
 [workspace.lints]
