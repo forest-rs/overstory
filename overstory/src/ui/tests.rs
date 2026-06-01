@@ -178,6 +178,100 @@ fn child_ui_view_builds_reusable_authoring_units() {
 }
 
 #[test]
+fn authoring_view_example_builds_and_binds_with_real_api() {
+    use crate::{BindingSpecExt, RangeSpecExt};
+    use alloc::format;
+
+    struct DeploymentView;
+
+    struct DeploymentElements {
+        card: ElementId,
+        deploy: ElementId,
+        count: crate::LocalState<u32>,
+        count_label: ElementId,
+    }
+
+    impl crate::View for DeploymentView {
+        type Output = DeploymentElements;
+
+        fn build(self, ui: &mut ChildUi<'_>) -> Self::Output {
+            let (card, (deploy, count, count_label)) =
+                ui.children(crate::Panel::column(16.0), |card| {
+                    let deploy_count = card.ui_mut().state(0_u32);
+
+                    card.add(crate::Text::new("Deployment").font_size(18.0));
+                    card.with_child(crate::Panel::row(12.0).align_center(), |row| {
+                        row.add(crate::ToggleSwitch::new().checked(true));
+                        row.add(crate::Text::new("Live rollout"));
+                    });
+
+                    card.add_with_children(crate::Panel::column(6.0), |status| {
+                        status.add(crate::Text::new("Rollout status"));
+                        status.add(crate::Slider::new().range(0.0, 100.0).value(42.0));
+                    });
+
+                    let (_, count_label) = card.content(
+                        crate::Expander::new("Advanced").expanded(true),
+                        |advanced| {
+                            advanced.add(crate::CheckBox::new("Require review").checked(true));
+                            advanced.add(crate::CheckBox::new("Attach timing traces"));
+                            advanced.add(crate::Text::new("").bind_content(
+                                deploy_count.map(|count| format!("Deploy attempts: {count}")),
+                            ))
+                        },
+                    );
+                    let count_label =
+                        count_label.expect("default expander template exposes content slot");
+
+                    let deploy =
+                        card.with_child(crate::Panel::row(10.0).align_center(), |actions| {
+                            actions.add(crate::Button::new("Deploy").on_click(move |ui, _event| {
+                                deploy_count.update(ui, |count| *count += 1);
+                            }))
+                        });
+
+                    (deploy, deploy_count, count_label)
+                });
+
+            DeploymentElements {
+                card,
+                deploy,
+                count,
+                count_label,
+            }
+        }
+    }
+
+    fn resolved_content(ui: &Ui, id: ElementId) -> Option<String> {
+        ui.get(id)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(ui.properties().content.id())
+            .and_then(|value| value.downcast_ref::<String>().cloned())
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let elements = ui.view(root, DeploymentView);
+
+    assert_eq!(ui.get(root).unwrap().children(), &[elements.card]);
+    assert!(ui.get(elements.deploy).unwrap().parent().is_some());
+
+    ui.flush_bindings();
+    assert_eq!(
+        resolved_content(&ui, elements.count_label).as_deref(),
+        Some("Deploy attempts: 0")
+    );
+
+    assert!(elements.count.set(&mut ui, 3));
+    ui.flush_bindings();
+    assert_eq!(
+        resolved_content(&ui, elements.count_label).as_deref(),
+        Some("Deploy attempts: 3")
+    );
+}
+
+#[test]
 fn child_ui_content_scopes_children_to_declared_slot() {
     let mut ui = Ui::new();
     let root = ui.root();
