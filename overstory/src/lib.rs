@@ -81,6 +81,7 @@ mod properties;
 pub mod pseudos;
 mod scroll_runtime;
 pub mod selectors;
+mod spec_ext;
 mod style_runtime;
 mod template;
 mod template_runtime;
