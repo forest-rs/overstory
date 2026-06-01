@@ -2630,6 +2630,43 @@ fn button_label_content_propagates_through_template_binding() {
 }
 
 #[test]
+fn app_bound_button_content_updates_template_label() {
+    use crate::{BindingSpecExt, Button};
+    use alloc::format;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let activations = ui.local_state(0_u32);
+    let button = ui.append(
+        root,
+        Button::new("").bind_content(activations.map(|count| {
+            if *count == 0 {
+                String::from("Deploy")
+            } else {
+                format!("Clicked {count}")
+            }
+        })),
+    );
+
+    ui.flush_bindings();
+
+    let content_prop = ui.properties().content;
+    let read_label = |ui: &Ui| -> Option<String> {
+        let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
+        ui.get(label)
+            .unwrap()
+            .property_store()
+            .effective_local_erased(content_prop.id())
+            .and_then(|v| v.downcast_ref::<String>().cloned())
+    };
+    assert_eq!(read_label(&ui).as_deref(), Some("Deploy"));
+
+    assert!(activations.set(&mut ui, 2));
+    ui.flush_bindings();
+    assert_eq!(read_label(&ui).as_deref(), Some("Clicked 2"));
+}
+
+#[test]
 fn compute_layout_writes_bounds() {
     let mut ui = Ui::new();
     let root = ui.root();

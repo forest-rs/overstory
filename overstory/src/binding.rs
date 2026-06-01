@@ -9,7 +9,7 @@
 
 use alloc::boxed::Box;
 
-use understory_property::{ErasedValue, Property, PropertyId};
+use understory_property::{ErasedValue, LocalValueSource, Property, PropertyId};
 use understory_property_binding::{
     ExternalSource as BindingExternalSource, ExternalSourceId as BindingExternalSourceId,
     PropertyEndpoint, VALUE_SOURCE_PROPERTY_ID, ValueSource, ValueSourceId, ValueSourceStore,
@@ -329,6 +329,10 @@ where
 /// Extension methods for binding append specs to app state.
 pub trait BindingSpecExt: AppendSpec + Sized {
     /// Binds `binding` into `property` on the element produced by this spec.
+    ///
+    /// Spec bindings are app-authored values, so they write into the local
+    /// property source. That lets a binding replace any constructor-supplied
+    /// initial value on the inserted element.
     #[must_use]
     fn bind_property<Source, Target>(
         self,
@@ -343,6 +347,10 @@ pub trait BindingSpecExt: AppendSpec + Sized {
     }
 
     /// Binds `binding` into the built-in text/content property.
+    ///
+    /// The binding writes into the local property source, not the lower
+    /// template-binding source, so bound content replaces an initial builder
+    /// label.
     #[must_use]
     fn bind_content<Source>(
         self,
@@ -402,8 +410,13 @@ where
         let target_property = self.target.resolve(ui.properties());
         let target = PropertyEndpoint::new(BindingOwner::element(id), target_property);
         let (source, map) = self.binding.into_parts();
-        ui.bind_map(source, target, move |value| map(value))
-            .expect("append-spec binding should be valid");
+        ui.bind_map_with_target_source(
+            source,
+            target,
+            move |value| map(value),
+            LocalValueSource::Local,
+        )
+        .expect("append-spec binding should be valid");
         id
     }
 }

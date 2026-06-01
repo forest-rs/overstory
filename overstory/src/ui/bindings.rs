@@ -125,10 +125,15 @@ impl Ui {
         self.bindings.mark_endpoint_changed(source.endpoint().key())
     }
 
-    /// Registers a one-way binding from `source` to `target`. Both
-    /// endpoints' value types must match. Returns the new [`BindingId`]
-    /// or a [`BindingError`] if the registration would self-loop or
-    /// introduce a cycle.
+    /// Registers a template-precedence one-way binding from `source` to
+    /// `target`. Both endpoints' value types must match. Returns the new
+    /// [`BindingId`] or a [`BindingError`] if the registration would self-loop
+    /// or introduce a cycle.
+    ///
+    /// Target writes use [`LocalValueSource::TemplateBinding`]. This is the
+    /// low-level path used by control templates. App-facing append-spec
+    /// bindings use the local source so authored bindings can replace initial
+    /// constructor values.
     ///
     /// The binding will fire on the next `flush_bindings` if its source
     /// endpoint has been written since the last drain (or has not yet
@@ -145,7 +150,12 @@ impl Ui {
         self.bindings.bind(source, target)
     }
 
-    /// Registers a mapped one-way binding from `source` to `target`.
+    /// Registers a mapped template-precedence one-way binding from `source` to
+    /// `target`.
+    ///
+    /// Target writes use [`LocalValueSource::TemplateBinding`]. App-facing
+    /// append-spec bindings use the local source so authored bindings can
+    /// replace initial constructor values.
     pub fn bind_map<S, T, F>(
         &mut self,
         source: PropertyEndpoint<BindingOwner, S>,
@@ -158,6 +168,22 @@ impl Ui {
         F: Fn(&S) -> T + 'static,
     {
         self.bindings.bind_map(source, target, map)
+    }
+
+    pub(crate) fn bind_map_with_target_source<S, T, F>(
+        &mut self,
+        source: PropertyEndpoint<BindingOwner, S>,
+        target: PropertyEndpoint<BindingOwner, T>,
+        map: F,
+        write_source: LocalValueSource,
+    ) -> Result<BindingId, BindingError<BindingOwner>>
+    where
+        S: Clone + 'static,
+        T: Clone + 'static,
+        F: Fn(&S) -> T + 'static,
+    {
+        self.bindings
+            .bind_map_with_target_source(source, target, map, write_source)
     }
 
     /// Drains the binding set, propagating dirty bindings through the host.
@@ -203,6 +229,7 @@ impl BindingHost<BindingOwner> for Ui {
         match endpoint.owner() {
             BindingOwner::Element(id) => {
                 let prop_id = endpoint.property();
+                let write_source = self.bindings.write_source_for_target(endpoint);
                 let channels = {
                     // Disjoint-field split-borrow: registry is read-only while
                     // the element store mutates only the target element.
@@ -215,7 +242,7 @@ impl BindingHost<BindingOwner> for Ui {
                         .set_local_erased_with_source_notifying(
                             prop_id,
                             value,
-                            LocalValueSource::TemplateBinding,
+                            write_source,
                             registry,
                         ) {
                         Ok(channels) => channels,
