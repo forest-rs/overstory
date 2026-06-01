@@ -118,7 +118,7 @@ impl View for SvgPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::column(18.0).fill_width()),
             |page| {
                 page.demo_card("IMPORT SURFACE", SVG_PAGE_WIDTH, SVG_INFO_HEIGHT, |notes| {
@@ -127,7 +127,7 @@ impl View for SvgPage {
                     append_svg_import_summary_to(notes);
                 });
 
-                page.children(
+                page.with_child(
                     Panel::row(18.0).layout(
                         Layout::row(18.0).size(
                             LayoutSize::new()
@@ -136,7 +136,7 @@ impl View for SvgPage {
                         ),
                     ),
                     |main| {
-                        let (_, viewer) = main.demo_card(
+                        let viewer = main.demo_card(
                             "GHOSTSCRIPT TIGER",
                             SVG_TIGER_CARD_WIDTH,
                             SVG_TIGER_CARD_HEIGHT,
@@ -186,7 +186,7 @@ fn append_svg_specimen(specimen: &mut ChildUi<'_>) -> Option<SvgViewer> {
             return None;
         }
     };
-    specimen.children(Panel::row(8.0).align_center(), |controls| {
+    specimen.with_child(Panel::row(8.0).align_center(), |controls| {
         append_svg_view_button(controls, "Fit", viewer.clone(), |state| {
             state.reset_to_fit();
         });
@@ -201,10 +201,10 @@ fn append_svg_specimen(specimen: &mut ChildUi<'_>) -> Option<SvgViewer> {
 }
 
 fn append_svg_import_summary_to(parent: &mut ChildUi<'_>) {
-    parent.children(
+    parent.with_child(
         Panel::new().layout(Layout::row(18.0).fill_width()),
         |row| {
-            row.children(
+            row.with_child(
                 Panel::column(6.0).layout(
                     Layout::column(6.0).size(
                         LayoutSize::new()
@@ -219,7 +219,7 @@ fn append_svg_import_summary_to(parent: &mut ChildUi<'_>) {
                     );
                 },
             );
-            row.children(
+            row.with_child(
                 Panel::column(6.0).layout(
                     Layout::column(6.0).size(
                         LayoutSize::new()
@@ -349,7 +349,7 @@ fn append_svg_inspector_row_with_height_to(
     value: &str,
     height: f32,
 ) -> ElementId {
-    let (_, value) = parent.children(
+    parent.with_child(
         Panel::row(8.0).layout(
             Layout::row(8.0).size(
                 LayoutSize::new()
@@ -381,8 +381,7 @@ fn append_svg_inspector_row_with_height_to(
             );
             value
         },
-    );
-    value
+    )
 }
 
 #[derive(Clone)]

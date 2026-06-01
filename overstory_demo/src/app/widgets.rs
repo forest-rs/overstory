@@ -58,7 +58,7 @@ pub(super) trait DemoChildUiExt {
         width: f32,
         height: f32,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> (ElementId, R);
+    ) -> R;
 
     fn demo_fit_card<R>(
         &mut self,
@@ -66,7 +66,7 @@ pub(super) trait DemoChildUiExt {
         width: f32,
         min_height: f32,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> (ElementId, R);
+    ) -> R;
 }
 
 impl DemoChildUiExt for ChildUi<'_> {
@@ -76,8 +76,8 @@ impl DemoChildUiExt for ChildUi<'_> {
         width: f32,
         height: f32,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> (ElementId, R) {
-        self.children(
+    ) -> R {
+        self.with_child(
             Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
                 Layout::column(14.0)
                     .logical_size(width, height)
@@ -96,8 +96,8 @@ impl DemoChildUiExt for ChildUi<'_> {
         width: f32,
         min_height: f32,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> (ElementId, R) {
-        self.children(
+    ) -> R {
+        self.with_child(
             Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
                 Layout::column(14.0)
                     .size(
