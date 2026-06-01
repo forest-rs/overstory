@@ -13,7 +13,7 @@ impl View for DevtoolsPage {
             DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
         );
 
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card(
@@ -108,19 +108,19 @@ fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
     );
 
     let deploy = target.with_children(root, |root| {
-        root.children(Panel::row(12.0).align_center(), |header| {
+        root.with_child(Panel::row(12.0).align_center(), |header| {
             header.add(ToggleSwitch::new().checked(true));
             header.add(Text::new("Snapshot target").font_size(18.0));
         });
 
-        let (_, deploy) = root.children(Panel::row(12.0).align_center(), |controls| {
+        let deploy = root.with_child(Panel::row(12.0).align_center(), |controls| {
             let deploy = controls.add(Button::new("Deploy").font_size(14.0));
             controls.add(CheckBox::new("Collect traces").checked(true));
             controls.add(ProgressBar::new().value(0.68).size(190.0, 18.0));
             deploy
         });
 
-        root.children(Panel::row(14.0), |content| {
+        root.with_child(Panel::row(14.0), |content| {
             content.add(
                 ListBox::new()
                     .items(renderer_queue_items().take(48))
@@ -129,7 +129,7 @@ fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
                     .scroll_offset_y(54.0)
                     .with_vertical_scrollbar(),
             );
-            content.children(
+            content.with_child(
                 Panel::column(8.0).layout(Layout::column(8.0).logical_size(260.0, 190.0)),
                 |detail| {
                     detail.add(Text::new("Composition").font_size(15.0));

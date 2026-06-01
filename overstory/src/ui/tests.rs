@@ -82,6 +82,39 @@ fn child_ui_adds_children_under_one_parent() {
 }
 
 #[test]
+fn child_ui_with_child_returns_nested_result_without_owner_tuple() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let (label, nested_label) = ui.with_child(root, crate::Panel::column(4.0), |panel| {
+        let label = panel.add(crate::Text::new("Scoped"));
+        let nested_label = panel.with_child(crate::Panel::row(2.0), |row| {
+            row.add(crate::Text::new("Nested"))
+        });
+        (label, nested_label)
+    });
+    let panel = ui.get(root).unwrap().children()[0];
+    let nested = ui.get(panel).unwrap().children()[1];
+
+    assert_eq!(ui.get(root).unwrap().children(), &[panel]);
+    assert_eq!(ui.get(panel).unwrap().children(), &[label, nested]);
+    assert_eq!(ui.get(nested).unwrap().children(), &[nested_label]);
+}
+
+#[test]
+fn child_ui_add_with_children_returns_inserted_owner_id() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let panel = ui.add_with_children(root, crate::Panel::column(4.0), |panel| {
+        panel.add(crate::Text::new("Child"));
+    });
+
+    assert_eq!(ui.get(root).unwrap().children(), &[panel]);
+    assert_eq!(ui.get(panel).unwrap().children().len(), 1);
+}
+
+#[test]
 fn child_ui_add_with_configures_inserted_element() {
     let mut ui = Ui::new();
     let root = ui.root();

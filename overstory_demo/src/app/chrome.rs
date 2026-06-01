@@ -23,20 +23,18 @@ pub(super) fn build_nav(nav: &mut ChildUi<'_>) -> NavChrome {
             .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
     );
 
-    let mode_toggle = nav
-        .children(
-            Panel::row(12.0).layout(
-                Layout::row(12.0)
-                    .logical_size(NAV_CONTENT_WIDTH, 36.0)
-                    .align_center(),
-            ),
-            |mode_row| {
-                let mode_toggle = mode_row.add(ToggleSwitch::new());
-                mode_row.add(control_label("Light mode"));
-                mode_toggle
-            },
-        )
-        .1;
+    let mode_toggle = nav.with_child(
+        Panel::row(12.0).layout(
+            Layout::row(12.0)
+                .logical_size(NAV_CONTENT_WIDTH, 36.0)
+                .align_center(),
+        ),
+        |mode_row| {
+            let mode_toggle = mode_row.add(ToggleSwitch::new());
+            mode_row.add(control_label("Light mode"));
+            mode_toggle
+        },
+    );
 
     NavChrome { mode_toggle }
 }
@@ -45,7 +43,7 @@ pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
     let row_count = DemoPage::ALL.len() as f32;
     let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
-    nav.children(
+    nav.with_child(
         Panel::column(4.0)
             .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
         |stack| {
@@ -58,7 +56,7 @@ pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
 }
 
 pub(super) fn append_nav_row(stack: &mut ChildUi<'_>, page: DemoPage, selected: bool) -> ElementId {
-    let (row, ()) = stack.children(
+    let row = stack.add_with_children(
         Panel::row(0.0).class(CLASS_DEMO_NAV_ROW).layout(
             Layout::row(0.0)
                 .logical_size(NAV_CONTENT_WIDTH, 40.0)

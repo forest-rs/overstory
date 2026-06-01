@@ -8,15 +8,15 @@
 //!
 //! Each control is a struct that implements [`AppendSpec`] (the
 //! builder + entry point) and produces a [`Widget`] instance that
-//! lives on the element. Application code can use [`Ui::with_children`]
-//! / [`Ui::children`] and [`ChildUi::add`] to keep parentage lexical while
+//! lives on the element. Application code can use [`Ui::with_children`],
+//! [`ChildUi::with_child`], and [`ChildUi::add`] to keep parentage lexical while
 //! preserving the same retained tree machinery:
 //!
 //! ```ignore
-//! ui.children(root, Panel::column(12.0), |ui| {
+//! ui.with_child(root, Panel::column(12.0), |ui| {
 //!     ui.add(Text::new("Inputs"));
 //!     ui.add(Button::new("Apply").on_click(|_, _| {}));
-//!     ui.children(Panel::row(8.0), |row| {
+//!     ui.with_child(Panel::row(8.0), |row| {
 //!         row.add(ToggleSwitch::new().checked(true));
 //!         row.add(Text::new("Live rendering"));
 //!     });

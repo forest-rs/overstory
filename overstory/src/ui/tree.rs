@@ -23,8 +23,9 @@ use super::Ui;
 ///
 /// `ChildUi` does not own a separate tree or state model. It only remembers a
 /// parent element and forwards to the same [`Ui::append`] primitive app code
-/// can call directly. Custom controls remain first-class because [`Self::add`]
-/// and [`Self::children`] accept any [`AppendSpec`](crate::AppendSpec).
+/// can call directly. Custom controls remain first-class because [`Self::add`],
+/// [`Self::with_child`], [`Self::add_with_children`], and [`Self::children`]
+/// accept any [`AppendSpec`](crate::AppendSpec).
 #[derive(Debug)]
 pub struct ChildUi<'a> {
     ui: &'a mut Ui,
@@ -89,6 +90,32 @@ impl<'a> ChildUi<'a> {
         let child = self.add(spec);
         let result = self.ui.with_children(child, f);
         (child, result)
+    }
+
+    /// Adds `spec`, scopes `f` to the inserted element's children, and returns
+    /// only the closure's result.
+    ///
+    /// Use this when lexical parentage matters but the inserted container id
+    /// does not. Use [`Self::children`] when the caller needs both the owner id
+    /// and the nested result.
+    pub fn with_child<S, R>(&mut self, spec: S, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> R
+    where
+        S: AppendSpec,
+    {
+        self.children(spec, f).1
+    }
+
+    /// Adds `spec`, scopes `f` to the inserted element's children, and returns
+    /// the inserted element id.
+    ///
+    /// Use this when the nested body only populates the child. Use
+    /// [`Self::children`] when the caller needs both the owner id and a value
+    /// produced by the nested body.
+    pub fn add_with_children<S>(&mut self, spec: S, f: impl FnOnce(&mut ChildUi<'_>)) -> ElementId
+    where
+        S: AppendSpec,
+    {
+        self.children(spec, f).0
     }
 
     /// Scopes `f` to a template slot exposed by `owner`.
@@ -265,6 +292,42 @@ impl Ui {
         let child = self.append(parent, spec);
         let result = self.with_children(child, f);
         (child, result)
+    }
+
+    /// Adds `spec` under `parent`, scopes `f` to the inserted element's
+    /// children, and returns only the closure's result.
+    ///
+    /// Use this when the inserted container id is not part of the caller's
+    /// result. Use [`Self::children`] when the caller needs both the owner id
+    /// and the nested result.
+    pub fn with_child<S, R>(
+        &mut self,
+        parent: ElementId,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> R
+    where
+        S: AppendSpec,
+    {
+        self.children(parent, spec, f).1
+    }
+
+    /// Adds `spec` under `parent`, scopes `f` to the inserted element's
+    /// children, and returns the inserted element id.
+    ///
+    /// Use this when the nested body only populates the child. Use
+    /// [`Self::children`] when the caller needs both the owner id and a value
+    /// produced by the nested body.
+    pub fn add_with_children<S>(
+        &mut self,
+        parent: ElementId,
+        spec: S,
+        f: impl FnOnce(&mut ChildUi<'_>),
+    ) -> ElementId
+    where
+        S: AppendSpec,
+    {
+        self.children(parent, spec, f).0
     }
 
     /// Scopes `f` to a template slot exposed by `owner`.

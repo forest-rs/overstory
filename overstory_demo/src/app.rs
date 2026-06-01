@@ -259,7 +259,7 @@ fn build_ui() -> Ui {
     );
 
     let (nav_chrome, nav_rows, stage) = ui.with_children(root, |root| {
-        let (_, (nav_chrome, nav_rows)) = root.children(
+        let (nav_chrome, nav_rows) = root.with_child(
             Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
                 Layout::column(18.0)
                     .size(

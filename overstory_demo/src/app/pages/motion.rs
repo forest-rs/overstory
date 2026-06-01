@@ -7,11 +7,11 @@ impl View for MotionPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("COLOR MOTION", PAGE_CARD_WIDTH, 326.0, |color| {
-                    let (_, [oklab, srgb]) = color.children(
+                    let [oklab, srgb] = color.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
                         |lanes| {
@@ -29,7 +29,7 @@ impl View for MotionPage {
                             ]
                         },
                     );
-                    color.children(
+                    color.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 16.0)),
                         |labels| {
@@ -49,7 +49,7 @@ impl View for MotionPage {
                 });
 
                 row.demo_card("COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0, |composition| {
-                    let (_, [opacity, border, retarget]) = composition.children(
+                    let [opacity, border, retarget] = composition.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
                         |strip| {
@@ -74,7 +74,7 @@ impl View for MotionPage {
                         },
                     );
 
-                    let (_, mover) = composition.children(
+                    let mover = composition.with_child(
                         Panel::new().class(CLASS_DEMO_MOTION_STAGE).layout(
                             Layout::new()
                                 .relative()

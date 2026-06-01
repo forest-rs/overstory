@@ -44,7 +44,7 @@ impl View for PageHeader {
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         let page = self.0;
-        stage.children(
+        stage.with_child(
             Panel::row(18.0).class(CLASS_DEMO_HEADER).layout(
                 Layout::row(18.0)
                     .size(
@@ -60,7 +60,7 @@ impl View for PageHeader {
                         .class(CLASS_DEMO_HEADER_ACCENT)
                         .layout(Layout::new().logical_size(5.0, 56.0).flex_shrink(0.0)),
                 );
-                header.children(
+                header.with_child(
                     Panel::column(8.0).layout(
                         Layout::column(8.0)
                             .size(LayoutSize::new().min_width(LayoutDimension::Logical(0.0)))
@@ -84,7 +84,7 @@ impl View for OverviewPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("INPUTS", OVERVIEW_CARD_WIDTH, 222.0, |inputs| {
@@ -93,7 +93,7 @@ impl View for OverviewPage {
                             .placeholder("Search actions")
                             .width(OVERVIEW_CONTROL_WIDTH),
                     );
-                    inputs.children(Panel::row(10.0).align_center(), |actions| {
+                    inputs.with_child(Panel::row(10.0).align_center(), |actions| {
                         let deploy_clicks = actions.ui_mut().state(0_u32);
                         actions.add(
                             Button::new("")
@@ -111,7 +111,7 @@ impl View for OverviewPage {
                 });
 
                 row.demo_card("SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0, |systems| {
-                    systems.children(Panel::row(12.0).align_center(), |toggle_row| {
+                    systems.with_child(Panel::row(12.0).align_center(), |toggle_row| {
                         toggle_row.add(ToggleSwitch::new().checked(true));
                         toggle_row.add(control_label("Rendering enabled"));
                     });
@@ -150,7 +150,7 @@ impl View for InputsPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
@@ -171,7 +171,7 @@ impl View for InputsPage {
                 });
 
                 row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
-                    actions.children(Panel::row(10.0).align_center(), |buttons| {
+                    actions.with_child(Panel::row(10.0).align_center(), |buttons| {
                         let deploy_clicks = buttons.ui_mut().state(0_u32);
                         buttons.add(
                             Button::new("")
@@ -198,7 +198,7 @@ impl View for InputsPage {
             },
         );
 
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
@@ -248,7 +248,7 @@ impl View for DisclosurePage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("EXPANDER", PAGE_CARD_WIDTH, 326.0, |expanders| {
@@ -274,7 +274,7 @@ impl View for DisclosurePage {
                         caption("Accordion coordinates several sections. This one is single-required, so one section remains open.")
                             .wrap(),
                     );
-                    card.children(Accordion::new().single_required(), |accordion| {
+                    card.with_child(Accordion::new().single_required(), |accordion| {
                         accordion.section_with(
                             AccordionSection::new("Routing").expanded(true),
                             |section| {
@@ -305,11 +305,11 @@ impl View for SystemsPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("CONTROL SURFACE", PAGE_CARD_WIDTH, 322.0, |controls| {
-                    controls.children(Panel::row(12.0).align_center(), |toggle_row| {
+                    controls.with_child(Panel::row(12.0).align_center(), |toggle_row| {
                         toggle_row.add(ToggleSwitch::new().checked(true));
                         toggle_row.add(control_label("Rendering enabled"));
                     });
@@ -328,7 +328,7 @@ impl View for SystemsPage {
                             .value(0.42)
                             .tooltip("Drag, arrow, PageUp/PageDown, or Shift+arrow"),
                     );
-                    controls.children(Panel::row(12.0).align_center(), |spinner_row| {
+                    controls.with_child(Panel::row(12.0).align_center(), |spinner_row| {
                         spinner_row.add(Spinner::new());
                         spinner_row.add(caption("Streaming updates"));
                     });
@@ -355,7 +355,7 @@ impl View for SelectionPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0, |list_card| {
@@ -416,7 +416,7 @@ impl View for OutlinePage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("PIPELINE OUTLINE", PAGE_CARD_WIDTH, 374.0, |tree| {
@@ -464,30 +464,28 @@ impl View for LayoutPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0, |panes| {
-                    panes.children(Panel::row(8.0).align_center(), |split_row| {
-                        let left_pane = split_row
-                            .children(
-                                Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
-                                    Layout::column(8.0)
-                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
-                                        .padding_all(14.0),
-                                ),
-                                |left_pane| {
-                                    left_pane.add(control_label("Scene"));
-                                    if let Ok(svg) = SvgElementTree::from_bytes(
-                                        SCENE_GRAPH_SVG,
-                                        SvgImportOptions::default(),
-                                    ) {
-                                        left_pane.add(svg);
-                                    }
-                                    left_pane.add(caption("Retained graph"));
-                                },
-                            )
-                            .0;
+                    panes.with_child(Panel::row(8.0).align_center(), |split_row| {
+                        let left_pane = split_row.add_with_children(
+                            Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
+                                Layout::column(8.0)
+                                    .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
+                                    .padding_all(14.0),
+                            ),
+                            |left_pane| {
+                                left_pane.add(control_label("Scene"));
+                                if let Ok(svg) = SvgElementTree::from_bytes(
+                                    SCENE_GRAPH_SVG,
+                                    SvgImportOptions::default(),
+                                ) {
+                                    left_pane.add(svg);
+                                }
+                                left_pane.add(caption("Retained graph"));
+                            },
+                        );
 
                         let right_pane_ref = ElementRef::<Panel>::new();
                         let right_pane_for_splitter = right_pane_ref.clone();
@@ -502,7 +500,7 @@ impl View for LayoutPage {
                                 .tooltip("Drag or focus and use arrow keys"),
                         );
 
-                        split_row.children(
+                        split_row.with_child(
                             Panel::column(8.0)
                                 .class(CLASS_DEMO_SPLIT_INSPECTOR)
                                 .layout(
@@ -546,7 +544,7 @@ impl View for TypographyPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        stage.children(
+        stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_card("TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0, |counter| {
@@ -607,7 +605,7 @@ fn append_tabular_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let value = parent.ui_mut().state(0_u32);
-    let (_, counter) = parent.children(Panel::row(8.0).align_center(), |row| {
+    let counter = parent.with_child(Panel::row(8.0).align_center(), |row| {
         let counter = row.add(
             number_text("")
                 .font_features(tabular_number_features())
@@ -630,7 +628,7 @@ fn append_large_counter_to(
 ) -> ElementId {
     parent.add(caption(label));
     let value = parent.ui_mut().state(0_u32);
-    let (_, counter) = parent.children(Panel::row(12.0).align_center(), |row| {
+    let counter = parent.with_child(Panel::row(12.0).align_center(), |row| {
         let counter = row.add(
             large_number_text("")
                 .font_features(tabular_number_features())
