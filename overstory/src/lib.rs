@@ -25,6 +25,8 @@
 //!
 //! Reusable app sections can implement [`View`] and build through the same
 //! scoped child API. A view is an authoring component, not a runtime widget.
+//! Import [`prelude`] for normal app code, or use [`authoring`] for focused
+//! imports of the shared tree/spec/binding extension traits.
 //!
 //! [`Ui::append`] remains the primitive explicit-parent path; `insert_child`
 //! lives on the toolkit-internal side for templates building their own parts.
@@ -55,6 +57,7 @@ extern crate std;
 extern crate alloc;
 
 pub mod accessibility;
+pub mod authoring;
 mod behavior;
 mod binding;
 mod binding_runtime;
