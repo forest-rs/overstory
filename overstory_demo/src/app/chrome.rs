@@ -13,18 +13,18 @@ pub(super) enum NavKeyAction {
     Activate(DemoPage),
     MoveTo(DemoPage),
 }
-pub(super) fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
-    let mode_toggle = ui.with_children(nav, |nav| {
-        nav.add(heading("Overstory"));
-        nav.add(caption("Focused widget gallery"));
+pub(super) fn build_nav(nav: &mut ChildUi<'_>) -> NavChrome {
+    nav.add(heading("Overstory"));
+    nav.add(caption("Focused widget gallery"));
 
-        nav.add(
-            Panel::new()
-                .class(CLASS_DEMO_NAV_MARKER)
-                .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
-        );
+    nav.add(
+        Panel::new()
+            .class(CLASS_DEMO_NAV_MARKER)
+            .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 4.0)),
+    );
 
-        nav.children(
+    let mode_toggle = nav
+        .children(
             Panel::row(12.0).layout(
                 Layout::row(12.0)
                     .logical_size(NAV_CONTENT_WIDTH, 36.0)
@@ -36,42 +36,39 @@ pub(super) fn build_nav(ui: &mut Ui, nav: ElementId) -> NavChrome {
                 mode_toggle
             },
         )
-        .1
-    });
+        .1;
 
     NavChrome { mode_toggle }
 }
 
-pub(super) fn build_nav_rows(ui: &mut Ui, nav: ElementId) -> Rc<[ElementId]> {
+pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
     let row_count = DemoPage::ALL.len() as f32;
     let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
-    ui.with_children(nav, |nav| {
-        nav.children(
-            Panel::column(4.0)
-                .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
-            |stack| {
-                for page in DemoPage::ALL {
-                    rows.push(append_nav_row(stack, page, page == DemoPage::Overview));
-                }
-            },
-        );
-    });
+    nav.children(
+        Panel::column(4.0)
+            .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
+        |stack| {
+            for page in DemoPage::ALL {
+                rows.push(append_nav_row(stack, page, page == DemoPage::Overview));
+            }
+        },
+    );
     Rc::from(rows.into_boxed_slice())
 }
 
 pub(super) fn append_nav_row(stack: &mut ChildUi<'_>, page: DemoPage, selected: bool) -> ElementId {
-    let row = stack.add(
+    let (row, ()) = stack.children(
         Panel::row(0.0).class(CLASS_DEMO_NAV_ROW).layout(
             Layout::row(0.0)
                 .logical_size(NAV_CONTENT_WIDTH, 40.0)
                 .padding_xy(14.0, 0.0)
                 .align_center(),
         ),
+        |row| {
+            row.add(Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
+        },
     );
-    stack.ui_mut().with_children(row, |row| {
-        row.add(Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
-    });
     style_nav_row(stack.ui_mut(), row, selected);
     row
 }

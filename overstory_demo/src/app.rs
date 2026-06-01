@@ -258,8 +258,8 @@ fn build_ui() -> Ui {
             .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
     );
 
-    let (nav, nav_chrome, stage) = ui.with_children(root, |root| {
-        let nav = root.add(
+    let (nav_chrome, nav_rows, stage) = ui.with_children(root, |root| {
+        let (_, (nav_chrome, nav_rows)) = root.children(
             Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
                 Layout::column(18.0)
                     .size(
@@ -270,8 +270,12 @@ fn build_ui() -> Ui {
                     .padding_all(NAV_PADDING)
                     .flex_shrink(0.0),
             ),
+            |nav| {
+                let nav_chrome = build_nav(nav);
+                let nav_rows = build_nav_rows(nav);
+                (nav_chrome, nav_rows)
+            },
         );
-        let nav_chrome = build_nav(root.ui_mut(), nav);
         let stage = root.add(
             Panel::column(18.0).class(CLASS_DEMO_STAGE).layout(
                 Layout::column(18.0)
@@ -284,10 +288,9 @@ fn build_ui() -> Ui {
                     .flex_shrink(1.0),
             ),
         );
-        (nav, nav_chrome, stage)
+        (nav_chrome, nav_rows, stage)
     });
 
-    let nav_rows = build_nav_rows(&mut ui, nav);
     wire_nav_rows(&mut ui, &nav_rows, stage, Rc::clone(&shell));
     wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&shell));
     pages::show_demo_page(&mut ui, stage, DemoPage::Overview);
