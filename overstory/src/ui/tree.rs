@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use understory_box_tree::NodeFlags;
 use understory_style::PartTag;
 
-use crate::binding::BindingOwner;
+use crate::binding::{BindingOwner, LocalState};
 use crate::channels::{COMPOSE, LAYOUT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
@@ -52,6 +52,19 @@ impl<'a> ChildUi<'a> {
     /// Returns a mutable reference to the underlying [`Ui`].
     pub fn ui_mut(&mut self) -> &mut Ui {
         self.ui
+    }
+
+    /// Creates a local state value owned by this builder's underlying [`Ui`].
+    ///
+    /// "Local" means local to the retained UI tree, not to this builder
+    /// closure. This forwards to [`Ui::local_state`] so view builders can
+    /// create bindable local values without escaping from the scoped authoring
+    /// API.
+    pub fn local_state<T>(&mut self, initial: T) -> LocalState<T>
+    where
+        T: Clone + PartialEq + 'static,
+    {
+        self.ui.local_state(initial)
     }
 
     /// Adds `spec` under this builder's parent.

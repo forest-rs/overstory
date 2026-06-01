@@ -18,7 +18,7 @@ impl View for OverviewPage {
                             .width(OVERVIEW_CONTROL_WIDTH),
                     );
                     inputs.with_child(Panel::row(10.0).align_center(), |actions| {
-                        let deploy_clicks = actions.ui_mut().state(0_u32);
+                        let deploy_clicks = actions.local_state(0_u32);
                         actions.add(
                             Button::new("")
                                 .font_size(15.0)

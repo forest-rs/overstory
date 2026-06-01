@@ -26,7 +26,7 @@ pub(super) fn append_tabular_counter_to(
     step: u32,
 ) -> ElementId {
     parent.add(caption(label));
-    let value = parent.ui_mut().state(0_u32);
+    let value = parent.local_state(0_u32);
     let counter = parent.with_child(Panel::row(8.0).align_center(), |row| {
         let counter = row.add(
             number_text("")
@@ -49,7 +49,7 @@ pub(super) fn append_large_counter_to(
     step: u32,
 ) -> ElementId {
     parent.add(caption(label));
-    let value = parent.ui_mut().state(0_u32);
+    let value = parent.local_state(0_u32);
     let counter = parent.with_child(Panel::row(12.0).align_center(), |row| {
         let counter = row.add(
             large_number_text("")

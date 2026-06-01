@@ -29,7 +29,7 @@ impl View for InputsPage {
 
                 row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
                     actions.with_child(Panel::row(10.0).align_center(), |buttons| {
-                        let deploy_clicks = buttons.ui_mut().state(0_u32);
+                        let deploy_clicks = buttons.local_state(0_u32);
                         buttons.add(
                             Button::new("")
                                 .font_size(15.0)
@@ -59,9 +59,7 @@ impl View for InputsPage {
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
-                    let summary = radios
-                        .ui_mut()
-                        .state(String::from("Release lane: Balanced"));
+                    let summary = radios.local_state(String::from("Release lane: Balanced"));
                     radios.add(caption("").bind_content(summary.binding()));
                     radios.add(
                         RadioGroup::new()
@@ -75,7 +73,7 @@ impl View for InputsPage {
                     );
                 });
                 row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
-                    let summary = segments.ui_mut().state(String::from("View mode: Preview"));
+                    let summary = segments.local_state(String::from("View mode: Preview"));
                     segments.add(caption("").bind_content(summary.binding()));
                     segments.add(
                         SegmentedControl::new()

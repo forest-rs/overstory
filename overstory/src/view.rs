@@ -23,7 +23,7 @@
 //!
 //!     fn build(self, ui: &mut ChildUi<'_>) -> Self::Output {
 //!         let (card, deploy) = ui.children(Panel::column(16.0), |card| {
-//!             let deploy_count: LocalState<u32> = card.ui_mut().state(0);
+//!             let deploy_count: LocalState<u32> = card.local_state(0);
 //!
 //!             card.add(Text::new("Deployment").font_size(18.0));
 //!

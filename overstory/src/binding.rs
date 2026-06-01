@@ -87,12 +87,13 @@ impl ExternalSourceId {
     }
 }
 
-/// Handle to a UI-owned local state value.
+/// Handle to a local state value owned by one [`Ui`] instance.
 ///
-/// Local state is useful for app or demo values that should feed retained
-/// dependency properties without rerunning a view builder. It is deliberately
-/// just a binding source and optional binding target, not a component state
-/// model.
+/// "Local" means local to the retained UI tree that created the handle, not
+/// local to a widget, control, or builder closure. Local state is useful for
+/// app or demo values that should feed retained dependency properties without
+/// rerunning a view builder. It is deliberately just a binding source and
+/// optional binding target, not a component state model.
 pub struct LocalState<T> {
     id: LocalStateId,
     _marker: PhantomData<fn() -> T>,

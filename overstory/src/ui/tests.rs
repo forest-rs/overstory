@@ -197,7 +197,7 @@ fn authoring_view_example_builds_and_binds_with_real_api() {
         fn build(self, ui: &mut ChildUi<'_>) -> Self::Output {
             let (card, (deploy, count, count_label)) =
                 ui.children(crate::Panel::column(16.0), |card| {
-                    let deploy_count = card.ui_mut().state(0_u32);
+                    let deploy_count = card.local_state(0_u32);
 
                     card.add(crate::Text::new("Deployment").font_size(18.0));
                     card.with_child(crate::Panel::row(12.0).align_center(), |row| {
@@ -2347,7 +2347,7 @@ fn local_state_binding_updates_element_content() {
     use alloc::format;
 
     let mut ui = Ui::new();
-    let count = ui.state(0_u32);
+    let count = ui.local_state(0_u32);
     let label = ui.append(
         ui.root(),
         Text::new("").bind_content(count.map(|count| format!("Count: {count}"))),
@@ -2380,7 +2380,7 @@ fn local_state_binding_updates_element_content() {
 #[test]
 fn local_state_update_skips_unchanged_values() {
     let mut ui = Ui::new();
-    let count = ui.state(7_u32);
+    let count = ui.local_state(7_u32);
 
     assert!(!count.update(&mut ui, |_| {}));
     assert!(count.update(&mut ui, |count| *count += 1));

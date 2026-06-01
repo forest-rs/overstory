@@ -15,7 +15,7 @@ impl View for SelectionPage {
                         "Selected: {}",
                         renderer_queue_label(INITIAL_RENDERER_SELECTION)
                     );
-                    let summary = list_card.ui_mut().state(initial_summary);
+                    let summary = list_card.local_state(initial_summary);
                     list_card.add(caption("").bind_content(summary.binding()));
                     list_card.add(
                         ListBox::new()

@@ -68,24 +68,16 @@ impl Ui {
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
     }
 
-    /// Creates a UI-owned local state value that can feed property bindings.
+    /// Creates a local state value owned by this `Ui`.
     ///
-    /// Local state is retained by this `Ui`; setting it marks dependent
-    /// bindings dirty, and those bindings write retained element properties
-    /// during the normal frame pipeline.
+    /// "Local" means local to this retained UI tree. Setting the value marks
+    /// dependent bindings dirty, and those bindings write retained element
+    /// properties during the normal frame pipeline.
     pub fn local_state<T>(&mut self, initial: T) -> LocalState<T>
     where
         T: Clone + PartialEq + 'static,
     {
         self.binding_sources.push_local(initial)
-    }
-
-    /// Short form of [`Self::local_state`].
-    pub fn state<T>(&mut self, initial: T) -> LocalState<T>
-    where
-        T: Clone + PartialEq + 'static,
-    {
-        self.local_state(initial)
     }
 
     /// Reads a local state value by handle.
