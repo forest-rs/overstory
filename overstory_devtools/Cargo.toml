@@ -11,6 +11,7 @@ publish = false
 [features]
 default = []
 spoor-session = ["dep:spoor_session"]
+spoor-snapshot-session = ["spoor-session", "spoor_session/std"]
 std = ["overstory/std"]
 system-fonts = ["overstory/system-fonts"]
 

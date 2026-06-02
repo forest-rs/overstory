@@ -2983,12 +2983,10 @@ dependencies = [
 [[package]]
 name = "spoor_core"
 version = "0.1.0"
-source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
 
 [[package]]
 name = "spoor_runtime"
 version = "0.1.0"
-source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
 dependencies = [
  "spoor_core",
 ]
@@ -2996,7 +2994,6 @@ dependencies = [
 [[package]]
 name = "spoor_session"
 version = "0.1.0"
-source = "git+https://github.com/forest-rs/spoor.git?rev=9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22#9fa1ec5f0074a92d94d6ec216ffcc7e05b864b22"
 dependencies = [
  "spoor_core",
  "spoor_runtime",

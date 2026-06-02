@@ -34,10 +34,20 @@ use overstory::{
 };
 
 mod property_grid;
+#[cfg(feature = "spoor-session")]
+mod protocol;
 mod session;
 
 pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
+pub use protocol::{
+    INSPECTION_DOMAIN, InspectionDelta, InspectionElementDetails, InspectionRequest,
+    InspectionResponse, InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind,
+    InspectionSubsystem, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    LiveInspectionStreamItem, LiveInspectionStreamStart, inspection_method,
+    inspection_stream_start,
+};
+#[cfg(feature = "spoor-snapshot-session")]
 pub use session::DevtoolsSpoorSummary;
 pub use session::{DevtoolsEvent, DevtoolsSession, DevtoolsSessionHandle};
 
@@ -788,7 +798,7 @@ fn bool_summary(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "spoor-session")]
+    #[cfg(feature = "spoor-snapshot-session")]
     use alloc::vec;
 
     #[test]
@@ -915,6 +925,71 @@ mod tests {
     }
 
     #[cfg(feature = "spoor-session")]
+    #[test]
+    fn devtools_session_handles_live_element_detail_requests() {
+        use spoor_session::{SessionRequestId, SessionResult};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let mut session = DevtoolsSession::capture(&ui);
+
+        let response = session.handle_inspection_request(LiveInspectionRequest::new(
+            SessionRequestId::new(21),
+            inspection_method("elementDetails"),
+            InspectionRequest::ElementDetails { element: child },
+        ));
+
+        assert_eq!(response.request_id, SessionRequestId::new(21));
+        let SessionResult::Ok(InspectionResponse::ElementDetails(details)) = response.result else {
+            panic!("expected element details response");
+        };
+        assert_eq!(details.row.id, child);
+        assert!(!details.properties.is_empty());
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn devtools_session_streams_compact_deltas_for_matching_subscriptions() {
+        use spoor_session::{SessionRequestId, SessionResult};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let mut session = DevtoolsSession::capture(&ui);
+
+        let response = session.handle_inspection_request(LiveInspectionRequest::new(
+            SessionRequestId::new(22),
+            inspection_method("subscribe"),
+            InspectionRequest::Subscribe(InspectionSubscription::all()),
+        ));
+        let SessionResult::Ok(InspectionResponse::Subscribed {
+            stream_id,
+            subscription,
+        }) = response.result
+        else {
+            panic!("expected subscription response");
+        };
+        assert_eq!(subscription, InspectionSubscription::all());
+
+        let event = session
+            .set_selected_element(Some(child))
+            .expect("selection should change");
+        let items = session.inspection_stream_items_for_event(event);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].stream_id, stream_id);
+        assert_eq!(items[0].sequence, 0);
+        assert_eq!(
+            items[0].payload,
+            InspectionStreamItem::Delta(InspectionDelta::new(
+                InspectionSubsystem::Elements,
+                InspectionUpdateReason::SelectionChanged,
+            ))
+        );
+    }
+
+    #[cfg(feature = "spoor-snapshot-session")]
     #[test]
     fn devtools_session_summarizes_spoor_envelopes() {
         use spoor_session::{

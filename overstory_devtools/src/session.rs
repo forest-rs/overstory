@@ -5,14 +5,27 @@
 
 use core::cell::RefCell;
 
-use alloc::rc::Rc;
 #[cfg(feature = "spoor-session")]
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+#[cfg(any(feature = "spoor-session", feature = "spoor-snapshot-session"))]
 use alloc::vec::Vec;
 use overstory::{ElementId, OutlineNodeKey};
-#[cfg(feature = "spoor-session")]
+#[cfg(feature = "spoor-snapshot-session")]
 use spoor_session::{OwnedSessionEnvelope, OwnedSessionPayload};
+#[cfg(feature = "spoor-session")]
+use spoor_session::{
+    SessionError, SessionErrorCode, SessionResponse, SessionStreamId, SessionStreamItem,
+};
 
 use crate::{DevtoolsSnapshot, DevtoolsTarget};
+#[cfg(feature = "spoor-session")]
+use crate::{
+    InspectionDelta, InspectionElementDetails, InspectionRequest, InspectionResponse,
+    InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem,
+    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    LiveInspectionStreamItem, selected_element_property_grid,
+};
 
 /// Same-process devtools session state.
 ///
@@ -24,6 +37,10 @@ pub struct DevtoolsSession {
     snapshot: DevtoolsSnapshot,
     selected_element: Option<ElementId>,
     #[cfg(feature = "spoor-session")]
+    next_inspection_stream_id: u64,
+    #[cfg(feature = "spoor-session")]
+    inspection_streams: Vec<InspectionStreamState>,
+    #[cfg(feature = "spoor-snapshot-session")]
     spoor: DevtoolsSpoorSession,
 }
 
@@ -35,6 +52,10 @@ impl DevtoolsSession {
             snapshot,
             selected_element: None,
             #[cfg(feature = "spoor-session")]
+            next_inspection_stream_id: 1,
+            #[cfg(feature = "spoor-session")]
+            inspection_streams: Vec::new(),
+            #[cfg(feature = "spoor-snapshot-session")]
             spoor: DevtoolsSpoorSession::default(),
         }
     }
@@ -107,24 +128,167 @@ impl DevtoolsSession {
         }
     }
 
-    /// Replaces the attached Spoor session envelopes.
+    /// Handles one typed live inspection request.
+    ///
+    /// This is the same-process implementation of the Overstory inspection
+    /// protocol. A network transport can carry the same payloads through
+    /// Spoor's live-session envelopes after choosing an encoding.
     #[cfg(feature = "spoor-session")]
+    #[must_use]
+    pub fn handle_inspection_request(
+        &mut self,
+        request: LiveInspectionRequest,
+    ) -> LiveInspectionResponse {
+        let request_id = request.id;
+        match self.handle_inspection_payload(request.payload) {
+            Ok(response) => SessionResponse::ok(request_id, response),
+            Err(error) => SessionResponse::err(request_id, error),
+        }
+    }
+
+    #[cfg(feature = "spoor-session")]
+    fn handle_inspection_payload(
+        &mut self,
+        payload: InspectionRequest,
+    ) -> Result<InspectionResponse, SessionError> {
+        match payload {
+            InspectionRequest::CaptureSnapshot => Ok(InspectionResponse::Snapshot(Box::new(
+                self.snapshot.clone(),
+            ))),
+            InspectionRequest::ElementTree => Ok(InspectionResponse::ElementTree(
+                self.snapshot.element_outline(),
+            )),
+            InspectionRequest::ElementDetails { element } => {
+                let row = self
+                    .snapshot
+                    .element(element)
+                    .cloned()
+                    .ok_or_else(|| element_not_found(element))?;
+                Ok(InspectionResponse::ElementDetails(Box::new(
+                    InspectionElementDetails {
+                        row: row.clone(),
+                        properties: selected_element_property_grid(&self.snapshot, &row),
+                    },
+                )))
+            }
+            InspectionRequest::Selection => Ok(InspectionResponse::Selection {
+                selected: self.selected_element,
+            }),
+            InspectionRequest::SetSelection { selected } => {
+                let _ = self.set_selected_element(selected);
+                Ok(InspectionResponse::Selection {
+                    selected: self.selected_element,
+                })
+            }
+            InspectionRequest::Subscribe(subscription) => {
+                let stream_id = self.allocate_inspection_stream(subscription);
+                Ok(InspectionResponse::Subscribed {
+                    stream_id,
+                    subscription,
+                })
+            }
+        }
+    }
+
+    #[cfg(feature = "spoor-session")]
+    fn allocate_inspection_stream(
+        &mut self,
+        subscription: InspectionSubscription,
+    ) -> SessionStreamId {
+        let stream_id = SessionStreamId::new(self.next_inspection_stream_id);
+        self.next_inspection_stream_id = self.next_inspection_stream_id.saturating_add(1);
+        self.inspection_streams.push(InspectionStreamState {
+            id: stream_id,
+            subscription,
+            next_sequence: 0,
+        });
+        stream_id
+    }
+
+    /// Builds stream items for `event` across all matching inspection streams.
+    #[cfg(feature = "spoor-session")]
+    #[must_use]
+    pub fn inspection_stream_items_for_event(
+        &mut self,
+        event: DevtoolsEvent,
+    ) -> Vec<LiveInspectionStreamItem> {
+        let Some(delta) = inspection_delta_for_event(event) else {
+            return Vec::new();
+        };
+        let mut items = Vec::new();
+        for stream in &mut self.inspection_streams {
+            if !stream.matches(delta.subsystem) {
+                continue;
+            }
+            let item = SessionStreamItem::new(
+                stream.id,
+                stream.next_sequence,
+                InspectionStreamItem::Delta(delta),
+            );
+            stream.next_sequence = stream.next_sequence.saturating_add(1);
+            items.push(item);
+        }
+        items
+    }
+
+    /// Replaces the attached Spoor session envelopes.
+    #[cfg(feature = "spoor-snapshot-session")]
     pub fn replace_spoor_envelopes(&mut self, envelopes: Vec<OwnedSessionEnvelope>) {
         self.spoor = DevtoolsSpoorSession::new(envelopes);
     }
 
     /// Returns the attached Spoor session envelope summary.
-    #[cfg(feature = "spoor-session")]
+    #[cfg(feature = "spoor-snapshot-session")]
     #[must_use]
     pub const fn spoor_summary(&self) -> DevtoolsSpoorSummary {
         self.spoor.summary
     }
 
     /// Returns the attached Spoor session envelopes.
-    #[cfg(feature = "spoor-session")]
+    #[cfg(feature = "spoor-snapshot-session")]
     #[must_use]
     pub fn spoor_envelopes(&self) -> &[OwnedSessionEnvelope] {
         &self.spoor.envelopes
+    }
+}
+
+#[cfg(feature = "spoor-session")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct InspectionStreamState {
+    id: SessionStreamId,
+    subscription: InspectionSubscription,
+    next_sequence: u64,
+}
+
+#[cfg(feature = "spoor-session")]
+impl InspectionStreamState {
+    fn matches(self, subsystem: InspectionSubsystem) -> bool {
+        match self.subscription.kind {
+            InspectionSubscriptionKind::All => true,
+            InspectionSubscriptionKind::Subsystem(candidate) => candidate == subsystem,
+        }
+    }
+}
+
+#[cfg(feature = "spoor-session")]
+fn element_not_found(element: ElementId) -> SessionError {
+    SessionError::new(
+        SessionErrorCode::NotFound,
+        alloc::format!("element {element:?} is not present in the current snapshot"),
+    )
+}
+
+#[cfg(feature = "spoor-session")]
+fn inspection_delta_for_event(event: DevtoolsEvent) -> Option<InspectionDelta> {
+    match event {
+        DevtoolsEvent::SelectionChanged { .. } => Some(InspectionDelta::new(
+            InspectionSubsystem::Elements,
+            InspectionUpdateReason::SelectionChanged,
+        )),
+        DevtoolsEvent::SnapshotReplaced { .. } => Some(InspectionDelta::new(
+            InspectionSubsystem::Elements,
+            InspectionUpdateReason::SnapshotReplaced,
+        )),
     }
 }
 
@@ -174,7 +338,7 @@ pub enum DevtoolsEvent {
 }
 
 /// Summary of attached Spoor session envelopes.
-#[cfg(feature = "spoor-session")]
+#[cfg(feature = "spoor-snapshot-session")]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DevtoolsSpoorSummary {
     /// Number of envelopes attached to the session.
@@ -195,14 +359,14 @@ pub struct DevtoolsSpoorSummary {
     pub dropped_events: u64,
 }
 
-#[cfg(feature = "spoor-session")]
+#[cfg(feature = "spoor-snapshot-session")]
 #[derive(Clone, Debug, Default, PartialEq)]
 struct DevtoolsSpoorSession {
     envelopes: Vec<OwnedSessionEnvelope>,
     summary: DevtoolsSpoorSummary,
 }
 
-#[cfg(feature = "spoor-session")]
+#[cfg(feature = "spoor-snapshot-session")]
 impl DevtoolsSpoorSession {
     fn new(envelopes: Vec<OwnedSessionEnvelope>) -> Self {
         let summary = summarize_spoor_envelopes(&envelopes);
@@ -210,7 +374,7 @@ impl DevtoolsSpoorSession {
     }
 }
 
-#[cfg(feature = "spoor-session")]
+#[cfg(feature = "spoor-snapshot-session")]
 fn summarize_spoor_envelopes(envelopes: &[OwnedSessionEnvelope]) -> DevtoolsSpoorSummary {
     let mut summary = DevtoolsSpoorSummary {
         envelope_count: envelopes.len(),
