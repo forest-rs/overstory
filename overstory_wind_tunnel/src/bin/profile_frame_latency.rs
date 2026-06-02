@@ -105,7 +105,10 @@ fn print_summary(scenario: LatencyScenario, count: usize, summary: &FrameRunSumm
     );
     eprintln!("  set_now: {:.3} ms", average_ms(timings.set_now, frames));
     eprintln!("  layout: {:.3} ms", average_ms(timings.layout, frames));
-    eprintln!("  paint: {:.3} ms", average_ms(timings.paint, frames));
+    eprintln!(
+        "  surface_refresh: {:.3} ms",
+        average_ms(timings.surface_refresh, frames)
+    );
     eprintln!(
         "  sync_surfaces: {:.3} ms",
         average_ms(timings.sync_surfaces, frames)

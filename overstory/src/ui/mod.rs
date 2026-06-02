@@ -38,7 +38,7 @@ use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
-use crate::diagnostics::{UiFrameStats, UiFrameTimings};
+use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
@@ -373,7 +373,11 @@ impl Ui {
 
     /// Clears frame-pipeline counters before a host prepares a new frame.
     pub fn reset_frame_stats(&mut self) {
-        self.frame_stats = UiFrameStats::default();
+        let renderer_timings = self.frame_stats.renderer_timings;
+        self.frame_stats = UiFrameStats {
+            renderer_timings,
+            ..UiFrameStats::default()
+        };
     }
 
     /// Records host-measured timings for the most recently prepared frame.
@@ -383,6 +387,17 @@ impl Ui {
     /// snapshots can report the same timing data as host diagnostics.
     pub fn set_frame_timings(&mut self, timings: UiFrameTimings) {
         self.frame_stats.timings = timings;
+        self.inspection_changes.record_frame();
+    }
+
+    /// Records host-measured backend renderer timings for the most recently
+    /// submitted frame.
+    ///
+    /// These timings are separate from [`Self::set_frame_timings`] because
+    /// platform hosts usually learn renderer submission costs only after
+    /// `prepare_frame` has returned the scene to render.
+    pub fn set_renderer_timings(&mut self, timings: UiRendererTimings) {
+        self.frame_stats.renderer_timings = timings;
         self.inspection_changes.record_frame();
     }
 

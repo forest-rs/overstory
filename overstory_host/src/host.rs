@@ -8,7 +8,7 @@ use core::{fmt, time::Duration};
 use accesskit::{ActionRequest, TreeUpdate};
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
-use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui, UiFrameTimings};
+use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui, UiFrameTimings, UiRendererTimings};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use web_time::Instant;
@@ -179,7 +179,7 @@ impl UiHost {
 
         let phase_start = Instant::now();
         self.ui.refresh_presentation_surfaces();
-        let paint = phase_start.elapsed();
+        let surface_refresh = phase_start.elapsed();
 
         let phase_start = Instant::now();
         self.sync_surface_scenes();
@@ -207,7 +207,7 @@ impl UiHost {
         let timings = FrameTimings {
             set_now,
             layout,
-            paint,
+            surface_refresh,
             sync_surfaces,
             compose,
             scale,
@@ -234,6 +234,16 @@ impl UiHost {
         self.last_frame_diagnostics
     }
 
+    /// Records backend renderer timings for the most recently submitted frame.
+    ///
+    /// Windowing/rendering hosts call this after they submit the prepared scene
+    /// to their backend so core inspection snapshots can report renderer work
+    /// separately from Overstory's scene preparation pipeline.
+    pub fn record_renderer_timings(&mut self, timings: UiRendererTimings) {
+        self.ui.set_renderer_timings(timings);
+        self.last_frame_diagnostics.ui = self.ui.frame_stats();
+    }
+
     fn sync_surface_scenes(&mut self) {
         let live: HashSet<SurfaceId> = self
             .ui
@@ -257,7 +267,7 @@ fn ui_frame_timings(timings: FrameTimings) -> UiFrameTimings {
     UiFrameTimings {
         set_now: timings.set_now,
         layout: timings.layout,
-        paint: timings.paint,
+        surface_refresh: timings.surface_refresh,
         sync_surfaces: timings.sync_surfaces,
         compose: timings.compose,
         scale: timings.scale,
@@ -312,12 +322,32 @@ mod tests {
         let diagnostics = host.last_frame_diagnostics();
 
         assert!(diagnostics.timings.total >= diagnostics.timings.layout);
-        assert_eq!(diagnostics.ui.timings.paint, diagnostics.timings.paint);
+        assert_eq!(
+            diagnostics.ui.timings.surface_refresh,
+            diagnostics.timings.surface_refresh
+        );
         assert_eq!(diagnostics.ui.timings.total, diagnostics.timings.total);
         assert!(diagnostics.ui.elements >= 2);
         assert!(diagnostics.ui.layout_passes >= 1);
         assert!(diagnostics.ui.painted_elements >= 1);
         assert!(!diagnostics.output_empty);
+    }
+
+    #[test]
+    fn renderer_timings_are_recorded_in_ui_diagnostics() {
+        let mut host = UiHost::new(Ui::new());
+        let timings = UiRendererTimings {
+            scene_to_texture: Duration::from_millis(1),
+            surface_acquire: Duration::from_millis(2),
+            blit: Duration::from_millis(3),
+            present: Duration::from_millis(4),
+            total: Duration::from_millis(10),
+        };
+
+        host.record_renderer_timings(timings);
+
+        assert_eq!(host.last_frame_diagnostics().ui.renderer_timings, timings);
+        assert_eq!(host.ui().frame_stats().renderer_timings, timings);
     }
 
     #[test]

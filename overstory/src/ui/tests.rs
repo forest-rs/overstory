@@ -15,6 +15,7 @@ use crate::{
 };
 use alloc::boxed::Box;
 use alloc::string::String;
+use core::time::Duration;
 use imaging::record::{Command, Scene};
 use kurbo::{Affine, Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
@@ -3101,8 +3102,8 @@ fn inspection_changes_track_tree_insertions_and_removals() {
 fn inspection_changes_track_frame_summary_updates() {
     let mut ui = Ui::new();
     ui.set_frame_timings(UiFrameTimings {
-        paint: core::time::Duration::from_millis(2),
-        total: core::time::Duration::from_millis(5),
+        surface_refresh: Duration::from_millis(2),
+        total: Duration::from_millis(5),
         ..UiFrameTimings::default()
     });
     assert!(
@@ -3113,8 +3114,8 @@ fn inspection_changes_track_frame_summary_updates() {
     ui.begin_live_inspection_recording();
     ui.clear_inspection_changes();
     ui.set_frame_timings(UiFrameTimings {
-        paint: core::time::Duration::from_millis(3),
-        total: core::time::Duration::from_millis(8),
+        surface_refresh: Duration::from_millis(3),
+        total: Duration::from_millis(8),
         ..UiFrameTimings::default()
     });
 
@@ -3122,9 +3123,27 @@ fn inspection_changes_track_frame_summary_updates() {
 
     assert!(changes.tree.is_empty());
     let frame = changes.frame.expect("frame summary should be drained once");
-    assert_eq!(frame.timings.paint, core::time::Duration::from_millis(3));
-    assert_eq!(frame.timings.total, core::time::Duration::from_millis(8));
+    assert_eq!(frame.timings.surface_refresh, Duration::from_millis(3));
+    assert_eq!(frame.timings.total, Duration::from_millis(8));
     assert!(ui.drain_inspection_changes().is_empty());
+}
+
+#[test]
+fn renderer_timings_survive_frame_counter_reset() {
+    let mut ui = Ui::new();
+    let timings = UiRendererTimings {
+        scene_to_texture: Duration::from_millis(1),
+        surface_acquire: Duration::from_millis(2),
+        blit: Duration::from_millis(3),
+        present: Duration::from_millis(4),
+        total: Duration::from_millis(10),
+    };
+
+    ui.set_renderer_timings(timings);
+    ui.reset_frame_stats();
+
+    assert_eq!(ui.frame_stats().renderer_timings, timings);
+    assert_eq!(ui.frame_stats().layout_passes, 0);
 }
 
 #[test]

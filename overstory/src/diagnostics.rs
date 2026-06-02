@@ -56,6 +56,12 @@ pub struct UiFrameStats {
     /// these phases and write them back so devtools snapshots can display the
     /// same frame data as host-side diagnostics.
     pub timings: UiFrameTimings,
+    /// Host-supplied backend renderer timings for the most recently submitted
+    /// frame.
+    ///
+    /// These timings are zero until a platform host records renderer work.
+    /// They are CPU-side submission timings, not GPU completion timestamps.
+    pub renderer_timings: UiRendererTimings,
     /// Live element count observed when the snapshot is read.
     pub elements: usize,
     /// Invalidation-channel marks observed since the last reset.
@@ -103,9 +109,8 @@ pub struct UiFrameTimings {
     /// Time spent in layout, including bindings, post-layout hooks, and
     /// composition-layer geometry synchronization.
     pub layout: Duration,
-    /// Time spent refreshing presentation and Overstory-owned composition
-    /// surfaces.
-    pub paint: Duration,
+    /// Time spent refreshing presentation and Overstory-owned surface scenes.
+    pub surface_refresh: Duration,
     /// Time spent copying updated surface scenes into the host cache.
     pub sync_surfaces: Duration,
     /// Time spent composing cached surfaces into the logical output scene.
@@ -113,5 +118,25 @@ pub struct UiFrameTimings {
     /// Time spent scaling the logical scene for the physical render target.
     pub scale: Duration,
     /// Total time spent preparing the frame.
+    pub total: Duration,
+}
+
+/// CPU-side backend renderer timings for one submitted UI frame.
+///
+/// These timings are filled by platform host crates. Core Overstory does not
+/// own a renderer, GPU queue, or swapchain, so the default value means "not
+/// measured by this host" rather than "free".
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiRendererTimings {
+    /// Time spent rendering the prepared scene into a backend texture.
+    pub scene_to_texture: Duration,
+    /// Time spent acquiring the presentation surface texture.
+    pub surface_acquire: Duration,
+    /// Time spent blitting or copying the rendered texture to the presentation
+    /// surface.
+    pub blit: Duration,
+    /// Time spent presenting the frame to the platform surface.
+    pub present: Duration,
+    /// Total CPU-side backend render submission time.
     pub total: Duration,
 }

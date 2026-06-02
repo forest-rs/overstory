@@ -1,6 +1,8 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use core::time::Duration;
+
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsTreePatchCounts, DevtoolsViewElements, LiveDevtools,
     UiLiveInspectionTarget, append_session_view, refresh_session_view_from_mirror,
@@ -274,24 +276,35 @@ fn format_live_stream_status(
 ) -> String {
     let frame = devtools.mirror().summaries().frame;
     let timings = frame.timings;
+    let renderer = frame.renderer_timings;
     let tree_patch = tree_patch_counts.map_or_else(
         || String::from("tree patch: none"),
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(
-        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}. Last frame: total {}, layout {}, paint {}, painted {}, surfaces {}",
+        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}. Last frame: prepare {}, layout {}, surface refresh {}, compose {}, backend {}, painted {}, surface updates {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,
         duration_summary(timings.total),
         duration_summary(timings.layout),
-        duration_summary(timings.paint),
+        duration_summary(timings.surface_refresh),
+        duration_summary(timings.compose),
+        optional_duration_summary(renderer.total),
         frame.painted_elements,
         frame.composition_surface_updates,
     )
 }
 
-fn duration_summary(duration: core::time::Duration) -> String {
+fn optional_duration_summary(duration: Duration) -> String {
+    if duration.is_zero() {
+        String::from("n/a")
+    } else {
+        duration_summary(duration)
+    }
+}
+
+fn duration_summary(duration: Duration) -> String {
     let micros = duration.as_micros();
     format!("{}.{:02} ms", micros / 1_000, (micros % 1_000) / 10)
 }

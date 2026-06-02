@@ -17,7 +17,7 @@ use accesskit_winit::{
 };
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
-use overstory::Ui;
+use overstory::{Ui, UiRendererTimings};
 use overstory_host::{FrameViewport, UiHost};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use web_time::Instant;
@@ -342,10 +342,13 @@ impl WindowState {
             .offscreen_view()
             .expect("offscreen target should exist after ensure_offscreen");
         let target = TextureViewTarget::new(offscreen_view, width, height);
+        let phase_start = Instant::now();
         self.renderer
             .render_source_into_texture(&mut scaled_scene, target)?;
+        let scene_to_texture = phase_start.elapsed();
         self.sync_accessibility();
 
+        let phase_start = Instant::now();
         let output = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(output)
             | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
@@ -360,11 +363,23 @@ impl WindowState {
                 return Err(Box::new(SurfaceValidationError));
             }
         };
+        let surface_acquire = phase_start.elapsed();
         let output_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let phase_start = Instant::now();
         self.blit.blit(&self.device, &self.queue, &output_view);
+        let blit = phase_start.elapsed();
+        let phase_start = Instant::now();
         output.present();
+        let present = phase_start.elapsed();
+        self.host.record_renderer_timings(UiRendererTimings {
+            scene_to_texture,
+            surface_acquire,
+            blit,
+            present,
+            total: scene_to_texture + surface_acquire + blit + present,
+        });
         Ok(())
     }
 }

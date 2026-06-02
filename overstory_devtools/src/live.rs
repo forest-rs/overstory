@@ -220,6 +220,8 @@ impl LiveDevtools {
 
 #[cfg(test)]
 mod tests {
+    use core::time::Duration;
+
     use overstory::pseudos::PSEUDO_HOVER;
     use overstory::{Button, Panel, Ui};
 
@@ -373,8 +375,8 @@ mod tests {
             LiveDevtools::capture_from_live(&mut ui, None).expect("devtools should attach");
 
         ui.set_frame_timings(overstory::UiFrameTimings {
-            paint: core::time::Duration::from_millis(4),
-            total: core::time::Duration::from_millis(9),
+            surface_refresh: Duration::from_millis(4),
+            total: Duration::from_millis(9),
             ..overstory::UiFrameTimings::default()
         });
         let refresh = devtools
@@ -387,12 +389,32 @@ mod tests {
         );
         assert_eq!(refresh.stream_item_count, 1);
         assert_eq!(
-            devtools.mirror().summaries().frame.timings.paint,
-            core::time::Duration::from_millis(4)
+            devtools.mirror().summaries().frame.timings.surface_refresh,
+            Duration::from_millis(4)
         );
         assert_eq!(
             devtools.mirror().summaries().frame.timings.total,
-            core::time::Duration::from_millis(9)
+            Duration::from_millis(9)
+        );
+
+        ui.set_renderer_timings(overstory::UiRendererTimings {
+            scene_to_texture: Duration::from_millis(2),
+            surface_acquire: Duration::from_millis(1),
+            blit: Duration::from_millis(3),
+            present: Duration::from_millis(1),
+            total: Duration::from_millis(7),
+        });
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("renderer summary should stream");
+
+        assert_eq!(
+            refresh.event,
+            Some(DevtoolsEvent::TargetChanged { selected: None })
+        );
+        assert_eq!(
+            devtools.mirror().summaries().frame.renderer_timings.total,
+            Duration::from_millis(7)
         );
         devtools.detach_from_live(&mut ui);
     }

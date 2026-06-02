@@ -212,14 +212,17 @@ impl FrameRunSummary {
         self.max_input_to_frame = self.max_input_to_frame.max(input_to_frame);
         self.timings.set_now += diagnostics.timings.set_now;
         self.timings.layout += diagnostics.timings.layout;
-        self.timings.paint += diagnostics.timings.paint;
+        self.timings.surface_refresh += diagnostics.timings.surface_refresh;
         self.timings.sync_surfaces += diagnostics.timings.sync_surfaces;
         self.timings.compose += diagnostics.timings.compose;
         self.timings.scale += diagnostics.timings.scale;
         self.timings.total += diagnostics.timings.total;
         self.max_timings.set_now = self.max_timings.set_now.max(diagnostics.timings.set_now);
         self.max_timings.layout = self.max_timings.layout.max(diagnostics.timings.layout);
-        self.max_timings.paint = self.max_timings.paint.max(diagnostics.timings.paint);
+        self.max_timings.surface_refresh = self
+            .max_timings
+            .surface_refresh
+            .max(diagnostics.timings.surface_refresh);
         self.max_timings.sync_surfaces = self
             .max_timings
             .sync_surfaces

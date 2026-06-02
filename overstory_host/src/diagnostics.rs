@@ -15,9 +15,8 @@ pub struct FrameTimings {
     /// Time spent in layout, including bindings, post-layout hooks, and
     /// composition-layer geometry synchronization.
     pub layout: Duration,
-    /// Time spent refreshing presentation and Overstory-owned composition
-    /// surfaces.
-    pub paint: Duration,
+    /// Time spent refreshing presentation and Overstory-owned surface scenes.
+    pub surface_refresh: Duration,
     /// Time spent copying updated surface scenes into the host cache.
     pub sync_surfaces: Duration,
     /// Time spent composing cached surfaces into the logical output scene.
