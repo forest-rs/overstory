@@ -169,10 +169,11 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// Called after layout has arranged this element's bounds and recursively
     /// written all descendant bounds.
     ///
-    /// The default does nothing. Viewport-like controls use this to derive
-    /// geometry state, such as scroll extents, from their arranged children.
-    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
-        let _ = (element, ctx);
+    /// The default does nothing. Widgets use this to derive non-tree state
+    /// from final geometry, such as scroll extents or presentation timeline
+    /// targets.
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+        let _ = ctx;
     }
 
     /// Called after a full arrange pass has written bounds for the tree.
@@ -384,8 +385,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.measure(element, ctx, constraints)
     }
 
-    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
-        self.widget.arrange(element, ctx);
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+        self.widget.arrange(ctx);
     }
 
     fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {

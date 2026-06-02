@@ -23,7 +23,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
+use crate::behavior::{ArrangeContext, WidgetEventContext};
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
 };
@@ -258,9 +258,9 @@ impl Widget for ToggleWidget {
         }
     }
 
-    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
         let toggle = ctx.id();
-        RealizeResult::from_changed(sync_thumb_offset_target(ctx.ui_mut(), toggle))
+        let _ = sync_thumb_offset_target(ctx.ui_mut(), toggle);
     }
 }
 

@@ -47,24 +47,44 @@ pub struct KnownDimensions {
     pub height: Option<f64>,
 }
 
-/// Read-only context handed to a widget after layout has arranged element bounds.
+/// Context handed to a widget after layout has arranged element bounds.
 ///
 /// Widgets use this for derived geometry state that depends on both their own
 /// bounds and their children's final arranged bounds, such as scroll range
-/// metrics. It is intentionally read-only: layout hooks can update interior
-/// widget state, but they do not mutate the tree or the layout engine.
-#[derive(Copy, Clone)]
+/// metrics and geometry-derived presentation targets. Tree mutation remains a
+/// separate realization concern.
 pub struct ArrangeContext<'a> {
-    pub(crate) ui: &'a Ui,
+    id: ElementId,
+    ui: &'a mut Ui,
 }
 
-impl ArrangeContext<'_> {
+impl<'a> ArrangeContext<'a> {
+    pub(crate) fn new(id: ElementId, ui: &'a mut Ui) -> Self {
+        Self { id, ui }
+    }
+
+    /// Returns the element whose widget is being arranged.
+    #[must_use]
+    pub fn id(&self) -> ElementId {
+        self.id
+    }
+
+    /// Returns shared access to the owning UI.
+    #[must_use]
+    pub fn ui(&self) -> &Ui {
+        self.ui
+    }
+
     /// Returns the latest computed bounds for `element`, if it is still live.
     #[must_use]
     pub fn effective_bounds(&self, element: ElementId) -> Option<Rect> {
         self.ui
             .get(element)
             .map(|_| self.ui.effective_bounds(element))
+    }
+
+    pub(crate) fn ui_mut(&mut self) -> &mut Ui {
+        self.ui
     }
 }
 

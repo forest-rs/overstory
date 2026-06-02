@@ -204,8 +204,8 @@ impl Widget for ScrollViewWidget {
         }
     }
 
-    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
-        update_scroll_metrics_from_layout(element, ctx, &self.state);
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+        update_scroll_metrics_from_layout(ctx, &self.state);
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {
@@ -1081,12 +1081,11 @@ fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 
     state.max_offset()
 }
 
-fn update_scroll_metrics_from_layout(
-    element: &Element,
-    ctx: &ArrangeContext<'_>,
-    state: &ScrollState,
-) {
-    let Some(viewport_bounds) = ctx.effective_bounds(element.id()) else {
+fn update_scroll_metrics_from_layout(ctx: &ArrangeContext<'_>, state: &ScrollState) {
+    let Some(viewport_bounds) = ctx.effective_bounds(ctx.id()) else {
+        return;
+    };
+    let Some(element) = ctx.ui().get(ctx.id()) else {
         return;
     };
     let child_bounds = element
