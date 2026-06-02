@@ -13,9 +13,6 @@
 //! - Keep binding evaluation inside Overstory while leaving the dependency
 //!   property substrate in `understory_property_binding`.
 
-use alloc::vec::Vec;
-
-use hashbrown::HashMap;
 use understory_property::LocalValueSource;
 use understory_property_binding::{
     BindingError, BindingId, BindingSet, EndpointKey, PropertyEndpoint,
@@ -30,23 +27,13 @@ pub(crate) struct BindingRuntime {
     ///
     /// Temporarily `None` while `Ui::flush_bindings` owns the set and evaluates
     /// updates against `&mut Ui`.
-    bindings: Option<BindingSet<BindingOwner>>,
-    target_write_sources: HashMap<EndpointKey<BindingOwner>, LocalValueSource>,
-    binding_targets: Vec<Option<BindingTargetRecord>>,
-}
-
-#[derive(Copy, Clone, Debug)]
-struct BindingTargetRecord {
-    source: EndpointKey<BindingOwner>,
-    target: EndpointKey<BindingOwner>,
+    bindings: Option<BindingSet<BindingOwner, LocalValueSource>>,
 }
 
 impl BindingRuntime {
     pub(crate) fn new() -> Self {
         Self {
             bindings: Some(BindingSet::new(BINDING)),
-            target_write_sources: HashMap::new(),
-            binding_targets: Vec::new(),
         }
     }
 
@@ -58,12 +45,13 @@ impl BindingRuntime {
     where
         T: Clone + 'static,
     {
-        self.bind_map_with_target_source(
-            source,
-            target,
-            T::clone,
-            LocalValueSource::TemplateBinding,
-        )
+        let bindings = self
+            .bindings
+            .as_mut()
+            .expect("bindings always Some outside flush_bindings");
+        let id = bindings.bind(source, target, LocalValueSource::TemplateBinding)?;
+        bindings.mark_binding_dirty(id);
+        Ok(id)
     }
 
     pub(crate) fn bind_map<S, T, F>(
@@ -92,26 +80,13 @@ impl BindingRuntime {
         T: Clone + 'static,
         F: Fn(&S) -> T + 'static,
     {
-        let source_key = source.key();
-        let target_key = target.key();
         let bindings = self
             .bindings
             .as_mut()
             .expect("bindings always Some outside flush_bindings");
-        let id = bindings.bind_map(source, target, map)?;
+        let id = bindings.bind_map(source, target, write_source, map)?;
         bindings.mark_binding_dirty(id);
-        self.record_binding_target(id, source_key, target_key, write_source);
         Ok(id)
-    }
-
-    pub(crate) fn write_source_for_target(
-        &self,
-        target: EndpointKey<BindingOwner>,
-    ) -> LocalValueSource {
-        self.target_write_sources
-            .get(&target)
-            .copied()
-            .unwrap_or(LocalValueSource::TemplateBinding)
     }
 
     /// Marks bindings that depend on `endpoint` dirty.
@@ -128,43 +103,17 @@ impl BindingRuntime {
         if let Some(bindings) = self.bindings.as_mut() {
             bindings.clear_owner(owner);
         }
-        for record in &mut self.binding_targets {
-            let Some(binding) = *record else {
-                continue;
-            };
-            if binding.source.owner() == owner || binding.target.owner() == owner {
-                self.target_write_sources.remove(&binding.target);
-                *record = None;
-            }
-        }
     }
 
     /// Takes the binding graph for a flush pass.
-    pub(crate) fn take(&mut self) -> BindingSet<BindingOwner> {
+    pub(crate) fn take(&mut self) -> BindingSet<BindingOwner, LocalValueSource> {
         self.bindings
             .take()
             .expect("bindings always Some outside flush_bindings")
     }
 
     /// Restores the binding graph after a flush pass.
-    pub(crate) fn restore(&mut self, bindings: BindingSet<BindingOwner>) {
+    pub(crate) fn restore(&mut self, bindings: BindingSet<BindingOwner, LocalValueSource>) {
         self.bindings = Some(bindings);
-    }
-
-    fn record_binding_target(
-        &mut self,
-        id: BindingId,
-        source: EndpointKey<BindingOwner>,
-        target: EndpointKey<BindingOwner>,
-        write_source: LocalValueSource,
-    ) {
-        let Ok(index) = usize::try_from(id.get()) else {
-            return;
-        };
-        if self.binding_targets.len() <= index {
-            self.binding_targets.resize_with(index + 1, || None);
-        }
-        self.binding_targets[index] = Some(BindingTargetRecord { source, target });
-        self.target_write_sources.insert(target, write_source);
     }
 }

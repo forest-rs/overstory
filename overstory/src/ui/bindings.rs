@@ -205,7 +205,7 @@ impl Ui {
     }
 }
 
-impl BindingHost<BindingOwner> for Ui {
+impl BindingHost<BindingOwner, LocalValueSource> for Ui {
     fn get_erased(&self, endpoint: EndpointKey<BindingOwner>) -> Option<ErasedValue> {
         match endpoint.owner() {
             BindingOwner::Element(id) => {
@@ -225,11 +225,11 @@ impl BindingHost<BindingOwner> for Ui {
         &mut self,
         endpoint: EndpointKey<BindingOwner>,
         value: ErasedValue,
+        write_source: LocalValueSource,
     ) -> BindingWrite {
         match endpoint.owner() {
             BindingOwner::Element(id) => {
                 let prop_id = endpoint.property();
-                let write_source = self.bindings.write_source_for_target(endpoint);
                 let channels = {
                     // Disjoint-field split-borrow: registry is read-only while
                     // the element store mutates only the target element.
