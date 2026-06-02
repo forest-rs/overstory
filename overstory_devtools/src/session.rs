@@ -23,7 +23,7 @@ use crate::{DevtoolsSnapshot, DevtoolsTarget};
 use crate::{
     InspectionDelta, InspectionElementDetails, InspectionRequest, InspectionResponse,
     InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem,
-    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    InspectionSummaries, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
     LiveInspectionStreamItem, selected_element_property_grid,
 };
 
@@ -156,7 +156,7 @@ impl DevtoolsSession {
                 self.snapshot.clone(),
             ))),
             InspectionRequest::ElementTree => Ok(InspectionResponse::ElementTree(
-                self.snapshot.element_outline(),
+                self.snapshot.inspection_element_tree(),
             )),
             InspectionRequest::ElementDetails { element } => {
                 let row = self
@@ -174,6 +174,9 @@ impl DevtoolsSession {
             InspectionRequest::Selection => Ok(InspectionResponse::Selection {
                 selected: self.selected_element,
             }),
+            InspectionRequest::Summaries => Ok(InspectionResponse::Summaries(Box::new(
+                InspectionSummaries::from_snapshot(&self.snapshot),
+            ))),
             InspectionRequest::SetSelection { selected } => {
                 let _ = self.set_selected_element(selected);
                 Ok(InspectionResponse::Selection {

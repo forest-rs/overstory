@@ -11,8 +11,12 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use overstory::ElementId;
-use overstory::inspection::ElementInspectionRow;
+use overstory::UiFrameStats;
+use overstory::inspection::{
+    CompositionInspectionSnapshot, ElementInspectionRow, TimelineInspectionSnapshot,
+    UiStorageInspectionSnapshot,
+};
+use overstory::{ElementId, OutlineNodeKey};
 use spoor_session::{
     SessionMethod, SessionRequest, SessionRequestId, SessionResponse, SessionStreamId,
     SessionStreamItem, SessionStreamStart,
@@ -67,7 +71,7 @@ pub enum InspectionRequest {
     /// This is useful for initial attachment and offline dumps. Live inspector
     /// refresh should prefer compact deltas plus lazy detail requests.
     CaptureSnapshot,
-    /// Return the retained element tree as compact outline rows.
+    /// Return the retained element tree as a compact projected outline.
     ElementTree,
     /// Return details for one element.
     ElementDetails {
@@ -76,6 +80,8 @@ pub enum InspectionRequest {
     },
     /// Return the currently selected element.
     Selection,
+    /// Return compact subsystem summaries.
+    Summaries,
     /// Set the currently selected element.
     SetSelection {
         /// Element to select, or `None` to clear selection.
@@ -91,7 +97,7 @@ pub enum InspectionResponse {
     /// Full owned snapshot response.
     Snapshot(Box<DevtoolsSnapshot>),
     /// Compact retained element outline response.
-    ElementTree(Vec<ElementOutlineRow>),
+    ElementTree(InspectionElementTree),
     /// Details for one selected element.
     ElementDetails(Box<InspectionElementDetails>),
     /// Current selection response.
@@ -99,6 +105,8 @@ pub enum InspectionResponse {
         /// Selected element, if any.
         selected: Option<ElementId>,
     },
+    /// Compact subsystem summary response.
+    Summaries(Box<InspectionSummaries>),
     /// A stream was accepted by the inspector domain.
     Subscribed {
         /// Stream opened for this subscription.
@@ -106,6 +114,143 @@ pub enum InspectionResponse {
         /// Accepted subscription.
         subscription: InspectionSubscription,
     },
+}
+
+/// Compact subsystem summaries for diagnostics panels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InspectionSummaries {
+    /// Composition layer, surface, and change counters.
+    pub composition: CompositionInspectionSnapshot,
+    /// Storage and cache size counters.
+    pub storage: UiStorageInspectionSnapshot,
+    /// Timeline runtime counters.
+    pub timeline: TimelineInspectionSnapshot,
+    /// Frame counters captured with the source snapshot.
+    pub frame: UiFrameStats,
+}
+
+impl InspectionSummaries {
+    /// Builds summaries from `snapshot`.
+    #[must_use]
+    pub fn from_snapshot(snapshot: &DevtoolsSnapshot) -> Self {
+        let inspection = snapshot.inspection();
+        Self {
+            composition: inspection.composition.clone(),
+            storage: inspection.storage,
+            timeline: inspection.timeline,
+            frame: inspection.frame,
+        }
+    }
+}
+
+/// Projected retained-element tree returned by the live inspection protocol.
+///
+/// The tree uses snapshot element offsets as [`OutlineNodeKey`] values so a
+/// client can map between retained element ids and a rendered outline control
+/// without requesting a full snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InspectionElementTree {
+    /// Root node index, if the snapshot contains one.
+    pub root: Option<usize>,
+    /// Projected nodes in outline-key order.
+    pub nodes: Vec<InspectionElementNode>,
+}
+
+impl InspectionElementTree {
+    /// Creates an empty projected element tree.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            root: None,
+            nodes: Vec::new(),
+        }
+    }
+
+    /// Returns whether this tree contains no nodes.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Returns the element id represented by the root node.
+    #[must_use]
+    pub fn root_element(&self) -> Option<ElementId> {
+        self.root
+            .and_then(|index| self.nodes.get(index))
+            .map(|node| node.row.element)
+    }
+
+    /// Returns the outline key for `element`.
+    #[must_use]
+    pub fn outline_key_for_element(&self, element: ElementId) -> Option<OutlineNodeKey> {
+        self.nodes
+            .iter()
+            .position(|node| node.row.element == element)
+            .map(OutlineNodeKey::from)
+    }
+
+    /// Returns the element represented by `key`.
+    #[must_use]
+    pub fn element_for_outline_key(&self, key: OutlineNodeKey) -> Option<ElementId> {
+        self.nodes.get(key.index()).map(|node| node.row.element)
+    }
+}
+
+/// One projected retained-element node in an [`InspectionElementTree`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InspectionElementNode {
+    /// Compact inspection row for the element.
+    pub row: ElementOutlineRow,
+    /// Display label for the element.
+    pub label: String,
+    /// First child node index.
+    pub first_child: Option<usize>,
+    /// Next sibling node index.
+    pub next_sibling: Option<usize>,
+}
+
+impl DevtoolsSnapshot {
+    /// Projects this snapshot into the live inspection element tree payload.
+    #[must_use]
+    pub fn inspection_element_tree(&self) -> InspectionElementTree {
+        let nodes = self
+            .inspection()
+            .elements
+            .iter()
+            .map(|row| InspectionElementNode {
+                row: ElementOutlineRow {
+                    element: row.id,
+                    parent: row.parent,
+                    depth: element_depth(self, row),
+                    child_count: row.children.len(),
+                    has_widget_identity: row.has_widget_identity,
+                    layer: row.layer,
+                    surface: row.surface,
+                },
+                label: crate::element_label(row),
+                first_child: row
+                    .children
+                    .first()
+                    .and_then(|child| self.element_offset(*child)),
+                next_sibling: self.next_sibling_offset(row),
+            })
+            .collect();
+
+        InspectionElementTree {
+            root: self.element_offset(self.inspection().root),
+            nodes,
+        }
+    }
+}
+
+fn element_depth(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> usize {
+    let mut depth = 0;
+    let mut parent = row.parent;
+    while let Some(parent_id) = parent {
+        depth += 1;
+        parent = snapshot.element(parent_id).and_then(|row| row.parent);
+    }
+    depth
 }
 
 /// Element-specific details returned by a lazy inspection query.
@@ -218,6 +363,8 @@ mod tests {
         InspectionSubscription, InspectionSubsystem, InspectionUpdateReason, LiveInspectionRequest,
         inspection_method, inspection_stream_start,
     };
+    use crate::DevtoolsSnapshot;
+    use overstory::{Panel, Ui};
     use spoor_session::{SessionRequestId, SessionStreamId};
 
     #[test]
@@ -249,6 +396,29 @@ mod tests {
 
         assert_eq!(delta.subsystem, InspectionSubsystem::Layout);
         assert_eq!(delta.reason, InspectionUpdateReason::TargetChanged);
+    }
+
+    #[test]
+    fn projected_element_tree_carries_outline_links_and_labels() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let tree = snapshot.inspection_element_tree();
+
+        assert_eq!(tree.root_element(), Some(root));
+        assert_eq!(tree.nodes.len(), 2);
+        assert_eq!(tree.nodes[0].row.child_count, 1);
+        assert_eq!(tree.nodes[0].first_child, Some(1));
+        assert_eq!(tree.nodes[1].row.element, child);
+        assert!(tree.nodes[1].label.starts_with("Panel "));
+        assert_eq!(
+            tree.element_for_outline_key(
+                tree.outline_key_for_element(child)
+                    .expect("child should have an outline key"),
+            ),
+            Some(child),
+        );
     }
 
     #[test]

@@ -47,27 +47,39 @@ impl View for DevtoolsPage {
 }
 
 fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionHandle) {
-    summary.add(page_heading("Snapshot, not a borrow"));
+    summary.add(page_heading("Live protocol"));
     summary.add(body_text(
-        "The inspector receives owned rows. The target UI can keep running, repainting, or move out-of-process later.",
+        "The inspector asks for a compact tree, lazy element details, and subsystem summaries through a Spoor session boundary.",
     ));
     summary.add(Divider::horizontal().length(220.0));
 
-    let inspection = session.with(|session| session.snapshot().inspection().clone());
-    append_svg_inspector_row_to(
-        summary,
-        "Elements",
-        &format!("{}", inspection.elements.len()),
-    );
+    let client = InspectionClient::new(session.clone());
+    let tree = client
+        .element_tree()
+        .unwrap_or_else(|_| session.with(|session| session.snapshot().inspection_element_tree()));
+    let summaries = client.summaries().unwrap_or_else(|_| {
+        session.with(|session| {
+            overstory_devtools::InspectionSummaries::from_snapshot(session.snapshot())
+        })
+    });
+    append_svg_inspector_row_to(summary, "Elements", &format!("{}", tree.nodes.len()));
     append_svg_inspector_row_to(
         summary,
         "Layers",
-        &format!("{}", inspection.composition.layers.len()),
+        &format!("{}", summaries.composition.layers.len()),
     );
     append_svg_inspector_row_to(
         summary,
         "Surfaces",
-        &format!("{}", inspection.composition.surfaces.len()),
+        &format!("{}", summaries.composition.surfaces.len()),
+    );
+    append_svg_inspector_row_to(
+        summary,
+        "Changed layers",
+        &format!(
+            "{}",
+            summaries.composition.changes.added + summaries.composition.changes.removed
+        ),
     );
     append_svg_inspector_row_to(
         summary,
@@ -88,11 +100,22 @@ fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionH
     append_svg_inspector_row_to(
         summary,
         "Timeline",
-        &format!("{} cues", inspection.timeline.pending_cues),
+        &format!(
+            "{} tracks / {} cues",
+            summaries.timeline.active_tracks, summaries.timeline.pending_cues
+        ),
+    );
+    append_svg_inspector_row_to(
+        summary,
+        "Frame",
+        &format!(
+            "{} layout passes / {} painted",
+            summaries.frame.layout_passes, summaries.frame.painted_elements
+        ),
     );
     summary.add(Divider::horizontal().length(220.0));
     summary.add(body_text(
-        "Next: stream snapshots beside Spoor telemetry for frame phases, traces, cache pressure, and timeline tracks.",
+        "Next: attach stream deltas to this mirror for frame phases, traces, cache pressure, and timeline tracks.",
     ));
 }
 
@@ -156,7 +179,7 @@ mod tests {
     use crate::app::pages::show_demo_page;
 
     #[test]
-    fn devtools_page_renders_snapshot_outline_and_summary() {
+    fn devtools_page_renders_live_inspection_and_summary() {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, DemoPage::Devtools);
@@ -172,7 +195,7 @@ mod tests {
 
         assert!(
             count_type(&ui, inspector, overstory::TYPE_OUTLINE_VIEW) >= 1,
-            "devtools card should render the snapshot as an OutlineView",
+            "devtools card should render the protocol tree as an OutlineView",
         );
         assert!(
             ui.effective_bounds(inspector).width() > ui.effective_bounds(summary).width(),

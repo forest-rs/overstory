@@ -14,7 +14,7 @@
 
 extern crate alloc;
 
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 
 use alloc::format;
 use alloc::rc::Rc;
@@ -33,17 +33,22 @@ use overstory::{
     TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
 };
 
+#[cfg(feature = "spoor-session")]
+mod client;
 mod property_grid;
 #[cfg(feature = "spoor-session")]
 mod protocol;
 mod session;
 
+#[cfg(feature = "spoor-session")]
+pub use client::{InspectionClient, InspectionMirror};
 pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
-    INSPECTION_DOMAIN, InspectionDelta, InspectionElementDetails, InspectionRequest,
-    InspectionResponse, InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind,
-    InspectionSubsystem, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    INSPECTION_DOMAIN, InspectionDelta, InspectionElementDetails, InspectionElementNode,
+    InspectionElementTree, InspectionRequest, InspectionResponse, InspectionStreamItem,
+    InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem, InspectionSummaries,
+    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
     LiveInspectionStreamItem, LiveInspectionStreamStart, inspection_method,
     inspection_stream_start,
 };
@@ -239,14 +244,14 @@ impl DevtoolsSnapshot {
         }
     }
 
-    fn element_offset(&self, id: ElementId) -> Option<usize> {
+    pub(crate) fn element_offset(&self, id: ElementId) -> Option<usize> {
         self.element_index
             .binary_search_by_key(&id, |(candidate, _)| *candidate)
             .ok()
             .map(|index| self.element_index[index].1)
     }
 
-    fn next_sibling_offset(&self, row: &ElementInspectionRow) -> Option<usize> {
+    pub(crate) fn next_sibling_offset(&self, row: &ElementInspectionRow) -> Option<usize> {
         let siblings = row
             .parent
             .and_then(|parent| self.element(parent))
@@ -319,6 +324,106 @@ pub fn append_inspection_view(
 ///
 /// Selection changes update both the rendered details panel and the supplied
 /// session handle.
+#[cfg(feature = "spoor-session")]
+pub fn append_session_view(
+    ui: &mut Ui,
+    parent: ElementId,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
+    let root = ui.append(
+        parent,
+        Panel::row(12.0).layout(Layout::row(12.0).padding_all(8.0)),
+    );
+    if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
+        ui.set_local(root, ui.properties().foreground, foreground.clone());
+    }
+
+    let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
+    let details_for_selection = Rc::clone(&details_slot);
+    let client = InspectionClient::new(session.clone());
+    let mirror = Rc::new(RefCell::new(
+        InspectionMirror::attach(&client).unwrap_or_else(|_| {
+            session.with(|session| {
+                InspectionMirror::from_snapshot(session.snapshot(), session.selected_element())
+            })
+        }),
+    ));
+    let client_for_selection = client.clone();
+    let mirror_for_selection = Rc::clone(&mirror);
+    let outline_view = mirror
+        .borrow()
+        .outline_view()
+        .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT);
+    let outline = ui.append(
+        root,
+        outline_view.on_selection_changed(move |ui, event| {
+            let Some(details) = details_for_selection.get() else {
+                return;
+            };
+            clear_children(ui, details);
+            if let Err(error) = mirror_for_selection
+                .borrow_mut()
+                .select_outline_key(&client_for_selection, event.selected_key)
+            {
+                append_session_error(ui, details, "Selection request failed", &error);
+                return;
+            }
+
+            let mirror = mirror_for_selection.borrow();
+            client_for_selection.session().with(|session| {
+                let actions = DetailActions {
+                    session: client_for_selection.session().clone(),
+                    outline: event.outline,
+                };
+                append_inspection_element_details(
+                    ui,
+                    details,
+                    mirror.selected_details(),
+                    session.snapshot(),
+                    Some(&actions),
+                );
+            });
+        }),
+    );
+    let details_frame = ui.append(
+        root,
+        ScrollArea::new()
+            .size(INSPECTOR_DETAILS_WIDTH, INSPECTOR_VIEW_HEIGHT)
+            .gap(6.0)
+            .scrollbar_thickness(8.0)
+            .thumb_extent(36.0),
+    );
+    let details_viewport = scroll_area_viewport(ui, details_frame)
+        .expect("ScrollArea should expose its viewport immediately after append");
+    details_slot.set(Some(details_viewport));
+
+    let actions = DetailActions {
+        session: session.clone(),
+        outline,
+    };
+    session.with(|session| {
+        let mirror = mirror.borrow();
+        append_inspection_element_details(
+            ui,
+            details_viewport,
+            mirror.selected_details(),
+            session.snapshot(),
+            Some(&actions),
+        );
+    });
+
+    DevtoolsViewElements {
+        root,
+        outline,
+        details: details_viewport,
+    }
+}
+
+/// Appends an inspector view backed by `session`.
+///
+/// Selection changes update both the rendered details panel and the supplied
+/// session handle.
+#[cfg(not(feature = "spoor-session"))]
 pub fn append_session_view(
     ui: &mut Ui,
     parent: ElementId,
@@ -466,6 +571,7 @@ fn element_type_label(row: &ElementInspectionRow) -> &'static str {
     }
 }
 
+#[cfg(not(feature = "spoor-session"))]
 fn append_selected_element_details(
     ui: &mut Ui,
     parent: ElementId,
@@ -481,6 +587,34 @@ fn append_selected_element_details(
 
     let grid = selected_element_property_grid(snapshot, row);
     append_property_grid_sections(ui, parent, &grid, snapshot, actions);
+}
+
+#[cfg(feature = "spoor-session")]
+fn append_inspection_element_details(
+    ui: &mut Ui,
+    parent: ElementId,
+    details: Option<&InspectionElementDetails>,
+    snapshot: &DevtoolsSnapshot,
+    actions: Option<&DetailActions>,
+) {
+    let Some(details) = details else {
+        ui.append(parent, Text::new("No selected element").font_size(13.0));
+        return;
+    };
+    append_property_grid_sections(ui, parent, &details.properties, snapshot, actions);
+}
+
+#[cfg(feature = "spoor-session")]
+fn append_session_error(
+    ui: &mut Ui,
+    parent: ElementId,
+    label: &str,
+    error: &spoor_session::SessionError,
+) {
+    ui.append(
+        parent,
+        Text::new(format!("{label}: {}", error.message)).font_size(13.0),
+    );
 }
 
 fn selected_element_property_grid(
