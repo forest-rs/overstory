@@ -1591,10 +1591,7 @@ mod tests {
             .expect("target refresh should update live session");
         let refreshed = refresh_session_view(&mut inspector, elements, session);
 
-        assert!(
-            refresh.stream_item_count >= 1,
-            "refresh should emit at least one subscribed stream item"
-        );
+        assert_eq!(refresh.stream_item_count, 1);
         assert!(inspector.get(old_outline).is_none());
         assert!(inspector.get(refreshed.outline).is_some());
         assert_eq!(

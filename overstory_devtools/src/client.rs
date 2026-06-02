@@ -35,6 +35,7 @@ pub struct InspectionClient {
     session: DevtoolsSessionHandle,
     next_request_id: Rc<Cell<u64>>,
     pending_stream_items: Rc<RefCell<Vec<LiveInspectionStreamItem>>>,
+    subscribed_streams: Rc<RefCell<Vec<SessionStreamId>>>,
 }
 
 impl InspectionClient {
@@ -45,6 +46,7 @@ impl InspectionClient {
             session,
             next_request_id: Rc::new(Cell::new(1)),
             pending_stream_items: Rc::new(RefCell::new(Vec::new())),
+            subscribed_streams: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -109,7 +111,10 @@ impl InspectionClient {
         subscription: InspectionSubscription,
     ) -> Result<SessionStreamId, SessionError> {
         match self.request("subscribe", InspectionRequest::Subscribe(subscription))? {
-            InspectionResponse::Subscribed { stream_id, .. } => Ok(stream_id),
+            InspectionResponse::Subscribed { stream_id, .. } => {
+                self.subscribed_streams.borrow_mut().push(stream_id);
+                Ok(stream_id)
+            }
             response => Err(unexpected_response("subscribe", &response)),
         }
     }
@@ -120,8 +125,10 @@ impl InspectionClient {
     /// attached mirrors can refresh only the state affected by the event.
     #[must_use]
     pub fn stream_items_for_event(&self, event: DevtoolsEvent) -> Vec<LiveInspectionStreamItem> {
-        self.session
-            .with_mut(|session| session.inspection_stream_items_for_event(event))
+        let items = self
+            .session
+            .with_mut(|session| session.inspection_stream_items_for_event(event));
+        self.own_stream_items(items)
     }
 
     /// Drains stream items emitted by prior same-process request dispatches.
@@ -143,9 +150,8 @@ impl InspectionClient {
                 payload,
             ))
         });
-        self.pending_stream_items
-            .borrow_mut()
-            .extend(dispatch.stream_items);
+        let stream_items = self.own_stream_items(dispatch.stream_items);
+        self.pending_stream_items.borrow_mut().extend(stream_items);
         let response = dispatch.response;
         if response.request_id != request_id {
             return Err(SessionError::new(
@@ -166,6 +172,20 @@ impl InspectionClient {
         let raw = self.next_request_id.get();
         self.next_request_id.set(raw.saturating_add(1));
         SessionRequestId::new(raw)
+    }
+
+    fn own_stream_items(
+        &self,
+        items: Vec<LiveInspectionStreamItem>,
+    ) -> Vec<LiveInspectionStreamItem> {
+        let streams = self.subscribed_streams.borrow();
+        if streams.is_empty() {
+            return Vec::new();
+        }
+        items
+            .into_iter()
+            .filter(|item| streams.contains(&item.stream_id))
+            .collect()
     }
 }
 
@@ -283,6 +303,7 @@ impl InspectionMirror {
     /// Refreshes the projected element tree from the session.
     pub fn refresh_tree(&mut self, client: &InspectionClient) -> Result<(), SessionError> {
         self.tree = client.element_tree()?;
+        self.selected = client.selection()?;
         self.summaries = client.summaries()?;
         if self
             .selected
@@ -510,6 +531,32 @@ mod tests {
         assert_eq!(applied, 1);
         assert_eq!(client.drain_stream_items(), alloc::vec![]);
         assert_eq!(mirror.selected_element(), Some(child));
+    }
+
+    #[test]
+    fn inspection_client_buffers_only_own_stream_items() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let session = DevtoolsSessionHandle::new(DevtoolsSession::capture(&ui));
+        let client = InspectionClient::new(session.clone());
+        let other_client = InspectionClient::new(session);
+        let stream_id = client
+            .subscribe(InspectionSubscription::all())
+            .expect("subscription should be accepted");
+        let other_stream_id = other_client
+            .subscribe(InspectionSubscription::all())
+            .expect("other subscription should be accepted");
+        let mut mirror = InspectionMirror::attach(&client).expect("mirror should attach");
+
+        mirror
+            .select_element(&client, Some(child))
+            .expect("selection should dispatch");
+        let items = client.drain_stream_items();
+
+        assert_ne!(stream_id, other_stream_id);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].stream_id, stream_id);
     }
 
     #[test]
