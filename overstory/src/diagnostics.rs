@@ -7,6 +7,8 @@
 //! `no_std` core crate. Host crates own wall-clock timing because they already
 //! depend on a monotonic platform clock.
 
+use core::time::Duration;
+
 use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::text::TextLayoutCacheStats;
 
@@ -48,6 +50,12 @@ impl ChannelMarkStats {
 /// Counters collected while driving one UI frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiFrameStats {
+    /// Host-supplied wall-clock timings for the most recently prepared frame.
+    ///
+    /// Core Overstory does not read the platform clock; host crates measure
+    /// these phases and write them back so devtools snapshots can display the
+    /// same frame data as host-side diagnostics.
+    pub timings: UiFrameTimings,
     /// Live element count observed when the snapshot is read.
     pub elements: usize,
     /// Invalidation-channel marks observed since the last reset.
@@ -83,4 +91,27 @@ pub struct UiFrameStats {
     pub composition_surfaces: usize,
     /// Text layout cache counters observed when the snapshot is read.
     pub text_layout_cache: TextLayoutCacheStats,
+}
+
+/// Wall-clock timings for one prepared UI frame.
+///
+/// The fields are zero when no host has supplied timing data yet.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiFrameTimings {
+    /// Time spent advancing the UI clock and presentation timeline.
+    pub set_now: Duration,
+    /// Time spent in layout, including bindings, post-layout hooks, and
+    /// composition-layer geometry synchronization.
+    pub layout: Duration,
+    /// Time spent refreshing presentation and Overstory-owned composition
+    /// surfaces.
+    pub paint: Duration,
+    /// Time spent copying updated surface scenes into the host cache.
+    pub sync_surfaces: Duration,
+    /// Time spent composing cached surfaces into the logical output scene.
+    pub compose: Duration,
+    /// Time spent scaling the logical scene for the physical render target.
+    pub scale: Duration,
+    /// Total time spent preparing the frame.
+    pub total: Duration,
 }

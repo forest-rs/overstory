@@ -9,6 +9,7 @@
 
 use alloc::vec::Vec;
 
+use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
 use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementTreeInspectionPatch, UiInspectionChanges,
@@ -18,6 +19,7 @@ use crate::inspection::{
 pub(crate) struct InspectionChangeRuntime {
     recording_depth: u32,
     tree: ElementTreeChangeRuntime,
+    frame_dirty: bool,
 }
 
 impl InspectionChangeRuntime {
@@ -50,14 +52,25 @@ impl InspectionChangeRuntime {
         self.tree.record_removal(removal);
     }
 
-    pub(crate) fn drain(&mut self, root: ElementId) -> UiInspectionChanges {
-        UiInspectionChanges {
-            tree: self.tree.drain(root),
+    pub(crate) fn record_frame(&mut self) {
+        if !self.is_recording() {
+            return;
         }
+        self.frame_dirty = true;
+    }
+
+    pub(crate) fn drain(&mut self, root: ElementId, frame: UiFrameStats) -> UiInspectionChanges {
+        let changes = UiInspectionChanges {
+            tree: self.tree.drain(root),
+            frame: self.frame_dirty.then_some(frame),
+        };
+        self.frame_dirty = false;
+        changes
     }
 
     pub(crate) fn clear(&mut self) {
         self.tree.clear();
+        self.frame_dirty = false;
     }
 }
 

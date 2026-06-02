@@ -36,7 +36,9 @@ impl Ui {
     /// Hosts and devtools should use snapshots for initial attachment or
     /// resync, then consume drained changes for steady-state updates.
     pub fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
-        self.inspection_changes.drain(self.root())
+        let root = self.root();
+        let frame = self.frame_stats();
+        self.inspection_changes.drain(root, frame)
     }
 
     /// Starts recording live inspection changes.

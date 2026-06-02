@@ -42,13 +42,16 @@ pub struct UiInspectionSnapshot {
 pub struct UiInspectionChanges {
     /// Retained-element tree changes.
     pub tree: ElementTreeInspectionPatch,
+    /// Frame counters and host-supplied timings, when the most recent frame
+    /// summary changed since the previous drain.
+    pub frame: Option<UiFrameStats>,
 }
 
 impl UiInspectionChanges {
     /// Returns whether this batch carries no changes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tree.is_empty()
+        self.tree.is_empty() && self.frame.is_none()
     }
 }
 

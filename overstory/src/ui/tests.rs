@@ -3098,6 +3098,36 @@ fn inspection_changes_track_tree_insertions_and_removals() {
 }
 
 #[test]
+fn inspection_changes_track_frame_summary_updates() {
+    let mut ui = Ui::new();
+    ui.set_frame_timings(UiFrameTimings {
+        paint: core::time::Duration::from_millis(2),
+        total: core::time::Duration::from_millis(5),
+        ..UiFrameTimings::default()
+    });
+    assert!(
+        ui.drain_inspection_changes().is_empty(),
+        "frame timings should not accumulate before live recording starts"
+    );
+
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+    ui.set_frame_timings(UiFrameTimings {
+        paint: core::time::Duration::from_millis(3),
+        total: core::time::Duration::from_millis(8),
+        ..UiFrameTimings::default()
+    });
+
+    let changes = ui.drain_inspection_changes();
+
+    assert!(changes.tree.is_empty());
+    let frame = changes.frame.expect("frame summary should be drained once");
+    assert_eq!(frame.timings.paint, core::time::Duration::from_millis(3));
+    assert_eq!(frame.timings.total, core::time::Duration::from_millis(8));
+    assert!(ui.drain_inspection_changes().is_empty());
+}
+
+#[test]
 fn inspection_changes_track_existing_element_state_updates() {
     let mut ui = Ui::new();
     let root = ui.root();

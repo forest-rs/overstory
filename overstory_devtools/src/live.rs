@@ -367,6 +367,37 @@ mod tests {
     }
 
     #[test]
+    fn live_devtools_refresh_from_live_streams_frame_summary_updates() {
+        let mut ui = Ui::new();
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, None).expect("devtools should attach");
+
+        ui.set_frame_timings(overstory::UiFrameTimings {
+            paint: core::time::Duration::from_millis(4),
+            total: core::time::Duration::from_millis(9),
+            ..overstory::UiFrameTimings::default()
+        });
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("frame summary should stream");
+
+        assert_eq!(
+            refresh.event,
+            Some(DevtoolsEvent::TargetChanged { selected: None })
+        );
+        assert_eq!(refresh.stream_item_count, 1);
+        assert_eq!(
+            devtools.mirror().summaries().frame.timings.paint,
+            core::time::Duration::from_millis(4)
+        );
+        assert_eq!(
+            devtools.mirror().summaries().frame.timings.total,
+            core::time::Duration::from_millis(9)
+        );
+        devtools.detach_from_live(&mut ui);
+    }
+
+    #[test]
     fn live_devtools_refresh_from_live_updates_selected_details() {
         let mut ui = Ui::new();
         let root = ui.root();

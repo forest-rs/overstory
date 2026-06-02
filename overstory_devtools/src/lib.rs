@@ -347,6 +347,9 @@ impl DevtoolsSnapshot {
     /// the resync path; this method keeps the retained baseline current between
     /// captures when the target can provide explicit change records.
     pub fn apply_inspection_changes(&mut self, changes: UiInspectionChanges) {
+        if let Some(frame) = changes.frame {
+            self.inspection.frame = frame;
+        }
         self.apply_element_tree_patch(changes.tree);
     }
 

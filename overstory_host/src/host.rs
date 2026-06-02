@@ -8,7 +8,7 @@ use core::{fmt, time::Duration};
 use accesskit::{ActionRequest, TreeUpdate};
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
-use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui};
+use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui, UiFrameTimings};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use web_time::Instant;
@@ -204,16 +204,19 @@ impl UiHost {
             self.scene.is_empty()
         };
 
+        let timings = FrameTimings {
+            set_now,
+            layout,
+            paint,
+            sync_surfaces,
+            compose,
+            scale,
+            total: total_start.elapsed(),
+        };
+        self.ui.set_frame_timings(ui_frame_timings(timings));
+
         self.last_frame_diagnostics = FrameDiagnostics {
-            timings: FrameTimings {
-                set_now,
-                layout,
-                paint,
-                sync_surfaces,
-                compose,
-                scale,
-                total: total_start.elapsed(),
-            },
+            timings,
             ui: self.ui.frame_stats(),
             surface_cache_len: self.surface_scenes.len(),
             output_empty,
@@ -247,6 +250,18 @@ impl UiHost {
 
     fn instant_for_deadline(&self, deadline: TimerInstant) -> Instant {
         self.start_instant + Duration::from_nanos(deadline)
+    }
+}
+
+fn ui_frame_timings(timings: FrameTimings) -> UiFrameTimings {
+    UiFrameTimings {
+        set_now: timings.set_now,
+        layout: timings.layout,
+        paint: timings.paint,
+        sync_surfaces: timings.sync_surfaces,
+        compose: timings.compose,
+        scale: timings.scale,
+        total: timings.total,
     }
 }
 
@@ -297,6 +312,8 @@ mod tests {
         let diagnostics = host.last_frame_diagnostics();
 
         assert!(diagnostics.timings.total >= diagnostics.timings.layout);
+        assert_eq!(diagnostics.ui.timings.paint, diagnostics.timings.paint);
+        assert_eq!(diagnostics.ui.timings.total, diagnostics.timings.total);
         assert!(diagnostics.ui.elements >= 2);
         assert!(diagnostics.ui.layout_passes >= 1);
         assert!(diagnostics.ui.painted_elements >= 1);

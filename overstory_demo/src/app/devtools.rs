@@ -220,7 +220,7 @@ fn open_in_process_devtools(
                 .class(CLASS_DEMO_CAPTION)
                 .class(CLASS_DEVTOOLS_STATUS)
                 .wrap()
-                .layout(Layout::new().logical_size(492.0, 20.0)),
+                .layout(Layout::new().logical_size(492.0, 44.0)),
         );
         shell.set_status(status);
         shell.update_status(dock.ui_mut(), 0, None);
@@ -272,14 +272,26 @@ fn format_live_stream_status(
     stream_item_count: usize,
     tree_patch_counts: Option<DevtoolsTreePatchCounts>,
 ) -> String {
+    let frame = devtools.mirror().summaries().frame;
+    let timings = frame.timings;
     let tree_patch = tree_patch_counts.map_or_else(
         || String::from("tree patch: none"),
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(
-        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}",
+        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}. Last frame: total {}, layout {}, paint {}, painted {}, surfaces {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,
+        duration_summary(timings.total),
+        duration_summary(timings.layout),
+        duration_summary(timings.paint),
+        frame.painted_elements,
+        frame.composition_surface_updates,
     )
+}
+
+fn duration_summary(duration: core::time::Duration) -> String {
+    let micros = duration.as_micros();
+    format!("{}.{:02} ms", micros / 1_000, (micros % 1_000) / 10)
 }

@@ -38,7 +38,7 @@ use crate::binding_runtime::BindingRuntime;
 use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
-use crate::diagnostics::UiFrameStats;
+use crate::diagnostics::{UiFrameStats, UiFrameTimings};
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
@@ -374,6 +374,16 @@ impl Ui {
     /// Clears frame-pipeline counters before a host prepares a new frame.
     pub fn reset_frame_stats(&mut self) {
         self.frame_stats = UiFrameStats::default();
+    }
+
+    /// Records host-measured timings for the most recently prepared frame.
+    ///
+    /// Core Overstory owns frame counters, but hosts own wall-clock time
+    /// collection. Host crates call this after preparing a frame so inspection
+    /// snapshots can report the same timing data as host diagnostics.
+    pub fn set_frame_timings(&mut self, timings: UiFrameTimings) {
+        self.frame_stats.timings = timings;
+        self.inspection_changes.record_frame();
     }
 
     /// Returns a snapshot of the current frame-pipeline counters.
