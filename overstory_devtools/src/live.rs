@@ -155,6 +155,7 @@ impl LiveDevtools {
         for item in &stream_items {
             self.mirror.apply_stream_item(&self.client, item)?;
         }
+        self.sync_mirror_selection()?;
         let selected = self.session.with(DevtoolsSession::selected_element);
         Ok(DevtoolsRefresh {
             event: Some(event),
@@ -179,6 +180,7 @@ impl LiveDevtools {
         for item in &stream_items {
             self.mirror.apply_stream_item(&self.client, item)?;
         }
+        self.sync_mirror_selection()?;
         let selected = self.session.with(DevtoolsSession::selected_element);
         Ok(DevtoolsRefresh {
             event,
@@ -206,6 +208,14 @@ impl LiveDevtools {
         self.mirror.apply_pending_stream_items(&self.client)?;
         Ok(selected)
     }
+
+    fn sync_mirror_selection(&mut self) -> Result<(), SessionError> {
+        let selected = self.session.with(DevtoolsSession::selected_element);
+        if self.mirror.selected_element() != selected {
+            self.mirror.refresh_selection(&self.client)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -232,6 +242,44 @@ mod tests {
             devtools.session().with(DevtoolsSession::selected_element),
             Some(child)
         );
+    }
+
+    #[test]
+    fn live_devtools_refresh_syncs_selection_changed_by_another_client() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Inspect app"));
+        let child = ui.append(root, Panel::new());
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, Some(button)).expect("devtools should attach");
+        let rendered_view_client = InspectionClient::new(devtools.session().clone());
+
+        let selected = rendered_view_client
+            .set_selection(Some(child))
+            .expect("rendered devtools view should select the child");
+        assert_eq!(selected, Some(child));
+        assert_eq!(
+            devtools.mirror().selected_element(),
+            Some(button),
+            "the live controller mirror has not observed the other client's stream item yet"
+        );
+
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("live refresh should sync controller state");
+
+        assert_eq!(refresh.selected, Some(child));
+        assert_eq!(devtools.mirror().selected_element(), Some(child));
+        assert_eq!(
+            devtools
+                .mirror()
+                .selected_details()
+                .expect("selected details should be refreshed")
+                .row
+                .id,
+            child
+        );
+        devtools.detach_from_live(&mut ui);
     }
 
     #[test]
