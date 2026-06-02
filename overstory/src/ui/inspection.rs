@@ -1,15 +1,20 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::inspection::{
     CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
-    ElementInspectionRemoval, ElementInspectionRow, ElementStateInspection, LayerInspectionId,
-    SurfaceInspectionId, TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionGroup,
+    ElementPropertyInspectionOrigin, ElementPropertyInspectionRow, ElementPropertyInspectionValue,
+    ElementStateInspection, LayerInspectionId, SurfaceInspectionId, TimelineInspectionSnapshot,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
+use peniko::Brush;
+use understory_property::{DependencyObject, Property};
 
 use super::{Ui, collect_preorder};
 
@@ -132,7 +137,377 @@ impl Ui {
                 .surface_for(id)
                 .map(SurfaceInspectionId::from_surface),
             composition_policy: self.composition.policy_for(id),
+            properties: self.element_property_inspection_rows(element),
         })
+    }
+
+    fn element_property_inspection_rows(
+        &self,
+        element: &crate::Element,
+    ) -> Vec<ElementPropertyInspectionRow> {
+        let mut rows = Vec::new();
+        let properties = self.properties;
+
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Background",
+            ElementPropertyInspectionGroup::Appearance,
+            properties.background,
+            option_brush_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "BorderBrush",
+            ElementPropertyInspectionGroup::Appearance,
+            properties.border_brush,
+            option_brush_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "BorderWidth",
+            ElementPropertyInspectionGroup::Appearance,
+            properties.border_width,
+            number_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "CornerRadius",
+            ElementPropertyInspectionGroup::Appearance,
+            properties.corner_radius,
+            number_value,
+        );
+
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Content",
+            ElementPropertyInspectionGroup::Text,
+            properties.content,
+            text_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Foreground",
+            ElementPropertyInspectionGroup::Text,
+            properties.foreground,
+            brush_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "FontSize",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_size,
+            number_value,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "FontFamily",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_family,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "FontWidth",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_width,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "FontWeight",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_weight,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "FontStyle",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_style,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "FontVariations",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_variations,
+            |value| count_value(value.len()),
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "FontFeatures",
+            ElementPropertyInspectionGroup::Text,
+            properties.font_features,
+            |value| count_value(value.len()),
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "TextLanguage",
+            ElementPropertyInspectionGroup::Text,
+            properties.text_language,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LineHeight",
+            ElementPropertyInspectionGroup::Text,
+            properties.line_height,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "LetterSpacing",
+            ElementPropertyInspectionGroup::Text,
+            properties.letter_spacing,
+            |value| number_value(f64::from(value)),
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "WordSpacing",
+            ElementPropertyInspectionGroup::Text,
+            properties.word_spacing,
+            |value| number_value(f64::from(value)),
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "WordBreak",
+            ElementPropertyInspectionGroup::Text,
+            properties.word_break,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "OverflowWrap",
+            ElementPropertyInspectionGroup::Text,
+            properties.overflow_wrap,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "TextWrapMode",
+            ElementPropertyInspectionGroup::Text,
+            properties.text_wrap_mode,
+        );
+
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "Layout",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutContainer",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_container,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutSize",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_size,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutSpacing",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_spacing,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutAlignment",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_alignment,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutOverflow",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_overflow,
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "LayoutPlacement",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_placement,
+        );
+
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Opacity",
+            ElementPropertyInspectionGroup::Motion,
+            properties.opacity,
+            |value| number_value(f64::from(value)),
+        );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "VisualTransform",
+            ElementPropertyInspectionGroup::Motion,
+            properties.visual_transform,
+        );
+
+        self.push_property_row(
+            &mut rows,
+            element,
+            "IsChecked",
+            ElementPropertyInspectionGroup::Control,
+            properties.is_checked,
+            bool_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "IsExpanded",
+            ElementPropertyInspectionGroup::Control,
+            properties.is_expanded,
+            bool_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "IsEnabled",
+            ElementPropertyInspectionGroup::Control,
+            properties.is_enabled,
+            bool_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "IsReadOnly",
+            ElementPropertyInspectionGroup::Control,
+            properties.is_read_only,
+            bool_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "SelectedIndex",
+            ElementPropertyInspectionGroup::Control,
+            properties.selected_index,
+            optional_index_value,
+        );
+
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Value",
+            ElementPropertyInspectionGroup::Range,
+            properties.value,
+            number_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Minimum",
+            ElementPropertyInspectionGroup::Range,
+            properties.minimum,
+            number_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "Maximum",
+            ElementPropertyInspectionGroup::Range,
+            properties.maximum,
+            number_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "SmallChange",
+            ElementPropertyInspectionGroup::Range,
+            properties.small_change,
+            number_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
+            "LargeChange",
+            ElementPropertyInspectionGroup::Range,
+            properties.large_change,
+            number_value,
+        );
+
+        rows
+    }
+
+    fn push_debug_property_row<T>(
+        &self,
+        rows: &mut Vec<ElementPropertyInspectionRow>,
+        element: &crate::Element,
+        name: &'static str,
+        group: ElementPropertyInspectionGroup,
+        property: Property<T>,
+    ) where
+        T: Clone + core::fmt::Debug + PartialEq + 'static,
+    {
+        self.push_property_row(rows, element, name, group, property, |value| {
+            ElementPropertyInspectionValue::Token(format!("{value:?}"))
+        });
+    }
+
+    fn push_property_row<T>(
+        &self,
+        rows: &mut Vec<ElementPropertyInspectionRow>,
+        element: &crate::Element,
+        name: &'static str,
+        group: ElementPropertyInspectionGroup,
+        property: Property<T>,
+        value: impl FnOnce(T) -> ElementPropertyInspectionValue,
+    ) where
+        T: Clone + PartialEq + 'static,
+    {
+        let resolved = self.resolve_value_for(element, property);
+        if !self.should_include_property_row(element, property, &resolved) {
+            return;
+        }
+        rows.push(ElementPropertyInspectionRow {
+            name,
+            group,
+            value: value(resolved),
+            origin: ElementPropertyInspectionOrigin::Effective,
+        });
+    }
+
+    fn should_include_property_row<T>(
+        &self,
+        element: &crate::Element,
+        property: Property<T>,
+        value: &T,
+    ) -> bool
+    where
+        T: Clone + PartialEq + 'static,
+    {
+        let store = element.property_store();
+        if store.winning_local_source_for_id(property.id()).is_some()
+            || store.animation_entries_has(property.id())
+        {
+            return true;
+        }
+        self.registry
+            .get_metadata(property)
+            .is_some_and(|metadata| metadata.default_value() != value)
     }
 
     fn template_identity_for(
@@ -234,4 +609,46 @@ impl Ui {
             pending_cues: self.timeline.pending_cue_count(),
         }
     }
+}
+
+fn option_brush_value(value: Option<Brush>) -> ElementPropertyInspectionValue {
+    value.map_or(ElementPropertyInspectionValue::Empty, brush_value)
+}
+
+fn brush_value(value: Brush) -> ElementPropertyInspectionValue {
+    match value {
+        Brush::Solid(color) => ElementPropertyInspectionValue::Color(color.to_rgba8()),
+        Brush::Gradient(_) => ElementPropertyInspectionValue::Token(String::from("gradient")),
+        Brush::Image(_) => ElementPropertyInspectionValue::Token(String::from("image")),
+    }
+}
+
+fn text_value(value: String) -> ElementPropertyInspectionValue {
+    if value.is_empty() {
+        ElementPropertyInspectionValue::Empty
+    } else {
+        ElementPropertyInspectionValue::Text(value)
+    }
+}
+
+fn bool_value(value: bool) -> ElementPropertyInspectionValue {
+    ElementPropertyInspectionValue::Bool(value)
+}
+
+fn number_value(value: f64) -> ElementPropertyInspectionValue {
+    ElementPropertyInspectionValue::Number(value)
+}
+
+fn count_value(value: usize) -> ElementPropertyInspectionValue {
+    if value == 0 {
+        ElementPropertyInspectionValue::Empty
+    } else {
+        ElementPropertyInspectionValue::Count(value)
+    }
+}
+
+fn optional_index_value(value: Option<usize>) -> ElementPropertyInspectionValue {
+    value.map_or(ElementPropertyInspectionValue::Empty, |value| {
+        ElementPropertyInspectionValue::Text(format!("{value}"))
+    })
 }

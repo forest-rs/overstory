@@ -7,9 +7,11 @@
 //! intentionally separate from Spoor telemetry: Spoor records what happened
 //! over time, while these rows describe what exists now.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use kurbo::{Rect, Size};
+use peniko::color::Rgba8;
 use understory_style::{ClassId, PartTag, PseudoClassId, TypeTag};
 
 use crate::composition::{CompositionPolicy, SurfaceId};
@@ -119,6 +121,91 @@ pub struct ElementInspectionRow {
     pub surface: Option<SurfaceInspectionId>,
     /// Composition policy applied to this element's layer, if one exists.
     pub composition_policy: Option<CompositionPolicy>,
+    /// Concise dependency-property values worth showing in an inspector.
+    ///
+    /// These rows summarize effective values for built-in properties that are
+    /// authored, animated, or resolved to a non-default value. Detailed
+    /// provenance is intentionally left for future drill-down APIs so the main
+    /// property grid can stay readable.
+    pub properties: Vec<ElementPropertyInspectionRow>,
+}
+
+/// One inspectable dependency-property value for an element.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ElementPropertyInspectionRow {
+    /// User-facing property name.
+    pub name: &'static str,
+    /// Broad group used by devtools to organize the property grid.
+    pub group: ElementPropertyInspectionGroup,
+    /// Display value sampled for this snapshot.
+    pub value: ElementPropertyInspectionValue,
+    /// Where this concise value was sampled from.
+    pub origin: ElementPropertyInspectionOrigin,
+}
+
+/// Broad group for an inspectable dependency property.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ElementPropertyInspectionGroup {
+    /// Fill, border, radius, and other visual appearance properties.
+    Appearance,
+    /// Text content and typography properties.
+    Text,
+    /// Layout-intent properties.
+    Layout,
+    /// Time-varying or composition-oriented presentation properties.
+    Motion,
+    /// Control state and semantic behavior properties.
+    Control,
+    /// Numeric range/value properties.
+    Range,
+}
+
+/// Origin of a concise property value in an inspection row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ElementPropertyInspectionOrigin {
+    /// Value after local stores, style/theme resolution, inheritance, and
+    /// presentation overrides have been applied.
+    Effective,
+}
+
+impl ElementPropertyInspectionOrigin {
+    /// Returns the short label devtools should show for this origin.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Effective => "effective",
+        }
+    }
+}
+
+/// Semantic value for an inspectable dependency property.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ElementPropertyInspectionValue {
+    /// Missing, unset, or not-applicable value.
+    Empty,
+    /// Plain text value.
+    Text(String),
+    /// Boolean value.
+    Bool(bool),
+    /// Number value.
+    Number(f64),
+    /// Count of items in a collection-like value.
+    Count(usize),
+    /// Token-like value such as an enum variant or shorthand structure.
+    Token(String),
+    /// 8-bit RGBA color value suitable for a color swatch.
+    Color(Rgba8),
+    /// Logical rectangle value.
+    Rect {
+        /// Minimum x coordinate.
+        x0: f64,
+        /// Minimum y coordinate.
+        y0: f64,
+        /// Maximum x coordinate.
+        x1: f64,
+        /// Maximum y coordinate.
+        y1: f64,
+    },
 }
 
 /// Interaction state for one retained element in an inspection snapshot.

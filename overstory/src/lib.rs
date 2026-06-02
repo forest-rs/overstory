@@ -260,7 +260,7 @@ pub mod prelude {
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
 pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke};
-pub use peniko::{Brush, Color, Fill};
+pub use peniko::{Brush, Color, Fill, color::Rgba8};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
     FontFamily, FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily, Language,

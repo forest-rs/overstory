@@ -25,15 +25,19 @@ use alloc::vec::Vec;
 
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
-    ElementTreeInspectionPatch, LayerInspectionId, SurfaceInspectionId, UiInspectionChanges,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
+    LayerInspectionId, SurfaceInspectionId, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
 use overstory::{
-    ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea,
-    TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_GENERIC, TYPE_LIST_BOX, TYPE_OUTLINE_VIEW,
-    TYPE_PROGRESS_BAR, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, TYPE_SELECT,
-    TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
-    TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
+    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, ElementId, Layout, OutlineNodeKey,
+    OutlineView, OutlineViewNode, Panel, ScrollArea, TYPE_ACCORDION, TYPE_ACCORDION_SECTION,
+    TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_EXPANDER, TYPE_GENERIC, TYPE_LIST_BOX,
+    TYPE_LIST_ITEM, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, TYPE_POPUP, TYPE_PROGRESS_BAR,
+    TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
+    TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, TYPE_SELECT, TYPE_SLIDER, TYPE_SPINNER,
+    TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, TYPE_TOOLTIP, TYPE_VECTOR_PATH,
+    TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
 };
 #[cfg(feature = "spoor-session")]
 use overstory::{expanded_outline_keys, replace_outline_nodes};
@@ -1106,22 +1110,42 @@ fn element_type_label(row: &ElementInspectionRow) -> &'static str {
         "Button"
     } else if tag == TYPE_CHECK_BOX {
         "CheckBox"
+    } else if tag == TYPE_ACCORDION {
+        "Accordion"
+    } else if tag == TYPE_ACCORDION_SECTION {
+        "AccordionSection"
     } else if tag == TYPE_DIVIDER {
         "Divider"
+    } else if tag == TYPE_EXPANDER {
+        "Expander"
     } else if tag == TYPE_GENERIC {
         "Panel"
     } else if tag == TYPE_LIST_BOX {
         "ListBox"
+    } else if tag == TYPE_LIST_ITEM {
+        "ListItem"
+    } else if tag == TYPE_OUTLINE_ITEM {
+        "OutlineItem"
     } else if tag == TYPE_OUTLINE_VIEW {
         "OutlineView"
+    } else if tag == TYPE_POPUP {
+        "Popup"
     } else if tag == TYPE_PROGRESS_BAR {
         "ProgressBar"
+    } else if tag == TYPE_RADIO_BUTTON {
+        "RadioButton"
+    } else if tag == TYPE_RADIO_GROUP {
+        "RadioGroup"
     } else if tag == TYPE_SCROLL_AREA {
         "ScrollArea"
     } else if tag == TYPE_SCROLL_BAR {
         "ScrollBar"
     } else if tag == TYPE_SCROLL_VIEW {
         "ScrollView"
+    } else if tag == TYPE_SEGMENTED_CONTROL {
+        "SegmentedControl"
+    } else if tag == TYPE_SEGMENTED_ITEM {
+        "SegmentedItem"
     } else if tag == TYPE_SELECT {
         "Select"
     } else if tag == TYPE_SLIDER {
@@ -1209,10 +1233,7 @@ fn selected_element_property_grid(
             "Widget identity",
             row.has_widget_identity,
         ))
-        .row(PropertyGridRow::new(
-            "Type tag",
-            optional_debug(row.type_tag),
-        ));
+        .row(type_tag_row(row));
 
     let mut children = PropertyGridRow::new("Children", row.children.len());
     for (index, child) in row
@@ -1334,14 +1355,15 @@ fn selected_element_property_grid(
             format!("{:?}", row.composition_policy),
         ));
 
-    PropertyGrid::new()
+    let mut grid = PropertyGrid::new()
         .section(identity)
         .section(tree)
         .section(template)
-        .section(style)
-        .section(state)
-        .section(layout)
-        .section(composition)
+        .section(style);
+    for section in property_grid_sections(row) {
+        grid.push_section(section);
+    }
+    grid.section(state).section(layout).section(composition)
 }
 
 fn element_relation_row(
@@ -1423,15 +1445,143 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
         .count()
 }
 
+fn type_tag_row(row: &ElementInspectionRow) -> PropertyGridRow {
+    let Some(type_tag) = row.type_tag else {
+        return PropertyGridRow::new("Type tag", PropertyGridValue::empty());
+    };
+    PropertyGridRow::new(
+        "Type tag",
+        PropertyGridValue::token(element_type_label(row)),
+    )
+    .child(PropertyGridRow::new(
+        "Raw id",
+        PropertyGridValue::token(format!("TypeTag({})", type_tag.0)),
+    ))
+}
+
+fn property_grid_sections(row: &ElementInspectionRow) -> Vec<PropertyGridSection> {
+    let mut sections = Vec::new();
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Appearance,
+        "Appearance",
+    );
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Text,
+        "Text",
+    );
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Layout,
+        "Layout Properties",
+    );
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Motion,
+        "Motion",
+    );
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Control,
+        "Control Properties",
+    );
+    push_property_group(
+        &mut sections,
+        row,
+        ElementPropertyInspectionGroup::Range,
+        "Range",
+    );
+    sections
+}
+
+fn push_property_group(
+    sections: &mut Vec<PropertyGridSection>,
+    row: &ElementInspectionRow,
+    group: ElementPropertyInspectionGroup,
+    title: &str,
+) {
+    let mut section = PropertyGridSection::new(title);
+    for property in row
+        .properties
+        .iter()
+        .filter(|property| property.group == group)
+    {
+        section.push_row(
+            PropertyGridRow::new(property.name, inspection_property_value(&property.value))
+                .with_origin(property.origin.label()),
+        );
+    }
+    if !section.rows().is_empty() {
+        sections.push(section);
+    }
+}
+
+fn inspection_property_value(value: &ElementPropertyInspectionValue) -> PropertyGridValue {
+    match value {
+        ElementPropertyInspectionValue::Empty => PropertyGridValue::empty(),
+        ElementPropertyInspectionValue::Text(value) => PropertyGridValue::text(value.clone()),
+        ElementPropertyInspectionValue::Bool(value) => PropertyGridValue::Bool(*value),
+        ElementPropertyInspectionValue::Number(value) => {
+            PropertyGridValue::text(number_summary(*value))
+        }
+        ElementPropertyInspectionValue::Count(value) => PropertyGridValue::count(*value),
+        ElementPropertyInspectionValue::Token(value) => PropertyGridValue::token(value.clone()),
+        ElementPropertyInspectionValue::Color(color) => PropertyGridValue::color(*color),
+        ElementPropertyInspectionValue::Rect { x0, y0, x1, y1 } => {
+            PropertyGridValue::text(rect_summary(overstory::Rect::new(*x0, *y0, *x1, *y1)))
+        }
+    }
+}
+
+fn number_summary(value: f64) -> String {
+    if value.fract().abs() < f64::EPSILON {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.3}")
+    }
+}
+
 fn class_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
     let mut classes = list_summary_row("Classes", row.classes.len());
     for class in &row.classes {
-        classes.push_child(PropertyGridRow::new(
-            format!("Class {}", class.0),
-            PropertyGridValue::token(format!("{class:?}")),
-        ));
+        let is_major_tick = *class == CLASS_SLIDER_MAJOR_TICK;
+        let is_minor_tick = *class == CLASS_SLIDER_MINOR_TICK;
+        classes.push_child(class_row(class.0, is_major_tick, is_minor_tick));
     }
     classes
+}
+
+fn class_row(id: u32, is_major_tick: bool, is_minor_tick: bool) -> PropertyGridRow {
+    PropertyGridRow::new(
+        class_label(id, is_major_tick, is_minor_tick),
+        PropertyGridValue::token(class_token(id, is_major_tick, is_minor_tick)),
+    )
+}
+
+fn class_label(id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
+    if is_major_tick {
+        String::from(".slider-major-tick")
+    } else if is_minor_tick {
+        String::from(".slider-minor-tick")
+    } else {
+        format!("Class {id}")
+    }
+}
+
+fn class_token(id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
+    if is_major_tick {
+        String::from(".slider-major-tick")
+    } else if is_minor_tick {
+        String::from(".slider-minor-tick")
+    } else {
+        format!("ClassId({id})")
+    }
 }
 
 fn pseudo_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
@@ -1521,6 +1671,7 @@ fn size_summary(size: overstory::Size) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use overstory::{SurfaceSpecExt, TextSpecExt};
     use understory_property::DependencyObjectExt;
 
     #[test]
@@ -2012,7 +2163,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.append(root, Panel::new());
-        ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
+        ui.add_class(child, CLASS_SLIDER_MAJOR_TICK);
         ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);
         let snapshot = DevtoolsSnapshot::capture(&ui);
         let row = snapshot
@@ -2036,15 +2187,67 @@ mod tests {
             .find(|row| row.label() == "Pseudos")
             .expect("style section should contain pseudos row");
 
-        assert_eq!(classes.children()[0].label(), "Class 1");
+        assert_eq!(classes.children()[0].label(), ".slider-major-tick");
         assert_eq!(
             classes.children()[0].value(),
-            &PropertyGridValue::token("ClassId(1)")
+            &PropertyGridValue::token(".slider-major-tick")
         );
+        assert!(classes.children()[0].children().is_empty());
         assert_eq!(pseudos.children()[0].label(), ":hover");
         assert_eq!(
             pseudos.children()[0].value(),
             &PropertyGridValue::token("PseudoClassId(1)")
+        );
+    }
+
+    #[test]
+    fn selected_element_property_grid_groups_effective_properties() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let background = overstory::Color::from_rgba8(0x12, 0x34, 0x56, 0xff);
+        let child = ui.append(
+            root,
+            Panel::new()
+                .background(Some(background.into()))
+                .font_size(18.0),
+        );
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let row = snapshot
+            .element(child)
+            .expect("child should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, row);
+        let surface = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Appearance")
+            .expect("grid should contain appearance property section");
+        let background = surface
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Background")
+            .expect("surface section should contain background row");
+        assert_eq!(background.origin(), Some("effective"));
+        assert_eq!(
+            background.value(),
+            &PropertyGridValue::color(overstory::Rgba8 {
+                r: 0x12,
+                g: 0x34,
+                b: 0x56,
+                a: 0xff,
+            })
+        );
+
+        let text = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Text")
+            .expect("grid should contain text property section");
+        assert!(
+            text.rows()
+                .iter()
+                .any(|row| row.label() == "FontSize"
+                    && row.value() == &PropertyGridValue::text("18"))
         );
     }
 
@@ -2085,7 +2288,7 @@ mod tests {
             inspector
                 .get(header_children[1])
                 .and_then(|element| element.get_local_value(inspector.properties().content)),
-            Some(&String::from("5"))
+            Some(&String::from("6"))
         );
         let element_row = inspector
             .get(identity_section)

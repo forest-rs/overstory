@@ -13,6 +13,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+use overstory::Rgba8;
 use overstory::{
     Brush, Color, ElementId, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize,
     OutlineNodeKey, Panel, Text, Ui, select_outline_key, theme,
@@ -249,6 +250,12 @@ impl PropertyGridValue {
         Self::Color(PropertyGridColor::from_rgba8(red, green, blue, alpha))
     }
 
+    /// Creates a color swatch value from an existing 8-bit RGBA color.
+    #[must_use]
+    pub fn color(value: Rgba8) -> Self {
+        Self::Color(PropertyGridColor::new(value))
+    }
+
     /// Returns a plain-text summary for tests, logs, and fallback displays.
     #[must_use]
     pub fn summary(&self) -> String {
@@ -354,23 +361,34 @@ impl PropertyGridToken {
 /// RGBA color value for property-grid swatches.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PropertyGridColor {
-    rgba: [u8; 4],
+    rgba: Rgba8,
     label: String,
 }
 
 impl PropertyGridColor {
+    /// Creates a color from an existing 8-bit RGBA color.
+    #[must_use]
+    pub fn new(rgba: Rgba8) -> Self {
+        Self {
+            rgba,
+            label: rgba_label(rgba),
+        }
+    }
+
     /// Creates a color from 8-bit RGBA components.
     #[must_use]
     pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
-        Self {
-            rgba: [red, green, blue, alpha],
-            label: rgba_label(red, green, blue, alpha),
-        }
+        Self::new(Rgba8 {
+            r: red,
+            g: green,
+            b: blue,
+            a: alpha,
+        })
     }
 
     /// Returns the 8-bit RGBA components.
     #[must_use]
-    pub const fn rgba8(&self) -> [u8; 4] {
+    pub const fn rgba8(&self) -> Rgba8 {
         self.rgba
     }
 
@@ -381,11 +399,11 @@ impl PropertyGridColor {
     }
 }
 
-fn rgba_label(red: u8, green: u8, blue: u8, alpha: u8) -> String {
-    if alpha == 0xff {
-        format!("#{red:02x}{green:02x}{blue:02x}")
+fn rgba_label(rgba: Rgba8) -> String {
+    if rgba.a == 0xff {
+        format!("#{:02x}{:02x}{:02x}", rgba.r, rgba.g, rgba.b)
     } else {
-        format!("#{red:02x}{green:02x}{blue:02x}{alpha:02x}")
+        format!("#{:02x}{:02x}{:02x}{:02x}", rgba.r, rgba.g, rgba.b, rgba.a)
     }
 }
 
@@ -746,11 +764,11 @@ fn append_color_value(ui: &mut Ui, parent: ElementId, color: &PropertyGridColor)
         parent,
         Panel::new().layout(Layout::new().logical_size(14.0, 14.0).flex_shrink(0.0)),
     );
-    let [red, green, blue, alpha] = color.rgba8();
+    let rgba = color.rgba8();
     set_grid_surface(
         ui,
         swatch,
-        Some(Color::from_rgba8(red, green, blue, alpha).into()),
+        Some(Color::from_rgba8(rgba.r, rgba.g, rgba.b, rgba.a).into()),
         control_border(ui),
         3.0,
     );

@@ -365,10 +365,14 @@ impl Ui {
 
     /// Marks every channel in `set` dirty for `id` in the tracker.
     pub fn mark_channels(&mut self, id: ElementId, set: ChannelSet) {
+        if set.is_empty() {
+            return;
+        }
         for channel in set.iter() {
             self.frame_stats.channel_marks.record(channel);
             self.invalidation.mark(id, channel);
         }
+        self.record_element_tree_upsert(id);
     }
 
     /// Clears frame-pipeline counters before a host prepares a new frame.

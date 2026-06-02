@@ -3148,6 +3148,8 @@ fn renderer_timings_survive_frame_counter_reset() {
 
 #[test]
 fn inspection_changes_track_existing_element_state_updates() {
+    use crate::inspection::ElementPropertyInspectionValue;
+
     let mut ui = Ui::new();
     let root = ui.root();
     let button = ui.append(root, crate::Button::new("Inspect"));
@@ -3194,6 +3196,19 @@ fn inspection_changes_track_existing_element_state_updates() {
             .upserted
             .iter()
             .any(|row| row.id == button && row.state.pointer_captured)
+    );
+
+    ui.set_local(button, ui.properties().opacity, 0.25);
+    let property_update = ui.drain_inspection_changes();
+    assert!(
+        property_update.tree.upserted.iter().any(|row| {
+            row.id == button
+                && row.properties.iter().any(|property| {
+                    property.name == "Opacity"
+                        && property.value == ElementPropertyInspectionValue::Number(0.25)
+                })
+        }),
+        "property writes should upsert rows for live inspectors"
     );
 }
 
@@ -4169,6 +4184,55 @@ fn element_spec_ext_applies_shared_settings() {
     assert_eq!(
         ui.effective_layout(button),
         Layout::new().logical_size(80.0, 30.0)
+    );
+}
+
+#[test]
+fn inspection_snapshot_reports_effective_property_summaries() {
+    use crate::inspection::{ElementPropertyInspectionGroup, ElementPropertyInspectionValue};
+    use crate::{SurfaceSpecExt, TextSpecExt};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let background = Color::from_rgba8(0x20, 0x40, 0x80, 0xff);
+    let panel = ui.append(
+        root,
+        crate::Panel::new()
+            .background(Some(background.into()))
+            .font_size(18.0)
+            .opacity(0.75),
+    );
+
+    let snapshot = ui.inspection_snapshot();
+    let row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == panel)
+        .expect("configured panel should be inspectable");
+
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "Background"
+                && property.group == ElementPropertyInspectionGroup::Appearance
+                && property.value == ElementPropertyInspectionValue::Color(background.to_rgba8())
+        }),
+        "snapshot should expose effective appearance properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "FontSize"
+                && property.group == ElementPropertyInspectionGroup::Text
+                && property.value == ElementPropertyInspectionValue::Number(18.0)
+        }),
+        "snapshot should expose effective text properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "Opacity"
+                && property.group == ElementPropertyInspectionGroup::Motion
+                && property.value == ElementPropertyInspectionValue::Number(0.75)
+        }),
+        "snapshot should expose effective motion properties"
     );
 }
 
