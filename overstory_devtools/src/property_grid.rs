@@ -9,13 +9,12 @@
 //! column and property-value semantics later, this model is the part to
 //! reconsider.
 
-use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use overstory::{
-    Brush, Color, ElementId, Layout, LayoutDimension, LayoutSize, OutlineNodeKey, Panel, Text, Ui,
-    select_outline_key, theme,
+    Brush, Color, ElementId, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize,
+    OutlineNodeKey, Panel, Text, Ui, select_outline_key, theme,
 };
 
 #[cfg(not(feature = "spoor-session"))]
@@ -252,13 +251,15 @@ pub(crate) fn append_property_grid_sections(
     }
 }
 
-const GRID_LABEL_WIDTH: f32 = 156.0;
+const GRID_LABEL_WIDTH: f32 = 118.0;
 const GRID_ROW_INDENT: f32 = 16.0;
 const GRID_ROW_PADDING_X: f32 = 8.0;
-const GRID_ROW_PADDING_Y: f32 = 4.0;
-const GRID_SECTION_GAP: f32 = 4.0;
+const GRID_ROW_PADDING_Y: f32 = 5.0;
+const GRID_SECTION_GAP: f32 = 6.0;
 const GRID_FONT_SIZE: f64 = 12.0;
 const GRID_SECTION_FONT_SIZE: f64 = 11.0;
+const GRID_SECTION_COUNT_FONT_SIZE: f64 = 10.0;
+const GRID_ORIGIN_FONT_SIZE: f64 = 10.0;
 
 fn append_property_grid_section(
     ui: &mut Ui,
@@ -268,19 +269,38 @@ fn append_property_grid_section(
 ) -> ElementId {
     let section_id = ui.append(
         parent,
-        Panel::column(0.0).layout(Layout::column(0.0).margin_xy(0.0, GRID_SECTION_GAP)),
+        Panel::column(0.0).layout(
+            Layout::column(0.0)
+                .margin_xy(0.0, GRID_SECTION_GAP)
+                .fill_width(),
+        ),
     );
+    set_grid_surface(ui, section_id, control_bg(ui), control_border(ui), 6.0);
     let header = ui.append(
         section_id,
-        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(GRID_ROW_PADDING_X, 5.0)),
+        Panel::row(6.0).layout(
+            Layout::row(6.0)
+                .padding_xy(GRID_ROW_PADDING_X, 6.0)
+                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center))
+                .fill_width(),
+        ),
     );
-    set_grid_surface(ui, header, control_bg(ui), None, 5.0);
+    set_grid_surface(ui, header, control_hover_bg(ui), None, 5.0);
     append_grid_text(
         ui,
         header,
-        section.title(),
+        section.title().to_ascii_uppercase(),
         muted_text_brush(ui),
         GRID_SECTION_FONT_SIZE,
+        None,
+        true,
+    );
+    append_grid_text(
+        ui,
+        header,
+        section_row_count(section).to_string(),
+        muted_text_brush(ui),
+        GRID_SECTION_COUNT_FONT_SIZE,
         None,
         false,
     );
@@ -299,10 +319,15 @@ fn append_property_grid_row(
 ) -> ElementId {
     let row_id = ui.append(
         parent,
-        Panel::row(8.0).layout(Layout::row(8.0).align_center().padding_xy(
-            GRID_ROW_PADDING_X + ((depth as f32) * GRID_ROW_INDENT),
-            GRID_ROW_PADDING_Y,
-        )),
+        Panel::row(8.0).layout(
+            Layout::row(8.0)
+                .padding_xy(
+                    GRID_ROW_PADDING_X + ((depth as f32) * GRID_ROW_INDENT),
+                    GRID_ROW_PADDING_Y,
+                )
+                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Start))
+                .fill_width(),
+        ),
     );
     if row.action().is_some() {
         set_grid_surface(ui, row_id, control_hover_bg(ui), None, 4.0);
@@ -316,19 +341,7 @@ fn append_property_grid_row(
         Some(label_layout_width(depth)),
         false,
     );
-    if row.action().is_some() {
-        append_action_chip(ui, row_id, row_value_text(row));
-    } else {
-        append_grid_text(
-            ui,
-            row_id,
-            row_value_text(row),
-            primary_text_brush(ui),
-            GRID_FONT_SIZE,
-            None,
-            true,
-        );
-    }
+    append_value_cell(ui, row_id, row);
     wire_row_action(ui, row_id, row.action(), actions);
     for child in row.children() {
         append_property_grid_row(ui, parent, child, depth + 1, actions);
@@ -336,11 +349,16 @@ fn append_property_grid_row(
     row_id
 }
 
-fn row_value_text(row: &PropertyGridRow) -> String {
-    match row.origin() {
-        Some(origin) => format!("{} [{origin}]", row.value()),
-        None => row.value().into(),
-    }
+fn section_row_count(section: &PropertyGridSection) -> usize {
+    section.rows().iter().map(row_and_descendant_count).sum()
+}
+
+fn row_and_descendant_count(row: &PropertyGridRow) -> usize {
+    1 + row
+        .children()
+        .iter()
+        .map(row_and_descendant_count)
+        .sum::<usize>()
 }
 
 #[expect(
@@ -378,10 +396,51 @@ fn append_grid_text(
     text
 }
 
+fn append_value_cell(ui: &mut Ui, parent: ElementId, row: &PropertyGridRow) -> ElementId {
+    let cell = ui.append(
+        parent,
+        Panel::row(6.0).layout(
+            Layout::row(6.0)
+                .wrap()
+                .size(
+                    LayoutSize::new()
+                        .min_width(LayoutDimension::Logical(0.0))
+                        .flex_grow(1.0)
+                        .flex_shrink(1.0),
+                )
+                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center)),
+        ),
+    );
+    if row.action().is_some() {
+        append_action_chip(ui, cell, row.value());
+    } else {
+        append_grid_text(
+            ui,
+            cell,
+            row.value(),
+            value_text_brush(ui, row.value()),
+            GRID_FONT_SIZE,
+            None,
+            true,
+        );
+    }
+    if let Some(origin) = row.origin() {
+        append_origin_chip(ui, cell, origin);
+    }
+    cell
+}
+
 fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
     let chip = ui.append(
         parent,
-        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(7.0, 3.0)),
+        Panel::row(0.0).layout(
+            Layout::row(0.0).padding_xy(7.0, 3.0).size(
+                LayoutSize::new()
+                    .min_width(LayoutDimension::Logical(0.0))
+                    .flex_grow(1.0)
+                    .flex_shrink(1.0),
+            ),
+        ),
     );
     set_grid_surface(ui, chip, accent_bg(ui), None, 5.0);
     append_grid_text(
@@ -390,6 +449,24 @@ fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>
         content,
         on_accent_text_brush(ui),
         GRID_FONT_SIZE,
+        None,
+        false,
+    );
+    chip
+}
+
+fn append_origin_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
+    let chip = ui.append(
+        parent,
+        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(6.0, 2.0)),
+    );
+    set_grid_surface(ui, chip, control_hover_bg(ui), control_border(ui), 4.0);
+    append_grid_text(
+        ui,
+        chip,
+        content,
+        muted_text_brush(ui),
+        GRID_ORIGIN_FONT_SIZE,
         None,
         false,
     );
@@ -425,6 +502,18 @@ fn primary_text_brush(ui: &Ui) -> Brush {
         .unwrap_or_else(fallback_text_brush)
 }
 
+fn value_text_brush(ui: &Ui, value: &str) -> Brush {
+    if is_muted_value(value) {
+        muted_text_brush(ui)
+    } else {
+        primary_text_brush(ui)
+    }
+}
+
+fn is_muted_value(value: &str) -> bool {
+    matches!(value, "none" | "n/a" | "no" | "false")
+}
+
 fn on_accent_text_brush(ui: &Ui) -> Brush {
     ui.theme()
         .get::<Brush>(theme::ON_ACCENT_FG)
@@ -442,6 +531,13 @@ fn accent_bg(ui: &Ui) -> Option<Brush> {
 fn control_bg(ui: &Ui) -> Option<Brush> {
     ui.theme()
         .get::<Option<Brush>>(theme::CONTROL_BG)
+        .cloned()
+        .flatten()
+}
+
+fn control_border(ui: &Ui) -> Option<Brush> {
+    ui.theme()
+        .get::<Option<Brush>>(theme::CONTROL_BORDER)
         .cloned()
         .flatten()
 }

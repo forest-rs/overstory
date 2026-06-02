@@ -778,7 +778,7 @@ pub struct DevtoolsViewElements {
 
 const MAX_RELATIONSHIP_CHILDREN: usize = 8;
 const INSPECTOR_OUTLINE_WIDTH: f32 = 220.0;
-const INSPECTOR_DETAILS_WIDTH: f32 = 228.0;
+const INSPECTOR_DETAILS_WIDTH: f32 = 300.0;
 const INSPECTOR_VIEW_HEIGHT: f32 = 420.0;
 
 /// Appends a simple inspector view for `snapshot`.
@@ -1538,6 +1538,7 @@ fn bool_summary(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use understory_property::DependencyObjectExt;
 
     #[test]
     fn snapshot_capture_indexes_elements_and_layers() {
@@ -2069,18 +2070,48 @@ mod tests {
             .get(elements.details)
             .and_then(|details| details.children().first().copied())
             .expect("details should contain identity section");
+        let identity_header = inspector
+            .get(identity_section)
+            .and_then(|section| section.children().first().copied())
+            .expect("identity section should contain a header");
+        let header_children = inspector
+            .get(identity_header)
+            .map(overstory::Element::children)
+            .expect("section header should exist");
+        assert_eq!(
+            header_children.len(),
+            2,
+            "section headers should show a title and row count"
+        );
+        assert_eq!(
+            inspector
+                .get(header_children[0])
+                .and_then(|element| element.get_local_value(inspector.properties().content)),
+            Some(&String::from("IDENTITY"))
+        );
+        assert_eq!(
+            inspector
+                .get(header_children[1])
+                .and_then(|element| element.get_local_value(inspector.properties().content)),
+            Some(&String::from("5"))
+        );
         let element_row = inspector
             .get(identity_section)
             .and_then(|section| section.children().get(1).copied())
             .expect("identity section should contain an element row after its header");
 
+        let row_children = inspector
+            .get(element_row)
+            .map(overstory::Element::children)
+            .expect("property row should exist");
+        assert_eq!(row_children.len(), 2);
         assert_eq!(
             inspector
-                .get(element_row)
+                .get(row_children[1])
                 .map(overstory::Element::children)
                 .map(|children| children.len()),
-            Some(2),
-            "property rows should render as label/value panels"
+            Some(1),
+            "property values should render inside a dedicated value cell"
         );
     }
 

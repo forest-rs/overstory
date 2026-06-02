@@ -21,6 +21,7 @@ spoor_session = { optional = true, workspace = true }
 
 [dev-dependencies]
 overstory = { features = ["system-fonts"], workspace = true }
+understory_property.workspace = true
 
 [lints]
 workspace = true

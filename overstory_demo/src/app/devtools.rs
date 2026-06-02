@@ -222,7 +222,7 @@ fn open_in_process_devtools(
                 .class(CLASS_DEMO_CAPTION)
                 .class(CLASS_DEVTOOLS_STATUS)
                 .wrap()
-                .layout(Layout::new().logical_size(492.0, 44.0)),
+                .layout(Layout::new().logical_size(DEVTOOLS_INSPECTOR_WIDTH - 28.0, 44.0)),
         );
         shell.set_status(status);
         shell.update_status(dock.ui_mut(), 0, None);
