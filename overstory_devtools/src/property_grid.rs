@@ -9,6 +9,7 @@
 //! column and property-value semantics later, this model is the part to
 //! reconsider.
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -114,22 +115,20 @@ impl PropertyGridSection {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PropertyGridRow {
     label: String,
-    value: String,
+    value: PropertyGridValue,
     origin: Option<String>,
     children: Vec<Self>,
-    action: Option<PropertyGridAction>,
 }
 
 impl PropertyGridRow {
     /// Creates a leaf row with a display label and value.
     #[must_use]
-    pub fn new(label: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn new(label: impl Into<String>, value: impl Into<PropertyGridValue>) -> Self {
         Self {
             label: label.into(),
             value: value.into(),
             origin: None,
             children: Vec::new(),
-            action: None,
         }
     }
 
@@ -139,10 +138,16 @@ impl PropertyGridRow {
         &self.label
     }
 
-    /// Returns the display value.
+    /// Returns the semantic display value.
     #[must_use]
-    pub fn value(&self) -> &str {
+    pub fn value(&self) -> &PropertyGridValue {
         &self.value
+    }
+
+    /// Returns a plain-text summary of the display value.
+    #[must_use]
+    pub fn value_summary(&self) -> String {
+        self.value.summary()
     }
 
     /// Returns the row origin, if the adapter supplied one.
@@ -179,19 +184,213 @@ impl PropertyGridRow {
         self.children.push(child);
     }
 
-    pub(crate) fn select_element(mut self, element: ElementId) -> Self {
-        self.action = Some(PropertyGridAction::SelectElement(element));
-        self
-    }
-
-    fn action(&self) -> Option<PropertyGridAction> {
-        self.action
+    fn element_link(&self) -> Option<&PropertyGridElementLink> {
+        self.value.as_element_link()
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PropertyGridAction {
-    SelectElement(ElementId),
+/// Semantic value shown in a [`PropertyGridRow`].
+///
+/// The value is intentionally not a prebuilt element subtree. It describes the
+/// kind of value being inspected, and the property-grid renderer lowers it to
+/// the concrete elements that fit the current devtools UI.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PropertyGridValue {
+    /// Plain text with no richer display semantics.
+    Text(String),
+    /// Missing, unset, or not-applicable value.
+    Empty,
+    /// Boolean value.
+    Bool(bool),
+    /// Count of items in a collection-like value.
+    Count(usize),
+    /// Link to another inspectable element.
+    ElementLink(PropertyGridElementLink),
+    /// Token-like value such as a class, pseudo, slot, or type tag.
+    Token(PropertyGridToken),
+    /// Color value with a swatch.
+    Color(PropertyGridColor),
+}
+
+impl PropertyGridValue {
+    /// Creates a plain text value.
+    #[must_use]
+    pub fn text(value: impl Into<String>) -> Self {
+        Self::Text(value.into())
+    }
+
+    /// Creates an empty value.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self::Empty
+    }
+
+    /// Creates a count value.
+    #[must_use]
+    pub const fn count(value: usize) -> Self {
+        Self::Count(value)
+    }
+
+    /// Creates a link to another inspectable element.
+    #[must_use]
+    pub fn element_link(element: ElementId, label: impl Into<String>) -> Self {
+        Self::ElementLink(PropertyGridElementLink::new(element, label))
+    }
+
+    /// Creates a token-like value.
+    #[must_use]
+    pub fn token(label: impl Into<String>) -> Self {
+        Self::Token(PropertyGridToken::new(label))
+    }
+
+    /// Creates a color swatch value from 8-bit RGBA components.
+    #[must_use]
+    pub fn color_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self::Color(PropertyGridColor::from_rgba8(red, green, blue, alpha))
+    }
+
+    /// Returns a plain-text summary for tests, logs, and fallback displays.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        match self {
+            Self::Text(value) => value.clone(),
+            Self::Empty => String::from("none"),
+            Self::Bool(value) => bool_summary(*value).into(),
+            Self::Count(value) => value.to_string(),
+            Self::ElementLink(link) => link.label().into(),
+            Self::Token(token) => token.label().into(),
+            Self::Color(color) => color.label().into(),
+        }
+    }
+
+    fn as_element_link(&self) -> Option<&PropertyGridElementLink> {
+        match self {
+            Self::ElementLink(link) => Some(link),
+            _ => None,
+        }
+    }
+
+    fn is_muted(&self) -> bool {
+        matches!(self, Self::Empty | Self::Bool(false) | Self::Count(0))
+    }
+}
+
+impl From<String> for PropertyGridValue {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for PropertyGridValue {
+    fn from(value: &str) -> Self {
+        Self::Text(value.into())
+    }
+}
+
+impl From<bool> for PropertyGridValue {
+    fn from(value: bool) -> Self {
+        Self::Bool(value)
+    }
+}
+
+impl From<usize> for PropertyGridValue {
+    fn from(value: usize) -> Self {
+        Self::Count(value)
+    }
+}
+
+/// Link from one property-grid value to another inspectable element.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PropertyGridElementLink {
+    element: ElementId,
+    label: String,
+}
+
+impl PropertyGridElementLink {
+    /// Creates a link to `element` with a human-readable `label`.
+    #[must_use]
+    pub fn new(element: ElementId, label: impl Into<String>) -> Self {
+        Self {
+            element,
+            label: label.into(),
+        }
+    }
+
+    /// Returns the target element.
+    #[must_use]
+    pub const fn element(&self) -> ElementId {
+        self.element
+    }
+
+    /// Returns the display label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+/// Token-like property-grid value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PropertyGridToken {
+    label: String,
+}
+
+impl PropertyGridToken {
+    /// Creates a token with `label`.
+    #[must_use]
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+        }
+    }
+
+    /// Returns the display label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+/// RGBA color value for property-grid swatches.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PropertyGridColor {
+    rgba: [u8; 4],
+    label: String,
+}
+
+impl PropertyGridColor {
+    /// Creates a color from 8-bit RGBA components.
+    #[must_use]
+    pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self {
+            rgba: [red, green, blue, alpha],
+            label: rgba_label(red, green, blue, alpha),
+        }
+    }
+
+    /// Returns the 8-bit RGBA components.
+    #[must_use]
+    pub const fn rgba8(&self) -> [u8; 4] {
+        self.rgba
+    }
+
+    /// Returns the display label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+fn rgba_label(red: u8, green: u8, blue: u8, alpha: u8) -> String {
+    if alpha == 0xff {
+        format!("#{red:02x}{green:02x}{blue:02x}")
+    } else {
+        format!("#{red:02x}{green:02x}{blue:02x}{alpha:02x}")
+    }
+}
+
+fn bool_summary(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
 }
 
 #[derive(Clone, Debug)]
@@ -329,7 +528,7 @@ fn append_property_grid_row(
                 .fill_width(),
         ),
     );
-    if row.action().is_some() {
+    if row.element_link().is_some() {
         set_grid_surface(ui, row_id, control_hover_bg(ui), None, 4.0);
     }
     append_grid_text(
@@ -341,8 +540,10 @@ fn append_property_grid_row(
         Some(label_layout_width(depth)),
         false,
     );
-    append_value_cell(ui, row_id, row);
-    wire_row_action(ui, row_id, row.action(), actions);
+    append_value_cell(ui, row_id, row, actions);
+    if let Some(link) = row.element_link() {
+        wire_element_link(ui, row_id, link.element(), actions);
+    }
     for child in row.children() {
         append_property_grid_row(ui, parent, child, depth + 1, actions);
     }
@@ -396,7 +597,12 @@ fn append_grid_text(
     text
 }
 
-fn append_value_cell(ui: &mut Ui, parent: ElementId, row: &PropertyGridRow) -> ElementId {
+fn append_value_cell(
+    ui: &mut Ui,
+    parent: ElementId,
+    row: &PropertyGridRow,
+    actions: Option<&DetailActions>,
+) -> ElementId {
     let cell = ui.append(
         parent,
         Panel::row(6.0).layout(
@@ -411,23 +617,67 @@ fn append_value_cell(ui: &mut Ui, parent: ElementId, row: &PropertyGridRow) -> E
                 .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center)),
         ),
     );
-    if row.action().is_some() {
-        append_action_chip(ui, cell, row.value());
-    } else {
-        append_grid_text(
-            ui,
-            cell,
-            row.value(),
-            value_text_brush(ui, row.value()),
-            GRID_FONT_SIZE,
-            None,
-            true,
-        );
-    }
+    append_grid_value(ui, cell, row.value(), actions);
     if let Some(origin) = row.origin() {
         append_origin_chip(ui, cell, origin);
     }
     cell
+}
+
+fn append_grid_value(
+    ui: &mut Ui,
+    parent: ElementId,
+    value: &PropertyGridValue,
+    actions: Option<&DetailActions>,
+) {
+    match value {
+        PropertyGridValue::Text(text) => {
+            append_grid_text(
+                ui,
+                parent,
+                text,
+                value_text_brush(ui, value),
+                GRID_FONT_SIZE,
+                None,
+                true,
+            );
+        }
+        PropertyGridValue::Empty => {
+            append_grid_text(
+                ui,
+                parent,
+                "none",
+                muted_text_brush(ui),
+                GRID_FONT_SIZE,
+                None,
+                true,
+            );
+        }
+        PropertyGridValue::Bool(value) => {
+            append_bool_chip(ui, parent, *value);
+        }
+        PropertyGridValue::Count(value) => {
+            append_grid_text(
+                ui,
+                parent,
+                value.to_string(),
+                value_text_brush(ui, &PropertyGridValue::Count(*value)),
+                GRID_FONT_SIZE,
+                None,
+                true,
+            );
+        }
+        PropertyGridValue::ElementLink(link) => {
+            let chip = append_action_chip(ui, parent, link.label());
+            wire_element_link(ui, chip, link.element(), actions);
+        }
+        PropertyGridValue::Token(token) => {
+            append_token_chip(ui, parent, token.label());
+        }
+        PropertyGridValue::Color(color) => {
+            append_color_value(ui, parent, color);
+        }
+    }
 }
 
 fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
@@ -453,6 +703,67 @@ fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>
         false,
     );
     chip
+}
+
+fn append_bool_chip(ui: &mut Ui, parent: ElementId, value: bool) -> ElementId {
+    let foreground = if value {
+        primary_text_brush(ui)
+    } else {
+        muted_text_brush(ui)
+    };
+    append_chip(ui, parent, bool_summary(value), foreground)
+}
+
+fn append_token_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
+    append_chip(ui, parent, content, primary_text_brush(ui))
+}
+
+fn append_chip(
+    ui: &mut Ui,
+    parent: ElementId,
+    content: impl Into<String>,
+    foreground: Brush,
+) -> ElementId {
+    let chip = ui.append(
+        parent,
+        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(6.0, 2.0)),
+    );
+    set_grid_surface(ui, chip, control_hover_bg(ui), control_border(ui), 4.0);
+    append_grid_text(
+        ui,
+        chip,
+        content,
+        foreground,
+        GRID_ORIGIN_FONT_SIZE,
+        None,
+        false,
+    );
+    chip
+}
+
+fn append_color_value(ui: &mut Ui, parent: ElementId, color: &PropertyGridColor) -> ElementId {
+    let swatch = ui.append(
+        parent,
+        Panel::new().layout(Layout::new().logical_size(14.0, 14.0).flex_shrink(0.0)),
+    );
+    let [red, green, blue, alpha] = color.rgba8();
+    set_grid_surface(
+        ui,
+        swatch,
+        Some(Color::from_rgba8(red, green, blue, alpha).into()),
+        control_border(ui),
+        3.0,
+    );
+    append_grid_text(
+        ui,
+        parent,
+        color.label(),
+        primary_text_brush(ui),
+        GRID_FONT_SIZE,
+        None,
+        true,
+    );
+    swatch
 }
 
 fn append_origin_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
@@ -502,16 +813,12 @@ fn primary_text_brush(ui: &Ui) -> Brush {
         .unwrap_or_else(fallback_text_brush)
 }
 
-fn value_text_brush(ui: &Ui, value: &str) -> Brush {
-    if is_muted_value(value) {
+fn value_text_brush(ui: &Ui, value: &PropertyGridValue) -> Brush {
+    if value.is_muted() {
         muted_text_brush(ui)
     } else {
         primary_text_brush(ui)
     }
-}
-
-fn is_muted_value(value: &str) -> bool {
-    matches!(value, "none" | "n/a" | "no" | "false")
 }
 
 fn on_accent_text_brush(ui: &Ui) -> Brush {
@@ -553,22 +860,19 @@ fn fallback_text_brush() -> Brush {
     Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff).into()
 }
 
-fn wire_row_action(
+fn wire_element_link(
     ui: &mut Ui,
-    row: ElementId,
-    action: Option<PropertyGridAction>,
+    source: ElementId,
+    target: ElementId,
     actions: Option<&DetailActions>,
 ) {
-    let Some(PropertyGridAction::SelectElement(target)) = action else {
-        return;
-    };
     let Some(actions) = actions.cloned() else {
         return;
     };
     if actions.outline_key_for_element(target).is_none() {
         return;
     }
-    ui.on_click(row, move |ui, event| {
+    ui.on_click(source, move |ui, event| {
         let key = actions.outline_key_for_element(target);
         if let Some(key) = key {
             let _ = select_outline_key(ui, actions.outline, key);

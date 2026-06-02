@@ -51,7 +51,10 @@ mod session;
 pub use client::{InspectionClient, InspectionMirror};
 #[cfg(feature = "spoor-session")]
 pub use live::{DevtoolsRefresh, DevtoolsTreePatchCounts, LiveDevtools};
-pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
+pub use property_grid::{
+    PropertyGrid, PropertyGridColor, PropertyGridElementLink, PropertyGridRow, PropertyGridSection,
+    PropertyGridToken, PropertyGridValue,
+};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
     INSPECTION_DOMAIN, InspectionDelta, InspectionDispatch, InspectionElementDetails,
@@ -1204,14 +1207,14 @@ fn selected_element_property_grid(
         .row(PropertyGridRow::new("Role", element_role(snapshot, row)))
         .row(PropertyGridRow::new(
             "Widget identity",
-            bool_summary(row.has_widget_identity),
+            row.has_widget_identity,
         ))
         .row(PropertyGridRow::new(
             "Type tag",
             optional_debug(row.type_tag),
         ));
 
-    let mut children = PropertyGridRow::new("Children", format!("{}", row.children.len()));
+    let mut children = PropertyGridRow::new("Children", row.children.len());
     for (index, child) in row
         .children
         .iter()
@@ -1228,7 +1231,7 @@ fn selected_element_property_grid(
     if row.children.len() > MAX_RELATIONSHIP_CHILDREN {
         children.push_child(PropertyGridRow::new(
             "More children",
-            format!("{}", row.children.len() - MAX_RELATIONSHIP_CHILDREN),
+            PropertyGridValue::count(row.children.len() - MAX_RELATIONSHIP_CHILDREN),
         ));
     }
     let tree = PropertyGridSection::new("Tree")
@@ -1244,7 +1247,7 @@ fn selected_element_property_grid(
         .row(PropertyGridRow::new("Role", template_role(snapshot, row)))
         .row(PropertyGridRow::new(
             "Owned parts",
-            format!("{}", template_part_count(snapshot, row.id)),
+            template_part_count(snapshot, row.id),
         ))
         .row(element_relation_row(
             snapshot,
@@ -1257,7 +1260,8 @@ fn selected_element_property_grid(
         ))
         .row(PropertyGridRow::new(
             "Slot",
-            row.template_slot.unwrap_or("none"),
+            row.template_slot
+                .map_or_else(PropertyGridValue::empty, PropertyGridValue::token),
         ))
         .row(PropertyGridRow::new("Key", optional_u64(row.template_key)));
 
@@ -1266,33 +1270,18 @@ fn selected_element_property_grid(
         .row(pseudo_list_row(row));
 
     let state = PropertyGridSection::new("State")
-        .row(PropertyGridRow::new(
-            "Enabled",
-            bool_summary(row.state.enabled),
-        ))
-        .row(PropertyGridRow::new(
-            "Focusable",
-            bool_summary(row.state.focusable),
-        ))
-        .row(PropertyGridRow::new(
-            "Focused",
-            bool_summary(row.state.focused),
-        ))
+        .row(PropertyGridRow::new("Enabled", row.state.enabled))
+        .row(PropertyGridRow::new("Focusable", row.state.focusable))
+        .row(PropertyGridRow::new("Focused", row.state.focused))
         .row(PropertyGridRow::new(
             "Focus visible",
-            bool_summary(row.state.focus_visible),
+            row.state.focus_visible,
         ))
-        .row(PropertyGridRow::new(
-            "Hovered",
-            bool_summary(row.state.hovered),
-        ))
-        .row(PropertyGridRow::new(
-            "Pressed",
-            bool_summary(row.state.pressed),
-        ))
+        .row(PropertyGridRow::new("Hovered", row.state.hovered))
+        .row(PropertyGridRow::new("Pressed", row.state.pressed))
         .row(PropertyGridRow::new(
             "Pointer capture",
-            bool_summary(row.state.pointer_captured),
+            row.state.pointer_captured,
         ));
 
     let layout = PropertyGridSection::new("Layout")
@@ -1326,19 +1315,13 @@ fn selected_element_property_grid(
                 "Hidden",
                 format!("{} / {}", layer_row.hidden, layer_row.effectively_hidden),
             )
-            .child(PropertyGridRow::new(
-                "Local",
-                bool_summary(layer_row.hidden),
-            ))
+            .child(PropertyGridRow::new("Local", layer_row.hidden))
             .child(PropertyGridRow::new(
                 "Effective",
-                bool_summary(layer_row.effectively_hidden),
+                layer_row.effectively_hidden,
             )),
         );
-        layer.push_child(PropertyGridRow::new(
-            "Clip",
-            bool_summary(layer_row.has_clip),
-        ));
+        layer.push_child(PropertyGridRow::new("Clip", layer_row.has_clip));
     }
     let composition = PropertyGridSection::new("Composition")
         .row(layer)
@@ -1366,10 +1349,12 @@ fn element_relation_row(
     label: &str,
     target: Option<ElementId>,
 ) -> PropertyGridRow {
-    let row = PropertyGridRow::new(label, relation_summary(snapshot, target));
     match target {
-        Some(element) => row.select_element(element),
-        None => row,
+        Some(element) => PropertyGridRow::new(
+            label,
+            PropertyGridValue::element_link(element, relation_summary(snapshot, Some(element))),
+        ),
+        None => PropertyGridRow::new(label, PropertyGridValue::empty()),
     }
 }
 
@@ -1443,7 +1428,7 @@ fn class_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
     for class in &row.classes {
         classes.push_child(PropertyGridRow::new(
             format!("Class {}", class.0),
-            format!("{class:?}"),
+            PropertyGridValue::token(format!("{class:?}")),
         ));
     }
     classes
@@ -1454,7 +1439,7 @@ fn pseudo_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
     for pseudo in &row.pseudos {
         pseudos.push_child(PropertyGridRow::new(
             pseudo_label(pseudo.0),
-            format!("{pseudo:?}"),
+            PropertyGridValue::token(format!("{pseudo:?}")),
         ));
     }
     pseudos
@@ -1464,9 +1449,9 @@ fn list_summary_row(label: &str, len: usize) -> PropertyGridRow {
     PropertyGridRow::new(
         label,
         if len == 0 {
-            String::from("none")
+            PropertyGridValue::empty()
         } else {
-            format!("{len}")
+            PropertyGridValue::count(len)
         },
     )
 }
@@ -1495,26 +1480,28 @@ fn optional_element_id(id: Option<ElementId>) -> String {
     )
 }
 
-fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> String {
-    value.map_or_else(|| "none".into(), |value| format!("{value:?}"))
+fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> PropertyGridValue {
+    value.map_or_else(PropertyGridValue::empty, |value| {
+        PropertyGridValue::token(format!("{value:?}"))
+    })
 }
 
-fn optional_u64(value: Option<u64>) -> String {
-    value.map_or_else(|| "none".into(), |value| format!("{value}"))
+fn optional_u64(value: Option<u64>) -> PropertyGridValue {
+    value.map_or_else(PropertyGridValue::empty, |value| {
+        PropertyGridValue::text(format!("{value}"))
+    })
 }
 
-fn optional_layer_id(id: Option<LayerInspectionId>) -> String {
-    id.map_or_else(
-        || "none".into(),
-        |id| format!("{}:{}", id.index, id.generation),
-    )
+fn optional_layer_id(id: Option<LayerInspectionId>) -> PropertyGridValue {
+    id.map_or_else(PropertyGridValue::empty, |id| {
+        PropertyGridValue::token(format!("{}:{}", id.index, id.generation))
+    })
 }
 
-fn optional_surface_id(id: Option<SurfaceInspectionId>) -> String {
-    id.map_or_else(
-        || "none".into(),
-        |id| format!("{}:{}", id.index, id.generation),
-    )
+fn optional_surface_id(id: Option<SurfaceInspectionId>) -> PropertyGridValue {
+    id.map_or_else(PropertyGridValue::empty, |id| {
+        PropertyGridValue::token(format!("{}:{}", id.index, id.generation))
+    })
 }
 
 fn rect_summary(rect: overstory::Rect) -> String {
@@ -1529,10 +1516,6 @@ fn rect_summary(rect: overstory::Rect) -> String {
 
 fn size_summary(size: overstory::Size) -> String {
     format!("{:.1}x{:.1}", size.width, size.height)
-}
-
-fn bool_summary(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
 }
 
 #[cfg(test)]
@@ -2012,12 +1995,15 @@ mod tests {
             .find(|row| row.label() == "Children")
             .expect("tree section should contain children row");
 
-        assert_eq!(children.value(), "1");
+        assert_eq!(children.value(), &PropertyGridValue::count(1));
         assert_eq!(children.children().len(), 1);
         assert_eq!(children.children()[0].label(), "Child 0");
         assert_eq!(
             children.children()[0].value(),
-            format!("Panel {}", optional_element_id(Some(grandchild)))
+            &PropertyGridValue::element_link(
+                grandchild,
+                format!("Panel {}", optional_element_id(Some(grandchild)))
+            )
         );
     }
 
@@ -2051,9 +2037,15 @@ mod tests {
             .expect("style section should contain pseudos row");
 
         assert_eq!(classes.children()[0].label(), "Class 1");
-        assert_eq!(classes.children()[0].value(), "ClassId(1)");
+        assert_eq!(
+            classes.children()[0].value(),
+            &PropertyGridValue::token("ClassId(1)")
+        );
         assert_eq!(pseudos.children()[0].label(), ":hover");
-        assert_eq!(pseudos.children()[0].value(), "PseudoClassId(1)");
+        assert_eq!(
+            pseudos.children()[0].value(),
+            &PropertyGridValue::token("PseudoClassId(1)")
+        );
     }
 
     #[test]
@@ -2112,6 +2104,54 @@ mod tests {
                 .map(|children| children.len()),
             Some(1),
             "property values should render inside a dedicated value cell"
+        );
+    }
+
+    #[test]
+    fn property_grid_renders_semantic_value_presenters() {
+        let grid = PropertyGrid::new().section(
+            PropertyGridSection::new("Style")
+                .row(PropertyGridRow::new(
+                    "Background",
+                    PropertyGridValue::color_rgba8(0x2f, 0x62, 0xd6, 0xff),
+                ))
+                .row(PropertyGridRow::new(
+                    "Pseudo",
+                    PropertyGridValue::token(":hover"),
+                )),
+        );
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+
+        append_property_grid_sections(&mut inspector, root, &grid, None);
+
+        let section = inspector.get(root).unwrap().children()[0];
+        let color_row = inspector.get(section).unwrap().children()[1];
+        let color_cell = inspector.get(color_row).unwrap().children()[1];
+        let color_children = inspector.get(color_cell).unwrap().children();
+        assert_eq!(
+            color_children.len(),
+            2,
+            "color values should render as swatch plus text"
+        );
+        assert!(
+            inspector
+                .get(color_children[0])
+                .and_then(|element| element.get_local_value(inspector.properties().background))
+                .is_some_and(Option::is_some),
+            "color swatch should carry a local background brush"
+        );
+
+        let token_row = inspector.get(section).unwrap().children()[2];
+        let token_cell = inspector.get(token_row).unwrap().children()[1];
+        let token_chip = inspector.get(token_cell).unwrap().children()[0];
+        let token_text = inspector.get(token_chip).unwrap().children()[0];
+        assert_eq!(
+            inspector
+                .get(token_text)
+                .and_then(|element| element.get_local_value(inspector.properties().content)),
+            Some(&String::from(":hover")),
+            "token values should render as token chips"
         );
     }
 
@@ -2211,12 +2251,15 @@ mod tests {
             .find(|row| row.label() == "Owned parts")
             .expect("template section should expose owned part count");
 
-        assert_eq!(role.value(), "templated control");
-        assert_eq!(owned_parts.value(), "1");
+        assert_eq!(role.value(), &PropertyGridValue::text("templated control"));
+        assert_eq!(owned_parts.value(), &PropertyGridValue::count(1));
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(
             children.children()[0].value(),
-            format!("Text {}", optional_element_id(Some(label)))
+            &PropertyGridValue::element_link(
+                label,
+                format!("Text {}", optional_element_id(Some(label)))
+            )
         );
     }
 
