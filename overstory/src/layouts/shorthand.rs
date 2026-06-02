@@ -114,6 +114,29 @@ impl Layout {
         self
     }
 
+    /// Fills the available block space while allowing flex layout to shrink
+    /// the element below its intrinsic content height.
+    ///
+    /// This is the vertical counterpart to [`Self::fill_width`] for panes,
+    /// scroll areas, and controls that should stretch to their parent instead
+    /// of carrying a fixed logical height.
+    #[must_use]
+    pub fn fill_height(mut self) -> Self {
+        self.size.merge_from(
+            LayoutSize::new()
+                .height(LayoutDimension::Percent(1.0))
+                .min_height(LayoutDimension::Logical(0.0)),
+        );
+        self
+    }
+
+    /// Fills both axes while allowing flex layout to shrink the element below
+    /// its intrinsic content size.
+    #[must_use]
+    pub fn fill_size(self) -> Self {
+        self.fill_width().fill_height()
+    }
+
     /// Sets a fixed logical-pixel minimum width and height.
     #[must_use]
     pub fn min_logical_size(mut self, width: f32, height: f32) -> Self {
@@ -369,6 +392,36 @@ mod tests {
                 LayoutSize::new()
                     .width(LayoutDimension::Percent(1.0))
                     .min_width(LayoutDimension::Logical(0.0))
+            )
+        );
+    }
+
+    #[test]
+    fn fill_height_sets_percent_height_and_zero_min_height() {
+        let parts = Layout::new().fill_height().into_parts();
+
+        assert_eq!(
+            parts.size,
+            Some(
+                LayoutSize::new()
+                    .height(LayoutDimension::Percent(1.0))
+                    .min_height(LayoutDimension::Logical(0.0))
+            )
+        );
+    }
+
+    #[test]
+    fn fill_size_sets_percent_size_and_zero_min_size() {
+        let parts = Layout::new().fill_size().into_parts();
+
+        assert_eq!(
+            parts.size,
+            Some(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.0))
+                    .height(LayoutDimension::Percent(1.0))
+                    .min_width(LayoutDimension::Logical(0.0))
+                    .min_height(LayoutDimension::Logical(0.0))
             )
         );
     }
