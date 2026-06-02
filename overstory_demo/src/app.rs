@@ -27,7 +27,7 @@ use overstory::{
     ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts, set_progress_value, theme,
 };
 use overstory_devtools::{
-    DevtoolsSession, DevtoolsSessionHandle, DevtoolsSnapshot, InspectionClient, append_session_view,
+    DevtoolsRefresh, DevtoolsSessionHandle, InspectionClient, LiveDevtools, append_session_view,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};

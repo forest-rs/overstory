@@ -8,10 +8,14 @@ impl View for DevtoolsPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
-        let (snapshot, selected) = devtools_target_snapshot();
-        let session = DevtoolsSessionHandle::new(
-            DevtoolsSession::new(snapshot).with_selected_element(Some(selected)),
-        );
+        let (mut target, selected) = devtools_target();
+        let mut devtools =
+            LiveDevtools::capture(&target, Some(selected)).expect("devtools should attach");
+        apply_devtools_target_refresh(&mut target);
+        let refresh = devtools
+            .refresh_from(&target)
+            .expect("target refresh should flow through the devtools session");
+        let session = devtools.session().clone();
 
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
@@ -38,7 +42,7 @@ impl View for DevtoolsPage {
                         summary
                             .ui_mut()
                             .add_class(summary_id, CLASS_DEVTOOLS_SUMMARY_CARD);
-                        append_devtools_summary(summary, &session);
+                        append_devtools_summary(summary, &session, refresh);
                     },
                 );
             },
@@ -46,10 +50,14 @@ impl View for DevtoolsPage {
     }
 }
 
-fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionHandle) {
+fn append_devtools_summary(
+    summary: &mut ChildUi<'_>,
+    session: &DevtoolsSessionHandle,
+    refresh: DevtoolsRefresh,
+) {
     summary.add(page_heading("Live protocol"));
     summary.add(body_text(
-        "The inspector asks for a compact tree, lazy element details, and subsystem summaries through a Spoor session boundary.",
+        "The inspector attaches to a target, receives refresh stream rows, then lazily asks for tree, selection, details, and summaries through the session boundary.",
     ));
     summary.add(Divider::horizontal().length(220.0));
 
@@ -80,6 +88,19 @@ fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionH
             "{}",
             summaries.composition.changes.added + summaries.composition.changes.removed
         ),
+    );
+    append_svg_inspector_row_to(
+        summary,
+        "Refresh stream rows",
+        &format!("{}", refresh.stream_item_count),
+    );
+    append_svg_inspector_row_to(
+        summary,
+        "Selected",
+        &refresh
+            .selected
+            .map(|id| format!("{}:{}", id.slot(), id.generation()))
+            .unwrap_or_else(|| String::from("none")),
     );
     append_svg_inspector_row_to(
         summary,
@@ -115,11 +136,11 @@ fn append_devtools_summary(summary: &mut ChildUi<'_>, session: &DevtoolsSessionH
     );
     summary.add(Divider::horizontal().length(220.0));
     summary.add(body_text(
-        "Next: attach stream deltas to this mirror for frame phases, traces, cache pressure, and timeline tracks.",
+        "Next: feed frame phases, traces, cache pressure, and timeline tracks through the same stream surface.",
     ));
 }
 
-fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
+fn devtools_target() -> (Ui, ElementId) {
     let mut target = Ui::new();
     target.set_theme(theme::dark_theme_builder().build());
     let root = target.root();
@@ -165,12 +186,29 @@ fn devtools_target_snapshot() -> (DevtoolsSnapshot, ElementId) {
     });
 
     target.schedule_timeline_cue(millis(800), 1);
+    compute_devtools_target_layout(&mut target);
+
+    (target, deploy)
+}
+
+fn apply_devtools_target_refresh(target: &mut Ui) {
+    let root = target.root();
+    target.with_children(root, |root| {
+        root.with_child(Panel::row(10.0).align_center(), |row| {
+            row.add(Spinner::new());
+            row.add(Text::new("Live target refresh applied").font_size(13.0));
+            row.add(Button::new("Inspect").font_size(13.0));
+        });
+    });
+    target.schedule_timeline_cue(millis(1_200), 2);
+    compute_devtools_target_layout(target);
+}
+
+fn compute_devtools_target_layout(target: &mut Ui) {
     target.compute_layout(Size::new(
         f64::from(DEVTOOLS_TARGET_WIDTH),
         f64::from(DEVTOOLS_TARGET_HEIGHT),
     ));
-
-    (DevtoolsSnapshot::capture(&target), deploy)
 }
 
 #[cfg(test)]
@@ -200,6 +238,26 @@ mod tests {
         assert!(
             ui.effective_bounds(inspector).width() > ui.effective_bounds(summary).width(),
             "inspector should get more room than the summary",
+        );
+    }
+
+    #[test]
+    fn devtools_target_refresh_reaches_live_mirror() {
+        let (mut target, selected) = devtools_target();
+        let mut devtools =
+            LiveDevtools::capture(&target, Some(selected)).expect("devtools should attach");
+        let initial_nodes = devtools.mirror().tree().nodes.len();
+
+        apply_devtools_target_refresh(&mut target);
+        let refresh = devtools
+            .refresh_from(&target)
+            .expect("target refresh should update live mirror");
+
+        assert_eq!(refresh.stream_item_count, 1);
+        assert_eq!(refresh.selected, Some(selected));
+        assert!(
+            devtools.mirror().tree().nodes.len() > initial_nodes,
+            "refresh should expose target elements added after attachment",
         );
     }
 
