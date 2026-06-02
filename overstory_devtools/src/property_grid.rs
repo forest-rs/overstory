@@ -252,7 +252,7 @@ pub(crate) fn append_property_grid_sections(
     }
 }
 
-const GRID_LABEL_WIDTH: f32 = 132.0;
+const GRID_LABEL_WIDTH: f32 = 156.0;
 const GRID_ROW_INDENT: f32 = 16.0;
 const GRID_ROW_PADDING_X: f32 = 8.0;
 const GRID_ROW_PADDING_Y: f32 = 4.0;

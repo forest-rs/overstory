@@ -1259,8 +1259,8 @@ fn selected_element_property_grid(
         .row(PropertyGridRow::new("Key", optional_u64(row.template_key)));
 
     let style = PropertyGridSection::new("Style")
-        .row(debug_tree_row("Classes", row.classes.as_slice()))
-        .row(debug_tree_row("Pseudos", row.pseudos.as_slice()));
+        .row(class_list_row(row))
+        .row(pseudo_list_row(row));
 
     let state = PropertyGridSection::new("State")
         .row(PropertyGridRow::new(
@@ -1435,22 +1435,54 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
         .count()
 }
 
-fn debug_tree_row<T: core::fmt::Debug>(label: &str, values: &[T]) -> PropertyGridRow {
-    let mut row = PropertyGridRow::new(
-        label,
-        if values.is_empty() {
-            String::from("none")
-        } else {
-            format!("{}", values.len())
-        },
-    );
-    for (index, value) in values.iter().enumerate() {
-        row.push_child(PropertyGridRow::new(
-            format!("{label} {index}"),
-            format!("{value:?}"),
+fn class_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
+    let mut classes = list_summary_row("Classes", row.classes.len());
+    for class in &row.classes {
+        classes.push_child(PropertyGridRow::new(
+            format!("Class {}", class.0),
+            format!("{class:?}"),
         ));
     }
-    row
+    classes
+}
+
+fn pseudo_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
+    let mut pseudos = list_summary_row("Pseudos", row.pseudos.len());
+    for pseudo in &row.pseudos {
+        pseudos.push_child(PropertyGridRow::new(
+            pseudo_label(pseudo.0),
+            format!("{pseudo:?}"),
+        ));
+    }
+    pseudos
+}
+
+fn list_summary_row(label: &str, len: usize) -> PropertyGridRow {
+    PropertyGridRow::new(
+        label,
+        if len == 0 {
+            String::from("none")
+        } else {
+            format!("{len}")
+        },
+    )
+}
+
+fn pseudo_label(id: u32) -> String {
+    let label = match id {
+        id if id == overstory::pseudos::PSEUDO_HOVER.0 => ":hover",
+        id if id == overstory::pseudos::PSEUDO_PRESSED.0 => ":pressed",
+        id if id == overstory::pseudos::PSEUDO_FOCUSED.0 => ":focused",
+        id if id == overstory::pseudos::PSEUDO_DISABLED.0 => ":disabled",
+        id if id == overstory::pseudos::PSEUDO_CHECKED.0 => ":checked",
+        id if id == overstory::pseudos::PSEUDO_READ_ONLY.0 => ":read-only",
+        id if id == overstory::pseudos::PSEUDO_FOCUS_VISIBLE.0 => ":focus-visible",
+        id if id == overstory::pseudos::PSEUDO_SELECTED.0 => ":selected",
+        id if id == overstory::pseudos::PSEUDO_PLACEHOLDER_SHOWN.0 => ":placeholder-shown",
+        id if id == overstory::pseudos::PSEUDO_EXPANDED.0 => ":expanded",
+        _ => return format!("Pseudo {id}"),
+    };
+    String::from(label)
 }
 
 fn optional_element_id(id: Option<ElementId>) -> String {
@@ -1983,6 +2015,41 @@ mod tests {
             children.children()[0].value(),
             format!("Panel {}", optional_element_id(Some(grandchild)))
         );
+    }
+
+    #[test]
+    fn selected_element_property_grid_labels_style_tokens_by_name_or_id() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
+        ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let row = snapshot
+            .element(child)
+            .expect("child should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, row);
+        let style = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Style")
+            .expect("grid should contain style section");
+        let classes = style
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Classes")
+            .expect("style section should contain classes row");
+        let pseudos = style
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Pseudos")
+            .expect("style section should contain pseudos row");
+
+        assert_eq!(classes.children()[0].label(), "Class 1");
+        assert_eq!(classes.children()[0].value(), "ClassId(1)");
+        assert_eq!(pseudos.children()[0].label(), ":hover");
+        assert_eq!(pseudos.children()[0].value(), "PseudoClassId(1)");
     }
 
     #[test]
