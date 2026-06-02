@@ -37,6 +37,8 @@ use overstory::{
 
 #[cfg(feature = "spoor-session")]
 mod client;
+#[cfg(feature = "spoor-session")]
+mod live;
 mod property_grid;
 #[cfg(feature = "spoor-session")]
 mod protocol;
@@ -44,6 +46,8 @@ mod session;
 
 #[cfg(feature = "spoor-session")]
 pub use client::{InspectionClient, InspectionMirror};
+#[cfg(feature = "spoor-session")]
+pub use live::{DevtoolsRefresh, LiveDevtools};
 pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
