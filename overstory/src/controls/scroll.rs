@@ -19,6 +19,7 @@
 use alloc::boxed::Box;
 
 use kurbo::{Axis, Point, Size, Vec2};
+use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
@@ -26,7 +27,7 @@ use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
     ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
-    action_scroll_unit, is_initial_drag_move,
+    action_scroll_unit, f32_from_logical, is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -410,7 +411,14 @@ impl AppendSpec for ScrollArea {
             .control_state()
             .unwrap_or_else(|| ControlState::interactive().focusable(false));
 
-        let widget = ScrollAreaWidget::default();
+        let widget = ScrollAreaWidget {
+            gap,
+            scrollbar_thickness,
+            viewport: ElementSlot::new(),
+            body: ElementSlot::new(),
+            vertical_bar: ElementSlot::new(),
+            horizontal_bar: ElementSlot::new(),
+        };
         let area = ui.append_widget(parent, Box::new(widget));
 
         let (width, height) =
@@ -435,6 +443,7 @@ impl AppendSpec for ScrollArea {
                     .logical_size(metrics.viewport_width, metrics.body_height)
                     .flex_shrink(0.0),
             );
+            set_scroll_area_body(ui, area, body);
             body
         } else {
             area
@@ -483,7 +492,10 @@ impl ElementSpec for ScrollArea {
 /// Per-element widget for `ScrollArea`.
 #[derive(Debug, Default)]
 pub(crate) struct ScrollAreaWidget {
+    gap: f32,
+    scrollbar_thickness: f32,
     viewport: ElementSlot,
+    body: ElementSlot,
     vertical_bar: ElementSlot,
     horizontal_bar: ElementSlot,
 }
@@ -499,6 +511,60 @@ impl Widget for ScrollAreaWidget {
         _ctx: &crate::AccessibilityContext<'_>,
     ) -> Option<accesskit::Role> {
         Some(accesskit::Role::GenericContainer)
+    }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let Some(bounds) = ctx.effective_bounds(ctx.id()) else {
+            return ArrangeResult::UNCHANGED;
+        };
+        let metrics = ScrollAreaMetrics::new(
+            f32_from_logical(bounds.width()).max(1.0),
+            f32_from_logical(bounds.height()).max(1.0),
+            self.gap,
+            self.scrollbar_thickness,
+            self.vertical_bar.get().is_some(),
+            self.horizontal_bar.get().is_some(),
+        );
+
+        let mut changed = false;
+        if let Some(body) = self.body.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                body,
+                LayoutSize::logical(metrics.viewport_width, metrics.body_height).flex_shrink(0.0),
+            );
+        }
+        if let Some(viewport) = self.viewport.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                viewport,
+                LayoutSize::logical(metrics.viewport_width, metrics.viewport_height),
+            );
+        }
+        if let Some(bar) = self.vertical_bar.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                bar,
+                scroll_bar_size(
+                    Axis::Vertical,
+                    metrics.viewport_height,
+                    self.scrollbar_thickness,
+                ),
+            );
+        }
+        if let Some(bar) = self.horizontal_bar.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                bar,
+                scroll_bar_size(
+                    Axis::Horizontal,
+                    metrics.viewport_width,
+                    self.scrollbar_thickness,
+                ),
+            );
+        }
+
+        ArrangeResult::from_changed(changed)
     }
 }
 
@@ -539,9 +605,19 @@ fn scrollbar_gutter(enabled: bool, gap: f32, thickness: f32) -> f32 {
     if enabled { gap + thickness } else { 0.0 }
 }
 
+fn f32_nearly_equal(a: f32, b: f32) -> bool {
+    (a - b).abs() <= f32::EPSILON
+}
+
 fn set_scroll_area_viewport(ui: &Ui, area: ElementId, viewport: ElementId) {
     if let Some(widget) = scroll_area_widget(ui, area) {
         widget.viewport.set(viewport);
+    }
+}
+
+fn set_scroll_area_body(ui: &Ui, area: ElementId, body: ElementId) {
+    if let Some(widget) = scroll_area_widget(ui, area) {
+        widget.body.set(body);
     }
 }
 
@@ -561,6 +637,18 @@ fn scroll_area_widget(ui: &Ui, area: ElementId) -> Option<&ScrollAreaWidget> {
     ui.get(area)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ScrollAreaWidget>())
+}
+
+fn set_layout_size_if_changed(ui: &mut Ui, element: ElementId, size: LayoutSize) -> bool {
+    if ui
+        .get(element)
+        .and_then(|element| element.get_local_value(ui.properties().layout_size))
+        == Some(&size)
+    {
+        return false;
+    }
+    ui.set_layout_size(element, size);
+    true
 }
 
 /// Returns the internal viewport for `area`, if it is a live [`ScrollArea`].
@@ -783,6 +871,28 @@ impl Widget for ScrollBarWidget {
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         scroll_bar_thumb_offset(self.axis, &self.state, self.length, self.thumb_extent)
+    }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let Some(bounds) = ctx.effective_bounds(ctx.id()) else {
+            return ArrangeResult::UNCHANGED;
+        };
+        let size = bounds.size();
+        let length = f32_from_logical(size.along(self.axis)).max(1.0);
+        let thickness = f32_from_logical(size.along(self.axis.cross())).max(1.0);
+        let thumb_extent = self.thumb_extent.clamp(1.0, length);
+
+        let changed = !f32_nearly_equal(self.length, length)
+            || !f32_nearly_equal(self.thickness, thickness)
+            || !f32_nearly_equal(self.thumb_extent, thumb_extent);
+        if changed {
+            self.length = length;
+            self.thickness = thickness;
+            self.thumb_extent = thumb_extent;
+        }
+
+        let scroll_bar = ctx.id();
+        ArrangeResult::from_changed(changed || sync_scroll_bar_thumb_size(ctx.ui_mut(), scroll_bar))
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
@@ -1145,9 +1255,15 @@ fn scroll_bar_widget(ui: &Ui, scroll_bar: ElementId) -> Option<ScrollBarSnapshot
 }
 
 fn scroll_bar_layout(axis: Axis, length: f32, thickness: f32) -> Layout {
+    Layout::new()
+        .relative()
+        .size(scroll_bar_size(axis, length, thickness))
+}
+
+fn scroll_bar_size(axis: Axis, length: f32, thickness: f32) -> LayoutSize {
     match axis {
-        Axis::Horizontal => Layout::new().relative().logical_size(length, thickness),
-        Axis::Vertical => Layout::new().relative().logical_size(thickness, length),
+        Axis::Horizontal => LayoutSize::logical(length, thickness),
+        Axis::Vertical => LayoutSize::logical(thickness, length),
     }
 }
 
@@ -1158,17 +1274,18 @@ fn scroll_bar_thumb_size(axis: Axis, thickness: f32, extent: f32) -> LayoutSize 
     }
 }
 
-fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) {
+fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) -> bool {
     let Some(widget) = scroll_bar_widget(ui, scroll_bar) else {
-        return;
+        return false;
     };
     let Some(thumb) = ui.slot(scroll_bar, SLOT_SCROLL_BAR_THUMB) else {
-        return;
+        return false;
     };
-    ui.set_layout_size(
+    set_layout_size_if_changed(
+        ui,
         thumb,
         scroll_bar_thumb_size(widget.axis, widget.thickness, widget.thumb_extent),
-    );
+    )
 }
 
 fn scroll_bar_thumb_offset(
@@ -1448,6 +1565,39 @@ mod tests {
         );
         assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
         assert!(scroll_offset_y(&ui, viewport).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn scroll_area_children_follow_arranged_height() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(160.0, 140.0));
+        let area = ui.append(root, ScrollArea::new().size(120.0, 80.0));
+        ui.set_layout(area, Layout::new().logical_size(120.0, 80.0).fill_height());
+        let viewport = scroll_area_viewport(&ui, area).expect("scroll area should expose viewport");
+        let bar =
+            scroll_area_vertical_bar(&ui, area).expect("scroll area should expose vertical bar");
+
+        for _ in 0..8 {
+            append_scroll_test_child(&mut ui, viewport);
+        }
+
+        ui.compute_layout(Size::new(160.0, 140.0));
+        let area_bounds = ui.effective_bounds(area);
+        let viewport_bounds = ui.effective_bounds(viewport);
+        let bar_bounds = ui.effective_bounds(bar);
+
+        assert_eq!(area_bounds.height(), 140.0);
+        assert_eq!(viewport_bounds.height(), 140.0);
+        assert_eq!(bar_bounds.height(), 140.0);
+        assert_eq!(
+            viewport_bounds.width(),
+            120.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+        );
+        assert!(
+            scroll_offset_y(&ui, viewport).is_some(),
+            "arranged viewport should still be registered as scrollable"
+        );
     }
 
     #[test]
