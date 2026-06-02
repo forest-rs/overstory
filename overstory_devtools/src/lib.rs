@@ -24,8 +24,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use overstory::inspection::{
-    CompositionLayerInspectionRow, ElementInspectionRow, LayerInspectionId, SurfaceInspectionId,
-    UiInspectionSnapshot,
+    CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
+    LayerInspectionId, SurfaceInspectionId, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea,
@@ -76,6 +76,53 @@ pub trait DevtoolsTarget {
 impl DevtoolsTarget for Ui {
     fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot {
         Self::inspection_snapshot(self)
+    }
+}
+
+/// Filtered target view over a live [`Ui`].
+///
+/// Use this for in-process devtools: the target can be the running app root
+/// while the devtools pane or popup is excluded from the captured snapshot.
+#[derive(Clone, Copy, Debug)]
+pub struct UiInspectionTarget<'a> {
+    ui: &'a Ui,
+    root: ElementId,
+    excluded_roots: &'a [ElementId],
+}
+
+impl<'a> UiInspectionTarget<'a> {
+    /// Creates a target for the whole `ui`.
+    #[must_use]
+    pub fn new(ui: &'a Ui) -> Self {
+        Self {
+            ui,
+            root: ui.root(),
+            excluded_roots: &[],
+        }
+    }
+
+    /// Returns a copy that captures only the subtree rooted at `root`.
+    #[must_use]
+    pub const fn rooted_at(mut self, root: ElementId) -> Self {
+        self.root = root;
+        self
+    }
+
+    /// Returns a copy that omits each subtree in `excluded_roots`.
+    #[must_use]
+    pub const fn excluding(mut self, excluded_roots: &'a [ElementId]) -> Self {
+        self.excluded_roots = excluded_roots;
+        self
+    }
+}
+
+impl DevtoolsTarget for UiInspectionTarget<'_> {
+    fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot {
+        filter_inspection_snapshot(
+            self.ui.inspection_snapshot(),
+            self.root,
+            self.excluded_roots,
+        )
     }
 }
 
@@ -268,6 +315,122 @@ impl DevtoolsSnapshot {
             .and_then(|index| siblings.get(index + 1))?;
         self.element_offset(*sibling)
     }
+}
+
+fn filter_inspection_snapshot(
+    mut snapshot: UiInspectionSnapshot,
+    root: ElementId,
+    excluded_roots: &[ElementId],
+) -> UiInspectionSnapshot {
+    let mut included = Vec::new();
+    push_included_elements(root, excluded_roots, &snapshot.elements, &mut included);
+
+    snapshot.elements = snapshot
+        .elements
+        .into_iter()
+        .filter(|row| contains_element(&included, row.id))
+        .map(|mut row| {
+            if row.id == root {
+                row.parent = None;
+            } else {
+                row.parent = row.parent.filter(|id| contains_element(&included, *id));
+            }
+            row.children
+                .retain(|child| contains_element(&included, *child));
+            if row
+                .templated_parent
+                .is_some_and(|owner| !contains_element(&included, owner))
+            {
+                row.templated_parent = None;
+                row.template_slot = None;
+                row.template_key = None;
+            }
+            row
+        })
+        .collect();
+    snapshot.root = root;
+    snapshot.composition = filtered_composition_snapshot(snapshot.composition, &included);
+    snapshot.storage = filtered_storage_snapshot(snapshot.storage, &snapshot);
+    snapshot
+}
+
+fn push_included_elements(
+    element: ElementId,
+    excluded_roots: &[ElementId],
+    rows: &[ElementInspectionRow],
+    included: &mut Vec<ElementId>,
+) {
+    if contains_element(excluded_roots, element) || contains_element(included, element) {
+        return;
+    }
+    let Some(row) = rows.iter().find(|row| row.id == element) else {
+        return;
+    };
+    included.push(element);
+    for child in &row.children {
+        push_included_elements(*child, excluded_roots, rows, included);
+    }
+}
+
+fn filtered_composition_snapshot(
+    composition: CompositionInspectionSnapshot,
+    included_elements: &[ElementId],
+) -> CompositionInspectionSnapshot {
+    let mut layers: Vec<_> = composition
+        .layers
+        .into_iter()
+        .filter(|row| {
+            row.element
+                .is_some_and(|element| contains_element(included_elements, element))
+        })
+        .collect();
+    let included_layers: Vec<_> = layers.iter().map(|row| row.id).collect();
+    for row in &mut layers {
+        row.parent = row
+            .parent
+            .filter(|id| contains_layer(&included_layers, *id));
+        row.children
+            .retain(|child| contains_layer(&included_layers, *child));
+    }
+    let roots = layers
+        .iter()
+        .filter(|row| row.parent.is_none())
+        .map(|row| row.id)
+        .collect();
+    let surfaces: Vec<_> = layers.iter().filter_map(|row| row.surface).collect();
+    let updated_surfaces = composition
+        .updated_surfaces
+        .into_iter()
+        .filter(|surface| surfaces.contains(surface))
+        .collect();
+
+    CompositionInspectionSnapshot {
+        roots,
+        layers,
+        surfaces,
+        updated_surfaces,
+        changes: composition.changes,
+    }
+}
+
+fn filtered_storage_snapshot(
+    mut storage: UiStorageInspectionSnapshot,
+    snapshot: &UiInspectionSnapshot,
+) -> UiStorageInspectionSnapshot {
+    storage.live_elements = snapshot.elements.len();
+    storage.free_element_slots = 0;
+    storage.allocated_element_slots = snapshot.elements.len();
+    storage.composition_layers = snapshot.composition.layers.len();
+    storage.composition_surfaces = snapshot.composition.surfaces.len();
+    storage
+}
+
+fn contains_element(elements: &[ElementId], element: ElementId) -> bool {
+    elements.contains(&element)
+}
+
+fn contains_layer(layers: &[LayerInspectionId], layer: LayerInspectionId) -> bool {
+    layers.contains(&layer)
 }
 
 /// One projected retained-element outline row.
@@ -1062,6 +1225,50 @@ mod tests {
             .expect("child should have an outline key");
 
         assert_eq!(snapshot.element_for_outline_key(key), Some(child));
+    }
+
+    #[test]
+    fn ui_inspection_target_can_capture_subtree() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let app = ui.append(root, Panel::new());
+        let app_child = ui.append(app, overstory::Button::new("Deploy"));
+        let devtools = ui.append(root, Panel::new());
+
+        let target = UiInspectionTarget::new(&ui).rooted_at(app);
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        assert_eq!(snapshot.inspection().root, app);
+        assert!(snapshot.element(app).is_some());
+        assert!(snapshot.element(app_child).is_some());
+        assert!(snapshot.element(devtools).is_none());
+        assert_eq!(
+            snapshot.element(app).expect("app should exist").parent,
+            None
+        );
+        assert_eq!(snapshot.inspection().storage.live_elements, 3);
+    }
+
+    #[test]
+    fn ui_inspection_target_can_exclude_devtools_subtree() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let app = ui.append(root, Panel::new());
+        let devtools = ui.append(root, Panel::new());
+        let devtools_child = ui.append(devtools, overstory::Button::new("Refresh"));
+        let excluded = [devtools];
+
+        let target = UiInspectionTarget::new(&ui).excluding(&excluded);
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        assert!(snapshot.element(root).is_some());
+        assert!(snapshot.element(app).is_some());
+        assert!(snapshot.element(devtools).is_none());
+        assert!(snapshot.element(devtools_child).is_none());
+        assert_eq!(
+            snapshot.element(root).expect("root should exist").children,
+            vec![app],
+        );
     }
 
     #[test]
