@@ -22,7 +22,7 @@ use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{ArrangeContext, WidgetEventContext};
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
     ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
@@ -204,8 +204,9 @@ impl Widget for ScrollViewWidget {
         }
     }
 
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         update_scroll_metrics_from_layout(ctx, &self.state);
+        ArrangeResult::UNCHANGED
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {

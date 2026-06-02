@@ -284,22 +284,24 @@ impl Ui {
         // Physical pixels remain a host/backend projection so layout, hit
         // testing, composition, and accessibility share one coordinate space.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
-        self.run_arrange_widgets();
-        self.run_realize_widgets()
+        let arranged = self.run_arrange_widgets();
+        arranged || self.run_realize_widgets()
     }
 
-    fn run_arrange_widgets(&mut self) {
+    fn run_arrange_widgets(&mut self) -> bool {
         let mut ids = Vec::new();
         self.collect_subtree_ids(self.root(), &mut ids);
+        let mut changed = false;
         for id in ids {
             if self.get(id).is_none() {
                 continue;
             }
             self.with_widget_mut(id, |widget, ui| {
                 let mut ctx = crate::behavior::ArrangeContext::new(id, ui);
-                widget.arrange(&mut ctx);
+                changed |= widget.arrange(&mut ctx).changed();
             });
         }
+        changed
     }
 
     fn run_realize_widgets(&mut self) -> bool {

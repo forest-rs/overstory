@@ -94,6 +94,32 @@ impl fmt::Debug for ArrangeContext<'_> {
     }
 }
 
+/// Result returned from an arrange hook.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArrangeResult {
+    changed: bool,
+}
+
+impl ArrangeResult {
+    /// No layout-affecting arranged state changed.
+    pub const UNCHANGED: Self = Self { changed: false };
+
+    /// Layout-affecting arranged state changed.
+    pub const CHANGED: Self = Self { changed: true };
+
+    /// Creates a result from a boolean change flag.
+    #[must_use]
+    pub const fn from_changed(changed: bool) -> Self {
+        Self { changed }
+    }
+
+    /// Returns whether arrangement changed layout-affecting state.
+    #[must_use]
+    pub const fn changed(self) -> bool {
+        self.changed
+    }
+}
+
 /// Mutable context handed to a widget's built-in routed event handlers.
 ///
 /// Routed event payloads such as [`crate::ClickEvent`] and

@@ -53,8 +53,8 @@ use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
-    ArrangeContext, MeasureConstraints, MeasureContext, PresentContext, RealizeContext,
-    RealizeResult, WidgetEventContext,
+    ArrangeContext, ArrangeResult, MeasureConstraints, MeasureContext, PresentContext,
+    RealizeContext, RealizeResult, WidgetEventContext,
 };
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
@@ -171,9 +171,11 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// The default does nothing. Widgets use this to derive non-tree state
     /// from final geometry, such as scroll extents or presentation timeline
-    /// targets.
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
-        let _ = ctx;
+    /// targets. Return [`ArrangeResult::CHANGED`] when the derived state writes
+    /// layout-affecting properties and the UI should run another layout pass
+    /// before realization and presentation.
+    fn arrange(&mut self, _ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        ArrangeResult::UNCHANGED
     }
 
     /// Called after a full arrange pass has written bounds for the tree.
@@ -385,8 +387,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.measure(element, ctx, constraints)
     }
 
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
-        self.widget.arrange(ctx);
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        self.widget.arrange(ctx)
     }
 
     fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {

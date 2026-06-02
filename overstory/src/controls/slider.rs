@@ -25,7 +25,7 @@ use understory_axis::{
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{ArrangeContext, WidgetEventContext};
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::range::ScalarRange;
 use crate::controls::support::{
     action_numeric_value, f32_from_logical, is_initial_drag_move, read_local_or,
@@ -397,9 +397,10 @@ impl Widget for SliderWidget {
         event.mark_handled();
     }
 
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let slider = ctx.id();
         let _ = sync_slider_thumb_offset_target(ctx.ui_mut(), slider);
+        ArrangeResult::UNCHANGED
     }
 
     fn handle_accessibility_action(

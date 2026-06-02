@@ -23,7 +23,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{ArrangeContext, WidgetEventContext};
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
 };
@@ -258,9 +258,10 @@ impl Widget for ToggleWidget {
         }
     }
 
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) {
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let toggle = ctx.id();
         let _ = sync_thumb_offset_target(ctx.ui_mut(), toggle);
+        ArrangeResult::UNCHANGED
     }
 }
 
