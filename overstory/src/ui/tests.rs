@@ -3024,7 +3024,15 @@ fn inspection_snapshot_reports_elements_and_composition() {
 fn inspection_changes_track_tree_insertions_and_removals() {
     let mut ui = Ui::new();
     let root = ui.root();
+
+    let silent = ui.append(root, crate::Panel::new());
+    assert!(ui.drain_inspection_changes().is_empty());
+    ui.remove(silent);
+    assert!(ui.drain_inspection_changes().is_empty());
+
+    ui.begin_live_inspection_recording();
     ui.clear_inspection_changes();
+    assert!(ui.is_live_inspection_recording());
 
     let parent = ui.append(root, crate::Panel::new());
     let child = ui.append(parent, crate::Panel::new());
@@ -3079,6 +3087,14 @@ fn inspection_changes_track_tree_insertions_and_removals() {
             .any(|row| row.id == root && !row.children.contains(&parent))
     );
     assert!(!removed.tree.upserted.iter().any(|row| row.id == parent));
+
+    ui.end_live_inspection_recording();
+    assert!(!ui.is_live_inspection_recording());
+
+    let quiet = ui.append(root, crate::Panel::new());
+    assert!(ui.drain_inspection_changes().is_empty());
+    ui.remove(quiet);
+    assert!(ui.drain_inspection_changes().is_empty());
 }
 
 #[test]

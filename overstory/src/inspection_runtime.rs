@@ -16,15 +16,37 @@ use crate::inspection::{
 
 #[derive(Debug, Default)]
 pub(crate) struct InspectionChangeRuntime {
+    recording_depth: u32,
     tree: ElementTreeChangeRuntime,
 }
 
 impl InspectionChangeRuntime {
+    pub(crate) fn begin_recording(&mut self) {
+        self.recording_depth = self.recording_depth.saturating_add(1);
+    }
+
+    pub(crate) fn end_recording(&mut self) {
+        self.recording_depth = self.recording_depth.saturating_sub(1);
+        if !self.is_recording() {
+            self.clear();
+        }
+    }
+
+    pub(crate) const fn is_recording(&self) -> bool {
+        self.recording_depth > 0
+    }
+
     pub(crate) fn record_tree_upsert(&mut self, row: ElementInspectionRow) {
+        if !self.is_recording() {
+            return;
+        }
         self.tree.record_upsert(row);
     }
 
     pub(crate) fn record_tree_removal(&mut self, removal: ElementInspectionRemoval) {
+        if !self.is_recording() {
+            return;
+        }
         self.tree.record_removal(removal);
     }
 

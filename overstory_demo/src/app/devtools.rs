@@ -19,6 +19,7 @@ pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
             return;
         }
         if let Some(popup) = open_popup_for_click.get() {
+            ui.end_live_inspection_recording();
             if ui.close_popup(popup) {
                 open_popup_for_click.set(None);
                 ui.remove_pseudo(button, PSEUDO_SELECTED);
@@ -109,6 +110,9 @@ impl InProcessDevtoolsShell {
         };
         if ui.get(popup).is_none() {
             self.open_popup.set(None);
+            self.devtools
+                .borrow_mut()
+                .detach_from_live(&mut UiLiveInspectionTarget::new(ui));
             ui.remove_pseudo(self.button, PSEUDO_SELECTED);
             return false;
         }
@@ -151,6 +155,9 @@ impl InProcessDevtoolsShell {
         let Some(popup) = self.popup.get() else {
             return;
         };
+        self.devtools
+            .borrow_mut()
+            .detach_from_live(&mut UiLiveInspectionTarget::new(ui));
         if ui.close_popup(popup) {
             self.popup.set(None);
             self.open_popup.set(None);

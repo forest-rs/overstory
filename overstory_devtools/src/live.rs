@@ -96,8 +96,17 @@ impl LiveDevtools {
         selected: Option<ElementId>,
     ) -> Result<Self, SessionError> {
         let devtools = Self::capture(target, selected)?;
+        target.begin_live_inspection_recording();
         target.clear_inspection_changes();
         Ok(devtools)
+    }
+
+    /// Stops target-side recording for this live session.
+    ///
+    /// The controller does not own the target `Ui`, so hosts call this when
+    /// their inspector surface is closed.
+    pub fn detach_from_live(&mut self, target: &mut impl LiveDevtoolsTarget) {
+        target.end_live_inspection_recording();
     }
 
     /// Returns the same-process session handle.
@@ -264,6 +273,7 @@ mod tests {
         let root = ui.root();
         let mut devtools =
             LiveDevtools::capture_from_live(&mut ui, None).expect("devtools should attach");
+        assert!(ui.is_live_inspection_recording());
 
         let first = devtools
             .refresh_from_live(&mut ui)
@@ -300,6 +310,9 @@ mod tests {
         );
         assert_eq!(devtools.mirror().tree().nodes.len(), 1);
         assert!(devtools.mirror().outline_key_for_element(child).is_none());
+
+        devtools.detach_from_live(&mut ui);
+        assert!(!ui.is_live_inspection_recording());
     }
 
     #[test]

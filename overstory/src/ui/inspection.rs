@@ -39,6 +39,31 @@ impl Ui {
         self.inspection_changes.drain(self.root())
     }
 
+    /// Starts recording live inspection changes.
+    ///
+    /// Snapshot capture does not require live recording. Call this when a live
+    /// inspector attaches and intends to drain incremental changes through
+    /// [`Self::drain_inspection_changes`]. Calls are counted so multiple
+    /// inspectors can attach independently.
+    pub fn begin_live_inspection_recording(&mut self) {
+        self.inspection_changes.begin_recording();
+    }
+
+    /// Stops one live inspection recording attachment.
+    ///
+    /// When the final attachment ends, pending changes are discarded so a later
+    /// inspector starts from a fresh baseline capture instead of replaying
+    /// stale closed-inspector changes.
+    pub fn end_live_inspection_recording(&mut self) {
+        self.inspection_changes.end_recording();
+    }
+
+    /// Returns whether live inspection changes are currently recorded.
+    #[must_use]
+    pub fn is_live_inspection_recording(&self) -> bool {
+        self.inspection_changes.is_recording()
+    }
+
     /// Clears pending inspection changes without returning them.
     ///
     /// Use this immediately after taking a baseline snapshot for an attached

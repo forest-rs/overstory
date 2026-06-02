@@ -82,6 +82,12 @@ pub trait DevtoolsTarget {
 /// A live devtools session should capture a snapshot once, clear changes
 /// created before that baseline, then drain changes for steady-state updates.
 pub trait LiveDevtoolsTarget: DevtoolsTarget {
+    /// Starts target-side live inspection recording.
+    fn begin_live_inspection_recording(&mut self);
+
+    /// Stops one target-side live inspection recording attachment.
+    fn end_live_inspection_recording(&mut self);
+
     /// Drains inspectable state changes recorded since the previous drain.
     fn drain_inspection_changes(&mut self) -> UiInspectionChanges;
 
@@ -96,6 +102,14 @@ impl DevtoolsTarget for Ui {
 }
 
 impl LiveDevtoolsTarget for Ui {
+    fn begin_live_inspection_recording(&mut self) {
+        Self::begin_live_inspection_recording(self);
+    }
+
+    fn end_live_inspection_recording(&mut self) {
+        Self::end_live_inspection_recording(self);
+    }
+
     fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
         Self::drain_inspection_changes(self)
     }
@@ -210,6 +224,14 @@ impl DevtoolsTarget for UiLiveInspectionTarget<'_> {
 }
 
 impl LiveDevtoolsTarget for UiLiveInspectionTarget<'_> {
+    fn begin_live_inspection_recording(&mut self) {
+        self.ui.begin_live_inspection_recording();
+    }
+
+    fn end_live_inspection_recording(&mut self) {
+        self.ui.end_live_inspection_recording();
+    }
+
     fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
         let changes = self.ui.drain_inspection_changes();
         filter_inspection_changes(changes, self)
@@ -1620,6 +1642,7 @@ mod tests {
         let excluded = [devtools];
         {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
+            target.begin_live_inspection_recording();
             target.clear_inspection_changes();
         }
 
@@ -1646,6 +1669,10 @@ mod tests {
                 .iter()
                 .any(|row| row.id == devtools || row.id == devtools_child)
         );
+        {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
+            target.end_live_inspection_recording();
+        }
     }
 
     #[test]
