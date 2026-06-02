@@ -30,14 +30,14 @@ use overstory::inspection::{
     UiStorageInspectionSnapshot,
 };
 use overstory::{
-    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, ElementId, Layout, OutlineNodeKey,
-    OutlineView, OutlineViewNode, Panel, ScrollArea, TYPE_ACCORDION, TYPE_ACCORDION_SECTION,
-    TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_EXPANDER, TYPE_GENERIC, TYPE_LIST_BOX,
-    TYPE_LIST_ITEM, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, TYPE_POPUP, TYPE_PROGRESS_BAR,
-    TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
-    TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, TYPE_SELECT, TYPE_SLIDER, TYPE_SPINNER,
-    TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, TYPE_TOOLTIP, TYPE_VECTOR_PATH,
-    TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
+    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, ElementId, ElementSpecExt, Layout,
+    OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea, TYPE_ACCORDION,
+    TYPE_ACCORDION_SECTION, TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_EXPANDER, TYPE_GENERIC,
+    TYPE_LIST_BOX, TYPE_LIST_ITEM, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, TYPE_POPUP,
+    TYPE_PROGRESS_BAR, TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR,
+    TYPE_SCROLL_VIEW, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, TYPE_SELECT, TYPE_SLIDER,
+    TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, TYPE_TOOLTIP,
+    TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
 };
 #[cfg(feature = "spoor-session")]
 use overstory::{expanded_outline_keys, replace_outline_nodes};
@@ -787,6 +787,8 @@ const MAX_RELATIONSHIP_CHILDREN: usize = 8;
 const INSPECTOR_OUTLINE_WIDTH: f32 = 220.0;
 const INSPECTOR_DETAILS_WIDTH: f32 = 300.0;
 const INSPECTOR_VIEW_HEIGHT: f32 = 420.0;
+const INSPECTOR_PADDING: f32 = 8.0;
+const INSPECTOR_GAP: f32 = 12.0;
 
 /// Appends a simple inspector view for `snapshot`.
 ///
@@ -821,7 +823,7 @@ pub fn append_session_view(
 ) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
-        Panel::row(12.0).layout(Layout::row(12.0).padding_all(8.0)),
+        Panel::row(INSPECTOR_GAP).layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
@@ -913,7 +915,8 @@ fn append_session_view_contents(
     let client_for_selection = client.clone();
     let outline_view = mirror
         .outline_view()
-        .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT);
+        .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT)
+        .layout(inspector_pane_layout(INSPECTOR_OUTLINE_WIDTH));
     let outline = ui.append(
         root,
         outline_view.on_selection_changed(move |ui, event| {
@@ -957,6 +960,7 @@ fn append_session_view_contents(
         root,
         ScrollArea::new()
             .size(INSPECTOR_DETAILS_WIDTH, INSPECTOR_VIEW_HEIGHT)
+            .layout(inspector_pane_layout(INSPECTOR_DETAILS_WIDTH))
             .gap(6.0)
             .scrollbar_thickness(8.0)
             .thumb_extent(36.0),
@@ -992,7 +996,7 @@ pub fn append_session_view(
 ) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
-        Panel::row(12.0).layout(Layout::row(12.0).padding_all(8.0)),
+        Panel::row(INSPECTOR_GAP).layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
@@ -1030,6 +1034,7 @@ fn append_session_view_contents(
             .snapshot()
             .element_outline_view()
             .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT)
+            .layout(inspector_pane_layout(INSPECTOR_OUTLINE_WIDTH))
     });
     if let Some(key) = session.with(DevtoolsSession::selected_outline_key) {
         outline_view = outline_view.selected_key(key);
@@ -1061,6 +1066,7 @@ fn append_session_view_contents(
         root,
         ScrollArea::new()
             .size(INSPECTOR_DETAILS_WIDTH, INSPECTOR_VIEW_HEIGHT)
+            .layout(inspector_pane_layout(INSPECTOR_DETAILS_WIDTH))
             .gap(6.0)
             .scrollbar_thickness(8.0)
             .thumb_extent(36.0),
@@ -1085,6 +1091,21 @@ fn append_session_view_contents(
         outline,
         details: details_viewport,
     }
+}
+
+fn inspector_root_layout() -> Layout {
+    Layout::row(INSPECTOR_GAP)
+        .padding_all(INSPECTOR_PADDING)
+        .fill_height()
+        .flex_grow(1.0)
+        .flex_shrink(1.0)
+}
+
+fn inspector_pane_layout(width: f32) -> Layout {
+    Layout::new()
+        .logical_size(width, INSPECTOR_VIEW_HEIGHT)
+        .fill_height()
+        .flex_shrink(0.0)
 }
 
 fn clear_children(ui: &mut Ui, parent: ElementId) {
@@ -2376,6 +2397,45 @@ mod tests {
             .expect("details should be placed inside a scroll area viewport");
 
         assert_eq!(elements.details, viewport);
+    }
+
+    #[test]
+    fn append_inspection_view_panes_fill_available_height() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let selected = target.append(target_root, overstory::Button::new("Deploy"));
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        inspector.set_layout(root, Layout::column(0.0).logical_size(640.0, 600.0));
+        let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(selected));
+        let details_frame = inspector
+            .get(elements.root)
+            .and_then(|root| root.children().get(1).copied())
+            .expect("inspector root should contain a details scroll area");
+
+        inspector.compute_layout(overstory::Size::new(640.0, 600.0));
+
+        let expected_pane_height = 600.0 - f64::from(INSPECTOR_PADDING * 2.0);
+        assert_eq!(inspector.effective_bounds(elements.root).height(), 600.0);
+        assert_eq!(
+            inspector.effective_bounds(elements.outline).height(),
+            expected_pane_height
+        );
+        assert_eq!(
+            inspector.effective_bounds(details_frame).height(),
+            expected_pane_height
+        );
+        assert_eq!(
+            inspector.effective_bounds(elements.details).height(),
+            expected_pane_height
+        );
+        assert!(
+            inspector.effective_bounds(elements.details).height()
+                > f64::from(INSPECTOR_VIEW_HEIGHT),
+            "details should fill the available inspector height, not stay fixed at the bootstrap height"
+        );
     }
 
     #[test]
