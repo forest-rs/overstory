@@ -27,7 +27,7 @@ use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
+use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, collect_options, enabled_index_at_or_after, enabled_index_at_or_before,
     first_enabled_index, last_enabled_index, next_enabled_index, option_enabled,
@@ -488,9 +488,9 @@ impl Widget for ListBoxWidget {
         -self.scroll_state.offset()
     }
 
-    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+    fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
         let listbox = ctx.id();
-        RealizeResult::from_changed(self.sync_virtual_items(listbox, ctx.ui_mut()))
+        ElementRealizeResult::from_changed(self.sync_virtual_items(listbox, ctx.ui_mut()))
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
@@ -1157,7 +1157,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let listbox = ui.append(root, test_list_box());
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let second = realized_list_item(&ui, listbox, 1).unwrap();
 
@@ -1176,7 +1176,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let listbox = ui.append(root, test_list_box().multiple_selection());
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let second = realized_list_item(&ui, listbox, 1).unwrap();
 
@@ -1212,7 +1212,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let listbox = ui.append(root, test_list_box().multiple_selection());
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let first = realized_list_item(&ui, listbox, 0).unwrap();
         let third = realized_list_item(&ui, listbox, 2).unwrap();
 
@@ -1306,7 +1306,7 @@ mod tests {
         assert_eq!(selected_list_index(&ui, listbox), None);
         assert!(!select_list_index(&mut ui, listbox, 1));
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let disabled = realized_list_item(&ui, listbox, 1).unwrap();
         assert!(!ui.is_enabled(disabled));
 
@@ -1327,7 +1327,7 @@ mod tests {
         let root = ui.root();
         let listbox = ui.append(root, test_list_box().multiple_selection());
         assert!(select_list_index(&mut ui, listbox, 2));
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let item = realized_list_item(&ui, listbox, 2).unwrap();
 
         let update = ui.accesskit_tree_update();
@@ -1360,7 +1360,7 @@ mod tests {
                 .overscan(0.0),
         );
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(ui.get(listbox).unwrap().children().len() < 100);
         assert!(realized_list_item(&ui, listbox, 0).is_some());
@@ -1373,7 +1373,7 @@ mod tests {
         let root = ui.root();
         let listbox = ui.append(root, scrolling_test_list_box());
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let update = ui.accesskit_tree_update();
         let node = accesskit_node_for(&update, listbox);
 
@@ -1387,7 +1387,7 @@ mod tests {
         assert!(node.supports_action(Action::SetScrollOffset));
 
         assert!(ui.handle_accesskit_action(&scroll_offset_action(listbox, 180.0)));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(list_scroll_offset_y(&ui, listbox), Some(180.0));
         assert!(realized_list_item(&ui, listbox, 9).is_some());
@@ -1400,7 +1400,7 @@ mod tests {
         let root = ui.root();
         let listbox = ui.append(root, scrolling_test_list_box());
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(ui.handle_accesskit_action(&scroll_action(
             listbox,
@@ -1429,11 +1429,11 @@ mod tests {
                 .item_extent(20.0)
                 .overscan(0.0),
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(list_scroll_offset_y(&ui, listbox), Some(0.0));
         assert!(set_list_scroll_offset_y(&mut ui, listbox, 200.0));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(list_scroll_offset_y(&ui, listbox), Some(200.0));
         assert!(realized_list_item(&ui, listbox, 10).is_some());
@@ -1454,7 +1454,7 @@ mod tests {
                 .thumb_extent(12.0),
         );
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let bar_bounds = ui.effective_bounds(bar);
         let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
 
@@ -1463,7 +1463,7 @@ mod tests {
                 .changed()
         );
         assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
         assert!(realized_list_item(&ui, listbox, 0).is_none());
@@ -1486,14 +1486,14 @@ mod tests {
             .slot(bar, SLOT_SCROLL_BAR_THUMB)
             .expect("scrollbar template should create a thumb slot");
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let start = ui.effective_bounds(thumb).center();
         assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)).changed());
         assert!(
             ui.dispatch_pointer_event(&pointer_move(Point::new(start.x, start.y + 30.0), 2, true))
                 .changed()
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
         assert!(realized_list_item(&ui, listbox, 0).is_none());
@@ -1515,7 +1515,7 @@ mod tests {
         let bar = list_box_scroll_area_scrollbar(&ui, frame)
             .expect("scroll frame should expose scrollbar");
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let bar_bounds = ui.effective_bounds(bar);
         let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
 
@@ -1524,7 +1524,7 @@ mod tests {
                 .changed()
         );
         assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(list_scroll_offset_y(&ui, frame).is_some_and(|offset| offset > 0.0));
         assert_eq!(
@@ -1546,12 +1546,12 @@ mod tests {
                 .item_extent(20.0)
                 .overscan(0.0),
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
         ui.set_focus(Some(listbox));
 
         let end = KeyboardEvent::key_down(Key::Named(NamedKey::End), Code::End);
         assert!(ui.dispatch_key(&end).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(selected_list_index(&ui, listbox), Some(19));
         assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
@@ -1575,7 +1575,7 @@ mod tests {
         ui.set_cascade(crate::theme::default_cascade(ui.properties()));
         let root = ui.root();
         let listbox = ui.append(root, test_list_box());
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let item = realized_list_item(&ui, listbox, 0).unwrap();
 
         assert!(select_list_index(&mut ui, listbox, 0));
@@ -1594,7 +1594,7 @@ mod tests {
         let root = ui.root();
         let listbox = ui.append(root, test_list_box());
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let item = realized_list_item(&ui, listbox, 0).unwrap();
         let content = ui.part(item, PART_LIST_ITEM_CONTENT).unwrap();
@@ -1630,7 +1630,7 @@ mod tests {
             .overscan(0.0)
     }
 
-    fn realize(ui: &mut Ui) {
+    fn compute_layout(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
     }
 

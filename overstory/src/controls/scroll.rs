@@ -564,7 +564,7 @@ impl Widget for ScrollAreaWidget {
             );
         }
 
-        ArrangeResult::from_changed(changed)
+        ArrangeResult::from_layout_changed(changed)
     }
 }
 
@@ -892,7 +892,9 @@ impl Widget for ScrollBarWidget {
         }
 
         let scroll_bar = ctx.id();
-        ArrangeResult::from_changed(changed || sync_scroll_bar_thumb_size(ctx.ui_mut(), scroll_bar))
+        ArrangeResult::from_layout_changed(
+            changed || sync_scroll_bar_thumb_size(ctx.ui_mut(), scroll_bar),
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

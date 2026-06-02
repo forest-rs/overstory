@@ -714,10 +714,10 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let select = ui.append(root, test_select().selected_index(0));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         ui.synthesize_click(select, Point::ZERO);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let popup = select_widget(&ui, select).unwrap().popup.get().unwrap();
         let listbox = ui.get(popup).unwrap().children()[0];
@@ -802,7 +802,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let select = ui.append(root, test_select().selected_index(1));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let update = ui.accesskit_tree_update();
         let node = accesskit_node_for(&update, select);
@@ -814,7 +814,7 @@ mod tests {
         assert!(node.supports_action(Action::Expand));
 
         let expanded = ui.handle_accesskit_action(&action(select, Action::Expand));
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let update = ui.accesskit_tree_update();
         let node = accesskit_node_for(&update, select);
         assert!(expanded);
@@ -822,7 +822,7 @@ mod tests {
         assert!(node.supports_action(Action::Collapse));
 
         let collapsed = ui.handle_accesskit_action(&action(select, Action::Collapse));
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let update = ui.accesskit_tree_update();
         let node = accesskit_node_for(&update, select);
         assert!(collapsed);
@@ -833,7 +833,7 @@ mod tests {
         Select::new().items(ITEMS).width(180.0).popup_height(92.0)
     }
 
-    fn realize(ui: &mut Ui) {
+    fn compute_layout(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
     }
 

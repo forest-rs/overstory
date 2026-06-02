@@ -25,7 +25,7 @@ use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
+use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
@@ -656,9 +656,9 @@ impl Widget for OutlineViewWidget {
         -self.scroll_state.offset()
     }
 
-    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+    fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
         let outline = ctx.id();
-        RealizeResult::from_changed(self.sync_virtual_items(outline, ctx.ui_mut()))
+        ElementRealizeResult::from_changed(self.sync_virtual_items(outline, ctx.ui_mut()))
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
@@ -1551,7 +1551,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline());
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let parent = realized_outline_item(&ui, outline, 0).unwrap();
         let disclosure = ui
@@ -1560,7 +1560,7 @@ mod tests {
         assert!(realized_outline_item(&ui, outline, 1).is_none());
 
         ui.synthesize_click(disclosure, Point::ZERO);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(true));
@@ -1572,7 +1572,7 @@ mod tests {
             .slot(parent, SLOT_OUTLINE_ITEM_DISCLOSURE)
             .expect("parent should expose disclosure slot");
         ui.synthesize_click(disclosure, Point::ZERO);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
         assert!(realized_outline_item(&ui, outline, 1).is_none());
@@ -1583,7 +1583,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline());
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let parent = realized_outline_item(&ui, outline, 0).unwrap();
         let label = ui
@@ -1591,7 +1591,7 @@ mod tests {
             .expect("parent should expose label slot");
 
         ui.synthesize_click(label, Point::ZERO);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
@@ -1603,12 +1603,12 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline());
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let parent = realized_outline_item(&ui, outline, 0).unwrap();
 
         ui.synthesize_click(parent, Point::ZERO);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert_eq!(selected_outline_key(&ui, outline), Some(key(0)));
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
@@ -1620,17 +1620,17 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline().selected_key(0));
-        realize(&mut ui);
+        compute_layout(&mut ui);
         ui.set_focus(Some(outline));
 
         let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
         assert!(ui.dispatch_key(&right).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(true));
         assert!(realized_outline_item(&ui, outline, 1).is_some());
 
         assert!(ui.dispatch_key(&right).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
         assert_eq!(selected_outline_key(&ui, outline), Some(key(1)));
 
         let up = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowUp), Code::ArrowUp);
@@ -1639,7 +1639,7 @@ mod tests {
 
         let left = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowLeft), Code::ArrowLeft);
         assert!(ui.dispatch_key(&left).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
         assert_eq!(outline_key_expanded(&ui, outline, 0), Some(false));
         assert!(realized_outline_item(&ui, outline, 1).is_none());
     }
@@ -1669,7 +1669,7 @@ mod tests {
                     ));
                 }),
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(set_outline_key_expanded(&mut ui, outline, 0, true));
         assert!(select_outline_key(&mut ui, outline, 2));
@@ -1686,7 +1686,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline().expanded(0).selected_key(1));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         let child = realized_outline_item(&ui, outline, 1).unwrap();
 
@@ -1719,7 +1719,7 @@ mod tests {
                 .item_extent(20.0)
                 .overscan(0.0),
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
         assert!(set_outline_scroll_offset_y(&mut ui, outline, 380.0));
         let old_outline = outline;
 
@@ -1733,7 +1733,7 @@ mod tests {
             [key(0)],
             Some(key(20)),
         ));
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(ui.get(old_outline).is_some());
         assert_eq!(expanded_outline_keys(&ui, outline), Some(vec![key(0)]));
@@ -1770,7 +1770,7 @@ mod tests {
         let bar = outline_view_scroll_area_scrollbar(&ui, frame)
             .expect("scroll frame should expose scrollbar");
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         assert!(realized_outline_item(&ui, outline, 1).is_some());
         let bar_bounds = ui.effective_bounds(bar);
         let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
@@ -1780,7 +1780,7 @@ mod tests {
                 .changed()
         );
         assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(outline_scroll_offset_y(&ui, frame).is_some_and(|offset| offset > 0.0));
         assert!(realized_outline_item(&ui, frame, 1).is_none());
@@ -1811,14 +1811,14 @@ mod tests {
             .slot(bar, SLOT_SCROLL_BAR_THUMB)
             .expect("scrollbar template should create a thumb slot");
 
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let start = ui.effective_bounds(thumb).center();
         assert!(ui.dispatch_pointer_event(&pointer_down(start, 1)).changed());
         assert!(
             ui.dispatch_pointer_event(&pointer_move(Point::new(start.x, start.y + 30.0), 2, true))
                 .changed()
         );
-        realize(&mut ui);
+        compute_layout(&mut ui);
 
         assert!(outline_scroll_offset_y(&ui, outline).is_some_and(|offset| offset > 0.0));
         assert!(realized_outline_item(&ui, outline, 1).is_none());
@@ -1829,7 +1829,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let outline = ui.append(root, test_outline().expanded(0).selected_key(1));
-        realize(&mut ui);
+        compute_layout(&mut ui);
         let child = realized_outline_item(&ui, outline, 1).unwrap();
         let update = ui.accesskit_tree_update();
 
@@ -1855,7 +1855,7 @@ mod tests {
         nodes
     }
 
-    fn realize(ui: &mut Ui) {
+    fn compute_layout(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
     }
 

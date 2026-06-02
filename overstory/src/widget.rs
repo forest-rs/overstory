@@ -53,8 +53,8 @@ use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
-    ArrangeContext, ArrangeResult, MeasureConstraints, MeasureContext, PresentContext,
-    RealizeContext, RealizeResult, WidgetEventContext,
+    ArrangeContext, ArrangeResult, ElementRealizeContext, ElementRealizeResult, MeasureConstraints,
+    MeasureContext, PresentContext, WidgetEventContext,
 };
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
@@ -171,23 +171,22 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// The default does nothing. Widgets use this to derive non-tree state
     /// from final geometry, such as scroll extents or presentation timeline
-    /// targets. Return [`ArrangeResult::CHANGED`] when the derived state writes
-    /// layout-affecting properties and the UI should run another layout pass
-    /// before realization and presentation.
+    /// targets. Return [`ArrangeResult::LAYOUT_CHANGED`] when the derived
+    /// state writes layout-affecting properties and the UI should run another
+    /// layout pass before element realization and presentation.
     fn arrange(&mut self, _ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         ArrangeResult::UNCHANGED
     }
 
     /// Called after a full arrange pass has written bounds for the tree.
     ///
-    /// Widgets whose retained child set depends on final viewport geometry,
-    /// such as virtualized controls, can synchronize their realized children
-    /// here. Return [`RealizeResult::CHANGED`] when synchronization changed the
-    /// tree or layout and the UI should run another layout pass before
-    /// presenting.
-    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
-        let _ = ctx;
-        RealizeResult::UNCHANGED
+    /// Widgets whose retained element child set depends on final viewport
+    /// geometry, such as virtualized controls, can synchronize those children
+    /// here. Return [`ElementRealizeResult::CHANGED`] when synchronization
+    /// changed the element tree or layout and the UI should run another layout
+    /// pass before presenting.
+    fn realize_elements(&mut self, _ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
+        ElementRealizeResult::UNCHANGED
     }
 
     /// Returns the default template this widget's element should
@@ -391,8 +390,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.arrange(ctx)
     }
 
-    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
-        self.widget.realize(ctx)
+    fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
+        self.widget.realize_elements(ctx)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

@@ -97,26 +97,31 @@ impl fmt::Debug for ArrangeContext<'_> {
 /// Result returned from an arrange hook.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ArrangeResult {
-    changed: bool,
+    layout_changed: bool,
 }
 
 impl ArrangeResult {
     /// No layout-affecting arranged state changed.
-    pub const UNCHANGED: Self = Self { changed: false };
+    pub const UNCHANGED: Self = Self {
+        layout_changed: false,
+    };
 
     /// Layout-affecting arranged state changed.
-    pub const CHANGED: Self = Self { changed: true };
+    pub const LAYOUT_CHANGED: Self = Self {
+        layout_changed: true,
+    };
 
-    /// Creates a result from a boolean change flag.
+    /// Creates a result from a layout-change flag.
     #[must_use]
-    pub const fn from_changed(changed: bool) -> Self {
-        Self { changed }
+    pub const fn from_layout_changed(layout_changed: bool) -> Self {
+        Self { layout_changed }
     }
 
-    /// Returns whether arrangement changed layout-affecting state.
+    /// Returns whether arrangement changed layout-affecting state and the UI
+    /// should run another layout pass.
     #[must_use]
-    pub const fn changed(self) -> bool {
-        self.changed
+    pub const fn layout_changed(self) -> bool {
+        self.layout_changed
     }
 }
 
@@ -192,20 +197,21 @@ impl fmt::Debug for WidgetEventContext<'_> {
     }
 }
 
-/// Mutable context handed to a widget's realization hook.
+/// Mutable context handed to a widget's element-realization hook.
 ///
-/// Realization runs after arrangement when a widget's final viewport geometry
-/// can determine which retained children should exist. The public context is
-/// intentionally small while Overstory's item-template and item-source model is
-/// still taking shape; built-in virtualized controls use crate-private access
-/// to reconcile their realized rows without keeping a general `&mut Ui` escape
-/// hatch in the trait.
-pub struct RealizeContext<'a> {
+/// Element realization runs after arrangement when a widget's final viewport
+/// geometry can determine which retained element children should exist. Visual
+/// or presentation-node realization is deliberately a separate future concern.
+/// The public context is intentionally small while Overstory's item-template
+/// and item-source model is still taking shape; built-in virtualized controls
+/// use crate-private access to reconcile their realized rows without keeping a
+/// general `&mut Ui` escape hatch in the trait.
+pub struct ElementRealizeContext<'a> {
     id: ElementId,
     ui: &'a mut Ui,
 }
 
-impl<'a> RealizeContext<'a> {
+impl<'a> ElementRealizeContext<'a> {
     pub(crate) fn new(id: ElementId, ui: &'a mut Ui) -> Self {
         Self { id, ui }
     }
@@ -227,21 +233,21 @@ impl<'a> RealizeContext<'a> {
     }
 }
 
-impl fmt::Debug for RealizeContext<'_> {
+impl fmt::Debug for ElementRealizeContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RealizeContext")
+        f.debug_struct("ElementRealizeContext")
             .field("id", &self.id)
             .finish_non_exhaustive()
     }
 }
 
-/// Result returned from a realization hook.
+/// Result returned from an element-realization hook.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RealizeResult {
+pub struct ElementRealizeResult {
     changed: bool,
 }
 
-impl RealizeResult {
+impl ElementRealizeResult {
     /// No retained children or layout-affecting state changed.
     pub const UNCHANGED: Self = Self { changed: false };
 

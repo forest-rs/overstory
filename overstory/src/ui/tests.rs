@@ -2708,9 +2708,12 @@ fn clean_compute_layout_skips_widget_layout_work() {
     }
 
     impl crate::Widget for LayoutProbe {
-        fn realize(&mut self, _ctx: &mut crate::RealizeContext<'_>) -> crate::RealizeResult {
+        fn realize_elements(
+            &mut self,
+            _ctx: &mut crate::ElementRealizeContext<'_>,
+        ) -> crate::ElementRealizeResult {
             self.count.set(self.count.get() + 1);
-            crate::RealizeResult::UNCHANGED
+            crate::ElementRealizeResult::UNCHANGED
         }
     }
 

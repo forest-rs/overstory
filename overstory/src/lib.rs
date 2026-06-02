@@ -103,8 +103,8 @@ mod widget;
 pub use accessibility::AccessibilityContext;
 pub use accesskit;
 pub use behavior::{
-    ArrangeContext, ArrangeResult, KnownDimensions, MeasureConstraints, MeasureContext,
-    PresentContext, RealizeContext, RealizeResult, WidgetEventContext,
+    ArrangeContext, ArrangeResult, ElementRealizeContext, ElementRealizeResult, KnownDimensions,
+    MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
 };
 pub use binding::{
     BindingOwner, BindingSpecExt, BoundSpec, ExternalSource, ExternalSourceId, LocalState,
