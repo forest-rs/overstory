@@ -63,6 +63,33 @@ pub type LiveInspectionStreamStart = SessionStreamStart<InspectionResponse>;
 /// Spoor live-session stream item carrying an Overstory inspection payload.
 pub type LiveInspectionStreamItem = SessionStreamItem<InspectionStreamItem>;
 
+/// Same-process result of dispatching one live inspection request.
+///
+/// The response completes the request. Stream items carry any deltas emitted by
+/// the request, such as selection changes that should refresh subscribed
+/// mirrors.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InspectionDispatch {
+    /// Response to the dispatched request.
+    pub response: LiveInspectionResponse,
+    /// Stream items emitted while handling the request.
+    pub stream_items: Vec<LiveInspectionStreamItem>,
+}
+
+impl InspectionDispatch {
+    /// Creates a dispatch result.
+    #[must_use]
+    pub fn new(
+        response: LiveInspectionResponse,
+        stream_items: Vec<LiveInspectionStreamItem>,
+    ) -> Self {
+        Self {
+            response,
+            stream_items,
+        }
+    }
+}
+
 /// Request payloads understood by the Overstory inspector domain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InspectionRequest {
@@ -359,9 +386,9 @@ pub enum InspectionUpdateReason {
 #[cfg(test)]
 mod tests {
     use super::{
-        INSPECTION_DOMAIN, InspectionDelta, InspectionRequest, InspectionResponse,
-        InspectionSubscription, InspectionSubsystem, InspectionUpdateReason, LiveInspectionRequest,
-        inspection_method, inspection_stream_start,
+        INSPECTION_DOMAIN, InspectionDelta, InspectionDispatch, InspectionRequest,
+        InspectionResponse, InspectionSubscription, InspectionSubsystem, InspectionUpdateReason,
+        LiveInspectionRequest, inspection_method, inspection_stream_start,
     };
     use crate::DevtoolsSnapshot;
     use overstory::{Panel, Ui};
@@ -396,6 +423,27 @@ mod tests {
 
         assert_eq!(delta.subsystem, InspectionSubsystem::Layout);
         assert_eq!(delta.reason, InspectionUpdateReason::TargetChanged);
+    }
+
+    #[test]
+    fn inspection_dispatch_carries_response_and_stream_items() {
+        let response = spoor_session::SessionResponse::ok(
+            SessionRequestId::new(2),
+            InspectionResponse::Selection { selected: None },
+        );
+        let item = spoor_session::SessionStreamItem::new(
+            SessionStreamId::new(3),
+            0,
+            super::InspectionStreamItem::Delta(InspectionDelta::new(
+                InspectionSubsystem::Elements,
+                InspectionUpdateReason::SelectionChanged,
+            )),
+        );
+
+        let dispatch = InspectionDispatch::new(response.clone(), alloc::vec![item.clone()]);
+
+        assert_eq!(dispatch.response, response);
+        assert_eq!(dispatch.stream_items, alloc::vec![item]);
     }
 
     #[test]

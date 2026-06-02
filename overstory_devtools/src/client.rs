@@ -7,7 +7,7 @@
 //! it explicitly does not own target snapshots, target mutation, rendering, or
 //! transport encoding.
 
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 
 use alloc::format;
 use alloc::rc::Rc;
@@ -34,6 +34,7 @@ use crate::{
 pub struct InspectionClient {
     session: DevtoolsSessionHandle,
     next_request_id: Rc<Cell<u64>>,
+    pending_stream_items: Rc<RefCell<Vec<LiveInspectionStreamItem>>>,
 }
 
 impl InspectionClient {
@@ -43,6 +44,7 @@ impl InspectionClient {
         Self {
             session,
             next_request_id: Rc::new(Cell::new(1)),
+            pending_stream_items: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -122,19 +124,29 @@ impl InspectionClient {
             .with_mut(|session| session.inspection_stream_items_for_event(event))
     }
 
+    /// Drains stream items emitted by prior same-process request dispatches.
+    #[must_use]
+    pub fn drain_stream_items(&self) -> Vec<LiveInspectionStreamItem> {
+        core::mem::take(&mut *self.pending_stream_items.borrow_mut())
+    }
+
     fn request(
         &self,
         method: &'static str,
         payload: InspectionRequest,
     ) -> Result<InspectionResponse, SessionError> {
         let request_id = self.allocate_request_id();
-        let response = self.session.with_mut(|session| {
-            session.handle_inspection_request(LiveInspectionRequest::new(
+        let dispatch = self.session.with_mut(|session| {
+            session.dispatch_inspection_request(LiveInspectionRequest::new(
                 request_id,
                 crate::inspection_method(method),
                 payload,
             ))
         });
+        self.pending_stream_items
+            .borrow_mut()
+            .extend(dispatch.stream_items);
+        let response = dispatch.response;
         if response.request_id != request_id {
             return Err(SessionError::new(
                 SessionErrorCode::Failed,
@@ -325,6 +337,19 @@ impl InspectionMirror {
         }
     }
 
+    /// Applies all pending stream items currently buffered by `client`.
+    pub fn apply_pending_stream_items(
+        &mut self,
+        client: &InspectionClient,
+    ) -> Result<usize, SessionError> {
+        let items = client.drain_stream_items();
+        let count = items.len();
+        for item in &items {
+            self.apply_stream_item(client, item)?;
+        }
+        Ok(count)
+    }
+
     fn apply_delta(
         &mut self,
         client: &InspectionClient,
@@ -461,6 +486,30 @@ mod tests {
                 .id,
             child
         );
+    }
+
+    #[test]
+    fn inspection_mirror_applies_pending_stream_items_from_dispatch() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let session = DevtoolsSessionHandle::new(DevtoolsSession::capture(&ui));
+        let client = InspectionClient::new(session);
+        client
+            .subscribe(InspectionSubscription::all())
+            .expect("subscription should be accepted");
+        let mut mirror = InspectionMirror::attach(&client).expect("mirror should attach");
+
+        mirror
+            .select_element(&client, Some(child))
+            .expect("selection should dispatch");
+        let applied = mirror
+            .apply_pending_stream_items(&client)
+            .expect("pending stream items should apply");
+
+        assert_eq!(applied, 1);
+        assert_eq!(client.drain_stream_items(), alloc::vec![]);
+        assert_eq!(mirror.selected_element(), Some(child));
     }
 
     #[test]

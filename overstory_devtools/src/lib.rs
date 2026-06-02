@@ -45,10 +45,10 @@ pub use client::{InspectionClient, InspectionMirror};
 pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
-    INSPECTION_DOMAIN, InspectionDelta, InspectionElementDetails, InspectionElementNode,
-    InspectionElementTree, InspectionRequest, InspectionResponse, InspectionStreamItem,
-    InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem, InspectionSummaries,
-    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    INSPECTION_DOMAIN, InspectionDelta, InspectionDispatch, InspectionElementDetails,
+    InspectionElementNode, InspectionElementTree, InspectionRequest, InspectionResponse,
+    InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem,
+    InspectionSummaries, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
     LiveInspectionStreamItem, LiveInspectionStreamStart, inspection_method,
     inspection_stream_start,
 };
@@ -341,6 +341,7 @@ pub fn append_session_view(
     let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
     let details_for_selection = Rc::clone(&details_slot);
     let client = InspectionClient::new(session.clone());
+    let _ = client.subscribe(InspectionSubscription::all());
     let mirror = Rc::new(RefCell::new(
         InspectionMirror::attach(&client).unwrap_or_else(|_| {
             session.with(|session| {
@@ -361,12 +362,18 @@ pub fn append_session_view(
                 return;
             };
             clear_children(ui, details);
-            if let Err(error) = mirror_for_selection
-                .borrow_mut()
-                .select_outline_key(&client_for_selection, event.selected_key)
             {
-                append_session_error(ui, details, "Selection request failed", &error);
-                return;
+                let mut mirror = mirror_for_selection.borrow_mut();
+                if let Err(error) =
+                    mirror.select_outline_key(&client_for_selection, event.selected_key)
+                {
+                    append_session_error(ui, details, "Selection request failed", &error);
+                    return;
+                }
+                if let Err(error) = mirror.apply_pending_stream_items(&client_for_selection) {
+                    append_session_error(ui, details, "Stream update failed", &error);
+                    return;
+                }
             }
 
             let mirror = mirror_for_selection.borrow();
@@ -1116,6 +1123,46 @@ mod tests {
         assert_eq!(items[0].sequence, 0);
         assert_eq!(
             items[0].payload,
+            InspectionStreamItem::Delta(InspectionDelta::new(
+                InspectionSubsystem::Elements,
+                InspectionUpdateReason::SelectionChanged,
+            ))
+        );
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn devtools_session_dispatch_emits_stream_items_for_request_events() {
+        use spoor_session::{SessionRequestId, SessionResult};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append(root, Panel::new());
+        let mut session = DevtoolsSession::capture(&ui);
+
+        let response = session.handle_inspection_request(LiveInspectionRequest::new(
+            SessionRequestId::new(24),
+            inspection_method("subscribe"),
+            InspectionRequest::Subscribe(InspectionSubscription::all()),
+        ));
+        let SessionResult::Ok(InspectionResponse::Subscribed { stream_id, .. }) = response.result
+        else {
+            panic!("expected subscription response");
+        };
+
+        let dispatch = session.dispatch_inspection_request(LiveInspectionRequest::new(
+            SessionRequestId::new(25),
+            inspection_method("setSelection"),
+            InspectionRequest::SetSelection {
+                selected: Some(child),
+            },
+        ));
+
+        assert_eq!(dispatch.response.request_id, SessionRequestId::new(25));
+        assert_eq!(dispatch.stream_items.len(), 1);
+        assert_eq!(dispatch.stream_items[0].stream_id, stream_id);
+        assert_eq!(
+            dispatch.stream_items[0].payload,
             InspectionStreamItem::Delta(InspectionDelta::new(
                 InspectionSubsystem::Elements,
                 InspectionUpdateReason::SelectionChanged,

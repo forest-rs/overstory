@@ -21,10 +21,10 @@ use spoor_session::{
 use crate::{DevtoolsSnapshot, DevtoolsTarget};
 #[cfg(feature = "spoor-session")]
 use crate::{
-    InspectionDelta, InspectionElementDetails, InspectionRequest, InspectionResponse,
-    InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem,
-    InspectionSummaries, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
-    LiveInspectionStreamItem, selected_element_property_grid,
+    InspectionDelta, InspectionDispatch, InspectionElementDetails, InspectionRequest,
+    InspectionResponse, InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind,
+    InspectionSubsystem, InspectionSummaries, InspectionUpdateReason, LiveInspectionRequest,
+    LiveInspectionResponse, LiveInspectionStreamItem, selected_element_property_grid,
 };
 
 /// Same-process devtools session state.
@@ -141,8 +141,37 @@ impl DevtoolsSession {
     ) -> LiveInspectionResponse {
         let request_id = request.id;
         match self.handle_inspection_payload(request.payload) {
-            Ok(response) => SessionResponse::ok(request_id, response),
+            Ok(handled) => SessionResponse::ok(request_id, handled.response),
             Err(error) => SessionResponse::err(request_id, error),
+        }
+    }
+
+    /// Dispatches one typed live inspection request.
+    ///
+    /// This returns both the response and any stream items emitted by the
+    /// request. Use this path when a same-process client owns subscribed
+    /// mirrors and wants selection or target changes to flow through the same
+    /// stream vocabulary as remote transports.
+    #[cfg(feature = "spoor-session")]
+    #[must_use]
+    pub fn dispatch_inspection_request(
+        &mut self,
+        request: LiveInspectionRequest,
+    ) -> InspectionDispatch {
+        let request_id = request.id;
+        match self.handle_inspection_payload(request.payload) {
+            Ok(handled) => {
+                let stream_items = handled.event.map_or_else(Vec::new, |event| {
+                    self.inspection_stream_items_for_event(event)
+                });
+                InspectionDispatch::new(
+                    SessionResponse::ok(request_id, handled.response),
+                    stream_items,
+                )
+            }
+            Err(error) => {
+                InspectionDispatch::new(SessionResponse::err(request_id, error), Vec::new())
+            }
         }
     }
 
@@ -150,13 +179,13 @@ impl DevtoolsSession {
     fn handle_inspection_payload(
         &mut self,
         payload: InspectionRequest,
-    ) -> Result<InspectionResponse, SessionError> {
+    ) -> Result<HandledInspectionPayload, SessionError> {
         match payload {
-            InspectionRequest::CaptureSnapshot => Ok(InspectionResponse::Snapshot(Box::new(
-                self.snapshot.clone(),
-            ))),
-            InspectionRequest::ElementTree => Ok(InspectionResponse::ElementTree(
-                self.snapshot.inspection_element_tree(),
+            InspectionRequest::CaptureSnapshot => Ok(HandledInspectionPayload::response(
+                InspectionResponse::Snapshot(Box::new(self.snapshot.clone())),
+            )),
+            InspectionRequest::ElementTree => Ok(HandledInspectionPayload::response(
+                InspectionResponse::ElementTree(self.snapshot.inspection_element_tree()),
             )),
             InspectionRequest::ElementDetails { element } => {
                 let row = self
@@ -164,31 +193,40 @@ impl DevtoolsSession {
                     .element(element)
                     .cloned()
                     .ok_or_else(|| element_not_found(element))?;
-                Ok(InspectionResponse::ElementDetails(Box::new(
-                    InspectionElementDetails {
+                Ok(HandledInspectionPayload::response(
+                    InspectionResponse::ElementDetails(Box::new(InspectionElementDetails {
                         row: row.clone(),
                         properties: selected_element_property_grid(&self.snapshot, &row),
-                    },
-                )))
+                    })),
+                ))
             }
-            InspectionRequest::Selection => Ok(InspectionResponse::Selection {
-                selected: self.selected_element,
-            }),
-            InspectionRequest::Summaries => Ok(InspectionResponse::Summaries(Box::new(
-                InspectionSummaries::from_snapshot(&self.snapshot),
-            ))),
-            InspectionRequest::SetSelection { selected } => {
-                let _ = self.set_selected_element(selected);
-                Ok(InspectionResponse::Selection {
+            InspectionRequest::Selection => Ok(HandledInspectionPayload::response(
+                InspectionResponse::Selection {
                     selected: self.selected_element,
-                })
+                },
+            )),
+            InspectionRequest::Summaries => Ok(HandledInspectionPayload::response(
+                InspectionResponse::Summaries(Box::new(InspectionSummaries::from_snapshot(
+                    &self.snapshot,
+                ))),
+            )),
+            InspectionRequest::SetSelection { selected } => {
+                let event = self.set_selected_element(selected);
+                Ok(HandledInspectionPayload::new(
+                    InspectionResponse::Selection {
+                        selected: self.selected_element,
+                    },
+                    event,
+                ))
             }
             InspectionRequest::Subscribe(subscription) => {
                 let stream_id = self.allocate_inspection_stream(subscription);
-                Ok(InspectionResponse::Subscribed {
-                    stream_id,
-                    subscription,
-                })
+                Ok(HandledInspectionPayload::response(
+                    InspectionResponse::Subscribed {
+                        stream_id,
+                        subscription,
+                    },
+                ))
             }
         }
     }
@@ -252,6 +290,24 @@ impl DevtoolsSession {
     #[must_use]
     pub fn spoor_envelopes(&self) -> &[OwnedSessionEnvelope] {
         &self.spoor.envelopes
+    }
+}
+
+#[cfg(feature = "spoor-session")]
+#[derive(Clone, Debug, PartialEq)]
+struct HandledInspectionPayload {
+    response: InspectionResponse,
+    event: Option<DevtoolsEvent>,
+}
+
+#[cfg(feature = "spoor-session")]
+impl HandledInspectionPayload {
+    fn response(response: InspectionResponse) -> Self {
+        Self::new(response, None)
+    }
+
+    const fn new(response: InspectionResponse, event: Option<DevtoolsEvent>) -> Self {
+        Self { response, event }
     }
 }
 
