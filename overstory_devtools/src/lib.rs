@@ -15,12 +15,12 @@
 extern crate alloc;
 
 use core::cell::Cell;
-#[cfg(feature = "spoor-session")]
-use core::cell::RefCell;
 
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
+#[cfg(test)]
+use alloc::vec;
 use alloc::vec::Vec;
 
 use overstory::inspection::{
@@ -34,6 +34,8 @@ use overstory::{
     TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
     TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
 };
+#[cfg(feature = "spoor-session")]
+use overstory::{expanded_outline_keys, replace_outline_nodes};
 
 #[cfg(feature = "spoor-session")]
 mod client;
@@ -511,7 +513,7 @@ pub fn append_session_view(
 
 /// Rebuilds an existing inspector view from `session`.
 ///
-/// Use this after a live target refresh when the rendered inspector should show
+/// Use this after a target refresh when the rendered inspector should show
 /// a changed element tree or details surface. The root element is preserved so
 /// outer layout and styling remain stable; only the outline and details
 /// children are recreated.
@@ -525,6 +527,62 @@ pub fn refresh_session_view(
     append_session_view_contents(ui, elements.root, session)
 }
 
+/// Refreshes an existing inspector view from `session` without replacing the
+/// outline or details viewport elements.
+///
+/// This is still a full target capture path, not a protocol-level tree delta.
+/// The view state is preserved by mapping currently expanded rows through
+/// `previous_tree` element ids into `current_tree` keys, then replacing the
+/// outline control's model in place.
+#[cfg(feature = "spoor-session")]
+pub fn refresh_session_view_in_place(
+    ui: &mut Ui,
+    elements: DevtoolsViewElements,
+    previous_tree: &InspectionElementTree,
+    current_tree: &InspectionElementTree,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
+    let expanded_elements = expanded_outline_keys(ui, elements.outline)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|key| previous_tree.element_for_outline_key(key))
+        .collect::<Vec<_>>();
+    let expanded_keys = expanded_elements
+        .into_iter()
+        .filter_map(|element| current_tree.outline_key_for_element(element))
+        .collect::<Vec<_>>();
+    let selected_key = session
+        .with(DevtoolsSession::selected_element)
+        .and_then(|element| current_tree.outline_key_for_element(element));
+
+    if !replace_outline_nodes(
+        ui,
+        elements.outline,
+        current_tree.outline_nodes(),
+        current_tree.root_key(),
+        expanded_keys,
+        selected_key,
+    ) {
+        return refresh_session_view(ui, elements, session);
+    }
+
+    clear_children(ui, elements.details);
+    let client = InspectionClient::new(session.clone());
+    let mirror = InspectionMirror::attach(&client).unwrap_or_else(|_| {
+        session.with(|session| {
+            InspectionMirror::from_snapshot(session.snapshot(), session.selected_element())
+        })
+    });
+    let actions = DetailActions::from_client(client, elements.outline);
+    append_inspection_element_details(
+        ui,
+        elements.details,
+        mirror.selected_details(),
+        Some(&actions),
+    );
+    elements
+}
+
 #[cfg(feature = "spoor-session")]
 fn append_session_view_contents(
     ui: &mut Ui,
@@ -535,17 +593,13 @@ fn append_session_view_contents(
     let details_for_selection = Rc::clone(&details_slot);
     let client = InspectionClient::new(session.clone());
     let _ = client.subscribe(InspectionSubscription::all());
-    let mirror = Rc::new(RefCell::new(
-        InspectionMirror::attach(&client).unwrap_or_else(|_| {
-            session.with(|session| {
-                InspectionMirror::from_snapshot(session.snapshot(), session.selected_element())
-            })
-        }),
-    ));
+    let mirror = InspectionMirror::attach(&client).unwrap_or_else(|_| {
+        session.with(|session| {
+            InspectionMirror::from_snapshot(session.snapshot(), session.selected_element())
+        })
+    });
     let client_for_selection = client.clone();
-    let mirror_for_selection = Rc::clone(&mirror);
     let outline_view = mirror
-        .borrow()
         .outline_view()
         .size(INSPECTOR_OUTLINE_WIDTH, INSPECTOR_VIEW_HEIGHT);
     let outline = ui.append(
@@ -555,29 +609,36 @@ fn append_session_view_contents(
                 return;
             };
             clear_children(ui, details);
-            {
-                let mut mirror = mirror_for_selection.borrow_mut();
-                if let Err(error) =
-                    mirror.select_outline_key(&client_for_selection, event.selected_key)
-                {
+            let tree = match client_for_selection.element_tree() {
+                Ok(tree) => tree,
+                Err(error) => {
+                    append_session_error(ui, details, "Tree request failed", &error);
+                    return;
+                }
+            };
+            let selected = event
+                .selected_key
+                .and_then(|key| tree.element_for_outline_key(key));
+            let selected = match client_for_selection.set_selection(selected) {
+                Ok(selected) => selected,
+                Err(error) => {
                     append_session_error(ui, details, "Selection request failed", &error);
                     return;
                 }
-                if let Err(error) = mirror.apply_pending_stream_items(&client_for_selection) {
-                    append_session_error(ui, details, "Stream update failed", &error);
+            };
+            let detail_element = selected.or_else(|| tree.root_element());
+            let detail_result = detail_element
+                .map(|element| client_for_selection.element_details(element))
+                .transpose();
+            let detail = match detail_result {
+                Ok(detail) => detail,
+                Err(error) => {
+                    append_session_error(ui, details, "Detail request failed", &error);
                     return;
                 }
-            }
-
-            let mirror = mirror_for_selection.borrow();
-            let actions =
-                DetailActions::from_mirror(Rc::clone(&mirror_for_selection), event.outline);
-            append_inspection_element_details(
-                ui,
-                details,
-                mirror.selected_details(),
-                Some(&actions),
-            );
+            };
+            let actions = DetailActions::from_client(client_for_selection.clone(), event.outline);
+            append_inspection_element_details(ui, details, detail.as_ref(), Some(&actions));
         }),
     );
     let details_frame = ui.append(
@@ -592,8 +653,7 @@ fn append_session_view_contents(
         .expect("ScrollArea should expose its viewport immediately after append");
     details_slot.set(Some(details_viewport));
 
-    let actions = DetailActions::from_mirror(Rc::clone(&mirror), outline);
-    let mirror = mirror.borrow();
+    let actions = DetailActions::from_client(client.clone(), outline);
     append_inspection_element_details(
         ui,
         details_viewport,
@@ -1139,8 +1199,6 @@ fn bool_summary(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "spoor-snapshot-session")]
-    use alloc::vec;
 
     #[test]
     fn snapshot_capture_indexes_elements_and_layers() {
@@ -1779,31 +1837,73 @@ mod tests {
 
     #[cfg(feature = "spoor-session")]
     #[test]
-    fn live_devtools_refresh_can_rebuild_rendered_session_view() {
+    fn live_devtools_refresh_preserves_rendered_session_view_state() {
         let mut target = Ui::new();
         let target_root = target.root();
-        let selected = target.append(target_root, Panel::new());
+        let group = target.append(target_root, Panel::new());
+        for _ in 0..30 {
+            target.append(group, Panel::new());
+        }
+        for _ in 0..30 {
+            target.append(target_root, Panel::new());
+        }
         let mut devtools =
-            LiveDevtools::capture(&target, Some(selected)).expect("devtools should attach");
+            LiveDevtools::capture(&target, Some(group)).expect("devtools should attach");
         let session = devtools.session().clone();
 
         let mut inspector = Ui::new();
         let root = inspector.root();
         let elements = append_session_view(&mut inspector, root, session.clone());
         let old_outline = elements.outline;
+        let old_details = elements.details;
+        let previous_tree = devtools.mirror().tree().clone();
+        let group_key = previous_tree
+            .outline_key_for_element(group)
+            .expect("group should have an outline key");
+        assert!(overstory::set_outline_key_expanded(
+            &mut inspector,
+            elements.outline,
+            group_key,
+            false
+        ));
+        assert!(overstory::set_outline_scroll_offset_y(
+            &mut inspector,
+            elements.outline,
+            120.0
+        ));
 
         target.append(target_root, Panel::new());
         let refresh = devtools
             .refresh_from(&target)
             .expect("target refresh should update live session");
-        let refreshed = refresh_session_view(&mut inspector, elements, session);
+        let current_tree = devtools.mirror().tree().clone();
+        let refreshed = refresh_session_view_in_place(
+            &mut inspector,
+            elements,
+            &previous_tree,
+            &current_tree,
+            session,
+        );
 
         assert_eq!(refresh.stream_item_count, 1);
-        assert!(inspector.get(old_outline).is_none());
+        assert_eq!(refreshed.outline, old_outline);
+        assert_eq!(refreshed.details, old_details);
         assert!(inspector.get(refreshed.outline).is_some());
+        assert!(inspector.get(refreshed.details).is_some());
+        let refreshed_group_key = current_tree
+            .outline_key_for_element(group)
+            .expect("group should keep an outline key");
+        assert_eq!(
+            overstory::outline_key_expanded(&inspector, refreshed.outline, refreshed_group_key),
+            Some(false)
+        );
+        assert_eq!(
+            overstory::outline_scroll_offset_y(&inspector, refreshed.outline),
+            Some(120.0)
+        );
         assert_eq!(
             overstory::selected_outline_key(&inspector, refreshed.outline),
-            devtools.mirror().outline_key_for_element(selected)
+            devtools.mirror().outline_key_for_element(group)
         );
     }
 

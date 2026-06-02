@@ -746,6 +746,40 @@ impl Widget for OutlineViewWidget {
 }
 
 impl OutlineViewWidget {
+    fn replace_model(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        nodes: Vec<OutlineViewNode>,
+        first_root: Option<OutlineNodeKey>,
+        expanded: impl IntoIterator<Item = OutlineNodeKey>,
+        selected_key: Option<OutlineNodeKey>,
+    ) {
+        {
+            let model = self.outline.model_mut();
+            model.nodes = nodes;
+            model.first_root = first_root;
+        }
+        let expanded = expanded
+            .into_iter()
+            .filter(|key| {
+                self.outline.model().contains_key(key)
+                    && self.outline.model().first_child_key(key).is_some()
+            })
+            .collect::<Vec<_>>();
+        let _ = self.outline.replace_expanded(expanded);
+        if let Some(key) = selected_key.filter(|key| self.outline.model().contains_key(key)) {
+            let _ = self.selection.select_only(key);
+        } else {
+            let _ = self.selection.clear();
+        }
+
+        let visible_len = self.update_visible_len();
+        self.virtual_list.set_len(visible_len);
+        clamp_fixed_virtual_scroll_target(outline, ui, &mut self.virtual_list, &self.scroll_state);
+        let _ = self.sync_virtual_items(outline, ui);
+    }
+
     fn sync_virtual_items(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
         let sync = self.sync_virtual_metrics(outline, ui);
         let mut changed = sync.changed;
@@ -1299,6 +1333,13 @@ pub fn outline_key_expanded(
     outline_view_widget(ui, outline).map(|widget| widget.outline.is_expanded(&key))
 }
 
+/// Returns the currently expanded node keys in `outline`.
+#[must_use]
+pub fn expanded_outline_keys(ui: &Ui, outline: ElementId) -> Option<Vec<OutlineNodeKey>> {
+    outline_view_widget(ui, outline)
+        .map(|widget| widget.outline.expansion().iter().copied().collect())
+}
+
 /// Sets whether `key` is expanded in `outline`.
 ///
 /// Returns `false` if `outline` is stale, disabled, not an `OutlineView`, if
@@ -1312,6 +1353,28 @@ pub fn set_outline_key_expanded(
     let key = key.into();
     with_outline_view_mut(ui, outline, |widget, ui| {
         widget.set_key_expanded(outline, ui, key, expanded)
+    })
+    .unwrap_or(false)
+}
+
+/// Replaces `outline`'s node model without replacing the outline element.
+///
+/// Expansion, selection, and scroll policy remain caller-owned. Supply
+/// `expanded` and `selected_key` after mapping any previously retained state
+/// into the new model's [`OutlineNodeKey`] values.
+///
+/// Returns `false` if `outline` is stale or does not own outline state.
+pub fn replace_outline_nodes(
+    ui: &mut Ui,
+    outline: ElementId,
+    nodes: Vec<OutlineViewNode>,
+    first_root: Option<OutlineNodeKey>,
+    expanded: impl IntoIterator<Item = OutlineNodeKey>,
+    selected_key: Option<OutlineNodeKey>,
+) -> bool {
+    with_outline_view_mut(ui, outline, |widget, ui| {
+        widget.replace_model(outline, ui, nodes, first_root, expanded, selected_key);
+        true
     })
     .unwrap_or(false)
 }
@@ -1452,6 +1515,7 @@ mod tests {
     use accesskit::{Node, NodeId, Role, TreeUpdate};
     use kurbo::Point;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+    use understory_property::DependencyObjectExt;
 
     use super::*;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
@@ -1638,6 +1702,50 @@ mod tests {
             })
         );
         assert_eq!(realized_outline_item_key(&ui, child), Some(key(1)));
+    }
+
+    #[test]
+    fn replace_outline_nodes_preserves_outline_state_and_realized_items() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(
+            root,
+            OutlineView::new()
+                .nodes(scrolling_nodes(100), Some(0))
+                .expanded(0)
+                .selected_key(20)
+                .size(140.0, 56.0)
+                .item_extent(20.0)
+                .overscan(0.0),
+        );
+        realize(&mut ui);
+        assert!(set_outline_scroll_offset_y(&mut ui, outline, 380.0));
+        let old_outline = outline;
+
+        let mut replacement = scrolling_nodes(120);
+        replacement[20] = node("Updated item 20").with_next_sibling(Some(21));
+        assert!(replace_outline_nodes(
+            &mut ui,
+            outline,
+            replacement,
+            Some(key(0)),
+            [key(0)],
+            Some(key(20)),
+        ));
+        realize(&mut ui);
+
+        assert!(ui.get(old_outline).is_some());
+        assert_eq!(expanded_outline_keys(&ui, outline), Some(vec![key(0)]));
+        assert_eq!(selected_outline_key(&ui, outline), Some(key(20)));
+        assert_eq!(outline_scroll_offset_y(&ui, outline), Some(380.0));
+        let realized = realized_outline_item(&ui, outline, 20)
+            .expect("updated selected row should still be realized");
+        assert_eq!(
+            ui.get(realized)
+                .and_then(|element| element.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("Updated item 20"),
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 
-use overstory::{ElementId, OutlineNodeKey, OutlineView, OutlineViewNode};
+use overstory::{ElementId, OutlineNodeKey, OutlineView};
 use spoor_session::{
     SessionError, SessionErrorCode, SessionRequestId, SessionResult, SessionStreamId,
 };
@@ -274,18 +274,7 @@ impl InspectionMirror {
     /// Builds an [`OutlineView`] for the current mirrored tree and selection.
     #[must_use]
     pub fn outline_view(&self) -> OutlineView {
-        let mut view = OutlineView::new().nodes(
-            self.tree
-                .nodes
-                .iter()
-                .map(|node| {
-                    OutlineViewNode::new(node.label.clone())
-                        .with_first_child(node.first_child)
-                        .with_next_sibling(node.next_sibling)
-                })
-                .collect(),
-            self.tree.root,
-        );
+        let mut view = OutlineView::new().nodes(self.tree.outline_nodes(), self.tree.root_key());
         for (index, node) in self.tree.nodes.iter().enumerate() {
             if node.row.child_count > 0 {
                 view = view.expanded(OutlineNodeKey::from(index));

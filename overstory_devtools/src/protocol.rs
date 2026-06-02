@@ -16,7 +16,7 @@ use overstory::inspection::{
     CompositionInspectionSnapshot, ElementInspectionRow, TimelineInspectionSnapshot,
     UiStorageInspectionSnapshot,
 };
-use overstory::{ElementId, OutlineNodeKey};
+use overstory::{ElementId, OutlineNodeKey, OutlineViewNode};
 use spoor_session::{
     SessionMethod, SessionRequest, SessionRequestId, SessionResponse, SessionStreamId,
     SessionStreamItem, SessionStreamStart,
@@ -95,8 +95,9 @@ impl InspectionDispatch {
 pub enum InspectionRequest {
     /// Capture a full owned snapshot.
     ///
-    /// This is useful for initial attachment and offline dumps. Live inspector
-    /// refresh should prefer compact deltas plus lazy detail requests.
+    /// This is useful for initial attachment and offline dumps. Incremental
+    /// inspector refresh should prefer compact change signals plus lazy detail
+    /// requests.
     CaptureSnapshot,
     /// Return the retained element tree as a compact projected outline.
     ElementTree,
@@ -221,6 +222,25 @@ impl InspectionElementTree {
     pub fn element_for_outline_key(&self, key: OutlineNodeKey) -> Option<ElementId> {
         self.nodes.get(key.index()).map(|node| node.row.element)
     }
+
+    /// Returns the root outline key, if this tree has a root node.
+    #[must_use]
+    pub fn root_key(&self) -> Option<OutlineNodeKey> {
+        self.root.map(OutlineNodeKey::from)
+    }
+
+    /// Projects this tree into nodes accepted by Overstory's outline control.
+    #[must_use]
+    pub fn outline_nodes(&self) -> Vec<OutlineViewNode> {
+        self.nodes
+            .iter()
+            .map(|node| {
+                OutlineViewNode::new(node.label.clone())
+                    .with_first_child(node.first_child)
+                    .with_next_sibling(node.next_sibling)
+            })
+            .collect()
+    }
 }
 
 /// One projected retained-element node in an [`InspectionElementTree`].
@@ -330,11 +350,11 @@ pub enum InspectionSubscriptionKind {
     Subsystem(InspectionSubsystem),
 }
 
-/// Compact live inspection delta.
+/// Compact inspection change signal.
 ///
-/// This deliberately avoids carrying a full snapshot. Consumers should apply
-/// the signal to their retained mirror and issue lazy queries for details they
-/// actually display.
+/// This deliberately avoids carrying a full snapshot. Consumers should use the
+/// signal to invalidate retained mirror state and issue lazy queries for the
+/// tree, summaries, or details they actually display.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InspectionDelta {
     /// Subsystem that changed.

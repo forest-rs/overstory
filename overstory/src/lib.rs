@@ -142,11 +142,11 @@ pub use controls::outline::{
     OutlineExpansionChangedEvent, OutlineItemInfo, OutlineNodeKey, OutlineSelectionChangedEvent,
     OutlineView, OutlineViewNode, OutlineViewScrollArea, PART_OUTLINE_ITEM_CONTENT,
     PART_OUTLINE_ITEM_DISCLOSURE, PART_OUTLINE_ITEM_LABEL, SLOT_OUTLINE_ITEM_DISCLOSURE,
-    SLOT_OUTLINE_ITEM_LABEL, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, outline_key_expanded,
-    outline_scroll_offset_y, outline_view_scroll_area_outline, outline_view_scroll_area_scrollbar,
-    realized_outline_item_info, realized_outline_item_key, select_outline_key,
-    selected_outline_key, set_outline_key_expanded, set_outline_scroll_offset_y,
-    toggle_outline_key,
+    SLOT_OUTLINE_ITEM_LABEL, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, expanded_outline_keys,
+    outline_key_expanded, outline_scroll_offset_y, outline_view_scroll_area_outline,
+    outline_view_scroll_area_scrollbar, realized_outline_item_info, realized_outline_item_key,
+    replace_outline_nodes, select_outline_key, selected_outline_key, set_outline_key_expanded,
+    set_outline_scroll_offset_y, toggle_outline_key,
 };
 pub use controls::panel::Panel;
 pub use controls::popup::{Popup, TYPE_POPUP};

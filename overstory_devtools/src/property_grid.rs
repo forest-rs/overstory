@@ -9,12 +9,7 @@
 //! column and property-value semantics later, this model is the part to
 //! reconsider.
 
-#[cfg(feature = "spoor-session")]
-use core::cell::RefCell;
-
 use alloc::format;
-#[cfg(feature = "spoor-session")]
-use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -26,7 +21,7 @@ use overstory::{
 #[cfg(not(feature = "spoor-session"))]
 use crate::DevtoolsSessionHandle;
 #[cfg(feature = "spoor-session")]
-use crate::InspectionMirror;
+use crate::InspectionClient;
 
 /// Read-only property-grid content grouped into sections.
 ///
@@ -216,10 +211,10 @@ impl DetailActions {
     }
 
     #[cfg(feature = "spoor-session")]
-    pub(crate) fn from_mirror(mirror: Rc<RefCell<InspectionMirror>>, outline: ElementId) -> Self {
+    pub(crate) fn from_client(client: InspectionClient, outline: ElementId) -> Self {
         Self {
             outline,
-            resolver: DetailActionResolver::Mirror(mirror),
+            resolver: DetailActionResolver::Client(client),
         }
     }
 
@@ -230,9 +225,10 @@ impl DetailActions {
                 session.with(|session| session.snapshot().outline_key_for_element(element))
             }
             #[cfg(feature = "spoor-session")]
-            DetailActionResolver::Mirror(mirror) => {
-                mirror.borrow().outline_key_for_element(element)
-            }
+            DetailActionResolver::Client(client) => client
+                .element_tree()
+                .ok()
+                .and_then(|tree| tree.outline_key_for_element(element)),
         }
     }
 }
@@ -242,7 +238,7 @@ enum DetailActionResolver {
     #[cfg(not(feature = "spoor-session"))]
     Session(DevtoolsSessionHandle),
     #[cfg(feature = "spoor-session")]
-    Mirror(Rc<RefCell<InspectionMirror>>),
+    Client(InspectionClient),
 }
 
 pub(crate) fn append_property_grid_sections(

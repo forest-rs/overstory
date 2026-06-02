@@ -1,7 +1,7 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Same-process live devtools controller.
+//! Same-process devtools controller.
 //!
 //! This module owns the connection between target snapshot capture, the
 //! inspection session, and a client-side mirror. It explicitly does not own the
@@ -15,7 +15,7 @@ use crate::{
     InspectionClient, InspectionMirror, InspectionSubscription,
 };
 
-/// Summary of one live devtools refresh.
+/// Summary of one same-process devtools refresh.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DevtoolsRefresh {
     /// Session event produced by the refresh.
@@ -26,11 +26,12 @@ pub struct DevtoolsRefresh {
     pub selected: Option<ElementId>,
 }
 
-/// Same-process controller for a live Overstory devtools session.
+/// Same-process controller for an Overstory devtools session.
 ///
 /// The controller is the intended bridge for host integrations that can
-/// periodically capture a target snapshot and want the inspector to update
-/// through the same request/stream vocabulary used by remote tooling.
+/// periodically capture a target snapshot and want the inspector to keep a
+/// retained client-side mirror. Current refreshes replace the session snapshot
+/// and emit compact invalidation signals; they are not structural tree deltas.
 #[derive(Clone, Debug)]
 pub struct LiveDevtools {
     session: DevtoolsSessionHandle,
@@ -84,9 +85,10 @@ impl LiveDevtools {
 
     /// Replaces the session snapshot with a fresh capture from `target`.
     ///
-    /// The refresh is applied through the session stream path so the same
-    /// mirror update code handles local target refreshes and future remote
-    /// stream deliveries.
+    /// The refresh is applied through the session stream vocabulary so the
+    /// mirror can react to local target refreshes and future remote deliveries.
+    /// The payload currently says "the snapshot changed"; callers still issue
+    /// lazy requests for the tree and visible details they need.
     pub fn refresh_from(
         &mut self,
         target: &impl DevtoolsTarget,

@@ -3,7 +3,7 @@
 
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsViewElements, LiveDevtools, UiInspectionTarget,
-    append_session_view, refresh_session_view,
+    append_session_view, refresh_session_view_in_place,
 };
 
 use super::*;
@@ -86,7 +86,8 @@ impl InProcessDevtoolsShell {
             return;
         };
         let devtools = self.devtools.borrow();
-        let content = format_live_status(&devtools, self.refresh_count.get(), stream_item_count);
+        let content =
+            format_auto_capture_status(&devtools, self.refresh_count.get(), stream_item_count);
         ui.set_local(status, ui.properties().content, content);
     }
 
@@ -103,6 +104,7 @@ impl InProcessDevtoolsShell {
             return false;
         }
 
+        let previous_tree = self.devtools.borrow().mirror().tree().clone();
         let refresh = {
             let excluded = [popup];
             let target = UiInspectionTarget::new(ui).excluding(&excluded);
@@ -119,7 +121,14 @@ impl InProcessDevtoolsShell {
             return false;
         };
 
-        let refreshed = refresh_session_view(ui, elements, self.session.clone());
+        let current_tree = self.devtools.borrow().mirror().tree().clone();
+        let refreshed = refresh_session_view_in_place(
+            ui,
+            elements,
+            &previous_tree,
+            &current_tree,
+            self.session.clone(),
+        );
         self.view_elements.set(Some(refreshed));
         self.refresh_count
             .set(self.refresh_count.get().saturating_add(1));
@@ -206,7 +215,7 @@ fn open_in_process_devtools(
                 let _ = popup
                     .ui_mut()
                     .schedule_timer_repeating(popup_id, millis(DEVTOOLS_REFRESH_INTERVAL_MS));
-                wire_live_refresh_timer(popup.ui_mut(), popup_id, shell_for_build.clone());
+                wire_auto_capture_timer(popup.ui_mut(), popup_id, shell_for_build.clone());
             });
         },
     );
@@ -242,19 +251,19 @@ fn wire_close_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShe
     });
 }
 
-fn wire_live_refresh_timer(ui: &mut Ui, popup: ElementId, shell: InProcessDevtoolsShell) {
+fn wire_auto_capture_timer(ui: &mut Ui, popup: ElementId, shell: InProcessDevtoolsShell) {
     ui.on_timer(popup, move |ui, _event| {
         let _ = shell.refresh(ui);
     });
 }
 
-fn format_live_status(
+fn format_auto_capture_status(
     devtools: &LiveDevtools,
     refresh_count: u32,
     stream_item_count: usize,
 ) -> String {
     format!(
-        "Live capture - elements: {}, refreshes: {}, stream items: {}",
+        "Auto capture - elements: {}, refreshes: {}, stream items: {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,

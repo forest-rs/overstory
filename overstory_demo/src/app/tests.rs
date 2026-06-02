@@ -166,7 +166,7 @@ fn gallery_devtools_button_opens_in_process_inspector() {
     );
     assert!(
         find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS).is_some(),
-        "in-process devtools should render live capture status",
+        "in-process devtools should render auto-capture status",
     );
 
     assert!(
@@ -191,6 +191,8 @@ fn gallery_devtools_popup_refreshes_running_gallery_tree() {
 
     let status = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS)
         .expect("devtools popup should contain status text");
+    let outline = find_by_type(&ui, ui.root(), overstory::TYPE_OUTLINE_VIEW)
+        .expect("devtools popup should contain an outline");
     let initial_status = text_content(&ui, status);
     let initial_count =
         status_element_count(&initial_status).expect("initial status should report elements");
@@ -203,11 +205,15 @@ fn gallery_devtools_popup_refreshes_running_gallery_tree() {
         status_element_count(&refreshed_status).expect("refreshed status should report elements");
     assert_ne!(
         refreshed_count, initial_count,
-        "live devtools should recapture the changed running gallery tree",
+        "devtools should recapture the changed running gallery tree",
     );
     assert!(
         refreshed_status.contains("refreshes: 1"),
-        "timer refresh should update the live status: {refreshed_status}",
+        "timer refresh should update the auto-capture status: {refreshed_status}",
+    );
+    assert!(
+        ui.get(outline).is_some(),
+        "timer refresh should preserve the rendered outline element",
     );
 }
 
@@ -494,6 +500,21 @@ fn count_type(ui: &Ui, element: ElementId, type_tag: understory_style::TypeTag) 
             .iter()
             .map(|child| count_type(ui, *child, type_tag))
             .sum::<usize>()
+}
+
+fn find_by_type(
+    ui: &Ui,
+    element: ElementId,
+    type_tag: understory_style::TypeTag,
+) -> Option<ElementId> {
+    let current = ui.get(element)?;
+    if current.type_tag() == Some(type_tag) {
+        return Some(element);
+    }
+    current
+        .children()
+        .iter()
+        .find_map(|child| find_by_type(ui, *child, type_tag))
 }
 
 fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
