@@ -49,6 +49,8 @@ pub(super) const CLASS_SVG_INFO_CARD: ClassId = ClassId(22);
 pub(super) const CLASS_SVG_TIGER_CARD: ClassId = ClassId(23);
 pub(super) const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
 pub(super) const CLASS_DEVTOOLS_INSPECTOR_CARD: ClassId = ClassId(25);
+pub(super) const CLASS_DEVTOOLS_STATUS: ClassId = ClassId(26);
+pub(super) const CLASS_DEVTOOLS_BUTTON: ClassId = ClassId(27);
 pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
 pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
 pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
@@ -299,6 +301,15 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
+            button_class_state_selector(CLASS_DEVTOOLS_BUTTON, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set_resource(properties.border_brush, DEMO_ACCENT_BG)
+                .set_resource(properties.foreground, theme::ON_ACCENT_FG)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
             text_class_selector(CLASS_DEMO_NUMBER),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
@@ -458,6 +469,14 @@ pub(super) fn class_selector(class: ClassId) -> Selector {
 
 pub(super) fn text_class_selector(class: ClassId) -> Selector {
     Selector::single(SelectorStep::type_tag(TYPE_TEXT).with_class(class))
+}
+
+pub(super) fn button_class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {
+    Selector::single(
+        SelectorStep::type_tag(TYPE_BUTTON)
+            .with_class(class)
+            .with_pseudo(pseudo),
+    )
 }
 
 pub(super) fn class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {

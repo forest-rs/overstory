@@ -20,6 +20,7 @@ ui-events.workspace = true
 
 [dev-dependencies]
 kurbo.workspace = true
+understory_property.workspace = true
 
 [lints]
 workspace = true

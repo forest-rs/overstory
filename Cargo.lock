@@ -2155,6 +2155,7 @@ dependencies = [
  "overstory_svg",
  "peniko",
  "ui-events",
+ "understory_property",
  "understory_style",
  "understory_view2d",
 ]

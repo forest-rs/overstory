@@ -23,8 +23,9 @@ use overstory::{
     ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment,
     LayoutDimension, LayoutSize, ListBox, LocalState, OutlineView, OutlineViewNode, Panel, Popup,
     ProgressBar, RadioGroup, Rect, SegmentedControl, Select, Slider, Spinner, Splitter,
-    SurfaceSpecExt, TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TextSpecExt, TimerDuration, TimerId,
-    ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts, set_progress_value, theme,
+    SurfaceSpecExt, TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TextSpecExt,
+    TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts,
+    set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
@@ -52,7 +53,8 @@ const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
 const DEVTOOLS_INSPECTOR_WIDTH: f32 = 520.0;
-const DEVTOOLS_CARD_HEIGHT: f32 = 520.0;
+const DEVTOOLS_CARD_HEIGHT: f32 = 580.0;
+const DEVTOOLS_REFRESH_INTERVAL_MS: u64 = 500;
 const SVG_PAGE_WIDTH: f32 = 824.0;
 const SVG_INFO_HEIGHT: f32 = 132.0;
 const SVG_TIGER_CARD_WIDTH: f32 = 548.0;

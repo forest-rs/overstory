@@ -45,6 +45,7 @@ pub(super) fn build_nav(nav: &mut ChildUi<'_>) -> NavChrome {
 
     let devtools_button = nav.add(
         Button::new("Inspect app")
+            .class(CLASS_DEVTOOLS_BUTTON)
             .font_size(13.0)
             .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 34.0)),
     );

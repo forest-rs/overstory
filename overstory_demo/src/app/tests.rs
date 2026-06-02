@@ -1,4 +1,5 @@
 use kurbo::{Point, Size};
+use understory_property::DependencyObjectExt;
 
 use super::pages::show_demo_page;
 use super::*;
@@ -153,8 +154,60 @@ fn gallery_devtools_button_opens_in_process_inspector() {
         "devtools button should open the inspector popup"
     );
     assert!(
+        ui.get(button)
+            .expect("devtools button should still exist")
+            .pseudos()
+            .contains(&PSEUDO_SELECTED),
+        "devtools button should show its open state",
+    );
+    assert!(
         count_type(&ui, ui.root(), overstory::TYPE_OUTLINE_VIEW) >= 1,
         "in-process devtools should render an inspector outline",
+    );
+    assert!(
+        find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS).is_some(),
+        "in-process devtools should render live capture status",
+    );
+
+    assert!(
+        ui.synthesize_click(button, Point::ZERO).handled,
+        "second devtools button click should close the popup",
+    );
+    assert!(
+        !ui.get(button)
+            .expect("devtools button should still exist")
+            .pseudos()
+            .contains(&PSEUDO_SELECTED),
+        "devtools button should clear its open state after close",
+    );
+}
+
+#[test]
+fn gallery_devtools_popup_refreshes_running_gallery_tree() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    let button = devtools_button(&ui);
+    assert!(ui.synthesize_click(button, Point::ZERO).handled);
+
+    let status = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS)
+        .expect("devtools popup should contain status text");
+    let initial_status = text_content(&ui, status);
+    let initial_count =
+        status_element_count(&initial_status).expect("initial status should report elements");
+
+    show_demo_page(&mut ui, stage, DemoPage::Svg);
+    ui.pump_timers(millis(DEVTOOLS_REFRESH_INTERVAL_MS));
+
+    let refreshed_status = text_content(&ui, status);
+    let refreshed_count =
+        status_element_count(&refreshed_status).expect("refreshed status should report elements");
+    assert_ne!(
+        refreshed_count, initial_count,
+        "live devtools should recapture the changed running gallery tree",
+    );
+    assert!(
+        refreshed_status.contains("refreshes: 1"),
+        "timer refresh should update the live status: {refreshed_status}",
     );
 }
 
@@ -441,6 +494,34 @@ fn count_type(ui: &Ui, element: ElementId, type_tag: understory_style::TypeTag) 
             .iter()
             .map(|child| count_type(ui, *child, type_tag))
             .sum::<usize>()
+}
+
+fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+    let current = ui.get(element)?;
+    if current.classes().contains(&class) {
+        return Some(element);
+    }
+    current
+        .children()
+        .iter()
+        .find_map(|child| find_by_class(ui, *child, class))
+}
+
+fn text_content(ui: &Ui, element: ElementId) -> String {
+    ui.get(element)
+        .and_then(|element| element.get_local_value(ui.properties().content))
+        .cloned()
+        .expect("element should have text content")
+}
+
+fn status_element_count(status: &str) -> Option<usize> {
+    status
+        .split("elements: ")
+        .nth(1)?
+        .split(',')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
