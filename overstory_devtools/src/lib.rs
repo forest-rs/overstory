@@ -25,7 +25,8 @@ use alloc::vec::Vec;
 
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
-    LayerInspectionId, SurfaceInspectionId, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementTreeInspectionPatch, LayerInspectionId, SurfaceInspectionId, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea,
@@ -76,9 +77,31 @@ pub trait DevtoolsTarget {
     fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot;
 }
 
+/// A live target that can report inspection changes since a baseline capture.
+///
+/// A live devtools session should capture a snapshot once, clear changes
+/// created before that baseline, then drain changes for steady-state updates.
+pub trait LiveDevtoolsTarget: DevtoolsTarget {
+    /// Drains inspectable state changes recorded since the previous drain.
+    fn drain_inspection_changes(&mut self) -> UiInspectionChanges;
+
+    /// Clears pending inspection changes without returning them.
+    fn clear_inspection_changes(&mut self);
+}
+
 impl DevtoolsTarget for Ui {
     fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot {
         Self::inspection_snapshot(self)
+    }
+}
+
+impl LiveDevtoolsTarget for Ui {
+    fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
+        Self::drain_inspection_changes(self)
+    }
+
+    fn clear_inspection_changes(&mut self) {
+        Self::clear_inspection_changes(self);
     }
 }
 
@@ -129,6 +152,138 @@ impl DevtoolsTarget for UiInspectionTarget<'_> {
     }
 }
 
+/// Filtered mutable target view over a live [`Ui`].
+///
+/// This is the live-update counterpart to [`UiInspectionTarget`]. It is used by
+/// same-process devtools to drain target-side changes while excluding the
+/// inspector's own retained subtree.
+#[derive(Debug)]
+pub struct UiLiveInspectionTarget<'a> {
+    ui: &'a mut Ui,
+    root: ElementId,
+    excluded_roots: &'a [ElementId],
+}
+
+impl<'a> UiLiveInspectionTarget<'a> {
+    /// Creates a live target for the whole `ui`.
+    #[must_use]
+    pub fn new(ui: &'a mut Ui) -> Self {
+        let root = ui.root();
+        Self {
+            ui,
+            root,
+            excluded_roots: &[],
+        }
+    }
+
+    /// Returns a target that captures and drains only the subtree rooted at `root`.
+    #[must_use]
+    pub const fn rooted_at(mut self, root: ElementId) -> Self {
+        self.root = root;
+        self
+    }
+
+    /// Returns a target that omits each subtree in `excluded_roots`.
+    #[must_use]
+    pub const fn excluding(mut self, excluded_roots: &'a [ElementId]) -> Self {
+        self.excluded_roots = excluded_roots;
+        self
+    }
+
+    fn element_is_included(&self, element: ElementId) -> bool {
+        element_is_descendant_or_self(self.ui, self.root, element)
+            && !self
+                .excluded_roots
+                .iter()
+                .any(|excluded| element_is_descendant_or_self(self.ui, *excluded, element))
+    }
+}
+
+impl DevtoolsTarget for UiLiveInspectionTarget<'_> {
+    fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot {
+        filter_inspection_snapshot(
+            self.ui.inspection_snapshot(),
+            self.root,
+            self.excluded_roots,
+        )
+    }
+}
+
+impl LiveDevtoolsTarget for UiLiveInspectionTarget<'_> {
+    fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
+        let changes = self.ui.drain_inspection_changes();
+        filter_inspection_changes(changes, self)
+    }
+
+    fn clear_inspection_changes(&mut self) {
+        self.ui.clear_inspection_changes();
+    }
+}
+
+fn filter_inspection_changes(
+    mut changes: UiInspectionChanges,
+    target: &UiLiveInspectionTarget<'_>,
+) -> UiInspectionChanges {
+    let mut removed_decisions = Vec::new();
+    let mut removed = Vec::new();
+    for removal in changes.tree.removed {
+        let included = if contains_element(target.excluded_roots, removal.id) {
+            false
+        } else if let Some(parent) = removal.parent {
+            removed_decisions
+                .iter()
+                .find(|(id, _)| *id == parent)
+                .map_or_else(
+                    || {
+                        target
+                            .ui
+                            .get(parent)
+                            .is_none_or(|_| target.element_is_included(parent))
+                    },
+                    |(_, included)| *included,
+                )
+        } else {
+            removal.id == target.root
+        };
+        removed_decisions.push((removal.id, included));
+        if included {
+            removed.push(removal);
+        }
+    }
+
+    let upserted = changes
+        .tree
+        .upserted
+        .into_iter()
+        .filter(|row| target.element_is_included(row.id))
+        .map(|mut row| {
+            if row.id == target.root {
+                row.parent = None;
+            } else {
+                row.parent = row
+                    .parent
+                    .filter(|parent| target.element_is_included(*parent));
+            }
+            row.children
+                .retain(|child| target.element_is_included(*child));
+            if row
+                .templated_parent
+                .is_some_and(|owner| !target.element_is_included(owner))
+            {
+                row.templated_parent = None;
+                row.template_slot = None;
+                row.template_key = None;
+            }
+            row
+        })
+        .collect();
+
+    changes.tree.root = Some(target.root);
+    changes.tree.removed = removed;
+    changes.tree.upserted = upserted;
+    changes
+}
+
 /// Owned devtools snapshot plus lightweight lookup tables.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DevtoolsSnapshot {
@@ -148,45 +303,88 @@ impl DevtoolsSnapshot {
     /// Wraps an existing inspection snapshot with lookup helpers.
     #[must_use]
     pub fn new(inspection: UiInspectionSnapshot) -> Self {
-        let mut element_index: Vec<_> = inspection
-            .elements
-            .iter()
-            .enumerate()
-            .map(|(index, row)| (row.id, index))
-            .collect();
-        element_index.sort_by_key(|(id, _)| *id);
-
-        let mut layer_index: Vec<_> = inspection
-            .composition
-            .layers
-            .iter()
-            .enumerate()
-            .map(|(index, row)| (row.id, index))
-            .collect();
-        layer_index.sort_by_key(|(id, _)| *id);
-
-        let mut surface_index: Vec<_> = inspection
-            .composition
-            .surfaces
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(index, surface)| (surface, index))
-            .collect();
-        surface_index.sort_by_key(|(id, _)| *id);
-
-        Self {
+        let mut snapshot = Self {
             inspection,
-            element_index,
-            layer_index,
-            surface_index,
-        }
+            element_index: Vec::new(),
+            layer_index: Vec::new(),
+            surface_index: Vec::new(),
+        };
+        snapshot.rebuild_indexes();
+        snapshot
     }
 
     /// Returns the wrapped inspection snapshot.
     #[must_use]
     pub const fn inspection(&self) -> &UiInspectionSnapshot {
         &self.inspection
+    }
+
+    /// Applies target-side inspection changes to the retained snapshot.
+    ///
+    /// This is the session-side half of live devtools. Full captures remain
+    /// the resync path; this method keeps the retained baseline current between
+    /// captures when the target can provide explicit change records.
+    pub fn apply_inspection_changes(&mut self, changes: UiInspectionChanges) {
+        self.apply_element_tree_patch(changes.tree);
+    }
+
+    fn apply_element_tree_patch(&mut self, patch: ElementTreeInspectionPatch) {
+        if let Some(root) = patch.root {
+            self.inspection.root = root;
+        }
+
+        let mut removed_ids = Vec::new();
+        for removal in &patch.removed {
+            self.push_snapshot_subtree(removal.id, &mut removed_ids);
+        }
+        removed_ids.sort();
+        removed_ids.dedup();
+        self.inspection
+            .elements
+            .retain(|row| removed_ids.binary_search(&row.id).is_err());
+
+        for row in patch.upserted {
+            if let Some(existing) = self
+                .inspection
+                .elements
+                .iter_mut()
+                .find(|existing| existing.id == row.id)
+            {
+                *existing = row;
+            } else {
+                self.inspection.elements.push(row);
+            }
+        }
+
+        let live_elements: Vec<_> = self.inspection.elements.iter().map(|row| row.id).collect();
+        for row in &mut self.inspection.elements {
+            if row.id == self.inspection.root {
+                row.parent = None;
+            } else {
+                row.parent = row
+                    .parent
+                    .filter(|id| contains_element(&live_elements, *id));
+            }
+            row.children
+                .retain(|child| contains_element(&live_elements, *child));
+            if row
+                .templated_parent
+                .is_some_and(|owner| !contains_element(&live_elements, owner))
+            {
+                row.templated_parent = None;
+                row.template_slot = None;
+                row.template_key = None;
+            }
+        }
+
+        self.inspection.elements = ordered_element_rows(
+            self.inspection.root,
+            core::mem::take(&mut self.inspection.elements),
+        );
+        self.inspection.storage.live_elements = self.inspection.elements.len();
+        self.inspection.storage.free_element_slots = 0;
+        self.inspection.storage.allocated_element_slots = self.inspection.elements.len();
+        self.rebuild_indexes();
     }
 
     /// Returns the element row for `id`.
@@ -318,6 +516,82 @@ impl DevtoolsSnapshot {
             .and_then(|index| siblings.get(index + 1))?;
         self.element_offset(*sibling)
     }
+
+    fn push_snapshot_subtree(&self, element: ElementId, removed: &mut Vec<ElementId>) {
+        if contains_element(removed, element) {
+            return;
+        }
+        removed.push(element);
+        let Some(row) = self.element(element) else {
+            return;
+        };
+        for child in &row.children {
+            self.push_snapshot_subtree(*child, removed);
+        }
+    }
+
+    fn rebuild_indexes(&mut self) {
+        self.element_index = self
+            .inspection
+            .elements
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.id, index))
+            .collect();
+        self.element_index.sort_by_key(|(id, _)| *id);
+
+        self.layer_index = self
+            .inspection
+            .composition
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.id, index))
+            .collect();
+        self.layer_index.sort_by_key(|(id, _)| *id);
+
+        self.surface_index = self
+            .inspection
+            .composition
+            .surfaces
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, surface)| (surface, index))
+            .collect();
+        self.surface_index.sort_by_key(|(id, _)| *id);
+    }
+}
+
+fn ordered_element_rows(
+    root: ElementId,
+    rows: Vec<ElementInspectionRow>,
+) -> Vec<ElementInspectionRow> {
+    let mut ordered = Vec::new();
+    push_ordered_row(root, &rows, &mut ordered);
+    for row in rows {
+        if !ordered.iter().any(|ordered| ordered.id == row.id) {
+            ordered.push(row);
+        }
+    }
+    ordered
+}
+
+fn push_ordered_row(
+    element: ElementId,
+    rows: &[ElementInspectionRow],
+    ordered: &mut Vec<ElementInspectionRow>,
+) {
+    if ordered.iter().any(|row| row.id == element) {
+        return;
+    }
+    let Some(row) = rows.iter().find(|row| row.id == element) else {
+        return;
+    };
+    ordered.push(row.clone());
+    for child in &row.children {
+        push_ordered_row(*child, rows, ordered);
+    }
 }
 
 fn filter_inspection_snapshot(
@@ -355,6 +629,17 @@ fn filter_inspection_snapshot(
     snapshot.composition = filtered_composition_snapshot(snapshot.composition, &included);
     snapshot.storage = filtered_storage_snapshot(snapshot.storage, &snapshot);
     snapshot
+}
+
+fn element_is_descendant_or_self(ui: &Ui, root: ElementId, element: ElementId) -> bool {
+    let mut current = Some(element);
+    while let Some(candidate) = current {
+        if candidate == root {
+            return true;
+        }
+        current = ui.get(candidate).and_then(overstory::Element::parent);
+    }
+    false
 }
 
 fn push_included_elements(
@@ -1323,6 +1608,43 @@ mod tests {
         assert_eq!(
             snapshot.element(root).expect("root should exist").children,
             vec![app],
+        );
+    }
+
+    #[test]
+    fn ui_live_inspection_target_filters_drained_devtools_changes() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let app = ui.append(root, Panel::new());
+        let devtools = ui.append(root, Panel::new());
+        let excluded = [devtools];
+        {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
+            target.clear_inspection_changes();
+        }
+
+        let app_child = ui.append(app, Panel::new());
+        let devtools_child = ui.append(devtools, Panel::new());
+        let changes = {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
+            target.drain_inspection_changes()
+        };
+
+        assert!(changes.tree.removed.is_empty());
+        assert!(
+            changes
+                .tree
+                .upserted
+                .iter()
+                .any(|row| row.id == app && row.children.contains(&app_child))
+        );
+        assert!(changes.tree.upserted.iter().any(|row| row.id == app_child));
+        assert!(
+            !changes
+                .tree
+                .upserted
+                .iter()
+                .any(|row| row.id == devtools || row.id == devtools_child)
         );
     }
 

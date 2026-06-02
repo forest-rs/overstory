@@ -10,6 +10,8 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 #[cfg(any(feature = "spoor-session", feature = "spoor-snapshot-session"))]
 use alloc::vec::Vec;
+#[cfg(feature = "spoor-session")]
+use overstory::inspection::UiInspectionChanges;
 use overstory::{ElementId, OutlineNodeKey};
 #[cfg(feature = "spoor-snapshot-session")]
 use spoor_session::{OwnedSessionEnvelope, OwnedSessionPayload};
@@ -136,6 +138,36 @@ impl DevtoolsSession {
                 selected: self.selected_element,
             }
         }
+    }
+
+    /// Applies target-authored inspection changes to the retained snapshot.
+    ///
+    /// This is the incremental live-update path. It keeps the session snapshot
+    /// current without forcing a full target recapture, then emits the same
+    /// keyed tree-patch event that snapshot replacement uses for mirrors and
+    /// remote transports.
+    #[cfg(feature = "spoor-session")]
+    pub fn apply_inspection_changes(
+        &mut self,
+        changes: UiInspectionChanges,
+    ) -> Option<DevtoolsEvent> {
+        if changes.is_empty() {
+            return None;
+        }
+
+        let previous_tree = self.snapshot.inspection_element_tree();
+        self.snapshot.apply_inspection_changes(changes);
+        self.normalize_selected_element();
+        let current_tree = self.snapshot.inspection_element_tree();
+        let tree_patch = previous_tree.patch_to(&current_tree);
+        if tree_patch.removed.is_empty() && tree_patch.upserted.is_empty() {
+            return None;
+        }
+
+        Some(DevtoolsEvent::ElementTreePatched {
+            selected: self.selected_element,
+            tree_patch,
+        })
     }
 
     /// Handles one typed live inspection request.

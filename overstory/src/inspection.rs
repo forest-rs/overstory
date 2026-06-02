@@ -33,6 +33,53 @@ pub struct UiInspectionSnapshot {
     pub frame: UiFrameStats,
 }
 
+/// Batched inspectable changes produced by normal [`crate::Ui`] mutation.
+///
+/// Snapshots are still the baseline and resync format. Change batches are the
+/// steady-state feed for live devtools and inspectors that want to update a
+/// retained mirror without recapturing the full tree every frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UiInspectionChanges {
+    /// Retained-element tree changes.
+    pub tree: ElementTreeInspectionPatch,
+}
+
+impl UiInspectionChanges {
+    /// Returns whether this batch carries no changes.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tree.is_empty()
+    }
+}
+
+/// Incremental retained-element tree changes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ElementTreeInspectionPatch {
+    /// Root element for the inspected tree after the patch.
+    pub root: Option<ElementId>,
+    /// Elements removed from the tree.
+    pub removed: Vec<ElementInspectionRemoval>,
+    /// Added or updated element rows.
+    pub upserted: Vec<ElementInspectionRow>,
+}
+
+impl ElementTreeInspectionPatch {
+    /// Returns whether this patch changes no element rows.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.removed.is_empty() && self.upserted.is_empty()
+    }
+}
+
+/// Removal of one retained element.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ElementInspectionRemoval {
+    /// Removed element id.
+    pub id: ElementId,
+    /// Parent at removal time.
+    pub parent: Option<ElementId>,
+}
+
 /// One retained element row in a [`UiInspectionSnapshot`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct ElementInspectionRow {

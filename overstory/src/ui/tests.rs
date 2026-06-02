@@ -3021,6 +3021,67 @@ fn inspection_snapshot_reports_elements_and_composition() {
 }
 
 #[test]
+fn inspection_changes_track_tree_insertions_and_removals() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.clear_inspection_changes();
+
+    let parent = ui.append(root, crate::Panel::new());
+    let child = ui.append(parent, crate::Panel::new());
+    let inserted = ui.drain_inspection_changes();
+
+    assert!(inserted.tree.removed.is_empty());
+    assert!(
+        inserted
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == root && row.children.contains(&parent))
+    );
+    assert!(
+        inserted
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == parent && row.children.contains(&child))
+    );
+    assert!(
+        inserted
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == child && row.parent == Some(parent))
+    );
+    assert!(ui.drain_inspection_changes().is_empty());
+
+    ui.remove(parent);
+    let removed = ui.drain_inspection_changes();
+
+    assert!(
+        removed
+            .tree
+            .removed
+            .iter()
+            .any(|row| row.id == parent && row.parent == Some(root))
+    );
+    assert!(
+        removed
+            .tree
+            .removed
+            .iter()
+            .any(|row| row.id == child && row.parent == Some(parent))
+    );
+    assert!(
+        removed
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == root && !row.children.contains(&parent))
+    );
+    assert!(!removed.tree.upserted.iter().any(|row| row.id == parent));
+}
+
+#[test]
 fn inspection_snapshot_reports_timeline_counts() {
     let mut ui = Ui::new();
     let root = ui.root();

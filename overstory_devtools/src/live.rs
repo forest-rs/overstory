@@ -7,19 +7,21 @@
 //! inspection session, and a client-side mirror. It explicitly does not own the
 //! target `Ui`, host event loop, renderer, or transport.
 
+use alloc::vec::Vec;
+
 use overstory::{ElementId, OutlineNodeKey};
 use spoor_session::SessionError;
 
 use crate::{
     DevtoolsEvent, DevtoolsSession, DevtoolsSessionHandle, DevtoolsSnapshot, DevtoolsTarget,
-    InspectionClient, InspectionMirror, InspectionSubscription,
+    InspectionClient, InspectionMirror, InspectionSubscription, LiveDevtoolsTarget,
 };
 
 /// Summary of one same-process devtools refresh.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevtoolsRefresh {
     /// Session event produced by the refresh.
-    pub event: DevtoolsEvent,
+    pub event: Option<DevtoolsEvent>,
     /// Number of subscribed stream items applied to the mirror.
     pub stream_item_count: usize,
     /// Selection after stale ids were normalized against the new snapshot.
@@ -31,11 +33,16 @@ impl DevtoolsRefresh {
     #[must_use]
     pub const fn tree_patch_counts(&self) -> Option<DevtoolsTreePatchCounts> {
         match &self.event {
-            DevtoolsEvent::ElementTreePatched { tree_patch, .. } => Some(DevtoolsTreePatchCounts {
-                removed: tree_patch.removed.len(),
-                upserted: tree_patch.upserted.len(),
-            }),
-            DevtoolsEvent::SelectionChanged { .. } | DevtoolsEvent::SnapshotReplaced { .. } => None,
+            Some(DevtoolsEvent::ElementTreePatched { tree_patch, .. }) => {
+                Some(DevtoolsTreePatchCounts {
+                    removed: tree_patch.removed.len(),
+                    upserted: tree_patch.upserted.len(),
+                })
+            }
+            Some(
+                DevtoolsEvent::SelectionChanged { .. } | DevtoolsEvent::SnapshotReplaced { .. },
+            )
+            | None => None,
         }
     }
 }
@@ -83,6 +90,16 @@ impl LiveDevtools {
         })
     }
 
+    /// Captures `target`, clears pre-baseline changes, and starts a live session.
+    pub fn capture_from_live(
+        target: &mut impl LiveDevtoolsTarget,
+        selected: Option<ElementId>,
+    ) -> Result<Self, SessionError> {
+        let devtools = Self::capture(target, selected)?;
+        target.clear_inspection_changes();
+        Ok(devtools)
+    }
+
     /// Returns the same-process session handle.
     #[must_use]
     pub const fn session(&self) -> &DevtoolsSessionHandle {
@@ -123,6 +140,30 @@ impl LiveDevtools {
             .session
             .with_mut(|session| session.replace_snapshot(snapshot));
         let stream_items = self.client.stream_items_for_event(event.clone());
+        let stream_item_count = stream_items.len();
+        for item in &stream_items {
+            self.mirror.apply_stream_item(&self.client, item)?;
+        }
+        let selected = self.session.with(DevtoolsSession::selected_element);
+        Ok(DevtoolsRefresh {
+            event: Some(event),
+            stream_item_count,
+            selected,
+        })
+    }
+
+    /// Drains target-authored changes and applies them to the live mirror.
+    pub fn refresh_from_live(
+        &mut self,
+        target: &mut impl LiveDevtoolsTarget,
+    ) -> Result<DevtoolsRefresh, SessionError> {
+        let changes = target.drain_inspection_changes();
+        let event = self
+            .session
+            .with_mut(|session| session.apply_inspection_changes(changes));
+        let stream_items = event
+            .clone()
+            .map_or_else(Vec::new, |event| self.client.stream_items_for_event(event));
         let stream_item_count = stream_items.len();
         for item in &stream_items {
             self.mirror.apply_stream_item(&self.client, item)?;
@@ -193,10 +234,10 @@ mod tests {
             .refresh_from(&ui)
             .expect("refresh should update mirror");
 
-        let DevtoolsEvent::ElementTreePatched {
+        let Some(DevtoolsEvent::ElementTreePatched {
             selected: None,
             tree_patch,
-        } = refresh.event
+        }) = refresh.event
         else {
             panic!("refresh should emit an element tree patch");
         };
@@ -215,6 +256,50 @@ mod tests {
         assert_eq!(refresh.stream_item_count, 1);
         assert_eq!(devtools.mirror().tree().nodes.len(), 2);
         assert!(devtools.mirror().outline_key_for_element(child).is_some());
+    }
+
+    #[test]
+    fn live_devtools_refresh_from_live_drains_tree_changes() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, None).expect("devtools should attach");
+
+        let first = devtools
+            .refresh_from_live(&mut ui)
+            .expect("unchanged target should refresh");
+        assert_eq!(first.event, None);
+        assert_eq!(first.stream_item_count, 0);
+
+        let child = ui.append(root, Panel::new());
+        let second = devtools
+            .refresh_from_live(&mut ui)
+            .expect("live refresh should update mirror");
+
+        assert_eq!(second.stream_item_count, 1);
+        assert!(
+            second
+                .tree_patch_counts()
+                .is_some_and(|counts| { counts.removed == 0 && counts.upserted >= 1 })
+        );
+        assert_eq!(devtools.mirror().tree().nodes.len(), 2);
+        assert!(devtools.mirror().outline_key_for_element(child).is_some());
+
+        ui.remove(child);
+        let third = devtools
+            .refresh_from_live(&mut ui)
+            .expect("live removal should update mirror");
+
+        assert_eq!(third.stream_item_count, 1);
+        assert_eq!(
+            third.tree_patch_counts(),
+            Some(DevtoolsTreePatchCounts {
+                removed: 1,
+                upserted: 1,
+            })
+        );
+        assert_eq!(devtools.mirror().tree().nodes.len(), 1);
+        assert!(devtools.mirror().outline_key_for_element(child).is_none());
     }
 
     #[test]

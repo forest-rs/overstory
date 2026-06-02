@@ -3,7 +3,7 @@
 
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsTreePatchCounts, DevtoolsViewElements, LiveDevtools,
-    UiInspectionTarget, append_session_view, refresh_session_view_from_mirror,
+    UiLiveInspectionTarget, append_session_view, refresh_session_view_from_mirror,
 };
 
 use super::*;
@@ -116,15 +116,15 @@ impl InProcessDevtoolsShell {
         let previous_tree = self.devtools.borrow().mirror().tree().clone();
         let refresh = {
             let excluded = [popup];
-            let target = UiInspectionTarget::new(ui).excluding(&excluded);
-            self.devtools.borrow_mut().refresh_from(&target)
+            let mut target = UiLiveInspectionTarget::new(ui).excluding(&excluded);
+            self.devtools.borrow_mut().refresh_from_live(&mut target)
         };
         let Ok(refresh) = refresh else {
             if let Some(status) = self.status.get() {
                 ui.set_local(
                     status,
                     ui.properties().content,
-                    String::from("Live capture failed"),
+                    String::from("Live refresh failed"),
                 );
             }
             return false;
@@ -165,8 +165,10 @@ fn open_in_process_devtools(
     open_popup: Rc<Cell<Option<ElementId>>>,
 ) -> Option<ElementId> {
     let selected = ui.focused().or(Some(ui.root()));
-    let target = UiInspectionTarget::new(ui);
-    let devtools = Rc::new(RefCell::new(LiveDevtools::capture(&target, selected).ok()?));
+    let mut target = UiLiveInspectionTarget::new(ui);
+    let devtools = Rc::new(RefCell::new(
+        LiveDevtools::capture_from_live(&mut target, selected).ok()?,
+    ));
     let session = devtools.borrow().session().clone();
     let shell = InProcessDevtoolsShell::new(devtools, session, anchor, open_popup);
     ui.add_pseudo(anchor, PSEUDO_SELECTED);
@@ -275,7 +277,7 @@ fn format_auto_capture_status(
     tree_patch_counts: Option<DevtoolsTreePatchCounts>,
 ) -> String {
     let tree_patch = tree_patch_counts.map_or_else(
-        || String::from("tree patch: pending"),
+        || String::from("tree patch: none"),
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(

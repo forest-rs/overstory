@@ -17,7 +17,7 @@ use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
 use crate::view::View;
 use crate::widget::{AppendSpec, ContentSlotSpec, Widget};
 
-use super::Ui;
+use super::{Ui, collect_preorder};
 
 /// Scoped authoring helper for adding children under one parent.
 ///
@@ -453,6 +453,9 @@ impl Ui {
         let child = self
             .elements
             .insert_child(parent, templated_parent, part_tag, widget);
+        let previous_sibling = self
+            .get(parent)
+            .and_then(|element| element.children().iter().rev().nth(1).copied());
         self.mirror_allocated_element(child, Some(parent));
         self.style_one(child);
         // LAYOUT cascades to PAINT and COMPOSE via the tracker's
@@ -465,6 +468,11 @@ impl Ui {
         if expand_template {
             self.expand_default_template(child);
         }
+        self.record_element_tree_upsert(parent);
+        if let Some(previous_sibling) = previous_sibling {
+            self.record_element_tree_upsert(previous_sibling);
+        }
+        self.record_element_tree_upsert(child);
         child
     }
 
@@ -495,10 +503,35 @@ impl Ui {
         assert!(id != self.root(), "remove: cannot remove the tree root");
         assert!(self.get(id).is_some(), "remove: id is stale");
 
+        let parent = self.get(id).and_then(crate::element::Element::parent);
+        let previous_sibling = parent.and_then(|parent| {
+            self.get(parent)
+                .and_then(|parent| parent.children().iter().position(|child| *child == id))
+                .and_then(|index| index.checked_sub(1))
+                .and_then(|index| {
+                    self.get(parent)
+                        .and_then(|parent| parent.children().get(index))
+                })
+                .copied()
+        });
+        let removed = collect_preorder(self, id)
+            .into_iter()
+            .filter_map(|id| self.get(id).map(|element| (id, element.parent())))
+            .collect::<Vec<_>>();
+
         if let Some(parent) = self.elements.detach_from_parent(id) {
             self.invalidation.mark(parent, COMPOSE);
         }
         self.remove_subtree(id);
+        for (id, parent) in removed {
+            self.record_element_tree_removal(id, parent);
+        }
+        if let Some(parent) = parent {
+            self.record_element_tree_upsert(parent);
+        }
+        if let Some(previous_sibling) = previous_sibling {
+            self.record_element_tree_upsert(previous_sibling);
+        }
     }
 
     fn remove_subtree(&mut self, id: ElementId) {

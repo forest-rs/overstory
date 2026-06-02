@@ -44,6 +44,7 @@ use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
 use crate::focus_runtime::FocusRuntime;
 use crate::geometry_runtime::GeometryRuntime;
+use crate::inspection_runtime::InspectionChangeRuntime;
 use crate::layout_runtime::LayoutRuntime;
 use crate::overlay::OverlayRuntime;
 use crate::presentation_runtime::PresentationRuntime;
@@ -130,6 +131,8 @@ pub struct Ui {
     scrolling: ScrollRuntime,
     /// Cheap counters for the current or most recently prepared frame.
     frame_stats: UiFrameStats,
+    /// Live inspection change accumulator drained by devtools/hosts.
+    inspection_changes: InspectionChangeRuntime,
     /// Last viewport size used during layout/paint.
     last_viewport: kurbo::Size,
 }
@@ -299,6 +302,7 @@ impl Ui {
             overlays: OverlayRuntime::default(),
             scrolling: ScrollRuntime::new(),
             frame_stats: UiFrameStats::default(),
+            inspection_changes: InspectionChangeRuntime::default(),
             last_viewport: kurbo::Size::ZERO,
         };
         me.mirror_allocated_element(root, None);

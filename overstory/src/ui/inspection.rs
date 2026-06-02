@@ -5,8 +5,9 @@ use alloc::vec::Vec;
 
 use crate::inspection::{
     CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
-    ElementInspectionRow, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
-    TimelineInspectionSnapshot, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementInspectionRemoval, ElementInspectionRow, ElementStateInspection, LayerInspectionId,
+    SurfaceInspectionId, TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 
@@ -29,47 +30,82 @@ impl Ui {
         }
     }
 
+    /// Drains inspectable state changes recorded since the previous drain.
+    ///
+    /// This is the live-update counterpart to [`Self::inspection_snapshot`].
+    /// Hosts and devtools should use snapshots for initial attachment or
+    /// resync, then consume drained changes for steady-state updates.
+    pub fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
+        self.inspection_changes.drain(self.root())
+    }
+
+    /// Clears pending inspection changes without returning them.
+    ///
+    /// Use this immediately after taking a baseline snapshot for an attached
+    /// inspector; otherwise earlier construction changes would be replayed
+    /// after the mirror already has the baseline state.
+    pub fn clear_inspection_changes(&mut self) {
+        self.inspection_changes.clear();
+    }
+
     fn element_inspection_rows(&self) -> Vec<ElementInspectionRow> {
         collect_preorder(self, self.root())
             .into_iter()
-            .filter_map(|id| {
-                let element = self.get(id)?;
-                let (template_slot, template_key) =
-                    self.template_identity_for(id, element.templated_parent());
-                Some(ElementInspectionRow {
-                    id,
-                    parent: element.parent(),
-                    children: element.children().to_vec(),
-                    templated_parent: element.templated_parent(),
-                    type_tag: element.type_tag(),
-                    part_tag: element.part_tag(),
-                    template_slot,
-                    template_key,
-                    classes: element.classes().to_vec(),
-                    pseudos: element.pseudos().to_vec(),
-                    state: ElementStateInspection {
-                        enabled: self.is_enabled(id),
-                        focusable: self.is_focusable(id),
-                        focused: self.focused() == Some(id),
-                        focus_visible: element.pseudos().contains(&PSEUDO_FOCUS_VISIBLE),
-                        hovered: element.pseudos().contains(&PSEUDO_HOVER),
-                        pressed: element.pseudos().contains(&PSEUDO_PRESSED),
-                        pointer_captured: self.pointer_capture() == Some(id),
-                    },
-                    has_widget_identity: element.has_widget_identity(),
-                    bounds: self.effective_bounds(id),
-                    layer: self
-                        .composition
-                        .layer_for(id)
-                        .map(LayerInspectionId::from_layer),
-                    surface: self
-                        .composition
-                        .surface_for(id)
-                        .map(SurfaceInspectionId::from_surface),
-                    composition_policy: self.composition.policy_for(id),
-                })
-            })
+            .filter_map(|id| self.element_inspection_row(id))
             .collect()
+    }
+
+    pub(in crate::ui) fn record_element_tree_upsert(&mut self, id: crate::ElementId) {
+        if let Some(row) = self.element_inspection_row(id) {
+            self.inspection_changes.record_tree_upsert(row);
+        }
+    }
+
+    pub(in crate::ui) fn record_element_tree_removal(
+        &mut self,
+        id: crate::ElementId,
+        parent: Option<crate::ElementId>,
+    ) {
+        self.inspection_changes
+            .record_tree_removal(ElementInspectionRemoval { id, parent });
+    }
+
+    fn element_inspection_row(&self, id: crate::ElementId) -> Option<ElementInspectionRow> {
+        let element = self.get(id)?;
+        let (template_slot, template_key) =
+            self.template_identity_for(id, element.templated_parent());
+        Some(ElementInspectionRow {
+            id,
+            parent: element.parent(),
+            children: element.children().to_vec(),
+            templated_parent: element.templated_parent(),
+            type_tag: element.type_tag(),
+            part_tag: element.part_tag(),
+            template_slot,
+            template_key,
+            classes: element.classes().to_vec(),
+            pseudos: element.pseudos().to_vec(),
+            state: ElementStateInspection {
+                enabled: self.is_enabled(id),
+                focusable: self.is_focusable(id),
+                focused: self.focused() == Some(id),
+                focus_visible: element.pseudos().contains(&PSEUDO_FOCUS_VISIBLE),
+                hovered: element.pseudos().contains(&PSEUDO_HOVER),
+                pressed: element.pseudos().contains(&PSEUDO_PRESSED),
+                pointer_captured: self.pointer_capture() == Some(id),
+            },
+            has_widget_identity: element.has_widget_identity(),
+            bounds: self.effective_bounds(id),
+            layer: self
+                .composition
+                .layer_for(id)
+                .map(LayerInspectionId::from_layer),
+            surface: self
+                .composition
+                .surface_for(id)
+                .map(SurfaceInspectionId::from_surface),
+            composition_policy: self.composition.policy_for(id),
+        })
     }
 
     fn template_identity_for(
