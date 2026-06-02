@@ -49,7 +49,6 @@ pub(super) const CLASS_SVG_INFO_CARD: ClassId = ClassId(22);
 pub(super) const CLASS_SVG_TIGER_CARD: ClassId = ClassId(23);
 pub(super) const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
 pub(super) const CLASS_DEVTOOLS_INSPECTOR_CARD: ClassId = ClassId(25);
-pub(super) const CLASS_DEVTOOLS_SUMMARY_CARD: ClassId = ClassId(26);
 pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
 pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
 pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);

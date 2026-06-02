@@ -177,6 +177,7 @@ fn set_pseudo(ui: &mut Ui, target: ElementId, pseudo: PseudoClassId, active: boo
 mod tests {
     use super::*;
     use crate::app::pages::show_demo_page;
+    use peniko::kurbo::Size;
 
     #[test]
     fn motion_page_mover_timer_updates_layout_target() {

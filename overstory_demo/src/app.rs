@@ -20,15 +20,11 @@ use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Accordion, AccordionChildUiExt, AccordionSection, Affine, BindingSpecExt, BuiltInProperties,
     Button, CheckBox, ChildUi, ChoiceOption, CursorIcon, Divider, ElementId, ElementRef,
-    ElementRefSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment,
+    ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment,
     LayoutDimension, LayoutSize, ListBox, LocalState, OutlineView, OutlineViewNode, Panel, Popup,
-    ProgressBar, RadioGroup, Rect, SegmentedControl, Select, Size, Slider, Spinner, Splitter,
+    ProgressBar, RadioGroup, Rect, SegmentedControl, Select, Slider, Spinner, Splitter,
     SurfaceSpecExt, TYPE_GENERIC, TYPE_TEXT, Text, TextInput, TextSpecExt, TimerDuration, TimerId,
     ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts, set_progress_value, theme,
-};
-use overstory_devtools::{
-    DevtoolsRefresh, DevtoolsSessionHandle, InspectionClient, LiveDevtools, append_session_view,
-    refresh_session_view,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
@@ -56,10 +52,7 @@ const PAGE_LIST_WIDTH: f32 = 316.0;
 const SPLIT_PANE_WIDTH: f32 = 148.0;
 const SPLIT_PANE_HEIGHT: f32 = 142.0;
 const DEVTOOLS_INSPECTOR_WIDTH: f32 = 520.0;
-const DEVTOOLS_SUMMARY_WIDTH: f32 = 250.0;
 const DEVTOOLS_CARD_HEIGHT: f32 = 520.0;
-const DEVTOOLS_TARGET_WIDTH: f32 = 640.0;
-const DEVTOOLS_TARGET_HEIGHT: f32 = 420.0;
 const SVG_PAGE_WIDTH: f32 = 824.0;
 const SVG_INFO_HEIGHT: f32 = 132.0;
 const SVG_TIGER_CARD_WIDTH: f32 = 548.0;
@@ -73,6 +66,7 @@ const SVG_SELECTION_WOBBLE_UP_MS: u64 = 135;
 const SVG_SELECTION_WOBBLE_DOWN_MS: u64 = 150;
 
 mod chrome;
+mod devtools;
 mod fixtures;
 mod pages;
 mod style;
@@ -81,6 +75,7 @@ mod tests;
 mod widgets;
 
 use chrome::*;
+use devtools::*;
 use fixtures::*;
 use style::*;
 use widgets::*;
@@ -104,11 +99,10 @@ enum DemoPage {
     Svg,
     Typography,
     Motion,
-    Devtools,
 }
 
 impl DemoPage {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 10] = [
         Self::Overview,
         Self::Inputs,
         Self::Disclosure,
@@ -119,7 +113,6 @@ impl DemoPage {
         Self::Svg,
         Self::Typography,
         Self::Motion,
-        Self::Devtools,
     ];
 
     fn from_index(index: usize) -> Option<Self> {
@@ -138,7 +131,6 @@ impl DemoPage {
             Self::Svg => 7,
             Self::Typography => 8,
             Self::Motion => 9,
-            Self::Devtools => 10,
         }
     }
 
@@ -154,7 +146,6 @@ impl DemoPage {
             Self::Svg => "SVG",
             Self::Typography => "Typography",
             Self::Motion => "Motion",
-            Self::Devtools => "Devtools",
         }
     }
 
@@ -170,7 +161,6 @@ impl DemoPage {
             Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
             Self::Motion => "Presentation Motion",
-            Self::Devtools => "Overstory Devtools",
         }
     }
 
@@ -205,9 +195,6 @@ impl DemoPage {
             }
             Self::Motion => {
                 "Style-authored transitions for color, opacity, border, retargeting, and composition offset."
-            }
-            Self::Devtools => {
-                "An inspector page built from owned UI snapshots instead of live privileged handles."
             }
         }
     }
@@ -294,6 +281,7 @@ fn build_ui() -> Ui {
 
     wire_nav_rows(&mut ui, &nav_rows, stage, Rc::clone(&shell));
     wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&shell));
+    wire_devtools_button(&mut ui, nav_chrome.devtools_button());
     pages::show_demo_page(&mut ui, stage, DemoPage::Overview);
 
     ui.set_cascade(demo_cascade(ui.properties()));

@@ -1,4 +1,3 @@
-mod devtools;
 mod disclosure;
 mod inputs;
 mod layout;
@@ -40,7 +39,6 @@ pub(super) fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
             DemoPage::Svg => stage.view(svg::SvgPage),
             DemoPage::Typography => stage.view(typography::TypographyPage),
             DemoPage::Motion => stage.view(motion::MotionPage),
-            DemoPage::Devtools => stage.view(devtools::DevtoolsPage),
         }
     });
 }

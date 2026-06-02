@@ -6,6 +6,13 @@ use super::*;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct NavChrome {
     mode_toggle: ElementId,
+    devtools_button: ElementId,
+}
+
+impl NavChrome {
+    pub(super) const fn devtools_button(self) -> ElementId {
+        self.devtools_button
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,7 +43,16 @@ pub(super) fn build_nav(nav: &mut ChildUi<'_>) -> NavChrome {
         },
     );
 
-    NavChrome { mode_toggle }
+    let devtools_button = nav.add(
+        Button::new("Inspect app")
+            .font_size(13.0)
+            .layout(Layout::new().logical_size(NAV_CONTENT_WIDTH, 34.0)),
+    );
+
+    NavChrome {
+        mode_toggle,
+        devtools_button,
+    }
 }
 
 pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {

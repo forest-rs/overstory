@@ -840,6 +840,7 @@ fn f32_coord(value: f64) -> f32 {
 mod tests {
     use super::*;
     use crate::app::pages::show_demo_page;
+    use peniko::kurbo::Size;
 
     #[test]
     fn tiger_svg_asset_stresses_path_importer() {

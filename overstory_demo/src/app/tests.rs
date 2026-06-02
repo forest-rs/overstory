@@ -142,6 +142,23 @@ fn gallery_theme_toggle_switches_control_theme() {
 }
 
 #[test]
+fn gallery_devtools_button_opens_in_process_inspector() {
+    let mut ui = build_ui();
+    let button = devtools_button(&ui);
+
+    let result = ui.synthesize_click(button, Point::ZERO);
+
+    assert!(
+        result.handled,
+        "devtools button should open the inspector popup"
+    );
+    assert!(
+        count_type(&ui, ui.root(), overstory::TYPE_OUTLINE_VIEW) >= 1,
+        "in-process devtools should render an inspector outline",
+    );
+}
+
+#[test]
 fn gallery_pages_stay_inside_initial_window_width() {
     for page in DemoPage::ALL {
         let mut ui = build_ui();
@@ -355,12 +372,21 @@ fn nav_rows(ui: &Ui) -> &[ElementId] {
     let nav = nav_element(ui);
     let nav_children = ui.get(nav).expect("nav should exist").children();
     let nav_stack = nav_children
-        .get(4)
+        .get(5)
         .copied()
         .expect("nav should contain a compact row stack");
     ui.get(nav_stack)
         .expect("nav stack should exist")
         .children()
+}
+
+fn devtools_button(ui: &Ui) -> ElementId {
+    let nav = nav_element(ui);
+    let nav_children = ui.get(nav).expect("nav should exist").children();
+    nav_children
+        .get(4)
+        .copied()
+        .expect("nav should contain a devtools button")
 }
 
 fn mode_toggle(ui: &Ui) -> ElementId {
@@ -402,6 +428,19 @@ fn nav_row_activation_point(ui: &mut Ui, row: ElementId) -> Point {
     ));
     let bounds = ui.effective_bounds(row);
     Point::new(bounds.x1 - 8.0, bounds.center().y)
+}
+
+fn count_type(ui: &Ui, element: ElementId, type_tag: understory_style::TypeTag) -> usize {
+    let Some(current) = ui.get(element) else {
+        return 0;
+    };
+    let current_count = usize::from(current.type_tag() == Some(type_tag));
+    current_count
+        + current
+            .children()
+            .iter()
+            .map(|child| count_type(ui, *child, type_tag))
+            .sum::<usize>()
 }
 
 fn pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
