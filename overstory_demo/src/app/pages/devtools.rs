@@ -11,16 +11,12 @@ impl View for DevtoolsPage {
         let (mut target, selected) = devtools_target();
         let mut devtools =
             LiveDevtools::capture(&target, Some(selected)).expect("devtools should attach");
-        apply_devtools_target_refresh(&mut target);
-        let refresh = devtools
-            .refresh_from(&target)
-            .expect("target refresh should flow through the devtools session");
         let session = devtools.session().clone();
 
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card(
+                let inspector_elements = row.demo_card(
                     "INSPECTION SNAPSHOT",
                     DEVTOOLS_INSPECTOR_WIDTH,
                     DEVTOOLS_CARD_HEIGHT,
@@ -29,9 +25,14 @@ impl View for DevtoolsPage {
                         inspector
                             .ui_mut()
                             .add_class(inspector_id, CLASS_DEVTOOLS_INSPECTOR_CARD);
-                        append_session_view(inspector.ui_mut(), inspector_id, session.clone());
+                        append_session_view(inspector.ui_mut(), inspector_id, session.clone())
                     },
                 );
+                apply_devtools_target_refresh(&mut target);
+                let refresh = devtools
+                    .refresh_from(&target)
+                    .expect("target refresh should flow through the devtools session");
+                let _ = refresh_session_view(row.ui_mut(), inspector_elements, session.clone());
 
                 row.demo_card(
                     "PROTOCOL BOUNDARY",

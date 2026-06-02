@@ -28,6 +28,7 @@ use overstory::{
 };
 use overstory_devtools::{
     DevtoolsRefresh, DevtoolsSessionHandle, InspectionClient, LiveDevtools, append_session_view,
+    refresh_session_view,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};

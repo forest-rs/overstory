@@ -343,7 +343,31 @@ pub fn append_session_view(
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
     }
+    append_session_view_contents(ui, root, session)
+}
 
+/// Rebuilds an existing inspector view from `session`.
+///
+/// Use this after a live target refresh when the rendered inspector should show
+/// a changed element tree or details surface. The root element is preserved so
+/// outer layout and styling remain stable; only the outline and details
+/// children are recreated.
+#[cfg(feature = "spoor-session")]
+pub fn refresh_session_view(
+    ui: &mut Ui,
+    elements: DevtoolsViewElements,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
+    clear_children(ui, elements.root);
+    append_session_view_contents(ui, elements.root, session)
+}
+
+#[cfg(feature = "spoor-session")]
+fn append_session_view_contents(
+    ui: &mut Ui,
+    root: ElementId,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
     let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
     let details_for_selection = Rc::clone(&details_slot);
     let client = InspectionClient::new(session.clone());
@@ -438,7 +462,31 @@ pub fn append_session_view(
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
     }
+    append_session_view_contents(ui, root, session)
+}
 
+/// Rebuilds an existing inspector view from `session`.
+///
+/// Use this after a target snapshot refresh when the rendered inspector should
+/// show a changed element tree or details surface. The root element is
+/// preserved so outer layout and styling remain stable; only the outline and
+/// details children are recreated.
+#[cfg(not(feature = "spoor-session"))]
+pub fn refresh_session_view(
+    ui: &mut Ui,
+    elements: DevtoolsViewElements,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
+    clear_children(ui, elements.root);
+    append_session_view_contents(ui, elements.root, session)
+}
+
+#[cfg(not(feature = "spoor-session"))]
+fn append_session_view_contents(
+    ui: &mut Ui,
+    root: ElementId,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
     let details_slot: Rc<Cell<Option<ElementId>>> = Rc::new(Cell::new(None));
     let details_for_selection = Rc::clone(&details_slot);
     let session_for_selection = session.clone();
@@ -1485,6 +1533,73 @@ mod tests {
         assert_eq!(
             session.with(DevtoolsSession::selected_element),
             Some(grandchild)
+        );
+    }
+
+    #[test]
+    fn refresh_session_view_rebuilds_under_same_root() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let child = target.append(target_root, Panel::new());
+        let session = DevtoolsSessionHandle::new(
+            DevtoolsSession::capture(&target).with_selected_element(Some(child)),
+        );
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_session_view(&mut inspector, root, session.clone());
+        let old_outline = elements.outline;
+        let old_details = elements.details;
+
+        target.append(target_root, Panel::new());
+        session.with_mut(|session| {
+            let _ = session.replace_snapshot(DevtoolsSnapshot::capture(&target));
+        });
+        let refreshed = refresh_session_view(&mut inspector, elements, session.clone());
+
+        assert_eq!(refreshed.root, elements.root);
+        assert!(inspector.get(refreshed.outline).is_some());
+        assert!(inspector.get(refreshed.details).is_some());
+        assert!(
+            inspector.get(old_outline).is_none(),
+            "refresh should remove the old outline subtree"
+        );
+        assert!(
+            inspector.get(old_details).is_none(),
+            "refresh should remove the old details subtree"
+        );
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn live_devtools_refresh_can_rebuild_rendered_session_view() {
+        let mut target = Ui::new();
+        let target_root = target.root();
+        let selected = target.append(target_root, Panel::new());
+        let mut devtools =
+            LiveDevtools::capture(&target, Some(selected)).expect("devtools should attach");
+        let session = devtools.session().clone();
+
+        let mut inspector = Ui::new();
+        let root = inspector.root();
+        let elements = append_session_view(&mut inspector, root, session.clone());
+        let old_outline = elements.outline;
+
+        target.append(target_root, Panel::new());
+        let refresh = devtools
+            .refresh_from(&target)
+            .expect("target refresh should update live session");
+        let refreshed = refresh_session_view(&mut inspector, elements, session);
+
+        assert!(
+            refresh.stream_item_count >= 1,
+            "refresh should emit at least one subscribed stream item"
+        );
+        assert!(inspector.get(old_outline).is_none());
+        assert!(inspector.get(refreshed.outline).is_some());
+        assert_eq!(
+            overstory::selected_outline_key(&inspector, refreshed.outline),
+            devtools.mirror().outline_key_for_element(selected)
         );
     }
 
