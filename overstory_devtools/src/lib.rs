@@ -14,7 +14,9 @@
 
 extern crate alloc;
 
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
+#[cfg(feature = "spoor-session")]
+use core::cell::RefCell;
 
 use alloc::format;
 use alloc::rc::Rc;
@@ -377,19 +379,14 @@ pub fn append_session_view(
             }
 
             let mirror = mirror_for_selection.borrow();
-            client_for_selection.session().with(|session| {
-                let actions = DetailActions {
-                    session: client_for_selection.session().clone(),
-                    outline: event.outline,
-                };
-                append_inspection_element_details(
-                    ui,
-                    details,
-                    mirror.selected_details(),
-                    session.snapshot(),
-                    Some(&actions),
-                );
-            });
+            let actions =
+                DetailActions::from_mirror(Rc::clone(&mirror_for_selection), event.outline);
+            append_inspection_element_details(
+                ui,
+                details,
+                mirror.selected_details(),
+                Some(&actions),
+            );
         }),
     );
     let details_frame = ui.append(
@@ -404,20 +401,14 @@ pub fn append_session_view(
         .expect("ScrollArea should expose its viewport immediately after append");
     details_slot.set(Some(details_viewport));
 
-    let actions = DetailActions {
-        session: session.clone(),
-        outline,
-    };
-    session.with(|session| {
-        let mirror = mirror.borrow();
-        append_inspection_element_details(
-            ui,
-            details_viewport,
-            mirror.selected_details(),
-            session.snapshot(),
-            Some(&actions),
-        );
-    });
+    let actions = DetailActions::from_mirror(Rc::clone(&mirror), outline);
+    let mirror = mirror.borrow();
+    append_inspection_element_details(
+        ui,
+        details_viewport,
+        mirror.selected_details(),
+        Some(&actions),
+    );
 
     DevtoolsViewElements {
         root,
@@ -465,10 +456,8 @@ pub fn append_session_view(
             clear_children(ui, details);
             session_for_selection.with_mut(|session| {
                 let _ = session.select_outline_key(event.selected_key);
-                let actions = DetailActions {
-                    session: session_for_selection.clone(),
-                    outline: event.outline,
-                };
+                let actions =
+                    DetailActions::from_session(session_for_selection.clone(), event.outline);
                 append_selected_element_details(
                     ui,
                     details,
@@ -491,10 +480,7 @@ pub fn append_session_view(
         .expect("ScrollArea should expose its viewport immediately after append");
     details_slot.set(Some(details_viewport));
 
-    let actions = DetailActions {
-        session: session.clone(),
-        outline,
-    };
+    let actions = DetailActions::from_session(session.clone(), outline);
     session.with(|session| {
         append_selected_element_details(
             ui,
@@ -593,7 +579,7 @@ fn append_selected_element_details(
     };
 
     let grid = selected_element_property_grid(snapshot, row);
-    append_property_grid_sections(ui, parent, &grid, snapshot, actions);
+    append_property_grid_sections(ui, parent, &grid, actions);
 }
 
 #[cfg(feature = "spoor-session")]
@@ -601,14 +587,13 @@ fn append_inspection_element_details(
     ui: &mut Ui,
     parent: ElementId,
     details: Option<&InspectionElementDetails>,
-    snapshot: &DevtoolsSnapshot,
     actions: Option<&DetailActions>,
 ) {
     let Some(details) = details else {
         ui.append(parent, Text::new("No selected element").font_size(13.0));
         return;
     };
-    append_property_grid_sections(ui, parent, &details.properties, snapshot, actions);
+    append_property_grid_sections(ui, parent, &details.properties, actions);
 }
 
 #[cfg(feature = "spoor-session")]

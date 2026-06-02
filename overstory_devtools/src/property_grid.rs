@@ -9,7 +9,12 @@
 //! column and property-value semantics later, this model is the part to
 //! reconsider.
 
+#[cfg(feature = "spoor-session")]
+use core::cell::RefCell;
+
 use alloc::format;
+#[cfg(feature = "spoor-session")]
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -18,7 +23,10 @@ use overstory::{
     select_outline_key, theme,
 };
 
-use crate::{DevtoolsSessionHandle, DevtoolsSnapshot};
+#[cfg(not(feature = "spoor-session"))]
+use crate::DevtoolsSessionHandle;
+#[cfg(feature = "spoor-session")]
+use crate::InspectionMirror;
 
 /// Read-only property-grid content grouped into sections.
 ///
@@ -194,19 +202,57 @@ enum PropertyGridAction {
 
 #[derive(Clone, Debug)]
 pub(crate) struct DetailActions {
-    pub session: DevtoolsSessionHandle,
-    pub outline: ElementId,
+    outline: ElementId,
+    resolver: DetailActionResolver,
+}
+
+impl DetailActions {
+    #[cfg(not(feature = "spoor-session"))]
+    pub(crate) fn from_session(session: DevtoolsSessionHandle, outline: ElementId) -> Self {
+        Self {
+            outline,
+            resolver: DetailActionResolver::Session(session),
+        }
+    }
+
+    #[cfg(feature = "spoor-session")]
+    pub(crate) fn from_mirror(mirror: Rc<RefCell<InspectionMirror>>, outline: ElementId) -> Self {
+        Self {
+            outline,
+            resolver: DetailActionResolver::Mirror(mirror),
+        }
+    }
+
+    fn outline_key_for_element(&self, element: ElementId) -> Option<OutlineNodeKey> {
+        match &self.resolver {
+            #[cfg(not(feature = "spoor-session"))]
+            DetailActionResolver::Session(session) => {
+                session.with(|session| session.snapshot().outline_key_for_element(element))
+            }
+            #[cfg(feature = "spoor-session")]
+            DetailActionResolver::Mirror(mirror) => {
+                mirror.borrow().outline_key_for_element(element)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum DetailActionResolver {
+    #[cfg(not(feature = "spoor-session"))]
+    Session(DevtoolsSessionHandle),
+    #[cfg(feature = "spoor-session")]
+    Mirror(Rc<RefCell<InspectionMirror>>),
 }
 
 pub(crate) fn append_property_grid_sections(
     ui: &mut Ui,
     parent: ElementId,
     grid: &PropertyGrid,
-    snapshot: &DevtoolsSnapshot,
     actions: Option<&DetailActions>,
 ) {
     for section in grid.sections() {
-        append_property_grid_section(ui, parent, section, snapshot, actions);
+        append_property_grid_section(ui, parent, section, actions);
     }
 }
 
@@ -222,7 +268,6 @@ fn append_property_grid_section(
     ui: &mut Ui,
     parent: ElementId,
     section: &PropertyGridSection,
-    snapshot: &DevtoolsSnapshot,
     actions: Option<&DetailActions>,
 ) -> ElementId {
     let section_id = ui.append(
@@ -244,7 +289,7 @@ fn append_property_grid_section(
         false,
     );
     for row in section.rows() {
-        append_property_grid_row(ui, section_id, row, 0, snapshot, actions);
+        append_property_grid_row(ui, section_id, row, 0, actions);
     }
     section_id
 }
@@ -254,7 +299,6 @@ fn append_property_grid_row(
     parent: ElementId,
     row: &PropertyGridRow,
     depth: usize,
-    snapshot: &DevtoolsSnapshot,
     actions: Option<&DetailActions>,
 ) -> ElementId {
     let row_id = ui.append(
@@ -289,9 +333,9 @@ fn append_property_grid_row(
             true,
         );
     }
-    wire_row_action(ui, row_id, row.action(), snapshot, actions);
+    wire_row_action(ui, row_id, row.action(), actions);
     for child in row.children() {
-        append_property_grid_row(ui, parent, child, depth + 1, snapshot, actions);
+        append_property_grid_row(ui, parent, child, depth + 1, actions);
     }
     row_id
 }
@@ -421,22 +465,19 @@ fn wire_row_action(
     ui: &mut Ui,
     row: ElementId,
     action: Option<PropertyGridAction>,
-    snapshot: &DevtoolsSnapshot,
     actions: Option<&DetailActions>,
 ) {
     let Some(PropertyGridAction::SelectElement(target)) = action else {
         return;
     };
-    if snapshot.outline_key_for_element(target).is_none() {
-        return;
-    }
     let Some(actions) = actions.cloned() else {
         return;
     };
+    if actions.outline_key_for_element(target).is_none() {
+        return;
+    }
     ui.on_click(row, move |ui, event| {
-        let key: Option<OutlineNodeKey> = actions
-            .session
-            .with(|session| session.snapshot().outline_key_for_element(target));
+        let key = actions.outline_key_for_element(target);
         if let Some(key) = key {
             let _ = select_outline_key(ui, actions.outline, key);
             event.mark_handled();
