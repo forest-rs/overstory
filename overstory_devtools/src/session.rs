@@ -161,7 +161,9 @@ impl DevtoolsSession {
         let current_tree = self.snapshot.inspection_element_tree();
         let tree_patch = previous_tree.patch_to(&current_tree);
         if tree_patch.removed.is_empty() && tree_patch.upserted.is_empty() {
-            return None;
+            return Some(DevtoolsEvent::TargetChanged {
+                selected: self.selected_element,
+            });
         }
 
         Some(DevtoolsEvent::ElementTreePatched {
@@ -399,6 +401,10 @@ fn inspection_stream_item_for_event(event: DevtoolsEvent) -> InspectionStreamIte
                 InspectionUpdateReason::SnapshotReplaced,
             ))
         }
+        DevtoolsEvent::TargetChanged { .. } => InspectionStreamItem::Delta(InspectionDelta::new(
+            InspectionSubsystem::Elements,
+            InspectionUpdateReason::TargetChanged,
+        )),
         DevtoolsEvent::ElementTreePatched { tree_patch, .. } => {
             InspectionStreamItem::ElementTreePatch(tree_patch)
         }
@@ -445,6 +451,12 @@ pub enum DevtoolsEvent {
     },
     /// The current snapshot changed.
     SnapshotReplaced {
+        /// Selection after stale ids were normalized.
+        selected: Option<ElementId>,
+    },
+    /// Target details changed without changing the projected element tree.
+    #[cfg(feature = "spoor-session")]
+    TargetChanged {
         /// Selection after stale ids were normalized.
         selected: Option<ElementId>,
     },

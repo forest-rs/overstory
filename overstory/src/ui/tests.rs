@@ -3098,6 +3098,57 @@ fn inspection_changes_track_tree_insertions_and_removals() {
 }
 
 #[test]
+fn inspection_changes_track_existing_element_state_updates() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, crate::Button::new("Inspect"));
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    ui.add_pseudo(button, PSEUDO_HOVER);
+    let hovered = ui.drain_inspection_changes();
+    let hovered_row = hovered
+        .tree
+        .upserted
+        .iter()
+        .find(|row| row.id == button)
+        .expect("hover should upsert button row");
+    assert!(hovered_row.state.hovered);
+    assert!(hovered_row.pseudos.contains(&PSEUDO_HOVER));
+
+    ui.set_focusable(button, false);
+    let unfocusable = ui.drain_inspection_changes();
+    assert!(
+        unfocusable
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == button && !row.state.focusable)
+    );
+
+    ui.set_focusable(button, true);
+    assert!(ui.set_focus(Some(button)));
+    let focused = ui.drain_inspection_changes();
+    assert!(
+        focused
+            .tree
+            .upserted
+            .iter()
+            .any(|row| { row.id == button && row.state.focused && row.state.focus_visible })
+    );
+
+    assert!(ui.capture_pointer(button));
+    let captured = ui.drain_inspection_changes();
+    assert!(
+        captured
+            .tree
+            .upserted
+            .iter()
+            .any(|row| row.id == button && row.state.pointer_captured)
+    );
+}
+
+#[test]
 fn inspection_snapshot_reports_timeline_counts() {
     let mut ui = Ui::new();
     let root = ui.root();

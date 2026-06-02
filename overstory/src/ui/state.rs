@@ -29,6 +29,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            self.record_element_tree_upsert(id);
         }
     }
 
@@ -40,6 +41,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            self.record_element_tree_upsert(id);
         }
     }
 
@@ -53,6 +55,7 @@ impl Ui {
         if changed {
             self.restyle_subtree(id);
             transition_plan.apply_after(self, id);
+            self.record_element_tree_upsert(id);
         }
     }
 
@@ -66,6 +69,7 @@ impl Ui {
         if changed {
             self.restyle_subtree(id);
             transition_plan.apply_after(self, id);
+            self.record_element_tree_upsert(id);
         }
     }
 
@@ -173,12 +177,16 @@ impl Ui {
             return;
         };
         let mut flags = self.geometry.flags(primary).unwrap_or_default();
+        let changed = flags.contains(NodeFlags::FOCUSABLE) != focusable;
         if focusable {
             flags.insert(NodeFlags::FOCUSABLE);
         } else {
             flags.remove(NodeFlags::FOCUSABLE);
         }
         self.geometry.set_flags(primary, flags);
+        if changed {
+            self.record_element_tree_upsert(id);
+        }
     }
 
     /// Returns whether `id` is currently enabled.
@@ -279,6 +287,12 @@ impl Ui {
             changed = true;
         }
         if changed {
+            if let Some(previous) = previous {
+                self.record_element_tree_upsert(previous);
+            }
+            if let Some(accepted) = accepted {
+                self.record_element_tree_upsert(accepted);
+            }
             self.dispatch_focus_change(previous, accepted, focus_visible, reason);
             self.refresh_tooltip_from_focus();
         }
@@ -455,10 +469,17 @@ impl Ui {
     }
 
     pub(in crate::ui) fn set_pointer_capture(&mut self, new: Option<ElementId>) -> bool {
-        if self.events.pointer_capture() == new {
+        let previous = self.events.pointer_capture();
+        if previous == new {
             return false;
         }
         self.events.set_pointer_capture(new);
+        if let Some(previous) = previous {
+            self.record_element_tree_upsert(previous);
+        }
+        if let Some(new) = new {
+            self.record_element_tree_upsert(new);
+        }
         true
     }
 }

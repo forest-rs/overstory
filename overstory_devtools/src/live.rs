@@ -40,7 +40,9 @@ impl DevtoolsRefresh {
                 })
             }
             Some(
-                DevtoolsEvent::SelectionChanged { .. } | DevtoolsEvent::SnapshotReplaced { .. },
+                DevtoolsEvent::SelectionChanged { .. }
+                | DevtoolsEvent::SnapshotReplaced { .. }
+                | DevtoolsEvent::TargetChanged { .. },
             )
             | None => None,
         }
@@ -208,7 +210,8 @@ impl LiveDevtools {
 
 #[cfg(test)]
 mod tests {
-    use overstory::{Panel, Ui};
+    use overstory::pseudos::PSEUDO_HOVER;
+    use overstory::{Button, Panel, Ui};
 
     use super::*;
 
@@ -313,6 +316,34 @@ mod tests {
 
         devtools.detach_from_live(&mut ui);
         assert!(!ui.is_live_inspection_recording());
+    }
+
+    #[test]
+    fn live_devtools_refresh_from_live_updates_selected_details() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Inspect"));
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, Some(button)).expect("devtools should attach");
+
+        ui.add_pseudo(button, PSEUDO_HOVER);
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("live state refresh should update mirror");
+
+        assert_eq!(refresh.stream_item_count, 1);
+        assert_eq!(
+            refresh.event,
+            Some(DevtoolsEvent::TargetChanged {
+                selected: Some(button),
+            })
+        );
+        assert!(
+            devtools
+                .mirror()
+                .selected_details()
+                .is_some_and(|details| details.row.state.hovered)
+        );
     }
 
     #[test]
