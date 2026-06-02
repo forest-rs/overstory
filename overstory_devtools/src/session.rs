@@ -116,15 +116,25 @@ impl DevtoolsSession {
     /// If the selected element is not present in the new snapshot, selection is
     /// cleared.
     pub fn replace_snapshot(&mut self, snapshot: DevtoolsSnapshot) -> DevtoolsEvent {
-        self.snapshot = snapshot;
-        if self
-            .selected_element
-            .is_some_and(|id| self.snapshot.element(id).is_none())
+        #[cfg(feature = "spoor-session")]
         {
-            self.selected_element = None;
+            let previous_tree = self.snapshot.inspection_element_tree();
+            let current_tree = snapshot.inspection_element_tree();
+            let tree_patch = previous_tree.patch_to(&current_tree);
+            self.snapshot = snapshot;
+            self.normalize_selected_element();
+            DevtoolsEvent::ElementTreePatched {
+                selected: self.selected_element,
+                tree_patch,
+            }
         }
-        DevtoolsEvent::SnapshotReplaced {
-            selected: self.selected_element,
+        #[cfg(not(feature = "spoor-session"))]
+        {
+            self.snapshot = snapshot;
+            self.normalize_selected_element();
+            DevtoolsEvent::SnapshotReplaced {
+                selected: self.selected_element,
+            }
         }
     }
 
@@ -253,19 +263,13 @@ impl DevtoolsSession {
         &mut self,
         event: DevtoolsEvent,
     ) -> Vec<LiveInspectionStreamItem> {
-        let Some(delta) = inspection_delta_for_event(event) else {
-            return Vec::new();
-        };
+        let stream_item = inspection_stream_item_for_event(event);
         let mut items = Vec::new();
         for stream in &mut self.inspection_streams {
-            if !stream.matches(delta.subsystem) {
+            if !stream.matches(stream_item.subsystem()) {
                 continue;
             }
-            let item = SessionStreamItem::new(
-                stream.id,
-                stream.next_sequence,
-                InspectionStreamItem::Delta(delta),
-            );
+            let item = SessionStreamItem::new(stream.id, stream.next_sequence, stream_item.clone());
             stream.next_sequence = stream.next_sequence.saturating_add(1);
             items.push(item);
         }
@@ -290,6 +294,17 @@ impl DevtoolsSession {
     #[must_use]
     pub fn spoor_envelopes(&self) -> &[OwnedSessionEnvelope] {
         &self.spoor.envelopes
+    }
+}
+
+impl DevtoolsSession {
+    fn normalize_selected_element(&mut self) {
+        if self
+            .selected_element
+            .is_some_and(|id| self.snapshot.element(id).is_none())
+        {
+            self.selected_element = None;
+        }
     }
 }
 
@@ -338,16 +353,23 @@ fn element_not_found(element: ElementId) -> SessionError {
 }
 
 #[cfg(feature = "spoor-session")]
-fn inspection_delta_for_event(event: DevtoolsEvent) -> Option<InspectionDelta> {
+fn inspection_stream_item_for_event(event: DevtoolsEvent) -> InspectionStreamItem {
     match event {
-        DevtoolsEvent::SelectionChanged { .. } => Some(InspectionDelta::new(
-            InspectionSubsystem::Elements,
-            InspectionUpdateReason::SelectionChanged,
-        )),
-        DevtoolsEvent::SnapshotReplaced { .. } => Some(InspectionDelta::new(
-            InspectionSubsystem::Elements,
-            InspectionUpdateReason::SnapshotReplaced,
-        )),
+        DevtoolsEvent::SelectionChanged { .. } => {
+            InspectionStreamItem::Delta(InspectionDelta::new(
+                InspectionSubsystem::Elements,
+                InspectionUpdateReason::SelectionChanged,
+            ))
+        }
+        DevtoolsEvent::SnapshotReplaced { .. } => {
+            InspectionStreamItem::Delta(InspectionDelta::new(
+                InspectionSubsystem::Elements,
+                InspectionUpdateReason::SnapshotReplaced,
+            ))
+        }
+        DevtoolsEvent::ElementTreePatched { tree_patch, .. } => {
+            InspectionStreamItem::ElementTreePatch(tree_patch)
+        }
     }
 }
 
@@ -382,7 +404,7 @@ impl DevtoolsSessionHandle {
 }
 
 /// Event produced by a [`DevtoolsSession`] mutation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevtoolsEvent {
     /// The selected element changed.
     SelectionChanged {
@@ -393,6 +415,14 @@ pub enum DevtoolsEvent {
     SnapshotReplaced {
         /// Selection after stale ids were normalized.
         selected: Option<ElementId>,
+    },
+    /// The projected retained element tree changed.
+    #[cfg(feature = "spoor-session")]
+    ElementTreePatched {
+        /// Selection after stale ids were normalized.
+        selected: Option<ElementId>,
+        /// Keyed element tree patch for subscribed mirrors.
+        tree_patch: crate::InspectionElementTreePatch,
     },
 }
 

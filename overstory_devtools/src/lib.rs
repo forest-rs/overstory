@@ -54,9 +54,10 @@ pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
     INSPECTION_DOMAIN, InspectionDelta, InspectionDispatch, InspectionElementDetails,
-    InspectionElementNode, InspectionElementTree, InspectionRequest, InspectionResponse,
-    InspectionStreamItem, InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem,
-    InspectionSummaries, InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
+    InspectionElementNode, InspectionElementNodeUpdate, InspectionElementTree,
+    InspectionElementTreePatch, InspectionRequest, InspectionResponse, InspectionStreamItem,
+    InspectionSubscription, InspectionSubscriptionKind, InspectionSubsystem, InspectionSummaries,
+    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionResponse,
     LiveInspectionStreamItem, LiveInspectionStreamStart, inspection_method,
     inspection_stream_start,
 };
@@ -568,18 +569,26 @@ pub fn refresh_session_view_in_place(
 
     clear_children(ui, elements.details);
     let client = InspectionClient::new(session.clone());
-    let mirror = InspectionMirror::attach(&client).unwrap_or_else(|_| {
-        session.with(|session| {
-            InspectionMirror::from_snapshot(session.snapshot(), session.selected_element())
-        })
-    });
+    let detail_element = session
+        .with(DevtoolsSession::selected_element)
+        .or_else(|| current_tree.root_element());
+    let detail_result = detail_element
+        .map(|element| client.element_details(element))
+        .transpose();
     let actions = DetailActions::from_client(client, elements.outline);
-    append_inspection_element_details(
-        ui,
-        elements.details,
-        mirror.selected_details(),
-        Some(&actions),
-    );
+    match detail_result {
+        Ok(detail) => {
+            append_inspection_element_details(
+                ui,
+                elements.details,
+                detail.as_ref(),
+                Some(&actions),
+            );
+        }
+        Err(error) => {
+            append_session_error(ui, elements.details, "Detail request failed", &error);
+        }
+    }
     elements
 }
 
@@ -729,15 +738,17 @@ fn append_session_view_contents(
                 return;
             };
             clear_children(ui, details);
-            session_for_selection.with_mut(|session| {
+            let selected = session_for_selection.with_mut(|session| {
                 let _ = session.select_outline_key(event.selected_key);
-                let actions =
-                    DetailActions::from_session(session_for_selection.clone(), event.outline);
+                session.selected_element()
+            });
+            let actions = DetailActions::from_session(session_for_selection.clone(), event.outline);
+            session_for_selection.with(|session| {
                 append_selected_element_details(
                     ui,
                     details,
                     session.snapshot(),
-                    session.selected_element(),
+                    selected,
                     Some(&actions),
                 );
             });
@@ -1363,6 +1374,18 @@ mod tests {
         let second = Ui::new();
         let event = session.replace_snapshot(DevtoolsSnapshot::capture(&second));
 
+        #[cfg(feature = "spoor-session")]
+        {
+            let DevtoolsEvent::ElementTreePatched {
+                selected: None,
+                tree_patch,
+            } = event
+            else {
+                panic!("snapshot replacement should emit an element tree patch");
+            };
+            assert_eq!(tree_patch.removed, vec![selected]);
+        }
+        #[cfg(not(feature = "spoor-session"))]
         assert_eq!(event, DevtoolsEvent::SnapshotReplaced { selected: None });
         assert_eq!(session.selected_element(), None);
     }
@@ -1430,6 +1453,39 @@ mod tests {
                 InspectionUpdateReason::SelectionChanged,
             ))
         );
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn devtools_session_streams_element_tree_patches_for_snapshot_replacement() {
+        use spoor_session::{SessionRequestId, SessionResult};
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let mut session = DevtoolsSession::capture(&ui);
+
+        let response = session.handle_inspection_request(LiveInspectionRequest::new(
+            SessionRequestId::new(23),
+            inspection_method("subscribe"),
+            InspectionRequest::Subscribe(InspectionSubscription::all()),
+        ));
+        let SessionResult::Ok(InspectionResponse::Subscribed { stream_id, .. }) = response.result
+        else {
+            panic!("expected subscription response");
+        };
+
+        let child = ui.append(root, Panel::new());
+        let event = session.replace_snapshot(DevtoolsSnapshot::capture(&ui));
+        let items = session.inspection_stream_items_for_event(event);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].stream_id, stream_id);
+        let InspectionStreamItem::ElementTreePatch(patch) = &items[0].payload else {
+            panic!("snapshot replacement should stream an element tree patch");
+        };
+        assert!(patch.upserted.iter().any(|node| node.row.element == root));
+        assert!(patch.upserted.iter().any(|node| node.row.element == child));
+        assert!(patch.removed.is_empty());
     }
 
     #[cfg(feature = "spoor-session")]

@@ -20,9 +20,10 @@ use spoor_session::{
 
 use crate::{
     DevtoolsEvent, DevtoolsSessionHandle, DevtoolsSnapshot, InspectionDelta,
-    InspectionElementDetails, InspectionElementTree, InspectionRequest, InspectionResponse,
-    InspectionStreamItem, InspectionSubscription, InspectionSummaries, InspectionUpdateReason,
-    LiveInspectionRequest, LiveInspectionStreamItem, selected_element_property_grid,
+    InspectionElementDetails, InspectionElementTree, InspectionElementTreePatch, InspectionRequest,
+    InspectionResponse, InspectionStreamItem, InspectionSubscription, InspectionSummaries,
+    InspectionUpdateReason, LiveInspectionRequest, LiveInspectionStreamItem,
+    selected_element_property_grid,
 };
 
 /// Same-process client for the Overstory inspection protocol.
@@ -344,6 +345,7 @@ impl InspectionMirror {
     ) -> Result<(), SessionError> {
         match &item.payload {
             InspectionStreamItem::Delta(delta) => self.apply_delta(client, *delta),
+            InspectionStreamItem::ElementTreePatch(patch) => self.apply_tree_patch(client, patch),
         }
     }
 
@@ -375,6 +377,23 @@ impl InspectionMirror {
                 self.refresh_selected_details(client)
             }
         }
+    }
+
+    fn apply_tree_patch(
+        &mut self,
+        client: &InspectionClient,
+        patch: &InspectionElementTreePatch,
+    ) -> Result<(), SessionError> {
+        self.tree.apply_patch(patch);
+        self.selected = client.selection()?;
+        if self
+            .selected
+            .is_some_and(|element| self.tree.outline_key_for_element(element).is_none())
+        {
+            self.selected = None;
+        }
+        self.refresh_summaries(client)?;
+        self.refresh_selected_details(client)
     }
 
     fn refresh_selected_details(&mut self, client: &InspectionClient) -> Result<(), SessionError> {

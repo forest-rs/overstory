@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Summary of one same-process devtools refresh.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevtoolsRefresh {
     /// Session event produced by the refresh.
     pub event: DevtoolsEvent,
@@ -30,8 +30,9 @@ pub struct DevtoolsRefresh {
 ///
 /// The controller is the intended bridge for host integrations that can
 /// periodically capture a target snapshot and want the inspector to keep a
-/// retained client-side mirror. Current refreshes replace the session snapshot
-/// and emit compact invalidation signals; they are not structural tree deltas.
+/// retained client-side mirror. Current refreshes compute keyed element-tree
+/// patches from those captures; target-side mutation hooks can produce the
+/// same patch payloads later without a full recapture step.
 #[derive(Clone, Debug)]
 pub struct LiveDevtools {
     session: DevtoolsSessionHandle,
@@ -87,8 +88,9 @@ impl LiveDevtools {
     ///
     /// The refresh is applied through the session stream vocabulary so the
     /// mirror can react to local target refreshes and future remote deliveries.
-    /// The payload currently says "the snapshot changed"; callers still issue
-    /// lazy requests for the tree and visible details they need.
+    /// This same-process path still captures the target to compute the patch,
+    /// but subscribed mirrors receive a keyed tree update rather than a full
+    /// snapshot.
     pub fn refresh_from(
         &mut self,
         target: &impl DevtoolsTarget,
@@ -97,7 +99,7 @@ impl LiveDevtools {
         let event = self
             .session
             .with_mut(|session| session.replace_snapshot(snapshot));
-        let stream_items = self.client.stream_items_for_event(event);
+        let stream_items = self.client.stream_items_for_event(event.clone());
         let stream_item_count = stream_items.len();
         for item in &stream_items {
             self.mirror.apply_stream_item(&self.client, item)?;
@@ -168,9 +170,24 @@ mod tests {
             .refresh_from(&ui)
             .expect("refresh should update mirror");
 
-        assert_eq!(
-            refresh.event,
-            DevtoolsEvent::SnapshotReplaced { selected: None }
+        let DevtoolsEvent::ElementTreePatched {
+            selected: None,
+            tree_patch,
+        } = refresh.event
+        else {
+            panic!("refresh should emit an element tree patch");
+        };
+        assert!(
+            tree_patch
+                .upserted
+                .iter()
+                .any(|node| node.row.element == root)
+        );
+        assert!(
+            tree_patch
+                .upserted
+                .iter()
+                .any(|node| node.row.element == child)
         );
         assert_eq!(refresh.stream_item_count, 1);
         assert_eq!(devtools.mirror().tree().nodes.len(), 2);

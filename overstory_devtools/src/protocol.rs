@@ -10,6 +10,7 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 
 use overstory::UiFrameStats;
 use overstory::inspection::{
@@ -173,9 +174,9 @@ impl InspectionSummaries {
 
 /// Projected retained-element tree returned by the live inspection protocol.
 ///
-/// The tree uses snapshot element offsets as [`OutlineNodeKey`] values so a
-/// client can map between retained element ids and a rendered outline control
-/// without requesting a full snapshot.
+/// Initial tree responses use the projected node order as [`OutlineNodeKey`]
+/// values. Live updates should preserve state by mapping keys back to
+/// [`ElementId`] before applying an [`InspectionElementTreePatch`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InspectionElementTree {
     /// Root node index, if the snapshot contains one.
@@ -241,6 +242,124 @@ impl InspectionElementTree {
             })
             .collect()
     }
+
+    /// Builds a keyed patch that turns this tree into `next`.
+    #[must_use]
+    pub fn patch_to(&self, next: &Self) -> InspectionElementTreePatch {
+        let previous_index = sorted_node_index(self);
+        let next_index = sorted_node_index(next);
+        let mut removed = Vec::new();
+        let mut upserted = Vec::new();
+        let mut previous = 0;
+        let mut current = 0;
+
+        while previous < previous_index.len() || current < next_index.len() {
+            match (previous_index.get(previous), next_index.get(current)) {
+                (Some((previous_id, previous_node)), Some((current_id, current_node))) => {
+                    match previous_id.cmp(current_id) {
+                        Ordering::Less => {
+                            removed.push(*previous_id);
+                            previous += 1;
+                        }
+                        Ordering::Greater => {
+                            upserted.push(next.node_update_at(*current_node));
+                            current += 1;
+                        }
+                        Ordering::Equal => {
+                            let previous_update = self.node_update_at(*previous_node);
+                            let current_update = next.node_update_at(*current_node);
+                            if previous_update != current_update {
+                                upserted.push(current_update);
+                            }
+                            previous += 1;
+                            current += 1;
+                        }
+                    }
+                }
+                (Some((previous_id, _)), None) => {
+                    removed.push(*previous_id);
+                    previous += 1;
+                }
+                (None, Some((_, current_node))) => {
+                    upserted.push(next.node_update_at(*current_node));
+                    current += 1;
+                }
+                (None, None) => break,
+            }
+        }
+
+        InspectionElementTreePatch {
+            root: next.root_element(),
+            removed,
+            upserted,
+        }
+    }
+
+    /// Applies a keyed tree patch in place.
+    pub fn apply_patch(&mut self, patch: &InspectionElementTreePatch) {
+        let mut updates = self.node_updates();
+        let mut removed = patch.removed.clone();
+        removed.sort();
+        updates.retain(|node| removed.binary_search(&node.row.element).is_err());
+        for update in &patch.upserted {
+            if let Some(existing) = updates
+                .iter_mut()
+                .find(|node| node.row.element == update.row.element)
+            {
+                *existing = update.clone();
+            } else {
+                updates.push(update.clone());
+            }
+        }
+        *self = Self::from_node_updates(patch.root, updates);
+    }
+
+    fn node_updates(&self) -> Vec<InspectionElementNodeUpdate> {
+        (0..self.nodes.len())
+            .map(|index| self.node_update_at(index))
+            .collect()
+    }
+
+    fn node_update_at(&self, index: usize) -> InspectionElementNodeUpdate {
+        let node = &self.nodes[index];
+        InspectionElementNodeUpdate {
+            row: node.row,
+            label: node.label.clone(),
+            first_child: node.first_child.and_then(|child| self.node_element(child)),
+            next_sibling: node
+                .next_sibling
+                .and_then(|sibling| self.node_element(sibling)),
+        }
+    }
+
+    fn node_element(&self, index: usize) -> Option<ElementId> {
+        self.nodes.get(index).map(|node| node.row.element)
+    }
+
+    fn from_node_updates(
+        root: Option<ElementId>,
+        updates: Vec<InspectionElementNodeUpdate>,
+    ) -> Self {
+        let index = sorted_update_index(&updates);
+        let nodes = updates
+            .into_iter()
+            .map(|update| InspectionElementNode {
+                row: update.row,
+                label: update.label,
+                first_child: update
+                    .first_child
+                    .and_then(|element| update_index_for(&index, element)),
+                next_sibling: update
+                    .next_sibling
+                    .and_then(|element| update_index_for(&index, element)),
+            })
+            .collect();
+
+        Self {
+            root: root.and_then(|element| update_index_for(&index, element)),
+            nodes,
+        }
+    }
 }
 
 /// One projected retained-element node in an [`InspectionElementTree`].
@@ -254,6 +373,36 @@ pub struct InspectionElementNode {
     pub first_child: Option<usize>,
     /// Next sibling node index.
     pub next_sibling: Option<usize>,
+}
+
+/// Keyed update for one retained-element tree node.
+///
+/// Links use [`ElementId`] rather than outline indices so the update can
+/// survive insertions and removals that shift a rendered outline's row keys.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InspectionElementNodeUpdate {
+    /// Compact inspection row for the element.
+    pub row: ElementOutlineRow,
+    /// Display label for the element.
+    pub label: String,
+    /// First child element id.
+    pub first_child: Option<ElementId>,
+    /// Next sibling element id.
+    pub next_sibling: Option<ElementId>,
+}
+
+/// Incremental retained-element tree update.
+///
+/// The patch carries enough keyed structure to update a client-side
+/// [`InspectionElementTree`] without transferring a full [`DevtoolsSnapshot`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InspectionElementTreePatch {
+    /// Root element after the patch.
+    pub root: Option<ElementId>,
+    /// Elements removed from the projected tree.
+    pub removed: Vec<ElementId>,
+    /// Added or changed node states.
+    pub upserted: Vec<InspectionElementNodeUpdate>,
 }
 
 impl DevtoolsSnapshot {
@@ -314,6 +463,17 @@ pub struct InspectionElementDetails {
 pub enum InspectionStreamItem {
     /// The target changed since the last item.
     Delta(InspectionDelta),
+    /// Retained element tree changed.
+    ElementTreePatch(InspectionElementTreePatch),
+}
+
+impl InspectionStreamItem {
+    pub(crate) const fn subsystem(&self) -> InspectionSubsystem {
+        match self {
+            Self::Delta(delta) => delta.subsystem,
+            Self::ElementTreePatch(_) => InspectionSubsystem::Elements,
+        }
+    }
 }
 
 /// Subscription request for an Overstory inspection stream.
@@ -321,6 +481,34 @@ pub enum InspectionStreamItem {
 pub struct InspectionSubscription {
     /// Kind of inspection updates requested.
     pub kind: InspectionSubscriptionKind,
+}
+
+fn sorted_node_index(tree: &InspectionElementTree) -> Vec<(ElementId, usize)> {
+    let mut index = tree
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.row.element, index))
+        .collect::<Vec<_>>();
+    index.sort_by_key(|(element, _)| *element);
+    index
+}
+
+fn sorted_update_index(updates: &[InspectionElementNodeUpdate]) -> Vec<(ElementId, usize)> {
+    let mut index = updates
+        .iter()
+        .enumerate()
+        .map(|(index, update)| (update.row.element, index))
+        .collect::<Vec<_>>();
+    index.sort_by_key(|(element, _)| *element);
+    index
+}
+
+fn update_index_for(index: &[(ElementId, usize)], element: ElementId) -> Option<usize> {
+    index
+        .binary_search_by_key(&element, |(candidate, _)| *candidate)
+        .ok()
+        .map(|offset| index[offset].1)
 }
 
 impl InspectionSubscription {
@@ -487,6 +675,32 @@ mod tests {
             ),
             Some(child),
         );
+    }
+
+    #[test]
+    fn element_tree_patch_updates_keyed_projection_without_snapshot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let removed = ui.append(root, Panel::new());
+        let kept = ui.append(root, Panel::new());
+        let mut previous = DevtoolsSnapshot::capture(&ui).inspection_element_tree();
+
+        ui.remove(removed);
+        let added = ui.append(root, Panel::new());
+        let next = DevtoolsSnapshot::capture(&ui).inspection_element_tree();
+        let patch = previous.patch_to(&next);
+
+        assert_eq!(patch.root, Some(root));
+        assert_eq!(patch.removed, alloc::vec![removed]);
+        assert!(patch.upserted.iter().any(|node| node.row.element == root));
+        assert!(patch.upserted.iter().any(|node| node.row.element == added));
+
+        previous.apply_patch(&patch);
+
+        assert_eq!(previous, next);
+        assert!(previous.outline_key_for_element(removed).is_none());
+        assert!(previous.outline_key_for_element(kept).is_some());
+        assert!(previous.outline_key_for_element(added).is_some());
     }
 
     #[test]
