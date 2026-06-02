@@ -528,21 +528,20 @@ pub fn refresh_session_view(
     append_session_view_contents(ui, elements.root, session)
 }
 
-/// Refreshes an existing inspector view from `session` without replacing the
-/// outline or details viewport elements.
+/// Refreshes an existing inspector view from a patched `mirror`.
 ///
-/// This is still a full target capture path, not a protocol-level tree delta.
 /// The view state is preserved by mapping currently expanded rows through
-/// `previous_tree` element ids into `current_tree` keys, then replacing the
-/// outline control's model in place.
+/// `previous_tree` element ids into the mirror's current tree keys, then
+/// replacing the outline control's model in place.
 #[cfg(feature = "spoor-session")]
-pub fn refresh_session_view_in_place(
+pub fn refresh_session_view_from_mirror(
     ui: &mut Ui,
     elements: DevtoolsViewElements,
     previous_tree: &InspectionElementTree,
-    current_tree: &InspectionElementTree,
+    mirror: &InspectionMirror,
     session: DevtoolsSessionHandle,
 ) -> DevtoolsViewElements {
+    let current_tree = mirror.tree();
     let expanded_elements = expanded_outline_keys(ui, elements.outline)
         .unwrap_or_default()
         .into_iter()
@@ -569,26 +568,13 @@ pub fn refresh_session_view_in_place(
 
     clear_children(ui, elements.details);
     let client = InspectionClient::new(session.clone());
-    let detail_element = session
-        .with(DevtoolsSession::selected_element)
-        .or_else(|| current_tree.root_element());
-    let detail_result = detail_element
-        .map(|element| client.element_details(element))
-        .transpose();
     let actions = DetailActions::from_client(client, elements.outline);
-    match detail_result {
-        Ok(detail) => {
-            append_inspection_element_details(
-                ui,
-                elements.details,
-                detail.as_ref(),
-                Some(&actions),
-            );
-        }
-        Err(error) => {
-            append_session_error(ui, elements.details, "Detail request failed", &error);
-        }
-    }
+    append_inspection_element_details(
+        ui,
+        elements.details,
+        mirror.selected_details(),
+        Some(&actions),
+    );
     elements
 }
 
@@ -1933,11 +1919,11 @@ mod tests {
             .refresh_from(&target)
             .expect("target refresh should update live session");
         let current_tree = devtools.mirror().tree().clone();
-        let refreshed = refresh_session_view_in_place(
+        let refreshed = refresh_session_view_from_mirror(
             &mut inspector,
             elements,
             &previous_tree,
-            &current_tree,
+            devtools.mirror(),
             session,
         );
 

@@ -3,7 +3,7 @@
 
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsViewElements, LiveDevtools, UiInspectionTarget,
-    append_session_view, refresh_session_view_in_place,
+    append_session_view, refresh_session_view_from_mirror,
 };
 
 use super::*;
@@ -121,14 +121,16 @@ impl InProcessDevtoolsShell {
             return false;
         };
 
-        let current_tree = self.devtools.borrow().mirror().tree().clone();
-        let refreshed = refresh_session_view_in_place(
-            ui,
-            elements,
-            &previous_tree,
-            &current_tree,
-            self.session.clone(),
-        );
+        let refreshed = {
+            let devtools = self.devtools.borrow();
+            refresh_session_view_from_mirror(
+                ui,
+                elements,
+                &previous_tree,
+                devtools.mirror(),
+                self.session.clone(),
+            )
+        };
         self.view_elements.set(Some(refreshed));
         self.refresh_count
             .set(self.refresh_count.get().saturating_add(1));
