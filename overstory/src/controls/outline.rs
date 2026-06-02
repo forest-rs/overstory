@@ -25,7 +25,7 @@ use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
@@ -656,8 +656,9 @@ impl Widget for OutlineViewWidget {
         -self.scroll_state.offset()
     }
 
-    fn post_layout(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
-        self.sync_virtual_items(outline, ui)
+    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+        let outline = ctx.id();
+        RealizeResult::from_changed(self.sync_virtual_items(outline, ctx.ui_mut()))
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {

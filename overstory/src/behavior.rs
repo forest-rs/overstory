@@ -146,6 +146,75 @@ impl fmt::Debug for WidgetEventContext<'_> {
     }
 }
 
+/// Mutable context handed to a widget's realization hook.
+///
+/// Realization runs after arrangement when a widget's final viewport geometry
+/// can determine which retained children should exist. The public context is
+/// intentionally small while Overstory's item-template and item-source model is
+/// still taking shape; built-in virtualized controls use crate-private access
+/// to reconcile their realized rows without keeping a general `&mut Ui` escape
+/// hatch in the trait.
+pub struct RealizeContext<'a> {
+    id: ElementId,
+    ui: &'a mut Ui,
+}
+
+impl<'a> RealizeContext<'a> {
+    pub(crate) fn new(id: ElementId, ui: &'a mut Ui) -> Self {
+        Self { id, ui }
+    }
+
+    /// Returns the element whose widget is realizing children.
+    #[must_use]
+    pub fn id(&self) -> ElementId {
+        self.id
+    }
+
+    /// Returns shared access to the owning UI.
+    #[must_use]
+    pub fn ui(&self) -> &Ui {
+        self.ui
+    }
+
+    pub(crate) fn ui_mut(&mut self) -> &mut Ui {
+        self.ui
+    }
+}
+
+impl fmt::Debug for RealizeContext<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RealizeContext")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Result returned from a realization hook.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RealizeResult {
+    changed: bool,
+}
+
+impl RealizeResult {
+    /// No retained children or layout-affecting state changed.
+    pub const UNCHANGED: Self = Self { changed: false };
+
+    /// Retained children or layout-affecting state changed.
+    pub const CHANGED: Self = Self { changed: true };
+
+    /// Creates a result from a boolean change flag.
+    #[must_use]
+    pub const fn from_changed(changed: bool) -> Self {
+        Self { changed }
+    }
+
+    /// Returns whether realization changed retained children or layout state.
+    #[must_use]
+    pub const fn changed(self) -> bool {
+        self.changed
+    }
+}
+
 /// Constraints passed to a widget's `measure` callback.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MeasureConstraints {

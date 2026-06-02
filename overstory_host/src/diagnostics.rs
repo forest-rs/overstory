@@ -12,7 +12,7 @@ use overstory::UiFrameStats;
 pub struct FrameTimings {
     /// Time spent advancing the UI clock and presentation timeline.
     pub set_now: Duration,
-    /// Time spent in layout, including bindings, post-layout hooks, and
+    /// Time spent in layout, including bindings, realization hooks, and
     /// composition-layer geometry synchronization.
     pub layout: Duration,
     /// Time spent refreshing presentation and Overstory-owned surface scenes.

@@ -72,7 +72,7 @@ pub struct UiFrameStats {
     pub styled_elements: usize,
     /// Whether `compute_layout` found layout work to perform.
     pub layout_requested: bool,
-    /// Number of layout passes run. Post-layout widgets can request more than
+    /// Number of layout passes run. Realization can request more than
     /// one pass.
     pub layout_passes: usize,
     /// Layout style records pushed into the layout engine.
@@ -81,10 +81,10 @@ pub struct UiFrameStats {
     pub measured_widgets: usize,
     /// Element bounds written back after layout.
     pub bounds_written: usize,
-    /// Widgets visited for `post_layout`.
-    pub post_layout_widgets: usize,
-    /// Widgets whose `post_layout` hook reported a geometry-affecting change.
-    pub post_layout_changes: usize,
+    /// Widgets visited for realization after arrange.
+    pub realize_widgets: usize,
+    /// Widgets whose realization hook reported a geometry-affecting change.
+    pub realize_changes: usize,
     /// Elements drained from the `PAINT` channel.
     pub painted_elements: usize,
     /// Presentation nodes drained from the presentation dirty set.
@@ -106,7 +106,7 @@ pub struct UiFrameStats {
 pub struct UiFrameTimings {
     /// Time spent advancing the UI clock and presentation timeline.
     pub set_now: Duration,
-    /// Time spent in layout, including bindings, post-layout hooks, and
+    /// Time spent in layout, including bindings, realization hooks, and
     /// composition-layer geometry synchronization.
     pub layout: Duration,
     /// Time spent refreshing presentation and Overstory-owned surface scenes.

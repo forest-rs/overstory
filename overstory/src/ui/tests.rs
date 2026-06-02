@@ -2708,9 +2708,9 @@ fn clean_compute_layout_skips_widget_layout_work() {
     }
 
     impl crate::Widget for LayoutProbe {
-        fn post_layout(&mut self, _element: ElementId, _ui: &mut Ui) -> bool {
+        fn realize(&mut self, _ctx: &mut crate::RealizeContext<'_>) -> crate::RealizeResult {
             self.count.set(self.count.get() + 1);
-            false
+            crate::RealizeResult::UNCHANGED
         }
     }
 

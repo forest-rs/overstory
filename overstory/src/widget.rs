@@ -53,7 +53,8 @@ use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
-    ArrangeContext, MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
+    ArrangeContext, MeasureConstraints, MeasureContext, PresentContext, RealizeContext,
+    RealizeResult, WidgetEventContext,
 };
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
@@ -174,15 +175,16 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         let _ = (element, ctx);
     }
 
-    /// Called after a full layout pass has written bounds for the tree.
+    /// Called after a full arrange pass has written bounds for the tree.
     ///
-    /// Widgets that derive child structure from final geometry, such as
-    /// virtualized controls, can synchronize their realized children here.
-    /// Return `true` when the synchronization changed the tree or layout and
-    /// the UI should run another layout pass before presenting.
-    fn post_layout(&mut self, id: ElementId, ui: &mut Ui) -> bool {
-        let _ = (id, ui);
-        false
+    /// Widgets whose retained child set depends on final viewport geometry,
+    /// such as virtualized controls, can synchronize their realized children
+    /// here. Return [`RealizeResult::CHANGED`] when synchronization changed the
+    /// tree or layout and the UI should run another layout pass before
+    /// presenting.
+    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+        let _ = ctx;
+        RealizeResult::UNCHANGED
     }
 
     /// Returns the default template this widget's element should
@@ -386,8 +388,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.arrange(element, ctx);
     }
 
-    fn post_layout(&mut self, id: ElementId, ui: &mut Ui) -> bool {
-        self.widget.post_layout(id, ui)
+    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+        self.widget.realize(ctx)
     }
 
     fn default_template(&self) -> Option<&'static dyn Template> {

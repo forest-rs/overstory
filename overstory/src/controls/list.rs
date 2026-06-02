@@ -27,7 +27,7 @@ use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, collect_options, enabled_index_at_or_after, enabled_index_at_or_before,
     first_enabled_index, last_enabled_index, next_enabled_index, option_enabled,
@@ -488,8 +488,9 @@ impl Widget for ListBoxWidget {
         -self.scroll_state.offset()
     }
 
-    fn post_layout(&mut self, listbox: ElementId, ui: &mut Ui) -> bool {
-        self.sync_virtual_items(listbox, ui)
+    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+        let listbox = ctx.id();
+        RealizeResult::from_changed(self.sync_virtual_items(listbox, ctx.ui_mut()))
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {

@@ -25,7 +25,7 @@ use understory_axis::{
 use understory_style::{ClassId, PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{RealizeContext, RealizeResult, WidgetEventContext};
 use crate::controls::range::ScalarRange;
 use crate::controls::support::{
     action_numeric_value, f32_from_logical, is_initial_drag_move, read_local_or,
@@ -397,8 +397,9 @@ impl Widget for SliderWidget {
         event.mark_handled();
     }
 
-    fn post_layout(&mut self, slider: ElementId, ui: &mut Ui) -> bool {
-        sync_slider_thumb_offset_target(ui, slider)
+    fn realize(&mut self, ctx: &mut RealizeContext<'_>) -> RealizeResult {
+        let slider = ctx.id();
+        RealizeResult::from_changed(sync_slider_thumb_offset_target(ctx.ui_mut(), slider))
     }
 
     fn handle_accessibility_action(
