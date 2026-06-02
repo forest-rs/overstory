@@ -49,7 +49,7 @@ mod session;
 #[cfg(feature = "spoor-session")]
 pub use client::{InspectionClient, InspectionMirror};
 #[cfg(feature = "spoor-session")]
-pub use live::{DevtoolsRefresh, LiveDevtools};
+pub use live::{DevtoolsRefresh, DevtoolsTreePatchCounts, LiveDevtools};
 pub use property_grid::{PropertyGrid, PropertyGridRow, PropertyGridSection};
 #[cfg(feature = "spoor-session")]
 pub use protocol::{

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use overstory_devtools::{
-    DevtoolsSessionHandle, DevtoolsViewElements, LiveDevtools, UiInspectionTarget,
-    append_session_view, refresh_session_view_from_mirror,
+    DevtoolsSessionHandle, DevtoolsTreePatchCounts, DevtoolsViewElements, LiveDevtools,
+    UiInspectionTarget, append_session_view, refresh_session_view_from_mirror,
 };
 
 use super::*;
@@ -81,13 +81,22 @@ impl InProcessDevtoolsShell {
         self.status.set(Some(status));
     }
 
-    fn update_status(&self, ui: &mut Ui, stream_item_count: usize) {
+    fn update_status(
+        &self,
+        ui: &mut Ui,
+        stream_item_count: usize,
+        tree_patch_counts: Option<DevtoolsTreePatchCounts>,
+    ) {
         let Some(status) = self.status.get() else {
             return;
         };
         let devtools = self.devtools.borrow();
-        let content =
-            format_auto_capture_status(&devtools, self.refresh_count.get(), stream_item_count);
+        let content = format_auto_capture_status(
+            &devtools,
+            self.refresh_count.get(),
+            stream_item_count,
+            tree_patch_counts,
+        );
         ui.set_local(status, ui.properties().content, content);
     }
 
@@ -134,7 +143,7 @@ impl InProcessDevtoolsShell {
         self.view_elements.set(Some(refreshed));
         self.refresh_count
             .set(self.refresh_count.get().saturating_add(1));
-        self.update_status(ui, refresh.stream_item_count);
+        self.update_status(ui, refresh.stream_item_count, refresh.tree_patch_counts());
         true
     }
 
@@ -210,7 +219,7 @@ fn open_in_process_devtools(
                         .layout(Layout::new().logical_size(492.0, 20.0)),
                 );
                 shell_for_build.set_status(status);
-                shell_for_build.update_status(popup.ui_mut(), 0);
+                shell_for_build.update_status(popup.ui_mut(), 0, None);
                 let elements =
                     append_session_view(popup.ui_mut(), panel, shell_for_build.session.clone());
                 shell_for_build.set_view_elements(elements);
@@ -263,9 +272,14 @@ fn format_auto_capture_status(
     devtools: &LiveDevtools,
     refresh_count: u32,
     stream_item_count: usize,
+    tree_patch_counts: Option<DevtoolsTreePatchCounts>,
 ) -> String {
+    let tree_patch = tree_patch_counts.map_or_else(
+        || String::from("tree patch: pending"),
+        |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
+    );
     format!(
-        "Auto capture - elements: {}, refreshes: {}, stream items: {}",
+        "Auto capture - elements: {}, refreshes: {}, stream items: {}, {tree_patch}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,

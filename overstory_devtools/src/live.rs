@@ -26,6 +26,29 @@ pub struct DevtoolsRefresh {
     pub selected: Option<ElementId>,
 }
 
+impl DevtoolsRefresh {
+    /// Returns element-tree patch counts when this refresh streamed a tree patch.
+    #[must_use]
+    pub const fn tree_patch_counts(&self) -> Option<DevtoolsTreePatchCounts> {
+        match &self.event {
+            DevtoolsEvent::ElementTreePatched { tree_patch, .. } => Some(DevtoolsTreePatchCounts {
+                removed: tree_patch.removed.len(),
+                upserted: tree_patch.upserted.len(),
+            }),
+            DevtoolsEvent::SelectionChanged { .. } | DevtoolsEvent::SnapshotReplaced { .. } => None,
+        }
+    }
+}
+
+/// Element-tree operation counts streamed during one refresh.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DevtoolsTreePatchCounts {
+    /// Elements removed from the client-side mirror.
+    pub removed: usize,
+    /// Elements added or updated in the client-side mirror.
+    pub upserted: usize,
+}
+
 /// Same-process controller for an Overstory devtools session.
 ///
 /// The controller is the intended bridge for host integrations that can
