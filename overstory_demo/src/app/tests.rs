@@ -151,7 +151,15 @@ fn gallery_devtools_button_opens_in_process_inspector() {
 
     assert!(
         result.handled,
-        "devtools button should open the inspector popup"
+        "devtools button should open the docked inspector"
+    );
+    assert_eq!(
+        ui.get(ui.root())
+            .expect("root should exist")
+            .children()
+            .len(),
+        3,
+        "docked devtools should become a root-level pane"
     );
     assert!(
         ui.get(button)
@@ -171,7 +179,15 @@ fn gallery_devtools_button_opens_in_process_inspector() {
 
     assert!(
         ui.synthesize_click(button, Point::ZERO).handled,
-        "second devtools button click should close the popup",
+        "second devtools button click should close the dock",
+    );
+    assert_eq!(
+        ui.get(ui.root())
+            .expect("root should exist")
+            .children()
+            .len(),
+        2,
+        "closing devtools should remove the docked pane",
     );
     assert!(
         !ui.get(button)
@@ -183,16 +199,16 @@ fn gallery_devtools_button_opens_in_process_inspector() {
 }
 
 #[test]
-fn gallery_devtools_popup_refreshes_running_gallery_tree() {
+fn gallery_devtools_dock_refreshes_running_gallery_tree() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     let button = devtools_button(&ui);
     assert!(ui.synthesize_click(button, Point::ZERO).handled);
 
     let status = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS)
-        .expect("devtools popup should contain status text");
+        .expect("devtools dock should contain status text");
     let outline = find_by_type(&ui, ui.root(), overstory::TYPE_OUTLINE_VIEW)
-        .expect("devtools popup should contain an outline");
+        .expect("devtools dock should contain an outline");
     let initial_status = text_content(&ui, status);
     let initial_count =
         status_element_count(&initial_status).expect("initial status should report elements");
@@ -205,7 +221,7 @@ fn gallery_devtools_popup_refreshes_running_gallery_tree() {
         status_element_count(&refreshed_status).expect("refreshed status should report elements");
     assert_ne!(
         refreshed_count, initial_count,
-        "devtools should recapture the changed running gallery tree",
+        "devtools should stream the changed running gallery tree",
     );
     assert!(
         refreshed_status.contains("refreshes: 1"),
