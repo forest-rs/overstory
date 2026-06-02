@@ -47,18 +47,18 @@ pub struct KnownDimensions {
     pub height: Option<f64>,
 }
 
-/// Read-only context handed to a widget after layout has written element bounds.
+/// Read-only context handed to a widget after layout has arranged element bounds.
 ///
 /// Widgets use this for derived geometry state that depends on both their own
 /// bounds and their children's final arranged bounds, such as scroll range
 /// metrics. It is intentionally read-only: layout hooks can update interior
 /// widget state, but they do not mutate the tree or the layout engine.
 #[derive(Copy, Clone)]
-pub struct LayoutContext<'a> {
+pub struct ArrangeContext<'a> {
     pub(crate) ui: &'a Ui,
 }
 
-impl LayoutContext<'_> {
+impl ArrangeContext<'_> {
     /// Returns the latest computed bounds for `element`, if it is still live.
     #[must_use]
     pub fn effective_bounds(&self, element: ElementId) -> Option<Rect> {
@@ -68,9 +68,9 @@ impl LayoutContext<'_> {
     }
 }
 
-impl fmt::Debug for LayoutContext<'_> {
+impl fmt::Debug for ArrangeContext<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LayoutContext").finish_non_exhaustive()
+        f.debug_struct("ArrangeContext").finish_non_exhaustive()
     }
 }
 

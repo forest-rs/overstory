@@ -103,7 +103,7 @@ mod widget;
 pub use accessibility::AccessibilityContext;
 pub use accesskit;
 pub use behavior::{
-    KnownDimensions, LayoutContext, MeasureConstraints, MeasureContext, PresentContext,
+    ArrangeContext, KnownDimensions, MeasureConstraints, MeasureContext, PresentContext,
     WidgetEventContext,
 };
 pub use binding::{

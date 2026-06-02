@@ -53,7 +53,7 @@ use understory_style::{ClassId, TypeTag};
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
-    LayoutContext, MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
+    ArrangeContext, MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
 };
 use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
@@ -165,12 +165,12 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
-    /// Called after layout has written this element's bounds and recursively
+    /// Called after layout has arranged this element's bounds and recursively
     /// written all descendant bounds.
     ///
     /// The default does nothing. Viewport-like controls use this to derive
     /// geometry state, such as scroll extents, from their arranged children.
-    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
+    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
         let _ = (element, ctx);
     }
 
@@ -382,8 +382,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.measure(element, ctx, constraints)
     }
 
-    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
-        self.widget.layout_updated(element, ctx);
+    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
+        self.widget.arrange(element, ctx);
     }
 
     fn post_layout(&mut self, id: ElementId, ui: &mut Ui) -> bool {

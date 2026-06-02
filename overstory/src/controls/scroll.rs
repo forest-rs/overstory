@@ -22,7 +22,7 @@ use kurbo::{Axis, Point, Size, Vec2};
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::{LayoutContext, WidgetEventContext};
+use crate::behavior::{ArrangeContext, WidgetEventContext};
 use crate::channels::LAYOUT;
 use crate::controls::support::{
     ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
@@ -204,7 +204,7 @@ impl Widget for ScrollViewWidget {
         }
     }
 
-    fn layout_updated(&self, element: &Element, ctx: &LayoutContext<'_>) {
+    fn arrange(&self, element: &Element, ctx: &ArrangeContext<'_>) {
         update_scroll_metrics_from_layout(element, ctx, &self.state);
     }
 
@@ -1083,7 +1083,7 @@ fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 
 
 fn update_scroll_metrics_from_layout(
     element: &Element,
-    ctx: &LayoutContext<'_>,
+    ctx: &ArrangeContext<'_>,
     state: &ScrollState,
 ) {
     let Some(viewport_bounds) = ctx.effective_bounds(element.id()) else {

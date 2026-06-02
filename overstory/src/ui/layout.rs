@@ -398,8 +398,8 @@ impl Ui {
         if let Some(element) = self.get(id)
             && let Some(widget) = element.widget()
         {
-            let ctx = crate::behavior::LayoutContext { ui: self };
-            widget.layout_updated(element, &ctx);
+            let ctx = crate::behavior::ArrangeContext { ui: self };
+            widget.arrange(element, &ctx);
         }
     }
 
