@@ -9,6 +9,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt;
 
 use kurbo::{Rect, Size};
 use peniko::color::Rgba8;
@@ -327,6 +328,12 @@ impl LayerInspectionId {
     }
 }
 
+impl fmt::Display for LayerInspectionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.index, self.generation)
+    }
+}
+
 /// Stable surface identity copied into inspection snapshots.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SurfaceInspectionId {
@@ -342,6 +349,12 @@ impl SurfaceInspectionId {
             index: id.index(),
             generation: id.generation(),
         }
+    }
+}
+
+impl fmt::Display for SurfaceInspectionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.index, self.generation)
     }
 }
 
@@ -413,4 +426,31 @@ pub struct TimelineInspectionSnapshot {
     pub pending_transitions: usize,
     /// Scheduled cues that have not yet fired.
     pub pending_cues: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::*;
+
+    #[test]
+    fn inspection_ids_display_as_index_and_generation() {
+        assert_eq!(
+            LayerInspectionId {
+                index: 12,
+                generation: 3,
+            }
+            .to_string(),
+            "12:3"
+        );
+        assert_eq!(
+            SurfaceInspectionId {
+                index: 4,
+                generation: 9,
+            }
+            .to_string(),
+            "4:9"
+        );
+    }
 }

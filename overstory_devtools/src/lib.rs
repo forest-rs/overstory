@@ -18,7 +18,7 @@ use core::cell::Cell;
 
 use alloc::format;
 use alloc::rc::Rc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 #[cfg(test)]
 use alloc::vec;
 use alloc::vec::Vec;
@@ -1582,14 +1582,16 @@ fn optional_u64(value: Option<u64>) -> PropertyGridValue {
 }
 
 fn optional_layer_id(id: Option<LayerInspectionId>) -> PropertyGridValue {
-    id.map_or_else(PropertyGridValue::empty, |id| {
-        PropertyGridValue::token(format!("{}:{}", id.index, id.generation))
-    })
+    optional_display_token(id)
 }
 
 fn optional_surface_id(id: Option<SurfaceInspectionId>) -> PropertyGridValue {
-    id.map_or_else(PropertyGridValue::empty, |id| {
-        PropertyGridValue::token(format!("{}:{}", id.index, id.generation))
+    optional_display_token(id)
+}
+
+fn optional_display_token<T: ToString>(value: Option<T>) -> PropertyGridValue {
+    value.map_or_else(PropertyGridValue::empty, |value| {
+        PropertyGridValue::token(value.to_string())
     })
 }
 
