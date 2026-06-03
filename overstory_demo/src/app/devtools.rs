@@ -291,7 +291,7 @@ fn format_live_stream_status(
         duration_summary(timings.surface_refresh),
         duration_summary(timings.compose),
         optional_duration_summary(renderer.total),
-        frame.element_realize_widgets,
+        frame.element_realize_visits,
         frame.element_realize_changes,
         frame.painted_elements,
         frame.composition_surface_updates,

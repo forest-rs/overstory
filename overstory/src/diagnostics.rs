@@ -81,8 +81,8 @@ pub struct UiFrameStats {
     pub measured_widgets: usize,
     /// Element bounds written back after layout.
     pub bounds_written: usize,
-    /// Widgets visited for element realization after arrange.
-    pub element_realize_widgets: usize,
+    /// Elements visited for element-realization hooks after arrange.
+    pub element_realize_visits: usize,
     /// Widgets whose element-realization hook reported a layout-affecting
     /// change.
     pub element_realize_changes: usize,

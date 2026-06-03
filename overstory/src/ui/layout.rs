@@ -285,7 +285,7 @@ impl Ui {
         // testing, composition, and accessibility share one coordinate space.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
         let arranged = self.run_arrange_widgets();
-        arranged || self.run_element_realize_widgets()
+        arranged || self.run_element_realization()
     }
 
     fn run_arrange_widgets(&mut self) -> bool {
@@ -304,7 +304,7 @@ impl Ui {
         changed
     }
 
-    fn run_element_realize_widgets(&mut self) -> bool {
+    fn run_element_realization(&mut self) -> bool {
         let mut ids = Vec::new();
         self.collect_subtree_ids(self.root(), &mut ids);
         let mut changed = false;
@@ -317,7 +317,7 @@ impl Ui {
                 let mut ctx = crate::behavior::ElementRealizeContext::new(id, ui);
                 widget_changed = widget.realize_elements(&mut ctx).changed();
             });
-            self.frame_stats.element_realize_widgets += 1;
+            self.frame_stats.element_realize_visits += 1;
             self.frame_stats.element_realize_changes += usize::from(widget_changed);
             changed |= widget_changed;
         }

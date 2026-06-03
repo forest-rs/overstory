@@ -125,8 +125,8 @@ fn print_summary(scenario: LatencyScenario, count: usize, summary: &FrameRunSumm
     eprintln!("  measured widgets: {}", summary.last_ui.measured_widgets);
     eprintln!("  bounds written: {}", summary.last_ui.bounds_written);
     eprintln!(
-        "  element-realize widgets: {}",
-        summary.last_ui.element_realize_widgets
+        "  element-realize visits: {}",
+        summary.last_ui.element_realize_visits
     );
     eprintln!("  painted elements: {}", summary.last_ui.painted_elements);
     eprintln!("  rebuilt surfaces: {}", summary.last_ui.rebuilt_surfaces);
