@@ -423,7 +423,7 @@ impl DevtoolsSnapshot {
                     layer: row.layer,
                     surface: row.surface,
                 },
-                label: crate::element_label(row),
+                label: crate::element_label(self, row),
                 first_child: row
                     .children
                     .first()

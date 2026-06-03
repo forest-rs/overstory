@@ -32,6 +32,7 @@ impl Ui {
             composition: self.composition_inspection_snapshot(),
             storage: self.storage_inspection_snapshot(),
             timeline: self.timeline_inspection_snapshot(),
+            style_tokens: self.style_token_inspection_snapshot(),
             frame: self.frame_stats(),
         }
     }

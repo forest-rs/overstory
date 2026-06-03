@@ -22,8 +22,8 @@ use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
 use understory_property::{DependencyObject, DependencyObjectExt};
 use understory_style::{
-    ClassId, PartTag, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep, StyleBuilder,
-    StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
+    ClassId, PartTag, PseudoClassId, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep,
+    StyleBuilder, StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
 };
 
 use crate::motion::{
@@ -4283,6 +4283,42 @@ fn inspection_snapshot_reports_effective_property_summaries() {
                 )
         }),
         "snapshot should expose readable spacing layout properties"
+    );
+}
+
+#[test]
+fn inspection_snapshot_reports_style_token_debug_names() {
+    let mut ui = Ui::new();
+    let class = ClassId(0xCAFE);
+    let pseudo = PseudoClassId(0xBEEF);
+    let type_tag = understory_style::TypeTag(0xFEED);
+
+    ui.set_class_debug_name(class, ".named-class");
+    ui.set_pseudo_debug_name(pseudo, ":named-pseudo");
+    ui.set_type_tag_debug_name(type_tag, "NamedWidget");
+
+    let snapshot = ui.inspection_snapshot();
+
+    assert!(
+        snapshot
+            .style_tokens
+            .classes
+            .iter()
+            .any(|name| name.id == class && name.name == ".named-class")
+    );
+    assert!(
+        snapshot
+            .style_tokens
+            .pseudos
+            .iter()
+            .any(|name| name.id == pseudo && name.name == ":named-pseudo")
+    );
+    assert!(
+        snapshot
+            .style_tokens
+            .type_tags
+            .iter()
+            .any(|name| name.id == type_tag && name.name == "NamedWidget")
     );
 }
 

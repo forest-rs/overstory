@@ -31,8 +31,30 @@ pub struct UiInspectionSnapshot {
     pub storage: UiStorageInspectionSnapshot,
     /// Timeline runtime counters.
     pub timeline: TimelineInspectionSnapshot,
+    /// Debug names for style tokens known to this UI.
+    pub style_tokens: StyleTokenInspectionSnapshot,
     /// Frame counters captured at the same instant as the snapshot.
     pub frame: UiFrameStats,
+}
+
+/// Debug-name tables for style tokens known to one UI.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StyleTokenInspectionSnapshot {
+    /// Named classes.
+    pub classes: Vec<StyleTokenInspectionName<ClassId>>,
+    /// Named pseudoclasses.
+    pub pseudos: Vec<StyleTokenInspectionName<PseudoClassId>>,
+    /// Named selector type tags.
+    pub type_tags: Vec<StyleTokenInspectionName<TypeTag>>,
+}
+
+/// One style token debug name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StyleTokenInspectionName<T> {
+    /// Token identifier.
+    pub id: T,
+    /// Human-readable debug name.
+    pub name: &'static str,
 }
 
 /// Batched inspectable changes produced by normal [`crate::Ui`] mutation.

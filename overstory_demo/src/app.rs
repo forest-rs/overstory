@@ -234,6 +234,7 @@ impl DemoShellState {
 /// each page owns only its local controls and timers.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
+    register_demo_style_debug_names(&mut ui);
     let shell = Rc::new(DemoShellState::new());
     ui.set_theme(shell.theme_mode().theme());
     let root = ui.root();

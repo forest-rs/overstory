@@ -26,18 +26,12 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, SurfaceInspectionId, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    LayerInspectionId, StyleTokenInspectionName, SurfaceInspectionId, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
-    CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, ElementId, ElementSpecExt, Layout,
-    OutlineNodeKey, OutlineView, OutlineViewNode, Panel, ScrollArea, TYPE_ACCORDION,
-    TYPE_ACCORDION_SECTION, TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_EXPANDER, TYPE_GENERIC,
-    TYPE_LIST_BOX, TYPE_LIST_ITEM, TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, TYPE_POPUP,
-    TYPE_PROGRESS_BAR, TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR,
-    TYPE_SCROLL_VIEW, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, TYPE_SELECT, TYPE_SLIDER,
-    TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, TYPE_TOOLTIP,
-    TYPE_VECTOR_PATH, TYPE_VIEWPORT, Text, Ui, scroll_area_viewport, theme,
+    ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
+    ScrollArea, Text, Ui, scroll_area_viewport, theme,
 };
 #[cfg(feature = "spoor-session")]
 use overstory::{expanded_outline_keys, replace_outline_nodes};
@@ -476,7 +470,7 @@ impl DevtoolsSnapshot {
             .elements
             .iter()
             .map(|row| {
-                let mut node = OutlineViewNode::new(element_label(row));
+                let mut node = OutlineViewNode::new(element_label(self, row));
                 if let Some(first_child) = row
                     .children
                     .first()
@@ -1118,80 +1112,25 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
     }
 }
 
-fn element_label(row: &ElementInspectionRow) -> String {
-    let prefix = element_type_label(row);
+fn element_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> String {
+    let prefix = element_type_label(snapshot, row);
     format!("{prefix} {}:{}", row.id.slot(), row.id.generation())
 }
 
-fn element_type_label(row: &ElementInspectionRow) -> &'static str {
+fn element_type_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> String {
     let Some(tag) = row.type_tag else {
-        return "Element";
+        return String::from("Element");
     };
-    if tag == TYPE_BUTTON {
-        "Button"
-    } else if tag == TYPE_CHECK_BOX {
-        "CheckBox"
-    } else if tag == TYPE_ACCORDION {
-        "Accordion"
-    } else if tag == TYPE_ACCORDION_SECTION {
-        "AccordionSection"
-    } else if tag == TYPE_DIVIDER {
-        "Divider"
-    } else if tag == TYPE_EXPANDER {
-        "Expander"
-    } else if tag == TYPE_GENERIC {
-        "Panel"
-    } else if tag == TYPE_LIST_BOX {
-        "ListBox"
-    } else if tag == TYPE_LIST_ITEM {
-        "ListItem"
-    } else if tag == TYPE_OUTLINE_ITEM {
-        "OutlineItem"
-    } else if tag == TYPE_OUTLINE_VIEW {
-        "OutlineView"
-    } else if tag == TYPE_POPUP {
-        "Popup"
-    } else if tag == TYPE_PROGRESS_BAR {
-        "ProgressBar"
-    } else if tag == TYPE_RADIO_BUTTON {
-        "RadioButton"
-    } else if tag == TYPE_RADIO_GROUP {
-        "RadioGroup"
-    } else if tag == TYPE_SCROLL_AREA {
-        "ScrollArea"
-    } else if tag == TYPE_SCROLL_BAR {
-        "ScrollBar"
-    } else if tag == TYPE_SCROLL_VIEW {
-        "ScrollView"
-    } else if tag == TYPE_SEGMENTED_CONTROL {
-        "SegmentedControl"
-    } else if tag == TYPE_SEGMENTED_ITEM {
-        "SegmentedItem"
-    } else if tag == TYPE_SELECT {
-        "Select"
-    } else if tag == TYPE_SLIDER {
-        "Slider"
-    } else if tag == TYPE_SPINNER {
-        "Spinner"
-    } else if tag == TYPE_SPLITTER {
-        "Splitter"
-    } else if tag == TYPE_TEXT {
-        "Text"
-    } else if tag == TYPE_TEXT_INPUT {
-        "TextInput"
-    } else if tag == TYPE_TOGGLE {
-        "ToggleSwitch"
-    } else if tag == TYPE_TOOLTIP {
-        "Tooltip"
-    } else if tag == TYPE_VECTOR_PATH {
-        "VectorPath"
-    } else if tag == TYPE_VIEWPORT {
-        "Viewport"
-    } else if row.has_widget_identity {
-        "Widget"
-    } else {
-        "Element"
-    }
+    style_token_name(&snapshot.inspection.style_tokens.type_tags, tag).map_or_else(
+        || {
+            if row.has_widget_identity {
+                String::from("Widget")
+            } else {
+                String::from("Element")
+            }
+        },
+        String::from,
+    )
 }
 
 #[cfg(not(feature = "spoor-session"))]
@@ -1248,13 +1187,16 @@ fn selected_element_property_grid(
             "Element id",
             format!("{}:{}", row.id.slot(), row.id.generation()),
         ))
-        .row(PropertyGridRow::new("Type", element_type_label(row)))
+        .row(PropertyGridRow::new(
+            "Type",
+            element_type_label(snapshot, row),
+        ))
         .row(PropertyGridRow::new("Role", element_role(snapshot, row)))
         .row(PropertyGridRow::new(
             "Selector identity",
             row.has_widget_identity,
         ))
-        .row(type_tag_row(row));
+        .row(type_tag_row(snapshot, row));
 
     let mut children = PropertyGridRow::new("Children", row.children.len());
     for (index, child) in row
@@ -1308,8 +1250,8 @@ fn selected_element_property_grid(
         .row(PropertyGridRow::new("Key", optional_u64(row.template_key)));
 
     let style = PropertyGridSection::new("Style")
-        .row(class_list_row(row))
-        .row(pseudo_list_row(row));
+        .row(class_list_row(snapshot, row))
+        .row(pseudo_list_row(snapshot, row));
 
     let state = PropertyGridSection::new("State")
         .row(PropertyGridRow::new("Enabled", row.state.enabled))
@@ -1410,7 +1352,7 @@ fn relation_summary(snapshot: &DevtoolsSnapshot, target: Option<ElementId>) -> S
                 |row| {
                     format!(
                         "{} {}",
-                        element_type_label(row),
+                        element_type_label(snapshot, row),
                         optional_element_id(Some(id))
                     )
                 },
@@ -1466,13 +1408,13 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
         .count()
 }
 
-fn type_tag_row(row: &ElementInspectionRow) -> PropertyGridRow {
+fn type_tag_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
     if row.type_tag.is_none() {
         return PropertyGridRow::new("Type tag", PropertyGridValue::empty());
     }
     PropertyGridRow::new(
         "Type tag",
-        PropertyGridValue::token(element_type_label(row)),
+        PropertyGridValue::token(element_type_label(snapshot, row)),
     )
 }
 
@@ -1587,51 +1529,22 @@ fn number_summary(value: f64) -> String {
     }
 }
 
-fn class_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
+fn class_list_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
     let mut classes = list_summary_row("Classes", row.classes.len());
     for class in &row.classes {
-        let is_major_tick = *class == CLASS_SLIDER_MAJOR_TICK;
-        let is_minor_tick = *class == CLASS_SLIDER_MINOR_TICK;
-        classes.push_child(class_row(class.0, is_major_tick, is_minor_tick));
+        let label = style_token_name(&snapshot.inspection.style_tokens.classes, *class)
+            .unwrap_or("Custom class");
+        classes.push_child(PropertyGridRow::new(label, PropertyGridValue::token(label)));
     }
     classes
 }
 
-fn class_row(id: u32, is_major_tick: bool, is_minor_tick: bool) -> PropertyGridRow {
-    PropertyGridRow::new(
-        class_label(id, is_major_tick, is_minor_tick),
-        PropertyGridValue::token(class_token(id, is_major_tick, is_minor_tick)),
-    )
-}
-
-fn class_label(_id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
-    if is_major_tick {
-        String::from(".slider-major-tick")
-    } else if is_minor_tick {
-        String::from(".slider-minor-tick")
-    } else {
-        String::from("Custom class")
-    }
-}
-
-fn class_token(_id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
-    if is_major_tick {
-        String::from(".slider-major-tick")
-    } else if is_minor_tick {
-        String::from(".slider-minor-tick")
-    } else {
-        String::from("custom")
-    }
-}
-
-fn pseudo_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
+fn pseudo_list_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
     let mut pseudos = list_summary_row("Pseudos", row.pseudos.len());
     for pseudo in &row.pseudos {
-        let label = pseudo_label(pseudo.0);
-        pseudos.push_child(PropertyGridRow::new(
-            label.clone(),
-            PropertyGridValue::token(label),
-        ));
+        let label = style_token_name(&snapshot.inspection.style_tokens.pseudos, *pseudo)
+            .unwrap_or("Custom pseudo");
+        pseudos.push_child(PropertyGridRow::new(label, PropertyGridValue::token(label)));
     }
     pseudos
 }
@@ -1647,21 +1560,14 @@ fn list_summary_row(label: &str, len: usize) -> PropertyGridRow {
     )
 }
 
-fn pseudo_label(id: u32) -> String {
-    let label = match id {
-        id if id == overstory::pseudos::PSEUDO_HOVER.0 => ":hover",
-        id if id == overstory::pseudos::PSEUDO_PRESSED.0 => ":pressed",
-        id if id == overstory::pseudos::PSEUDO_FOCUSED.0 => ":focused",
-        id if id == overstory::pseudos::PSEUDO_DISABLED.0 => ":disabled",
-        id if id == overstory::pseudos::PSEUDO_CHECKED.0 => ":checked",
-        id if id == overstory::pseudos::PSEUDO_READ_ONLY.0 => ":read-only",
-        id if id == overstory::pseudos::PSEUDO_FOCUS_VISIBLE.0 => ":focus-visible",
-        id if id == overstory::pseudos::PSEUDO_SELECTED.0 => ":selected",
-        id if id == overstory::pseudos::PSEUDO_PLACEHOLDER_SHOWN.0 => ":placeholder-shown",
-        id if id == overstory::pseudos::PSEUDO_EXPANDED.0 => ":expanded",
-        _ => return String::from("custom pseudo"),
-    };
-    String::from(label)
+fn style_token_name<T>(names: &[StyleTokenInspectionName<T>], id: T) -> Option<&'static str>
+where
+    T: Copy + Eq,
+{
+    names
+        .iter()
+        .find(|candidate| candidate.id == id)
+        .map(|candidate| candidate.name)
 }
 
 fn optional_element_id(id: Option<ElementId>) -> String {
@@ -2204,7 +2110,10 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.append(root, Panel::new());
-        ui.add_class(child, CLASS_SLIDER_MAJOR_TICK);
+        let custom_class = overstory::CLASS_SLIDER_MINOR_TICK;
+        ui.set_class_debug_name(custom_class, ".custom-row");
+        ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
+        ui.add_class(child, custom_class);
         ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);
         let snapshot = DevtoolsSnapshot::capture(&ui);
         let row = snapshot
@@ -2234,6 +2143,13 @@ mod tests {
             &PropertyGridValue::token(".slider-major-tick")
         );
         assert!(classes.children()[0].children().is_empty());
+        assert!(
+            classes
+                .children()
+                .iter()
+                .any(|row| row.label() == ".custom-row"
+                    && row.value() == &PropertyGridValue::token(".custom-row"))
+        );
         assert_eq!(pseudos.children()[0].label(), ":hover");
         assert_eq!(
             pseudos.children()[0].value(),

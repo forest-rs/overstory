@@ -58,6 +58,42 @@ pub(super) const CLASS_RETARGET_SWATCH: ClassId = ClassId(103);
 pub(super) const CLASS_MOVER_SWATCH: ClassId = ClassId(104);
 pub(super) const CLASS_SRGB_SWATCH: ClassId = ClassId(105);
 
+pub(super) fn register_demo_style_debug_names(ui: &mut Ui) {
+    ui.set_class_debug_name(CLASS_DEMO_ROOT, ".demo-root");
+    ui.set_class_debug_name(CLASS_DEMO_NAV, ".demo-nav");
+    ui.set_class_debug_name(CLASS_DEMO_NAV_MARKER, ".demo-nav-marker");
+    ui.set_class_debug_name(CLASS_DEMO_STAGE, ".demo-stage");
+    ui.set_class_debug_name(CLASS_DEMO_HEADER, ".demo-header");
+    ui.set_class_debug_name(CLASS_DEMO_HEADER_ACCENT, ".demo-header-accent");
+    ui.set_class_debug_name(CLASS_DEMO_CARD, ".demo-card");
+    ui.set_class_debug_name(CLASS_DEMO_NAV_ROW, ".demo-nav-row");
+    ui.set_class_debug_name(CLASS_DEMO_NAV_LABEL, ".demo-nav-label");
+    ui.set_class_debug_name(CLASS_DEMO_HEADING, ".demo-heading");
+    ui.set_class_debug_name(CLASS_DEMO_PAGE_HEADING, ".demo-page-heading");
+    ui.set_class_debug_name(CLASS_DEMO_CAPTION, ".demo-caption");
+    ui.set_class_debug_name(CLASS_DEMO_CARD_TITLE, ".demo-card-title");
+    ui.set_class_debug_name(CLASS_DEMO_CONTROL_LABEL, ".demo-control-label");
+    ui.set_class_debug_name(CLASS_DEMO_NUMBER, ".demo-number");
+    ui.set_class_debug_name(CLASS_DEMO_LARGE_NUMBER, ".demo-large-number");
+    ui.set_class_debug_name(CLASS_DEMO_BODY, ".demo-body");
+    ui.set_class_debug_name(CLASS_DEMO_SPLIT_SCENE, ".demo-split-scene");
+    ui.set_class_debug_name(CLASS_DEMO_SPLIT_INSPECTOR, ".demo-split-inspector");
+    ui.set_class_debug_name(CLASS_DEMO_MOTION_STAGE, ".demo-motion-stage");
+    ui.set_class_debug_name(CLASS_SVG_GRID_LINE, ".svg-grid-line");
+    ui.set_class_debug_name(CLASS_SVG_INFO_CARD, ".svg-info-card");
+    ui.set_class_debug_name(CLASS_SVG_TIGER_CARD, ".svg-tiger-card");
+    ui.set_class_debug_name(CLASS_SVG_INSPECTOR_CARD, ".svg-inspector-card");
+    ui.set_class_debug_name(CLASS_DEVTOOLS_INSPECTOR_CARD, ".devtools-inspector-card");
+    ui.set_class_debug_name(CLASS_DEVTOOLS_STATUS, ".devtools-status");
+    ui.set_class_debug_name(CLASS_DEVTOOLS_BUTTON, ".devtools-button");
+    ui.set_class_debug_name(CLASS_OKLAB_SWATCH, ".oklab-swatch");
+    ui.set_class_debug_name(CLASS_OPACITY_SWATCH, ".opacity-swatch");
+    ui.set_class_debug_name(CLASS_BORDER_SWATCH, ".border-swatch");
+    ui.set_class_debug_name(CLASS_RETARGET_SWATCH, ".retarget-swatch");
+    ui.set_class_debug_name(CLASS_MOVER_SWATCH, ".mover-swatch");
+    ui.set_class_debug_name(CLASS_SRGB_SWATCH, ".srgb-swatch");
+}
+
 pub(super) const EASE_OUT: TimingFunction = TimingFunction::cubic_bezier(0.16, 1.0, 0.3, 1.0);
 pub(super) const EASE_IN_OUT: TimingFunction = TimingFunction::cubic_bezier(0.65, 0.0, 0.35, 1.0);
 pub(super) const MID_SLOW: TimingFunction = TimingFunction::cubic_bezier(0.2, 0.48, 0.8, 0.52);
