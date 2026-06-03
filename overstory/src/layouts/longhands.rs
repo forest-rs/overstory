@@ -1,7 +1,12 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::LayoutDimension;
+use super::dimension::{join_summary_parts, push_labeled_summary_part, scalar_summary};
 
 /// Child layout strategy for an element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,6 +18,13 @@ pub enum LayoutDisplay {
 }
 
 impl LayoutDisplay {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::Flex => "flex",
+            Self::None => "none",
+        }
+    }
+
     fn to_taffy(self) -> taffy::Display {
         match self {
             Self::Flex => taffy::Display::Flex,
@@ -31,6 +43,13 @@ pub enum LayoutDirection {
 }
 
 impl LayoutDirection {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::Row => "row",
+            Self::Column => "column",
+        }
+    }
+
     fn to_taffy(self) -> taffy::FlexDirection {
         match self {
             Self::Row => taffy::FlexDirection::Row,
@@ -52,6 +71,14 @@ pub enum LayoutWrap {
 }
 
 impl LayoutWrap {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::NoWrap => "nowrap",
+            Self::Wrap => "wrap",
+            Self::WrapReverse => "wrap-reverse",
+        }
+    }
+
     fn to_taffy(self) -> taffy::FlexWrap {
         match self {
             Self::NoWrap => taffy::FlexWrap::NoWrap,
@@ -75,6 +102,15 @@ pub enum LayoutAlign {
 }
 
 impl LayoutAlign {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Center => "center",
+            Self::End => "end",
+            Self::Stretch => "stretch",
+        }
+    }
+
     fn to_taffy(self) -> taffy::AlignItems {
         match self {
             Self::Start => taffy::AlignItems::Start,
@@ -97,6 +133,14 @@ pub enum LayoutJustify {
 }
 
 impl LayoutJustify {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Center => "center",
+            Self::End => "end",
+        }
+    }
+
     fn to_taffy(self) -> taffy::JustifyContent {
         match self {
             Self::Start => taffy::JustifyContent::Start,
@@ -120,6 +164,15 @@ pub enum LayoutOverflowMode {
 }
 
 impl LayoutOverflowMode {
+    fn inspection_summary(self) -> &'static str {
+        match self {
+            Self::Visible => "visible",
+            Self::Clip => "clip",
+            Self::Hidden => "hidden",
+            Self::Scroll => "scroll",
+        }
+    }
+
     fn to_taffy(self) -> taffy::Overflow {
         match self {
             Self::Visible => taffy::Overflow::Visible,
@@ -193,6 +246,20 @@ impl LayoutContainer {
 
     pub(super) fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    pub(crate) fn inspection_summary(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(display) = self.display {
+            push_labeled_summary_part(&mut parts, "display", display.inspection_summary());
+        }
+        if let Some(direction) = self.direction {
+            push_labeled_summary_part(&mut parts, "direction", direction.inspection_summary());
+        }
+        if let Some(wrap) = self.wrap {
+            push_labeled_summary_part(&mut parts, "wrap", wrap.inspection_summary());
+        }
+        join_summary_parts(parts, ", ")
     }
 
     pub(super) fn merge_from(&mut self, other: Self) {
@@ -353,6 +420,38 @@ impl LayoutSize {
         self == &Self::default()
     }
 
+    pub(crate) fn inspection_summary(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(width) = self.width {
+            push_labeled_summary_part(&mut parts, "width", width.inspection_summary());
+        }
+        if let Some(height) = self.height {
+            push_labeled_summary_part(&mut parts, "height", height.inspection_summary());
+        }
+        if let Some(min_width) = self.min_width {
+            push_labeled_summary_part(&mut parts, "min width", min_width.inspection_summary());
+        }
+        if let Some(min_height) = self.min_height {
+            push_labeled_summary_part(&mut parts, "min height", min_height.inspection_summary());
+        }
+        if let Some(max_width) = self.max_width {
+            push_labeled_summary_part(&mut parts, "max width", max_width.inspection_summary());
+        }
+        if let Some(max_height) = self.max_height {
+            push_labeled_summary_part(&mut parts, "max height", max_height.inspection_summary());
+        }
+        if let Some(flex_basis) = self.flex_basis {
+            push_labeled_summary_part(&mut parts, "basis", flex_basis.inspection_summary());
+        }
+        if let Some(flex_grow) = self.flex_grow {
+            push_labeled_summary_part(&mut parts, "grow", scalar_summary(flex_grow));
+        }
+        if let Some(flex_shrink) = self.flex_shrink {
+            push_labeled_summary_part(&mut parts, "shrink", scalar_summary(flex_shrink));
+        }
+        join_summary_parts(parts, ", ")
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.width.is_some() {
             self.width = other.width;
@@ -463,6 +562,26 @@ impl LayoutEdges {
             bottom: taffy::LengthPercentageAuto::length(self.bottom),
         }
     }
+
+    fn inspection_summary(self) -> String {
+        if self.left == self.right && self.left == self.top && self.left == self.bottom {
+            return format!("{}px", scalar_summary(self.left));
+        }
+        if self.left == self.right && self.top == self.bottom {
+            return format!(
+                "x {}px, y {}px",
+                scalar_summary(self.left),
+                scalar_summary(self.top)
+            );
+        }
+        format!(
+            "left {}px, right {}px, top {}px, bottom {}px",
+            scalar_summary(self.left),
+            scalar_summary(self.right),
+            scalar_summary(self.top),
+            scalar_summary(self.bottom)
+        )
+    }
 }
 
 /// Row and column gap contribution.
@@ -487,6 +606,17 @@ impl LayoutGap {
             width: taffy::LengthPercentage::length(self.horizontal),
             height: taffy::LengthPercentage::length(self.vertical),
         }
+    }
+
+    fn inspection_summary(self) -> String {
+        if self.horizontal == self.vertical {
+            return format!("{}px", scalar_summary(self.horizontal));
+        }
+        format!(
+            "x {}px, y {}px",
+            scalar_summary(self.horizontal),
+            scalar_summary(self.vertical)
+        )
     }
 }
 
@@ -566,6 +696,20 @@ impl LayoutSpacing {
         self == &Self::default()
     }
 
+    pub(crate) fn inspection_summary(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(margin) = self.margin {
+            push_labeled_summary_part(&mut parts, "margin", margin.inspection_summary());
+        }
+        if let Some(padding) = self.padding {
+            push_labeled_summary_part(&mut parts, "padding", padding.inspection_summary());
+        }
+        if let Some(gap) = self.gap {
+            push_labeled_summary_part(&mut parts, "gap", gap.inspection_summary());
+        }
+        join_summary_parts(parts, ", ")
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.margin.is_some() {
             self.margin = other.margin;
@@ -638,6 +782,20 @@ impl LayoutAlignment {
         self == &Self::default()
     }
 
+    pub(crate) fn inspection_summary(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(align_items) = self.align_items {
+            push_labeled_summary_part(&mut parts, "items", align_items.inspection_summary());
+        }
+        if let Some(align_self) = self.align_self {
+            push_labeled_summary_part(&mut parts, "self", align_self.inspection_summary());
+        }
+        if let Some(justify_content) = self.justify_content {
+            push_labeled_summary_part(&mut parts, "content", justify_content.inspection_summary());
+        }
+        join_summary_parts(parts, ", ")
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.align_items.is_some() {
             self.align_items = other.align_items;
@@ -699,6 +857,22 @@ impl LayoutOverflow {
 
     pub(super) fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    pub(crate) fn inspection_summary(&self) -> String {
+        match (self.x, self.y) {
+            (Some(x), Some(y)) if x == y => String::from(x.inspection_summary()),
+            _ => {
+                let mut parts = Vec::new();
+                if let Some(x) = self.x {
+                    push_labeled_summary_part(&mut parts, "x", x.inspection_summary());
+                }
+                if let Some(y) = self.y {
+                    push_labeled_summary_part(&mut parts, "y", y.inspection_summary());
+                }
+                join_summary_parts(parts, ", ")
+            }
+        }
     }
 
     pub(super) fn merge_from(&mut self, other: Self) {

@@ -301,54 +301,61 @@ impl Ui {
             properties.text_wrap_mode,
         );
 
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "Layout",
             ElementPropertyInspectionGroup::Layout,
             properties.layout,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutContainer",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_container,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutSize",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_size,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutSpacing",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_spacing,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutAlignment",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_alignment,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutOverflow",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_overflow,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "LayoutPlacement",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_placement,
+            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
         );
 
         self.push_property_row(

@@ -235,7 +235,7 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
         "timer refresh should show recent frame diagnostics: {refreshed_status}",
     );
     assert!(
-        refreshed_status.contains("Realization - widgets")
+        refreshed_status.contains("Element realization - visited")
             && refreshed_status.contains("changes")
             && refreshed_status.contains("painted")
             && refreshed_status.contains("surface updates"),

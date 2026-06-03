@@ -1,6 +1,11 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use alloc::format;
+use alloc::string::String;
+
+use super::dimension::scalar_summary;
+
 /// Placement contribution for an element.
 ///
 /// `LayoutPlacement` covers how the element itself is positioned in its
@@ -45,6 +50,21 @@ impl LayoutPlacement {
     #[must_use]
     pub const fn absolute_at(left: f32, top: f32) -> Self {
         Self::AbsoluteAt { left, top }
+    }
+
+    pub(crate) fn inspection_summary(self) -> String {
+        match self {
+            Self::Auto => String::from("auto"),
+            Self::Relative => String::from("relative"),
+            Self::Absolute => String::from("absolute"),
+            Self::AbsoluteAt { left, top } => {
+                format!(
+                    "absolute at {}, {}",
+                    scalar_summary(left),
+                    scalar_summary(top)
+                )
+            }
+        }
     }
 
     pub(super) fn apply_to(self, style: &mut taffy::Style) {

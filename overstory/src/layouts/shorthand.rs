@@ -1,6 +1,10 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use super::dimension::{join_summary_parts, push_labeled_summary_part};
 use super::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutOverflow,
     LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
@@ -303,6 +307,30 @@ impl Layout {
         self.placement
     }
 
+    pub(crate) fn inspection_summary(&self) -> String {
+        let parts = self.clone().into_parts();
+        let mut summaries = Vec::new();
+        if let Some(container) = parts.container {
+            push_shorthand_part(&mut summaries, "container", container.inspection_summary());
+        }
+        if let Some(size) = parts.size {
+            push_shorthand_part(&mut summaries, "size", size.inspection_summary());
+        }
+        if let Some(spacing) = parts.spacing {
+            push_shorthand_part(&mut summaries, "spacing", spacing.inspection_summary());
+        }
+        if let Some(alignment) = parts.alignment {
+            push_shorthand_part(&mut summaries, "alignment", alignment.inspection_summary());
+        }
+        if let Some(overflow) = parts.overflow {
+            push_shorthand_part(&mut summaries, "overflow", overflow.inspection_summary());
+        }
+        if let Some(placement) = parts.placement {
+            push_shorthand_part(&mut summaries, "placement", placement.inspection_summary());
+        }
+        join_summary_parts(summaries, "; ")
+    }
+
     pub(crate) fn merge_container(&mut self, container: LayoutContainer) {
         self.container.merge_from(container);
     }
@@ -376,6 +404,11 @@ pub fn row_with_gap(gap: f32) -> Layout {
 #[must_use]
 pub fn column_with_gap(gap: f32) -> Layout {
     Layout::column(gap)
+}
+
+fn push_shorthand_part(parts: &mut Vec<String>, label: &str, value: String) {
+    let label = alloc::format!("{label}:");
+    push_labeled_summary_part(parts, &label, value);
 }
 
 #[cfg(test)]

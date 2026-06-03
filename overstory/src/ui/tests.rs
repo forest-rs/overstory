@@ -4203,6 +4203,7 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         crate::Panel::new()
             .background(Some(background.into()))
             .font_size(18.0)
+            .layout(Layout::row(8.0).logical_size(120.0, 64.0))
             .opacity(0.75),
     );
 
@@ -4236,6 +4237,36 @@ fn inspection_snapshot_reports_effective_property_summaries() {
                 && property.value == ElementPropertyInspectionValue::Number(0.75)
         }),
         "snapshot should expose effective motion properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "LayoutContainer"
+                && property.group == ElementPropertyInspectionGroup::Layout
+                && property.value
+                    == ElementPropertyInspectionValue::Token(String::from(
+                        "display flex, direction row",
+                    ))
+        }),
+        "snapshot should expose readable container layout properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "LayoutSize"
+                && property.group == ElementPropertyInspectionGroup::Layout
+                && property.value
+                    == ElementPropertyInspectionValue::Token(String::from(
+                        "width 120px, height 64px",
+                    ))
+        }),
+        "snapshot should expose readable size layout properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "LayoutSpacing"
+                && property.group == ElementPropertyInspectionGroup::Layout
+                && property.value == ElementPropertyInspectionValue::Token(String::from("gap 8px"))
+        }),
+        "snapshot should expose readable spacing layout properties"
     );
 }
 

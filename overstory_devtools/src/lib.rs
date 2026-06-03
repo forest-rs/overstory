@@ -1467,17 +1467,13 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
 }
 
 fn type_tag_row(row: &ElementInspectionRow) -> PropertyGridRow {
-    let Some(type_tag) = row.type_tag else {
+    if row.type_tag.is_none() {
         return PropertyGridRow::new("Type tag", PropertyGridValue::empty());
-    };
+    }
     PropertyGridRow::new(
         "Type tag",
         PropertyGridValue::token(element_type_label(row)),
     )
-    .child(PropertyGridRow::new(
-        "Raw id",
-        PropertyGridValue::token(format!("TypeTag({})", type_tag.0)),
-    ))
 }
 
 fn property_grid_sections(row: &ElementInspectionRow) -> Vec<PropertyGridSection> {
@@ -1585,32 +1581,33 @@ fn class_row(id: u32, is_major_tick: bool, is_minor_tick: bool) -> PropertyGridR
     )
 }
 
-fn class_label(id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
+fn class_label(_id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
     if is_major_tick {
         String::from(".slider-major-tick")
     } else if is_minor_tick {
         String::from(".slider-minor-tick")
     } else {
-        format!("Class {id}")
+        String::from("Custom class")
     }
 }
 
-fn class_token(id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
+fn class_token(_id: u32, is_major_tick: bool, is_minor_tick: bool) -> String {
     if is_major_tick {
         String::from(".slider-major-tick")
     } else if is_minor_tick {
         String::from(".slider-minor-tick")
     } else {
-        format!("ClassId({id})")
+        String::from("custom")
     }
 }
 
 fn pseudo_list_row(row: &ElementInspectionRow) -> PropertyGridRow {
     let mut pseudos = list_summary_row("Pseudos", row.pseudos.len());
     for pseudo in &row.pseudos {
+        let label = pseudo_label(pseudo.0);
         pseudos.push_child(PropertyGridRow::new(
-            pseudo_label(pseudo.0),
-            PropertyGridValue::token(format!("{pseudo:?}")),
+            label.clone(),
+            PropertyGridValue::token(label),
         ));
     }
     pseudos
@@ -1639,7 +1636,7 @@ fn pseudo_label(id: u32) -> String {
         id if id == overstory::pseudos::PSEUDO_SELECTED.0 => ":selected",
         id if id == overstory::pseudos::PSEUDO_PLACEHOLDER_SHOWN.0 => ":placeholder-shown",
         id if id == overstory::pseudos::PSEUDO_EXPANDED.0 => ":expanded",
-        _ => return format!("Pseudo {id}"),
+        _ => return String::from("custom pseudo"),
     };
     String::from(label)
 }
@@ -2217,7 +2214,7 @@ mod tests {
         assert_eq!(pseudos.children()[0].label(), ":hover");
         assert_eq!(
             pseudos.children()[0].value(),
-            &PropertyGridValue::token("PseudoClassId(1)")
+            &PropertyGridValue::token(":hover")
         );
     }
 
@@ -2309,7 +2306,7 @@ mod tests {
             inspector
                 .get(header_children[1])
                 .and_then(|element| element.get_local_value(inspector.properties().content)),
-            Some(&String::from("6"))
+            Some(&String::from("5"))
         );
         let element_row = inspector
             .get(element_section)
@@ -2493,6 +2490,11 @@ mod tests {
             .iter()
             .find(|row| row.label() == "Role")
             .expect("element section should expose element role");
+        let type_tag = identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Type tag")
+            .expect("element section should expose type tag");
         let hierarchy = grid
             .sections()
             .iter()
@@ -2515,6 +2517,11 @@ mod tests {
             .expect("template section should expose owned part count");
 
         assert_eq!(role.value(), &PropertyGridValue::text("templated control"));
+        assert_eq!(type_tag.value(), &PropertyGridValue::token("Button"));
+        assert!(
+            type_tag.children().is_empty(),
+            "main details should not expose raw type tag ids"
+        );
         assert_eq!(owned_parts.value(), &PropertyGridValue::count(1));
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(

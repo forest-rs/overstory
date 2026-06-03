@@ -282,7 +282,7 @@ fn format_live_stream_status(
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(
-        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}.\nFrame - prepare {}, layout {}, surface refresh {}, compose {}, backend {}.\nRealization - widgets {}, changes {}, painted {}, surface updates {}",
+        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}.\nFrame - prepare {}, layout {}, surface refresh {}, compose {}, backend {}.\nElement realization - visited {}, changes {}, painted {}, surface updates {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,
