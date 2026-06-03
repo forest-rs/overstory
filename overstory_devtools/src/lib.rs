@@ -1122,8 +1122,15 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
 }
 
 fn element_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> String {
-    let prefix = element_type_label(snapshot, row);
+    let prefix = element_display_label(snapshot, row);
     format!("{prefix} {}:{}", row.id.slot(), row.id.generation())
+}
+
+fn element_display_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> String {
+    if let Some(label) = template_part_display_label(snapshot, row) {
+        return label.into();
+    }
+    element_type_label(snapshot, row)
 }
 
 fn element_type_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> String {
@@ -1387,7 +1394,7 @@ fn element_relation_summary(snapshot: &DevtoolsSnapshot, element: ElementId) -> 
         |row| {
             format!(
                 "{} {}",
-                element_type_label(snapshot, row),
+                element_display_label(snapshot, row),
                 element_id_summary(element)
             )
         },
@@ -1485,25 +1492,10 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
 }
 
 fn part_tag_value(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridValue {
-    let Some(part_tag) = row.part_tag else {
+    if row.part_tag.is_none() {
         return PropertyGridValue::empty();
-    };
-    let label = row
-        .templated_parent
-        .and_then(|owner| snapshot.element(owner))
-        .and_then(|owner| owner.type_tag)
-        .and_then(|owner_type_tag| {
-            snapshot
-                .inspection
-                .style_tokens
-                .part_tags
-                .iter()
-                .find(|candidate| {
-                    candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
-                })
-                .map(|candidate| candidate.name)
-        })
-        .unwrap_or("Custom part");
+    }
+    let label = template_part_display_label(snapshot, row).unwrap_or("Custom part");
     PropertyGridValue::token(label)
 }
 
@@ -1530,6 +1522,26 @@ fn contract_slot_part_tag_value(
         })
         .unwrap_or("Custom part");
     PropertyGridValue::token(label)
+}
+
+fn template_part_display_label<'a>(
+    snapshot: &'a DevtoolsSnapshot,
+    row: &ElementInspectionRow,
+) -> Option<&'a str> {
+    let part_tag = row.part_tag?;
+    let owner_type_tag = row
+        .templated_parent
+        .and_then(|owner| snapshot.element(owner))
+        .and_then(|owner| owner.type_tag)?;
+    snapshot
+        .inspection
+        .style_tokens
+        .part_tags
+        .iter()
+        .find(|candidate| {
+            candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
+        })
+        .map(|candidate| candidate.name)
 }
 
 fn type_tag_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
@@ -2629,7 +2641,10 @@ mod tests {
         assert_eq!(required_slots.children()[0].label(), "content");
         assert_eq!(
             required_slots.children()[0].value(),
-            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+            &PropertyGridValue::element_link(
+                label,
+                format!("Button.Label {}", element_id_summary(label))
+            )
         );
         assert_eq!(
             required_slots.children()[0].children()[0].value(),
@@ -2638,7 +2653,10 @@ mod tests {
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(
             children.children()[0].value(),
-            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+            &PropertyGridValue::element_link(
+                label,
+                format!("Button.Label {}", element_id_summary(label))
+            )
         );
 
         let label_row = snapshot
@@ -2668,13 +2686,68 @@ mod tests {
         assert_eq!(part_tag.value(), &PropertyGridValue::token("Button.Label"));
         assert_eq!(
             physical_source.value(),
-            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+            &PropertyGridValue::element_link(
+                label,
+                format!("Button.Label {}", element_id_summary(label))
+            )
         );
         assert_eq!(
             semantic_target.value(),
             &PropertyGridValue::element_link(
                 button,
                 format!("Button {}", element_id_summary(button))
+            )
+        );
+    }
+
+    #[test]
+    fn element_outline_labels_surface_template_parts_by_part_name() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(root, overstory::Slider::new());
+        let track = ui
+            .slot(slider, overstory::SLOT_SLIDER_TRACK)
+            .expect("slider template should expose a track part");
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+
+        let track_key = snapshot
+            .outline_key_for_element(track)
+            .expect("track should have an outline key");
+        let track_node = snapshot
+            .element_outline_nodes()
+            .get(track_key.index())
+            .expect("track outline node should exist")
+            .clone();
+
+        assert_eq!(
+            track_node.label(),
+            format!("Slider.Track {}", element_id_summary(track))
+        );
+
+        let slider_row = snapshot
+            .element(slider)
+            .expect("slider should be inspectable");
+        let grid = selected_element_property_grid(&snapshot, slider_row);
+        let template = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("grid should contain template section");
+        let required_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Required slots")
+            .expect("slider should expose required template slots");
+        let track_slot = required_slots
+            .children()
+            .iter()
+            .find(|row| row.label() == "slider-track")
+            .expect("slider track slot should be listed");
+        assert_eq!(
+            track_slot.value(),
+            &PropertyGridValue::element_link(
+                track,
+                format!("Slider.Track {}", element_id_summary(track))
             )
         );
     }
