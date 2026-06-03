@@ -734,7 +734,8 @@ fn radio_group_widget(ui: &Ui, group: ElementId) -> Option<&RadioGroupWidget> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use accesskit::{NodeId, Role};
+    use crate::accessibility::accesskit_node_id;
+    use accesskit::Role;
     use alloc::rc::Rc;
     use core::cell::{Cell, RefCell};
     use kurbo::{Point, Size};
@@ -897,7 +898,7 @@ mod tests {
     }
 
     fn node_for(update: &accesskit::TreeUpdate, id: ElementId) -> &accesskit::Node {
-        let node_id = NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()));
+        let node_id = accesskit_node_id(id);
         update
             .nodes
             .iter()

@@ -1143,10 +1143,11 @@ fn normalize_item_extent(extent: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::ElementSpecExt;
+    use crate::accessibility::accesskit_node_id;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
-    use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, TreeId, TreeUpdate};
+    use accesskit::{Action, ActionData, ActionRequest, Node, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use kurbo::Point;
@@ -1693,10 +1694,6 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 
     fn scroll_action(

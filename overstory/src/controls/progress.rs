@@ -277,7 +277,8 @@ fn label_for_fraction(fraction: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use accesskit::{Node, NodeId, Role, TreeUpdate};
+    use crate::accessibility::accesskit_node_id;
+    use accesskit::{Node, Role, TreeUpdate};
     use kurbo::Size;
     use understory_property::DependencyObjectExt;
 
@@ -325,9 +326,5 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

@@ -1523,13 +1523,14 @@ mod tests {
     use alloc::vec;
     use core::cell::RefCell;
 
-    use accesskit::{Node, NodeId, Role, TreeUpdate};
+    use accesskit::{Node, Role, TreeUpdate};
     use kurbo::Point;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
     use understory_property::DependencyObjectExt;
 
     use super::*;
     use crate::ElementSpecExt;
+    use crate::accessibility::accesskit_node_id;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
@@ -1923,9 +1924,5 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

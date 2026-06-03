@@ -703,7 +703,8 @@ fn click_source_is_section_header(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use accesskit::{Action, ActionRequest, NodeId, Role, TreeId};
+    use crate::accessibility::accesskit_node_id;
+    use accesskit::{Action, ActionRequest, Role, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
     use kurbo::{Point, Size};
@@ -879,9 +880,5 @@ mod tests {
     fn has_node(update: &accesskit::TreeUpdate, id: ElementId) -> bool {
         let node_id = accesskit_node_id(id);
         update.nodes.iter().any(|(id, _)| *id == node_id)
-    }
-
-    fn accesskit_node_id(id: ElementId) -> NodeId {
-        NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
     }
 }

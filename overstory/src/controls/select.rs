@@ -684,8 +684,9 @@ fn normalize_item_extent(extent: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accessibility::accesskit_node_id;
     use crate::controls::list::{realized_list_item, selected_list_index};
-    use accesskit::{Action, ActionRequest, HasPopup, Node, NodeId, Role, TreeId, TreeUpdate};
+    use accesskit::{Action, ActionRequest, HasPopup, Node, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use kurbo::{Point, Size};
@@ -853,9 +854,5 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

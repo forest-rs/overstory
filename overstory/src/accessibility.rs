@@ -418,7 +418,7 @@ fn is_clickable_role(role: Role) -> bool {
     )
 }
 
-fn accesskit_node_id(id: ElementId) -> NodeId {
+pub(crate) fn accesskit_node_id(id: ElementId) -> NodeId {
     NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
 }
 

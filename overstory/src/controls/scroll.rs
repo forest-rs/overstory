@@ -1363,9 +1363,10 @@ fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accessibility::accesskit_node_id;
     use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
     use accesskit::{
-        Action, ActionData, ActionRequest, Node, NodeId, Orientation, Role, TreeId, TreeUpdate,
+        Action, ActionData, ActionRequest, Node, Orientation, Role, TreeId, TreeUpdate,
     };
     use ui_events::ScrollDelta;
 
@@ -1859,9 +1860,5 @@ mod tests {
             .find(|(id, _)| *id == accesskit_node_id(element))
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
     }
 }

@@ -464,6 +464,9 @@ fn read_only_from_ctx(ctx: &WidgetEventContext<'_>) -> bool {
 }
 
 fn text_input_text_run_node_id(input: ElementId) -> accesskit::NodeId {
+    // Element nodes use generation:slot. The editable text run is a synthetic
+    // child node, so set the high generation bit as a local convention; generic
+    // actions only dispatch when decoding the node id finds a live element.
     accesskit::NodeId(
         (0x8000_0000_u64 | u64::from(input.generation())) << 32 | u64::from(input.slot()),
     )
@@ -1015,6 +1018,7 @@ pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accessibility::accesskit_node_id;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use accesskit::{
         Action, ActionData, ActionRequest, Node, NodeId, Role, TextPosition, TextSelection, TreeId,
@@ -1219,7 +1223,7 @@ mod tests {
         assert!(node.supports_action(Action::SetTextSelection));
         assert!(!node.is_read_only());
 
-        let text_run_id = accesskit_text_run_node_id(input);
+        let text_run_id = text_input_text_run_node_id(input);
         assert_eq!(node.children(), &[text_run_id]);
         assert_eq!(
             node.text_selection(),
@@ -1324,11 +1328,11 @@ mod tests {
 
         let selection = TextSelection {
             anchor: TextPosition {
-                node: accesskit_text_run_node_id(input),
+                node: text_input_text_run_node_id(input),
                 character_index: 1,
             },
             focus: TextPosition {
-                node: accesskit_text_run_node_id(input),
+                node: text_input_text_run_node_id(input),
                 character_index: 3,
             },
         };
@@ -1398,15 +1402,5 @@ mod tests {
             .find(|(id, _)| *id == node_id)
             .map(|(_, node)| node)
             .expect("node should exist")
-    }
-
-    fn accesskit_node_id(element: ElementId) -> NodeId {
-        NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
-    }
-
-    fn accesskit_text_run_node_id(element: ElementId) -> NodeId {
-        NodeId(
-            (0x8000_0000_u64 | u64::from(element.generation())) << 32 | u64::from(element.slot()),
-        )
     }
 }
