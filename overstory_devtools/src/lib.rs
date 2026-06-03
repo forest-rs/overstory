@@ -1337,25 +1337,20 @@ fn element_relation_row(
     match target {
         Some(element) => PropertyGridRow::new(
             label,
-            PropertyGridValue::element_link(element, relation_summary(snapshot, Some(element))),
+            PropertyGridValue::element_link(element, element_relation_summary(snapshot, element)),
         ),
         None => PropertyGridRow::new(label, PropertyGridValue::empty()),
     }
 }
 
-fn relation_summary(snapshot: &DevtoolsSnapshot, target: Option<ElementId>) -> String {
-    target.map_or_else(
-        || String::from("none"),
-        |id| {
-            snapshot.element(id).map_or_else(
-                || optional_element_id(Some(id)),
-                |row| {
-                    format!(
-                        "{} {}",
-                        element_type_label(snapshot, row),
-                        optional_element_id(Some(id))
-                    )
-                },
+fn element_relation_summary(snapshot: &DevtoolsSnapshot, element: ElementId) -> String {
+    snapshot.element(element).map_or_else(
+        || element_id_summary(element),
+        |row| {
+            format!(
+                "{} {}",
+                element_type_label(snapshot, row),
+                element_id_summary(element)
             )
         },
     )
@@ -1570,11 +1565,8 @@ where
         .map(|candidate| candidate.name)
 }
 
-fn optional_element_id(id: Option<ElementId>) -> String {
-    id.map_or_else(
-        || "none".into(),
-        |id| format!("{}:{}", id.slot(), id.generation()),
-    )
+fn element_id_summary(id: ElementId) -> String {
+    format!("{}:{}", id.slot(), id.generation())
 }
 
 fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> PropertyGridValue {
@@ -2100,7 +2092,7 @@ mod tests {
             children.children()[0].value(),
             &PropertyGridValue::element_link(
                 grandchild,
-                format!("Panel {}", optional_element_id(Some(grandchild)))
+                format!("Panel {}", element_id_summary(grandchild))
             )
         );
     }
@@ -2500,10 +2492,7 @@ mod tests {
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(
             children.children()[0].value(),
-            &PropertyGridValue::element_link(
-                label,
-                format!("Text {}", optional_element_id(Some(label)))
-            )
+            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
         );
     }
 
