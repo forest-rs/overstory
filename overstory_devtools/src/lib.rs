@@ -1249,7 +1249,7 @@ fn selected_element_property_grid(
         ))
         .row(PropertyGridRow::new(
             "Part tag",
-            optional_debug(row.part_tag),
+            part_tag_value(snapshot, row),
         ))
         .row(PropertyGridRow::new(
             "Slot",
@@ -1273,12 +1273,14 @@ fn selected_element_property_grid(
         template.push_row(template_contract_status_row(contract));
         template.push_row(template_contract_slots_row(
             snapshot,
+            row,
             "Required slots",
             &contract.required_slots,
         ));
         if !contract.recommended_slots.is_empty() {
             template.push_row(template_contract_slots_row(
                 snapshot,
+                row,
                 "Recommended slots",
                 &contract.recommended_slots,
             ));
@@ -1403,18 +1405,20 @@ fn template_contract_status_row(contract: &TemplateContractInspection) -> Proper
 
 fn template_contract_slots_row(
     snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
     label: &str,
     slots: &[TemplateSlotInspectionRow],
 ) -> PropertyGridRow {
     let mut row = PropertyGridRow::new(label, PropertyGridValue::count(slots.len()));
     for slot in slots {
-        row.push_child(template_contract_slot_row(snapshot, slot));
+        row.push_child(template_contract_slot_row(snapshot, owner, slot));
     }
     row
 }
 
 fn template_contract_slot_row(
     snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
     slot: &TemplateSlotInspectionRow,
 ) -> PropertyGridRow {
     let value = slot.element.map_or_else(
@@ -1423,7 +1427,14 @@ fn template_contract_slot_row(
             PropertyGridValue::element_link(element, element_relation_summary(snapshot, element))
         },
     );
-    PropertyGridRow::new(slot.name, value)
+    let mut row = PropertyGridRow::new(slot.name, value);
+    if slot.part_tag.is_some() {
+        row.push_child(PropertyGridRow::new(
+            "Part tag",
+            contract_slot_part_tag_value(snapshot, owner, slot),
+        ));
+    }
+    row
 }
 
 fn child_relation_label(
@@ -1471,6 +1482,54 @@ fn template_part_count(snapshot: &DevtoolsSnapshot, owner: ElementId) -> usize {
         .iter()
         .filter(|row| row.templated_parent == Some(owner))
         .count()
+}
+
+fn part_tag_value(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridValue {
+    let Some(part_tag) = row.part_tag else {
+        return PropertyGridValue::empty();
+    };
+    let label = row
+        .templated_parent
+        .and_then(|owner| snapshot.element(owner))
+        .and_then(|owner| owner.type_tag)
+        .and_then(|owner_type_tag| {
+            snapshot
+                .inspection
+                .style_tokens
+                .part_tags
+                .iter()
+                .find(|candidate| {
+                    candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
+                })
+                .map(|candidate| candidate.name)
+        })
+        .unwrap_or("Custom part");
+    PropertyGridValue::token(label)
+}
+
+fn contract_slot_part_tag_value(
+    snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
+    slot: &TemplateSlotInspectionRow,
+) -> PropertyGridValue {
+    let Some(part_tag) = slot.part_tag else {
+        return PropertyGridValue::empty();
+    };
+    let label = owner
+        .type_tag
+        .and_then(|owner_type_tag| {
+            snapshot
+                .inspection
+                .style_tokens
+                .part_tags
+                .iter()
+                .find(|candidate| {
+                    candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
+                })
+                .map(|candidate| candidate.name)
+        })
+        .unwrap_or("Custom part");
+    PropertyGridValue::token(label)
 }
 
 fn type_tag_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
@@ -1637,12 +1696,6 @@ where
 
 fn element_id_summary(id: ElementId) -> String {
     format!("{}:{}", id.slot(), id.generation())
-}
-
-fn optional_debug<T: core::fmt::Debug>(value: Option<T>) -> PropertyGridValue {
-    value.map_or_else(PropertyGridValue::empty, |value| {
-        PropertyGridValue::token(format!("{value:?}"))
-    })
 }
 
 fn optional_u64(value: Option<u64>) -> PropertyGridValue {
@@ -2578,6 +2631,10 @@ mod tests {
             required_slots.children()[0].value(),
             &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
         );
+        assert_eq!(
+            required_slots.children()[0].children()[0].value(),
+            &PropertyGridValue::token("Button.Label")
+        );
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(
             children.children()[0].value(),
@@ -2603,6 +2660,12 @@ mod tests {
             .iter()
             .find(|row| row.label() == "Routed semantic target")
             .expect("template part should expose routed semantic target");
+        let part_tag = label_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Part tag")
+            .expect("template part should expose part tag");
+        assert_eq!(part_tag.value(), &PropertyGridValue::token("Button.Label"));
         assert_eq!(
             physical_source.value(),
             &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))

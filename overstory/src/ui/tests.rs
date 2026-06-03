@@ -4357,10 +4357,12 @@ fn inspection_snapshot_reports_style_token_debug_names() {
     let class = ClassId(0xCAFE);
     let pseudo = PseudoClassId(0xBEEF);
     let type_tag = understory_style::TypeTag(0xFEED);
+    let part_tag = PartTag(0xFACE);
 
     ui.set_class_debug_name(class, ".named-class");
     ui.set_pseudo_debug_name(pseudo, ":named-pseudo");
     ui.set_type_tag_debug_name(type_tag, "NamedWidget");
+    ui.set_part_debug_name(type_tag, part_tag, "NamedWidget.Part");
 
     let snapshot = ui.inspection_snapshot();
 
@@ -4384,6 +4386,15 @@ fn inspection_snapshot_reports_style_token_debug_names() {
             .type_tags
             .iter()
             .any(|name| name.id == type_tag && name.name == "NamedWidget")
+    );
+    assert!(
+        snapshot
+            .style_tokens
+            .part_tags
+            .iter()
+            .any(|name| name.owner_type_tag == type_tag
+                && name.part_tag == part_tag
+                && name.name == "NamedWidget.Part")
     );
 }
 

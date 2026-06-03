@@ -47,6 +47,8 @@ pub struct StyleTokenInspectionSnapshot {
     pub pseudos: Vec<StyleTokenInspectionName<PseudoClassId>>,
     /// Named selector type tags.
     pub type_tags: Vec<StyleTokenInspectionName<TypeTag>>,
+    /// Named owner-local template parts.
+    pub part_tags: Vec<PartTagInspectionName>,
 }
 
 /// One style token debug name.
@@ -54,6 +56,17 @@ pub struct StyleTokenInspectionSnapshot {
 pub struct StyleTokenInspectionName<T> {
     /// Token identifier.
     pub id: T,
+    /// Human-readable debug name.
+    pub name: &'static str,
+}
+
+/// One owner-local template part debug name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PartTagInspectionName {
+    /// Selector identity of the templated control that owns this part name.
+    pub owner_type_tag: TypeTag,
+    /// Owner-local part identifier.
+    pub part_tag: PartTag,
     /// Human-readable debug name.
     pub name: &'static str,
 }
