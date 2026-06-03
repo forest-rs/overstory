@@ -11,6 +11,7 @@ use kurbo::{Axis, Point, Rect, Size, Vec2};
 use understory_property::{DependencyObjectExt, Property};
 use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 
+use crate::behavior::{ArrangeContext, ArrangeResult};
 use crate::channels::LAYOUT;
 use crate::controls::scroll::ScrollBar;
 use crate::controls::scroll::normalize_scroll_offset_y;
@@ -192,9 +193,20 @@ pub(crate) fn fixed_virtual_accessibility_scroll_delta(
 pub(crate) struct ReservedScrollFrameWidget {
     target: ElementSlot,
     scrollbar: ElementSlot,
+    gap: f32,
+    scrollbar_thickness: f32,
 }
 
 impl ReservedScrollFrameWidget {
+    const fn new(gap: f32, scrollbar_thickness: f32) -> Self {
+        Self {
+            target: ElementSlot::new(),
+            scrollbar: ElementSlot::new(),
+            gap,
+            scrollbar_thickness,
+        }
+    }
+
     pub(crate) fn target(&self) -> Option<ElementId> {
         self.target.get()
     }
@@ -217,6 +229,33 @@ impl Widget for ReservedScrollFrameWidget {
     ) -> Option<accesskit::Role> {
         Some(accesskit::Role::GenericContainer)
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let Some(bounds) = ctx.effective_bounds(ctx.id()) else {
+            return ArrangeResult::UNCHANGED;
+        };
+        let height = f32_from_logical(bounds.height()).max(1.0);
+        let width = f32_from_logical(bounds.width()).max(1.0);
+        let target_width = (width - self.gap - self.scrollbar_thickness).max(1.0);
+
+        let mut changed = false;
+        if let Some(target) = self.target.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                target,
+                LayoutSize::logical(target_width, height),
+            );
+        }
+        if let Some(scrollbar) = self.scrollbar.get() {
+            changed |= set_layout_size_if_changed(
+                ctx.ui_mut(),
+                scrollbar,
+                LayoutSize::logical(self.scrollbar_thickness, height),
+            );
+        }
+
+        ArrangeResult::from_layout_changed(changed)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -236,7 +275,13 @@ pub(crate) fn append_reserved_vertical_scroll_area(
     spec: ReservedVerticalScrollArea,
 ) -> (ElementId, ElementId, ElementId) {
     let frame_width = spec.width + spec.gap + spec.scrollbar_thickness;
-    let frame = ui.append_widget(parent, Box::new(ReservedScrollFrameWidget::default()));
+    let frame = ui.append_widget(
+        parent,
+        Box::new(ReservedScrollFrameWidget::new(
+            spec.gap,
+            spec.scrollbar_thickness,
+        )),
+    );
     ui.set_layout(
         frame,
         Layout::row(spec.gap).logical_size(frame_width, spec.height),
@@ -266,6 +311,18 @@ pub(crate) fn reserved_scroll_frame_widget(
     ui.get(frame)
         .and_then(|element| element.widget())
         .and_then(|widget| widget.downcast_ref::<ReservedScrollFrameWidget>())
+}
+
+fn set_layout_size_if_changed(ui: &mut Ui, element: ElementId, size: LayoutSize) -> bool {
+    if ui
+        .get(element)
+        .and_then(|element| element.get_local_value(ui.properties().layout_size))
+        == Some(&size)
+    {
+        return false;
+    }
+    ui.set_layout_size(element, size);
+    true
 }
 
 pub(crate) fn fixed_virtualizer(

@@ -340,6 +340,7 @@ pub struct ListBoxScrollArea {
     gap: f32,
     scrollbar_thickness: f32,
     thumb_extent: f32,
+    element: ElementConfig,
 }
 
 impl core::fmt::Debug for ListBoxScrollArea {
@@ -349,6 +350,7 @@ impl core::fmt::Debug for ListBoxScrollArea {
             .field("gap", &self.gap)
             .field("scrollbar_thickness", &self.scrollbar_thickness)
             .field("thumb_extent", &self.thumb_extent)
+            .field("element", &self.element)
             .finish()
     }
 }
@@ -362,6 +364,7 @@ impl ListBoxScrollArea {
             gap: DEFAULT_LIST_BOX_SCROLLBAR_GAP,
             scrollbar_thickness: DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS,
             thumb_extent: DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT,
+            element: ElementConfig::default(),
         }
     }
 
@@ -409,7 +412,14 @@ impl AppendSpec for ListBoxScrollArea {
                 enabled,
             },
         );
+        self.element.apply_to(ui, frame);
         frame
+    }
+}
+
+impl ElementSpec for ListBoxScrollArea {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -1132,6 +1142,7 @@ fn normalize_item_extent(extent: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ElementSpecExt;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
@@ -1531,6 +1542,47 @@ mod tests {
             list_scroll_offset_y(&ui, frame),
             list_scroll_offset_y(&ui, listbox)
         );
+        assert!(realized_list_item(&ui, frame, 0).is_none());
+    }
+
+    #[test]
+    fn listbox_scroll_area_children_follow_arranged_height() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(180.0, 120.0));
+        let frame = ui.append(
+            root,
+            scrolling_test_list_box()
+                .with_vertical_scrollbar()
+                .thumb_extent(12.0)
+                .layout(Layout::new().logical_size(158.0, 56.0).fill_height()),
+        );
+        let listbox =
+            list_box_scroll_area_list(&ui, frame).expect("scroll frame should expose listbox");
+        let bar = list_box_scroll_area_scrollbar(&ui, frame)
+            .expect("scroll frame should expose scrollbar");
+
+        compute_layout(&mut ui);
+        let frame_bounds = ui.effective_bounds(frame);
+        let list_bounds = ui.effective_bounds(listbox);
+        let bar_bounds = ui.effective_bounds(bar);
+
+        assert_eq!(frame_bounds.height(), 120.0);
+        assert_eq!(list_bounds.height(), 120.0);
+        assert_eq!(bar_bounds.height(), 120.0);
+        assert_eq!(list_bounds.width(), 140.0);
+        assert_eq!(bar_bounds.width(), 10.0);
+        assert!(realized_list_item(&ui, listbox, 0).is_some());
+
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        compute_layout(&mut ui);
+
+        assert!(list_scroll_offset_y(&ui, frame).is_some_and(|offset| offset > 0.0));
         assert!(realized_list_item(&ui, frame, 0).is_none());
     }
 

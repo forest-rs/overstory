@@ -429,6 +429,7 @@ pub struct OutlineViewScrollArea {
     gap: f32,
     scrollbar_thickness: f32,
     thumb_extent: f32,
+    element: ElementConfig,
 }
 
 impl core::fmt::Debug for OutlineViewScrollArea {
@@ -438,6 +439,7 @@ impl core::fmt::Debug for OutlineViewScrollArea {
             .field("gap", &self.gap)
             .field("scrollbar_thickness", &self.scrollbar_thickness)
             .field("thumb_extent", &self.thumb_extent)
+            .field("element", &self.element)
             .finish()
     }
 }
@@ -451,6 +453,7 @@ impl OutlineViewScrollArea {
             gap: DEFAULT_OUTLINE_SCROLLBAR_GAP,
             scrollbar_thickness: DEFAULT_OUTLINE_SCROLLBAR_THICKNESS,
             thumb_extent: DEFAULT_OUTLINE_SCROLLBAR_THUMB_EXTENT,
+            element: ElementConfig::default(),
         }
     }
 
@@ -498,7 +501,14 @@ impl AppendSpec for OutlineViewScrollArea {
                 enabled,
             },
         );
+        self.element.apply_to(ui, frame);
         frame
+    }
+}
+
+impl ElementSpec for OutlineViewScrollArea {
+    fn element_config_mut(&mut self) -> &mut ElementConfig {
+        &mut self.element
     }
 }
 
@@ -1519,6 +1529,7 @@ mod tests {
     use understory_property::DependencyObjectExt;
 
     use super::*;
+    use crate::ElementSpecExt;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
@@ -1775,6 +1786,52 @@ mod tests {
         let bar_bounds = ui.effective_bounds(bar);
         let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
 
+        assert!(
+            ui.dispatch_pointer_event(&pointer_down(target, 1))
+                .changed()
+        );
+        assert!(ui.dispatch_pointer_event(&pointer_up(target, 2)).handled);
+        compute_layout(&mut ui);
+
+        assert!(outline_scroll_offset_y(&ui, frame).is_some_and(|offset| offset > 0.0));
+        assert!(realized_outline_item(&ui, frame, 1).is_none());
+    }
+
+    #[test]
+    fn outline_scroll_area_children_follow_arranged_height() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(180.0, 120.0));
+        let frame = ui.append(
+            root,
+            OutlineView::new()
+                .nodes(scrolling_nodes(100), Some(0))
+                .expanded(0)
+                .size(140.0, 56.0)
+                .item_extent(20.0)
+                .overscan(0.0)
+                .with_vertical_scrollbar()
+                .thumb_extent(12.0)
+                .layout(Layout::new().logical_size(158.0, 56.0).fill_height()),
+        );
+        let outline = outline_view_scroll_area_outline(&ui, frame)
+            .expect("scroll frame should expose outline");
+        let bar = outline_view_scroll_area_scrollbar(&ui, frame)
+            .expect("scroll frame should expose scrollbar");
+
+        compute_layout(&mut ui);
+        let frame_bounds = ui.effective_bounds(frame);
+        let outline_bounds = ui.effective_bounds(outline);
+        let bar_bounds = ui.effective_bounds(bar);
+
+        assert_eq!(frame_bounds.height(), 120.0);
+        assert_eq!(outline_bounds.height(), 120.0);
+        assert_eq!(bar_bounds.height(), 120.0);
+        assert_eq!(outline_bounds.width(), 140.0);
+        assert_eq!(bar_bounds.width(), 10.0);
+        assert!(realized_outline_item(&ui, outline, 1).is_some());
+
+        let target = Point::new(bar_bounds.center().x, bar_bounds.y1 - 1.0);
         assert!(
             ui.dispatch_pointer_event(&pointer_down(target, 1))
                 .changed()
