@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 use overstory::Rgba8;
 use overstory::{
     Brush, Color, ElementId, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize,
-    OutlineNodeKey, Panel, Text, Ui, select_outline_key, theme,
+    OutlineNodeKey, Panel, Text, TooltipSpecExt, Ui, select_outline_key, theme,
 };
 
 #[cfg(not(feature = "spoor-session"))]
@@ -117,7 +117,7 @@ impl PropertyGridSection {
 pub struct PropertyGridRow {
     label: String,
     value: PropertyGridValue,
-    origin: Option<String>,
+    origin: Option<PropertyGridOrigin>,
     children: Vec<Self>,
 }
 
@@ -154,7 +154,13 @@ impl PropertyGridRow {
     /// Returns the row origin, if the adapter supplied one.
     #[must_use]
     pub fn origin(&self) -> Option<&str> {
-        self.origin.as_deref()
+        self.origin.as_ref().map(PropertyGridOrigin::label)
+    }
+
+    /// Returns the row origin metadata, if the adapter supplied one.
+    #[must_use]
+    pub fn origin_info(&self) -> Option<&PropertyGridOrigin> {
+        self.origin.as_ref()
     }
 
     /// Returns child rows.
@@ -169,7 +175,7 @@ impl PropertyGridRow {
     /// `local`, `inherited`, `template`, or `animation`.
     #[must_use]
     pub fn with_origin(mut self, origin: impl Into<String>) -> Self {
-        self.origin = Some(origin.into());
+        self.origin = Some(PropertyGridOrigin::new(origin));
         self
     }
 
@@ -187,6 +193,35 @@ impl PropertyGridRow {
 
     fn element_link(&self) -> Option<&PropertyGridElementLink> {
         self.value.as_element_link()
+    }
+}
+
+/// Provenance metadata for a read-only property-grid row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PropertyGridOrigin {
+    label: String,
+    description: String,
+}
+
+impl PropertyGridOrigin {
+    /// Creates origin metadata with a compact display label.
+    #[must_use]
+    pub fn new(label: impl Into<String>) -> Self {
+        let label = label.into();
+        let description = default_origin_description(&label);
+        Self { label, description }
+    }
+
+    /// Returns the compact label shown next to a value.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Returns the explanatory text suitable for a tooltip or details pane.
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.description
     }
 }
 
@@ -636,7 +671,7 @@ fn append_value_cell(
         ),
     );
     append_grid_value(ui, cell, row.value(), actions);
-    if let Some(origin) = row.origin() {
+    if let Some(origin) = row.origin_info() {
         append_origin_chip(ui, cell, origin);
     }
     cell
@@ -784,22 +819,33 @@ fn append_color_value(ui: &mut Ui, parent: ElementId, color: &PropertyGridColor)
     swatch
 }
 
-fn append_origin_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
+fn append_origin_chip(ui: &mut Ui, parent: ElementId, origin: &PropertyGridOrigin) -> ElementId {
     let chip = ui.append(
         parent,
-        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(6.0, 2.0)),
+        Panel::row(0.0)
+            .layout(Layout::row(0.0).padding_xy(6.0, 2.0))
+            .tooltip(origin.description()),
     );
     set_grid_surface(ui, chip, control_hover_bg(ui), control_border(ui), 4.0);
     append_grid_text(
         ui,
         chip,
-        content,
+        origin.label(),
         muted_text_brush(ui),
         GRID_ORIGIN_FONT_SIZE,
         None,
         false,
     );
     chip
+}
+
+fn default_origin_description(label: &str) -> String {
+    match label {
+        "effective" => String::from(
+            "Resolved value after local stores, styles, inheritance, defaults, and presentation overrides.",
+        ),
+        _ => format!("Value source: {label}"),
+    }
 }
 
 fn set_grid_surface(

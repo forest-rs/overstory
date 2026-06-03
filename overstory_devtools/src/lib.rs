@@ -50,8 +50,8 @@ pub use client::{InspectionClient, InspectionMirror};
 #[cfg(feature = "spoor-session")]
 pub use live::{DevtoolsRefresh, DevtoolsTreePatchCounts, LiveDevtools};
 pub use property_grid::{
-    PropertyGrid, PropertyGridColor, PropertyGridElementLink, PropertyGridRow, PropertyGridSection,
-    PropertyGridToken, PropertyGridValue,
+    PropertyGrid, PropertyGridColor, PropertyGridElementLink, PropertyGridOrigin, PropertyGridRow,
+    PropertyGridSection, PropertyGridToken, PropertyGridValue,
 };
 #[cfg(feature = "spoor-session")]
 pub use protocol::{
@@ -2186,6 +2186,13 @@ mod tests {
             .find(|row| row.label() == "Background")
             .expect("surface section should contain background row");
         assert_eq!(background.origin(), Some("effective"));
+        assert_eq!(
+            background
+                .origin_info()
+                .expect("background row should carry origin metadata")
+                .description(),
+            "Resolved value after local stores, styles, inheritance, defaults, and presentation overrides."
+        );
         assert_eq!(
             background.value(),
             &PropertyGridValue::color(overstory::Rgba8 {
