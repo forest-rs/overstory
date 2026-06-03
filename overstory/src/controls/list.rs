@@ -26,7 +26,6 @@ use kurbo::{Size, Vec2};
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, collect_options, enabled_index_at_or_after, enabled_index_at_or_before,
@@ -518,7 +517,7 @@ impl Widget for ListBoxWidget {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let listbox = ctx.id();
 
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down || !ctx.is_enabled(listbox) {
@@ -907,7 +906,7 @@ impl Widget for ListItemWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let item = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(item) {

@@ -19,7 +19,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
@@ -230,7 +229,7 @@ impl Widget for ExpanderWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let expander = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(expander) {
+        if !event.is_semantic_target() || !ctx.is_enabled(expander) {
             return;
         }
         if !click_source_is_header(ctx, expander, event.source) {
@@ -242,7 +241,7 @@ impl Widget for ExpanderWidget {
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         let expander = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if !ctx.is_enabled(expander) {

@@ -211,7 +211,8 @@ pub use element_ref::{ElementRef, ElementRefSpecExt, ReferencedSpec};
 pub use event_runtime::{
     ClickEvent, DragEvent, FocusChangeReason, FocusEvent, KeyDispatchResult, KeyEvent,
     PointerDispatchResult, PointerEventKind, PointerRoutedEvent, RoutedDispatchResult,
-    RoutedEventContext, RoutedEventKind, RoutedHandlerOptions, ScrollEvent,
+    RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedHandlerOptions,
+    RoutedHandlerScope, ScrollEvent,
 };
 pub use generic::present_surface;
 pub use layouts::{

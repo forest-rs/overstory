@@ -16,7 +16,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
@@ -283,7 +282,7 @@ impl Widget for SegmentedControlWidget {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
 
         let segmented = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down || !ctx.is_enabled(segmented) {
@@ -393,7 +392,7 @@ impl Widget for SegmentedItemWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let segment = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(segment) {

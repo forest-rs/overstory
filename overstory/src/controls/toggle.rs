@@ -22,7 +22,6 @@ use alloc::boxed::Box;
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
@@ -225,7 +224,7 @@ impl Widget for ToggleWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let toggle = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(toggle) {
@@ -238,7 +237,7 @@ impl Widget for ToggleWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let toggle = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

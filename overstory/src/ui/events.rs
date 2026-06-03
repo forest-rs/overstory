@@ -24,7 +24,7 @@ use crate::event_runtime::{
     ClickEvent, ClickHandlers, DragEvent, DragHandlers, FocusChangeReason, FocusEvent,
     FocusHandlers, HandlerFamily, HandlerLane, KeyDispatchResult, KeyEvent, KeyHandlers,
     PointerDispatchResult, PointerEventKind, PointerHandlers, PointerRoutedEvent,
-    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventState,
+    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedEventState,
     RoutedHandlerOptions, ScrollEvent, ScrollHandlers,
 };
 use crate::widget::Widget;
@@ -265,14 +265,25 @@ impl Ui {
         mut dispatch_current: impl FnMut(&mut Self, RoutedEventContext<'_>),
     ) -> RoutedDispatchResult {
         let state = RoutedEventState::new();
+        let origin = self.routed_event_origin(source);
         for (phase, node) in self.responder_sequence(source) {
-            let route = RoutedEventContext::new(kind, source, node, phase, &state);
+            let route = RoutedEventContext::new(kind, origin, node, phase, &state);
             dispatch_current(self, route);
             if state.should_stop_route() {
                 break;
             }
         }
         RoutedDispatchResult::from_state(&state)
+    }
+
+    fn routed_event_origin(&self, source: ElementId) -> RoutedEventOrigin {
+        self.get(source).and_then(Element::templated_parent).map_or(
+            RoutedEventOrigin::Element(source),
+            |owner| RoutedEventOrigin::TemplateChild {
+                owner,
+                child: source,
+            },
+        )
     }
 
     pub(crate) fn with_widget_mut(
@@ -296,15 +307,23 @@ impl Ui {
         node: ElementId,
         lane: HandlerLane,
         family: F,
-        handled: bool,
+        route: RoutedEventContext<'_>,
         event: E,
     ) where
         F: HandlerFamily,
         F::Handler: FnMut(&mut Self, E),
     {
-        let Some(mut registration) = self.events.take_handler(family, lane, node, handled) else {
+        let Some(mut registration) =
+            self.events
+                .take_handler(family, lane, node, route.is_handled())
+        else {
             return;
         };
+        if !registration.options.scope.matches(route) {
+            self.events
+                .insert_handler_if_absent(family, lane, node, registration);
+            return;
+        }
 
         self.events.begin_handler(family, lane, node);
         (registration.handler)(self, event);
@@ -330,7 +349,7 @@ impl Ui {
             route.current,
             lane,
             KeyHandlers,
-            route.is_handled(),
+            route,
             KeyEvent { route, key: event },
         );
     }
@@ -355,13 +374,7 @@ impl Ui {
             position,
             modifiers,
         };
-        self.dispatch_handler_registration(
-            route.current,
-            lane,
-            ClickHandlers,
-            route.is_handled(),
-            event,
-        );
+        self.dispatch_handler_registration(route.current, lane, ClickHandlers, route, event);
     }
 
     fn dispatch_widget_click(
@@ -398,13 +411,7 @@ impl Ui {
             press_position,
             delta,
         };
-        self.dispatch_handler_registration(
-            route.current,
-            lane,
-            DragHandlers,
-            route.is_handled(),
-            event,
-        );
+        self.dispatch_handler_registration(route.current, lane, DragHandlers, route, event);
     }
 
     fn dispatch_widget_drag(
@@ -443,13 +450,7 @@ impl Ui {
             delta,
             modifiers,
         };
-        self.dispatch_handler_registration(
-            route.current,
-            lane,
-            ScrollHandlers,
-            route.is_handled(),
-            event,
-        );
+        self.dispatch_handler_registration(route.current, lane, ScrollHandlers, route, event);
     }
 
     fn dispatch_widget_scroll(
@@ -490,13 +491,7 @@ impl Ui {
             focus_visible,
             reason,
         };
-        self.dispatch_handler_registration(
-            route.current,
-            lane,
-            FocusHandlers,
-            route.is_handled(),
-            event,
-        );
+        self.dispatch_handler_registration(route.current, lane, FocusHandlers, route, event);
     }
 
     fn dispatch_widget_focus(
@@ -533,13 +528,7 @@ impl Ui {
         let kind = PointerEventKind::from_routed(route.kind)
             .expect("pointer dispatch route must use a pointer event kind");
         let event = data.event(route);
-        self.dispatch_handler_registration(
-            node,
-            lane,
-            PointerHandlers::new(kind),
-            route.is_handled(),
-            event,
-        );
+        self.dispatch_handler_registration(node, lane, PointerHandlers::new(kind), route, event);
     }
 
     fn dispatch_widget_pointer(

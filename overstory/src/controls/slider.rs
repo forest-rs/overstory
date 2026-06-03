@@ -24,7 +24,6 @@ use understory_axis::{
 };
 use understory_style::{ClassId, PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::range::ScalarRange;
 use crate::controls::support::{
@@ -310,7 +309,7 @@ impl Widget for SliderWidget {
         let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(slider) {
@@ -328,7 +327,7 @@ impl Widget for SliderWidget {
         let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(slider) {
@@ -351,7 +350,7 @@ impl Widget for SliderWidget {
         let Some(thumb) = ctx.slot(slider, SLOT_SLIDER_THUMB) else {
             return;
         };
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

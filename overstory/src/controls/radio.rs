@@ -469,7 +469,7 @@ impl Widget for RadioButtonWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let radio = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(radio) {
@@ -483,7 +483,7 @@ impl Widget for RadioButtonWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let radio = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down || !ctx.is_enabled(radio) {

@@ -34,11 +34,10 @@ use alloc::string::String;
 use peniko::Brush;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
-use crate::event_runtime::{ClickEvent, KeyEvent};
+use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
 use crate::template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
     TemplateWidgetFactory,
@@ -157,9 +156,9 @@ impl Button {
 
     /// Registers a click handler. Fires on pointer click and on
     /// keyboard activation (Space / Enter while focused). The
-    /// closure receives the standard [`ClickEvent`] payload —
-    /// dispatch fires on either `Phase::Target` (button itself
-    /// hit) or `Phase::Bubble` (a template part hit).
+    /// closure receives the standard [`ClickEvent`] payload at the button's
+    /// semantic target: the button itself for direct clicks, or the button as
+    /// owner when a generated template part was clicked.
     #[must_use]
     pub fn on_click<F>(mut self, handler: F) -> Self
     where
@@ -202,11 +201,15 @@ impl AppendSpec for Button {
         self.element.apply_to(ui, id);
         if let Some(handler) = self.on_click {
             let mut handler = handler;
-            ui.on_click(id, move |ui, event| {
-                if button_enabled(ui, id) {
-                    handler(ui, event);
-                }
-            });
+            ui.on_click_with_options(
+                id,
+                RoutedHandlerOptions::new().scope(RoutedHandlerScope::SemanticTarget),
+                move |ui, event| {
+                    if button_enabled(ui, id) {
+                        handler(ui, event);
+                    }
+                },
+            );
         }
         if let Some(handler) = self.on_key {
             ui.on_key(id, handler);
@@ -257,7 +260,7 @@ impl Widget for ButtonWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let button = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

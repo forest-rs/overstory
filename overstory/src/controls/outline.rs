@@ -24,7 +24,6 @@ use understory_outline::{Outline, OutlineModel, VisibleRow};
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
@@ -686,7 +685,7 @@ impl Widget for OutlineViewWidget {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
 
         let outline = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down
@@ -1140,7 +1139,7 @@ impl Widget for OutlineItemWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let item = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(item) {
+        if !event.is_semantic_target() || !ctx.is_enabled(item) {
             return;
         }
         let Some(outline) = outline_parent(ctx, item) else {

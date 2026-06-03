@@ -20,7 +20,6 @@ use alloc::{boxed::Box, string::String};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
@@ -246,7 +245,7 @@ impl Widget for CheckBoxWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let checkbox = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(checkbox) {
@@ -259,7 +258,7 @@ impl Widget for CheckBoxWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let checkbox = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

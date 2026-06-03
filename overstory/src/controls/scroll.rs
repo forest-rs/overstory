@@ -899,7 +899,7 @@ impl Widget for ScrollBarWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let scroll_bar = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(scroll_bar) {
+        if !event.is_semantic_target() || !ctx.is_enabled(scroll_bar) {
             return;
         }
         if is_scroll_bar_thumb(ctx, scroll_bar, event.source) {
@@ -927,7 +927,7 @@ impl Widget for ScrollBarWidget {
 
     fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
         let scroll_bar = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(scroll_bar) {
+        if !event.is_semantic_target() || !ctx.is_enabled(scroll_bar) {
             return;
         }
         let snapshot = ScrollBarSnapshot::from(&*self);

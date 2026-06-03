@@ -57,6 +57,74 @@ fn pointer_focus_does_not_set_focus_visible() {
 }
 
 #[test]
+fn routed_event_origin_preserves_template_child_source() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{
+        Button, RoutedEventOrigin, RoutedHandlerOptions, RoutedHandlerScope, SLOT_BUTTON_CONTENT,
+    };
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Run"));
+    let label = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("button template exposes content slot");
+
+    let seen_origin = Rc::new(Cell::new(None));
+    let seen_origin_for_handler = Rc::clone(&seen_origin);
+    let semantic_source = Rc::new(Cell::new(None));
+    let semantic_source_for_handler = Rc::clone(&semantic_source);
+    ui.on_click_with_options(
+        button,
+        RoutedHandlerOptions::new().scope(RoutedHandlerScope::SemanticTarget),
+        move |_ui, event| {
+            seen_origin_for_handler.set(Some(event.origin));
+            semantic_source_for_handler.set(Some(event.semantic_source()));
+        },
+    );
+
+    ui.synthesize_click(label, Point::ZERO);
+
+    assert_eq!(
+        seen_origin.get(),
+        Some(RoutedEventOrigin::TemplateChild {
+            owner: button,
+            child: label
+        })
+    );
+    assert_eq!(semantic_source.get(), Some(button));
+}
+
+#[test]
+fn button_builder_click_runs_once_for_template_part_source() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{Button, SLOT_BUTTON_CONTENT};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let count = Rc::new(Cell::new(0));
+    let count_for_handler = Rc::clone(&count);
+    let button = ui.append(
+        root,
+        Button::new("Run").on_click(move |_ui, event| {
+            assert!(event.is_semantic_target());
+            count_for_handler.set(count_for_handler.get() + 1);
+        }),
+    );
+    let label = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("button template exposes content slot");
+
+    ui.synthesize_click(label, Point::ZERO);
+
+    assert_eq!(count.get(), 1);
+}
+
+#[test]
 fn explicit_pointer_focus_does_not_set_focus_visible() {
     let mut ui = Ui::new();
     let root = ui.root();

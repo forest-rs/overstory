@@ -21,7 +21,6 @@ use cursor_icon::CursorIcon;
 use kurbo::Axis;
 use understory_style::TypeTag;
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt, f32_from_logical};
 use crate::element::{Element, ElementId};
@@ -315,7 +314,7 @@ impl Widget for SplitterWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let splitter = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(splitter) {
@@ -326,7 +325,7 @@ impl Widget for SplitterWidget {
 
     fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
         let splitter = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(splitter) {
@@ -359,7 +358,7 @@ impl Widget for SplitterWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
         let splitter = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

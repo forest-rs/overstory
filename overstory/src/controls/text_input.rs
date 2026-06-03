@@ -23,7 +23,6 @@ use peniko::{Brush, Color};
 use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::f32_from_logical;
 use crate::controls::text::{TextWidget, text_style};
@@ -322,7 +321,7 @@ impl Widget for TextInputWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let input = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(input) {
@@ -344,7 +343,7 @@ impl Widget for TextInputWidget {
 
     fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
         let input = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(input) {
@@ -374,7 +373,7 @@ impl Widget for TextInputWidget {
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::KeyState;
         let input = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down {

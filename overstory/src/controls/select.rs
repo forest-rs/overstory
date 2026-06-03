@@ -21,7 +21,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::WidgetEventContext;
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
@@ -334,7 +333,7 @@ impl Widget for SelectWidget {
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let select = ctx.id();
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+        if !event.is_semantic_target() {
             return;
         }
         if !ctx.is_enabled(select) {
@@ -348,7 +347,7 @@ impl Widget for SelectWidget {
         use ui_events::keyboard::{Key, KeyState, NamedKey};
 
         let select = ctx.id();
-        if !matches!(event.phase, Phase::Target) {
+        if !event.is_target() {
             return;
         }
         if event.key.state != KeyState::Down || !ctx.is_enabled(select) {
