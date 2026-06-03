@@ -33,6 +33,7 @@
 //!   viewport controls so axis-specific code stays small.
 
 mod dimension;
+mod inspection;
 mod longhands;
 mod placement;
 mod shorthand;

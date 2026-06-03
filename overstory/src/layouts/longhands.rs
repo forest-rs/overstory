@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::LayoutDimension;
-use super::dimension::{join_summary_parts, push_labeled_summary_part, scalar_summary};
+use super::inspection::{join_summary_parts, push_labeled_summary_part, scalar_summary};
 
 /// Child layout strategy for an element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -4,7 +4,7 @@
 use alloc::format;
 use alloc::string::String;
 
-use super::dimension::scalar_summary;
+use super::inspection::scalar_summary;
 
 /// Placement contribution for an element.
 ///

@@ -4,7 +4,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use super::dimension::{join_summary_parts, push_labeled_summary_part};
+use super::inspection::{join_summary_parts, push_labeled_summary_part};
 use super::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutOverflow,
     LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
