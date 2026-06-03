@@ -380,13 +380,14 @@ impl Widget for SliderWidget {
             DEFAULT_LARGE_CHANGE_FRACTION,
         );
         let current = read_local_or(ctx, slider, ctx.properties().value, min);
+        let key_step = if event.key.modifiers.shift() {
+            large
+        } else {
+            small
+        };
         let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
-                current - keyboard_step(event.key.modifiers.shift(), small, large)
-            }
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => {
-                current + keyboard_step(event.key.modifiers.shift(), small, large)
-            }
+            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => current - key_step,
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => current + key_step,
             Key::Named(NamedKey::PageDown) => current - large,
             Key::Named(NamedKey::PageUp) => current + large,
             Key::Named(NamedKey::Home) => min,
@@ -504,8 +505,8 @@ impl Template for SliderTemplate {
             cx.read_local_or(owner, min_prop, 0.0),
             cx.read_local_or(owner, max_prop, 1.0),
         );
-        cx.set_layout_placement(thumb, thumb_placement(initial_left, thumb_top));
-        cx.set_layout_size(thumb, thumb_size());
+        cx.set_layout_placement(thumb, LayoutPlacement::absolute_at(initial_left, thumb_top));
+        cx.set_layout_size(thumb, LayoutSize::logical(THUMB_DIAMETER, THUMB_DIAMETER));
     }
 }
 
@@ -548,10 +549,6 @@ impl SliderDragState {
     }
 }
 
-fn keyboard_step(large_requested: bool, small: f64, large: f64) -> f64 {
-    if large_requested { large } else { small }
-}
-
 fn read_change_or(
     ui: &Ui,
     slider: ElementId,
@@ -573,14 +570,6 @@ fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
     let t = ScalarRange::new(min, max).fraction(value) as f32;
     let travel = SLIDER_WIDTH - THUMB_DIAMETER;
     t * travel
-}
-
-fn thumb_placement(left: f32, top: f32) -> LayoutPlacement {
-    LayoutPlacement::absolute_at(left, top)
-}
-
-fn thumb_size() -> LayoutSize {
-    LayoutSize::logical(THUMB_DIAMETER, THUMB_DIAMETER)
 }
 
 fn slider_ruler(min: f64, max: f64) -> AxisRuler1D {
@@ -723,7 +712,7 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-    ui.set_layout_placement(thumb, thumb_placement(left, top));
+    ui.set_layout_placement(thumb, LayoutPlacement::absolute_at(left, top));
 }
 
 fn set_value_from_position(
