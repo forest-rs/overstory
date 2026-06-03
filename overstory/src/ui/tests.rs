@@ -4242,10 +4242,15 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         row.properties.iter().any(|property| {
             property.name == "LayoutContainer"
                 && property.group == ElementPropertyInspectionGroup::Layout
-                && property.value
-                    == ElementPropertyInspectionValue::Token(String::from(
-                        "display flex, direction row",
-                    ))
+                && matches!(
+                    &property.value,
+                    ElementPropertyInspectionValue::Record { summary, fields }
+                        if summary == "display flex, direction row"
+                            && fields.iter().any(|field| field.name == "Display"
+                                && field.value == ElementPropertyInspectionValue::Token(String::from("flex")))
+                            && fields.iter().any(|field| field.name == "Direction"
+                                && field.value == ElementPropertyInspectionValue::Token(String::from("row")))
+                )
         }),
         "snapshot should expose readable container layout properties"
     );
@@ -4253,10 +4258,15 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         row.properties.iter().any(|property| {
             property.name == "LayoutSize"
                 && property.group == ElementPropertyInspectionGroup::Layout
-                && property.value
-                    == ElementPropertyInspectionValue::Token(String::from(
-                        "width 120px, height 64px",
-                    ))
+                && matches!(
+                    &property.value,
+                    ElementPropertyInspectionValue::Record { summary, fields }
+                        if summary == "width 120px, height 64px"
+                            && fields.iter().any(|field| field.name == "Width"
+                                && field.value == ElementPropertyInspectionValue::Token(String::from("120px")))
+                            && fields.iter().any(|field| field.name == "Height"
+                                && field.value == ElementPropertyInspectionValue::Token(String::from("64px")))
+                )
         }),
         "snapshot should expose readable size layout properties"
     );
@@ -4264,7 +4274,13 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         row.properties.iter().any(|property| {
             property.name == "LayoutSpacing"
                 && property.group == ElementPropertyInspectionGroup::Layout
-                && property.value == ElementPropertyInspectionValue::Token(String::from("gap 8px"))
+                && matches!(
+                    &property.value,
+                    ElementPropertyInspectionValue::Record { summary, fields }
+                        if summary == "gap 8px"
+                            && fields.iter().any(|field| field.name == "Gap"
+                                && field.value == ElementPropertyInspectionValue::Token(String::from("8px")))
+                )
         }),
         "snapshot should expose readable spacing layout properties"
     );

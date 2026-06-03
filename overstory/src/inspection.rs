@@ -143,6 +143,15 @@ pub struct ElementPropertyInspectionRow {
     pub origin: ElementPropertyInspectionOrigin,
 }
 
+/// One named field inside a structured inspectable property value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ElementPropertyInspectionField {
+    /// User-facing field name.
+    pub name: &'static str,
+    /// Field value.
+    pub value: ElementPropertyInspectionValue,
+}
+
 /// Broad group for an inspectable dependency property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElementPropertyInspectionGroup {
@@ -193,6 +202,13 @@ pub enum ElementPropertyInspectionValue {
     Count(usize),
     /// Token-like value such as an enum variant or shorthand structure.
     Token(String),
+    /// Structured value with a compact summary and expandable named fields.
+    Record {
+        /// Compact row value shown before expansion.
+        summary: String,
+        /// Structured fields shown as child rows.
+        fields: Vec<ElementPropertyInspectionField>,
+    },
     /// 8-bit RGBA color value suitable for a color swatch.
     Color(Rgba8),
     /// Logical rectangle value.

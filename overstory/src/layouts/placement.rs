@@ -3,6 +3,7 @@
 
 use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use super::inspection::scalar_summary;
 
@@ -65,6 +66,21 @@ impl LayoutPlacement {
                 )
             }
         }
+    }
+
+    pub(crate) fn inspection_fields(self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        match self {
+            Self::Auto => fields.push(("Mode", String::from("auto"))),
+            Self::Relative => fields.push(("Mode", String::from("relative"))),
+            Self::Absolute => fields.push(("Mode", String::from("absolute"))),
+            Self::AbsoluteAt { left, top } => {
+                fields.push(("Mode", String::from("absolute")));
+                fields.push(("Left", format!("{}px", scalar_summary(left))));
+                fields.push(("Top", format!("{}px", scalar_summary(top))));
+            }
+        }
+        fields
     }
 
     pub(super) fn apply_to(self, style: &mut taffy::Style) {

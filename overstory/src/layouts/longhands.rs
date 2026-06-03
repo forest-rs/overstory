@@ -262,6 +262,20 @@ impl LayoutContainer {
         join_summary_parts(parts, ", ")
     }
 
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        if let Some(display) = self.display {
+            fields.push(("Display", String::from(display.inspection_summary())));
+        }
+        if let Some(direction) = self.direction {
+            fields.push(("Direction", String::from(direction.inspection_summary())));
+        }
+        if let Some(wrap) = self.wrap {
+            fields.push(("Wrap", String::from(wrap.inspection_summary())));
+        }
+        fields
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.display.is_some() {
             self.display = other.display;
@@ -450,6 +464,38 @@ impl LayoutSize {
             push_labeled_summary_part(&mut parts, "shrink", scalar_summary(flex_shrink));
         }
         join_summary_parts(parts, ", ")
+    }
+
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        if let Some(width) = self.width {
+            fields.push(("Width", width.inspection_summary()));
+        }
+        if let Some(height) = self.height {
+            fields.push(("Height", height.inspection_summary()));
+        }
+        if let Some(min_width) = self.min_width {
+            fields.push(("Min width", min_width.inspection_summary()));
+        }
+        if let Some(min_height) = self.min_height {
+            fields.push(("Min height", min_height.inspection_summary()));
+        }
+        if let Some(max_width) = self.max_width {
+            fields.push(("Max width", max_width.inspection_summary()));
+        }
+        if let Some(max_height) = self.max_height {
+            fields.push(("Max height", max_height.inspection_summary()));
+        }
+        if let Some(flex_basis) = self.flex_basis {
+            fields.push(("Flex basis", flex_basis.inspection_summary()));
+        }
+        if let Some(flex_grow) = self.flex_grow {
+            fields.push(("Flex grow", scalar_summary(flex_grow)));
+        }
+        if let Some(flex_shrink) = self.flex_shrink {
+            fields.push(("Flex shrink", scalar_summary(flex_shrink)));
+        }
+        fields
     }
 
     pub(super) fn merge_from(&mut self, other: Self) {
@@ -710,6 +756,20 @@ impl LayoutSpacing {
         join_summary_parts(parts, ", ")
     }
 
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        if let Some(margin) = self.margin {
+            fields.push(("Margin", margin.inspection_summary()));
+        }
+        if let Some(padding) = self.padding {
+            fields.push(("Padding", padding.inspection_summary()));
+        }
+        if let Some(gap) = self.gap {
+            fields.push(("Gap", gap.inspection_summary()));
+        }
+        fields
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.margin.is_some() {
             self.margin = other.margin;
@@ -796,6 +856,26 @@ impl LayoutAlignment {
         join_summary_parts(parts, ", ")
     }
 
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        if let Some(align_items) = self.align_items {
+            fields.push((
+                "Align items",
+                String::from(align_items.inspection_summary()),
+            ));
+        }
+        if let Some(align_self) = self.align_self {
+            fields.push(("Align self", String::from(align_self.inspection_summary())));
+        }
+        if let Some(justify_content) = self.justify_content {
+            fields.push((
+                "Justify content",
+                String::from(justify_content.inspection_summary()),
+            ));
+        }
+        fields
+    }
+
     pub(super) fn merge_from(&mut self, other: Self) {
         if other.align_items.is_some() {
             self.align_items = other.align_items;
@@ -873,6 +953,17 @@ impl LayoutOverflow {
                 join_summary_parts(parts, ", ")
             }
         }
+    }
+
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let mut fields = Vec::new();
+        if let Some(x) = self.x {
+            fields.push(("X", String::from(x.inspection_summary())));
+        }
+        if let Some(y) = self.y {
+            fields.push(("Y", String::from(y.inspection_summary())));
+        }
+        fields
     }
 
     pub(super) fn merge_from(&mut self, other: Self) {

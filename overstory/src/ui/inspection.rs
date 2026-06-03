@@ -7,10 +7,11 @@ use alloc::vec::Vec;
 
 use crate::inspection::{
     CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
-    ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionGroup,
-    ElementPropertyInspectionOrigin, ElementPropertyInspectionRow, ElementPropertyInspectionValue,
-    ElementStateInspection, LayerInspectionId, SurfaceInspectionId, TimelineInspectionSnapshot,
-    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
+    ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
+    ElementPropertyInspectionValue, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
+    TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
@@ -307,7 +308,7 @@ impl Ui {
             "Layout",
             ElementPropertyInspectionGroup::Layout,
             properties.layout,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -315,7 +316,7 @@ impl Ui {
             "LayoutContainer",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_container,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -323,7 +324,7 @@ impl Ui {
             "LayoutSize",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_size,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -331,7 +332,7 @@ impl Ui {
             "LayoutSpacing",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_spacing,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -339,7 +340,7 @@ impl Ui {
             "LayoutAlignment",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_alignment,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -347,7 +348,7 @@ impl Ui {
             "LayoutOverflow",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_overflow,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
         self.push_property_row(
             &mut rows,
@@ -355,7 +356,7 @@ impl Ui {
             "LayoutPlacement",
             ElementPropertyInspectionGroup::Layout,
             properties.layout_placement,
-            |value| ElementPropertyInspectionValue::Token(value.inspection_summary()),
+            |value| layout_record(value.inspection_summary(), value.inspection_fields()),
         );
 
         self.push_property_row(
@@ -651,6 +652,22 @@ fn count_value(value: usize) -> ElementPropertyInspectionValue {
         ElementPropertyInspectionValue::Empty
     } else {
         ElementPropertyInspectionValue::Count(value)
+    }
+}
+
+fn layout_record(
+    summary: String,
+    fields: Vec<(&'static str, String)>,
+) -> ElementPropertyInspectionValue {
+    ElementPropertyInspectionValue::Record {
+        summary,
+        fields: fields
+            .into_iter()
+            .map(|(name, value)| ElementPropertyInspectionField {
+                name,
+                value: ElementPropertyInspectionValue::Token(value),
+            })
+            .collect(),
     }
 }
 

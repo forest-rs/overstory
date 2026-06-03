@@ -1529,13 +1529,33 @@ fn push_property_group(
         .iter()
         .filter(|property| property.group == group)
     {
-        section.push_row(
-            PropertyGridRow::new(property.name, inspection_property_value(&property.value))
-                .with_origin(property.origin.label()),
-        );
+        section.push_row(inspection_property_row(property));
     }
     if !section.rows().is_empty() {
         sections.push(section);
+    }
+}
+
+fn inspection_property_row(
+    property: &overstory::inspection::ElementPropertyInspectionRow,
+) -> PropertyGridRow {
+    let mut row = PropertyGridRow::new(property.name, inspection_property_value(&property.value))
+        .with_origin(property.origin.label());
+    push_inspection_property_children(&mut row, &property.value);
+    row
+}
+
+fn push_inspection_property_children(
+    row: &mut PropertyGridRow,
+    value: &ElementPropertyInspectionValue,
+) {
+    if let ElementPropertyInspectionValue::Record { fields, .. } = value {
+        for field in fields {
+            let mut child =
+                PropertyGridRow::new(field.name, inspection_property_value(&field.value));
+            push_inspection_property_children(&mut child, &field.value);
+            row.push_child(child);
+        }
     }
 }
 
@@ -1549,6 +1569,9 @@ fn inspection_property_value(value: &ElementPropertyInspectionValue) -> Property
         }
         ElementPropertyInspectionValue::Count(value) => PropertyGridValue::count(*value),
         ElementPropertyInspectionValue::Token(value) => PropertyGridValue::token(value.clone()),
+        ElementPropertyInspectionValue::Record { summary, .. } => {
+            PropertyGridValue::token(summary.clone())
+        }
         ElementPropertyInspectionValue::Color(color) => PropertyGridValue::color(*color),
         ElementPropertyInspectionValue::Rect { x0, y0, x1, y1 } => {
             PropertyGridValue::text(rect_summary(overstory::Rect::new(*x0, *y0, *x1, *y1)))
@@ -2227,7 +2250,8 @@ mod tests {
             root,
             Panel::new()
                 .background(Some(background.into()))
-                .font_size(18.0),
+                .font_size(18.0)
+                .layout(Layout::row(8.0).logical_size(120.0, 64.0)),
         );
         let snapshot = DevtoolsSnapshot::capture(&ui);
         let row = snapshot
@@ -2266,6 +2290,33 @@ mod tests {
                 .iter()
                 .any(|row| row.label() == "FontSize"
                     && row.value() == &PropertyGridValue::text("18"))
+        );
+
+        let layout = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Layout inputs")
+            .expect("grid should contain layout property section");
+        let size = layout
+            .rows()
+            .iter()
+            .find(|row| row.label() == "LayoutSize")
+            .expect("layout section should contain layout size row");
+        assert_eq!(
+            size.value(),
+            &PropertyGridValue::token("width 120px, height 64px")
+        );
+        assert!(
+            size.children()
+                .iter()
+                .any(|row| row.label() == "Width"
+                    && row.value() == &PropertyGridValue::token("120px"))
+        );
+        assert!(
+            size.children()
+                .iter()
+                .any(|row| row.label() == "Height"
+                    && row.value() == &PropertyGridValue::token("64px"))
         );
     }
 

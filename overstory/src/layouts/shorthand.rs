@@ -331,6 +331,30 @@ impl Layout {
         join_summary_parts(summaries, "; ")
     }
 
+    pub(crate) fn inspection_fields(&self) -> Vec<(&'static str, String)> {
+        let parts = self.clone().into_parts();
+        let mut fields = Vec::new();
+        if let Some(container) = parts.container {
+            fields.push(("Container", container.inspection_summary()));
+        }
+        if let Some(size) = parts.size {
+            fields.push(("Size", size.inspection_summary()));
+        }
+        if let Some(spacing) = parts.spacing {
+            fields.push(("Spacing", spacing.inspection_summary()));
+        }
+        if let Some(alignment) = parts.alignment {
+            fields.push(("Alignment", alignment.inspection_summary()));
+        }
+        if let Some(overflow) = parts.overflow {
+            fields.push(("Overflow", overflow.inspection_summary()));
+        }
+        if let Some(placement) = parts.placement {
+            fields.push(("Placement", placement.inspection_summary()));
+        }
+        fields
+    }
+
     pub(crate) fn merge_container(&mut self, container: LayoutContainer) {
         self.container.merge_from(container);
     }
