@@ -208,7 +208,12 @@ impl PropertyGridOrigin {
     #[must_use]
     pub fn new(label: impl Into<String>) -> Self {
         let label = label.into();
-        let description = default_origin_description(&label);
+        let description = match label.as_str() {
+            "effective" => String::from(
+                "Resolved value after local stores, styles, inheritance, defaults, and presentation overrides.",
+            ),
+            _ => format!("Value source: {label}"),
+        };
         Self { label, description }
     }
 
@@ -707,7 +712,12 @@ fn append_grid_value(
             );
         }
         PropertyGridValue::Bool(value) => {
-            append_bool_chip(ui, parent, *value);
+            let foreground = if *value {
+                primary_text_brush(ui)
+            } else {
+                muted_text_brush(ui)
+            };
+            append_chip(ui, parent, bool_summary(*value), foreground);
         }
         PropertyGridValue::Count(value) => {
             append_grid_text(
@@ -725,7 +735,7 @@ fn append_grid_value(
             wire_element_link(ui, chip, link.element(), actions);
         }
         PropertyGridValue::Token(token) => {
-            append_token_chip(ui, parent, token.label());
+            append_chip(ui, parent, token.label(), primary_text_brush(ui));
         }
         PropertyGridValue::Color(color) => {
             append_color_value(ui, parent, color);
@@ -756,19 +766,6 @@ fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>
         false,
     );
     chip
-}
-
-fn append_bool_chip(ui: &mut Ui, parent: ElementId, value: bool) -> ElementId {
-    let foreground = if value {
-        primary_text_brush(ui)
-    } else {
-        muted_text_brush(ui)
-    };
-    append_chip(ui, parent, bool_summary(value), foreground)
-}
-
-fn append_token_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
-    append_chip(ui, parent, content, primary_text_brush(ui))
 }
 
 fn append_chip(
@@ -837,15 +834,6 @@ fn append_origin_chip(ui: &mut Ui, parent: ElementId, origin: &PropertyGridOrigi
         false,
     );
     chip
-}
-
-fn default_origin_description(label: &str) -> String {
-    match label {
-        "effective" => String::from(
-            "Resolved value after local stores, styles, inheritance, defaults, and presentation overrides.",
-        ),
-        _ => format!("Value source: {label}"),
-    }
 }
 
 fn set_grid_surface(
