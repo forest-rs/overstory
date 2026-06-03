@@ -39,8 +39,8 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
@@ -52,6 +52,8 @@ pub const PART_BUTTON_LABEL: PartTag = PartTag(1);
 /// Semantic slot for Button content.
 pub const SLOT_BUTTON_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_BUTTON_LABEL);
+
+const BUTTON_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_BUTTON_CONTENT];
 
 /// Builder + spec for a `Button`. Use [`Button::new`] to start a
 /// chain, configure with the chaining methods, and pass to
@@ -255,6 +257,10 @@ impl Widget for ButtonWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&BUTTON_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(BUTTON_TEMPLATE_REQUIRED_SLOTS, &[])
     }
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {

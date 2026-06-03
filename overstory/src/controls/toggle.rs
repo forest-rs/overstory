@@ -29,7 +29,7 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -43,6 +43,8 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the toggle thumb.
 pub const SLOT_TOGGLE_THUMB: TemplateSlot =
     TemplateSlot::new("toggle-thumb").with_part_tag(PART_TOGGLE_THUMB);
+
+const TOGGLE_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_TOGGLE_THUMB];
 
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
@@ -220,6 +222,10 @@ impl Widget for ToggleWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TOGGLE_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(TOGGLE_TEMPLATE_REQUIRED_SLOTS, &[])
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

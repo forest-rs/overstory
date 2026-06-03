@@ -35,8 +35,8 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -53,6 +53,9 @@ pub const SLOT_SELECT_LABEL: TemplateSlot =
 /// Semantic slot for the collapsed dropdown indicator.
 pub const SLOT_SELECT_INDICATOR: TemplateSlot =
     TemplateSlot::new("select-indicator").with_part_tag(PART_SELECT_INDICATOR);
+
+const SELECT_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SELECT_LABEL];
+const SELECT_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_SELECT_INDICATOR];
 
 const DEFAULT_SELECT_WIDTH: f32 = 220.0;
 const DEFAULT_SELECT_HEIGHT: f32 = 38.0;
@@ -319,6 +322,13 @@ impl Widget for SelectWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SELECT_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            SELECT_TEMPLATE_REQUIRED_SLOTS,
+            SELECT_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn template_expanded(&mut self, select: ElementId, ui: &mut Ui) {

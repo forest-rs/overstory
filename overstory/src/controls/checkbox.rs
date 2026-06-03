@@ -29,8 +29,8 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -54,6 +54,10 @@ pub const SLOT_CHECK_BOX_MARK: TemplateSlot =
 /// Semantic slot for the visible label.
 pub const SLOT_CHECK_BOX_LABEL: TemplateSlot =
     TemplateSlot::new("check-label").with_part_tag(PART_CHECK_BOX_LABEL);
+
+const CHECK_BOX_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
+    &[SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL];
+const CHECK_BOX_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_CHECK_BOX_MARK];
 
 /// Builder + spec for a `CheckBox`.
 pub struct CheckBox {
@@ -241,6 +245,13 @@ impl Widget for CheckBoxWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&CHECK_BOX_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            CHECK_BOX_TEMPLATE_REQUIRED_SLOTS,
+            CHECK_BOX_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

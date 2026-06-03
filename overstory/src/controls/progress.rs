@@ -24,7 +24,7 @@ use crate::controls::support::read_local_or;
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
@@ -42,6 +42,9 @@ pub const SLOT_PROGRESS_BAR_FILL: TemplateSlot =
 /// Semantic slot for the optional text label.
 pub const SLOT_PROGRESS_BAR_LABEL: TemplateSlot =
     TemplateSlot::new("progress-label").with_part_tag(PART_PROGRESS_BAR_LABEL);
+
+const PROGRESS_BAR_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_PROGRESS_BAR_FILL];
+const PROGRESS_BAR_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_PROGRESS_BAR_LABEL];
 
 const DEFAULT_WIDTH: f32 = 260.0;
 const DEFAULT_HEIGHT: f32 = 18.0;
@@ -214,6 +217,13 @@ impl Widget for ProgressBarWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&PROGRESS_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            PROGRESS_BAR_TEMPLATE_REQUIRED_SLOTS,
+            PROGRESS_BAR_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 }
 

@@ -25,8 +25,8 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, SurfacePartWidget};
@@ -57,6 +57,15 @@ pub const SLOT_ACCORDION_SECTION_LABEL: TemplateSlot =
 /// Semantic slot for an accordion section's content host.
 pub const SLOT_ACCORDION_SECTION_CONTENT: TemplateSlot =
     TemplateSlot::new("accordion-section-content").with_part_tag(PART_ACCORDION_SECTION_CONTENT);
+
+const ACCORDION_SECTION_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[
+    SLOT_ACCORDION_SECTION_HEADER,
+    SLOT_ACCORDION_SECTION_CONTENT,
+];
+const ACCORDION_SECTION_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[
+    SLOT_ACCORDION_SECTION_DISCLOSURE,
+    SLOT_ACCORDION_SECTION_LABEL,
+];
 
 type AccordionExpandedChangedHandler = EventHandler<AccordionExpandedChangedEvent>;
 type AccordionExpandedChangedSlot = CallbackSlot<AccordionExpandedChangedEvent>;
@@ -377,6 +386,13 @@ impl Widget for AccordionSectionWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&ACCORDION_SECTION_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            ACCORDION_SECTION_TEMPLATE_REQUIRED_SLOTS,
+            ACCORDION_SECTION_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

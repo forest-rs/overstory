@@ -26,8 +26,8 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -57,6 +57,11 @@ pub const SLOT_EXPANDER_LABEL: TemplateSlot =
 /// Semantic slot for the content host.
 pub const SLOT_EXPANDER_CONTENT: TemplateSlot =
     TemplateSlot::new("expander-content").with_part_tag(PART_EXPANDER_CONTENT);
+
+const EXPANDER_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
+    &[SLOT_EXPANDER_HEADER, SLOT_EXPANDER_CONTENT];
+const EXPANDER_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] =
+    &[SLOT_EXPANDER_DISCLOSURE, SLOT_EXPANDER_LABEL];
 
 type ExpandedChangedHandler = EventHandler<ExpandedChangedEvent>;
 type ExpandedChangedSlot = CallbackSlot<ExpandedChangedEvent>;
@@ -225,6 +230,13 @@ impl Widget for ExpanderWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&EXPANDER_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            EXPANDER_TEMPLATE_REQUIRED_SLOTS,
+            EXPANDER_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

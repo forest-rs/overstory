@@ -64,6 +64,59 @@ pub trait Template: Sync {
     fn instantiate(&self, cx: &mut TemplateContext<'_>);
 }
 
+/// Control-declared expectations for a visual template.
+///
+/// The contract belongs to the control, not the template instance: the control
+/// knows which semantic slots its behavior can use, while each concrete
+/// template chooses which generated elements fill those slots. Inspectors use
+/// this to report missing custom-template parts without hardcoding per-control
+/// knowledge.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct TemplateContract {
+    required_slots: &'static [TemplateSlot],
+    recommended_slots: &'static [TemplateSlot],
+}
+
+impl TemplateContract {
+    /// Empty contract for widgets with no required template surface.
+    pub const EMPTY: Self = Self::new(&[], &[]);
+
+    /// Creates a contract from required and recommended semantic slots.
+    #[must_use]
+    #[inline]
+    pub const fn new(
+        required_slots: &'static [TemplateSlot],
+        recommended_slots: &'static [TemplateSlot],
+    ) -> Self {
+        Self {
+            required_slots,
+            recommended_slots,
+        }
+    }
+
+    /// Returns slots that should be present for full control behavior.
+    #[must_use]
+    #[inline]
+    pub const fn required_slots(self) -> &'static [TemplateSlot] {
+        self.required_slots
+    }
+
+    /// Returns slots that improve styling, diagnostics, or default visuals but
+    /// are not required for core behavior.
+    #[must_use]
+    #[inline]
+    pub const fn recommended_slots(self) -> &'static [TemplateSlot] {
+        self.recommended_slots
+    }
+
+    /// Returns whether this contract declares no slots.
+    #[must_use]
+    #[inline]
+    pub const fn is_empty(self) -> bool {
+        self.required_slots.is_empty() && self.recommended_slots.is_empty()
+    }
+}
+
 /// Stable per-template item key for repeated template parts.
 ///
 /// Single parts normally use `None`. Repeated parts, such as generated slider

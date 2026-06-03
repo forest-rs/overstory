@@ -33,7 +33,9 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
+use crate::template::{
+    Template, TemplateChild, TemplateContext, TemplateContract, TemplateItemKey, TemplateSlot,
+};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -67,6 +69,10 @@ pub const SLOT_SLIDER_TICK: TemplateSlot =
 /// Semantic repeated slot for slider tick labels.
 pub const SLOT_SLIDER_TICK_LABEL: TemplateSlot =
     TemplateSlot::new("slider-tick-label").with_part_tag(PART_SLIDER_TICK_LABEL);
+
+const SLIDER_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SLIDER_TRACK, SLOT_SLIDER_THUMB];
+const SLIDER_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] =
+    &[SLOT_SLIDER_AXIS, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL];
 /// Class applied to major slider tick marks and labels.
 pub const CLASS_SLIDER_MAJOR_TICK: ClassId = ClassId(1);
 /// Class applied to minor slider tick marks and labels.
@@ -302,6 +308,13 @@ impl Widget for SliderWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SLIDER_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            SLIDER_TEMPLATE_REQUIRED_SLOTS,
+            SLIDER_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

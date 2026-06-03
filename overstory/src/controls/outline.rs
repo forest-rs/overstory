@@ -43,8 +43,8 @@ use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
 use crate::template::{
-    TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode, TemplateSlot,
+    TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
@@ -65,6 +65,9 @@ pub const SLOT_OUTLINE_ITEM_DISCLOSURE: TemplateSlot =
 /// Semantic slot for the visible row label.
 pub const SLOT_OUTLINE_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("label").with_part_tag(PART_OUTLINE_ITEM_LABEL);
+
+const OUTLINE_ITEM_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_OUTLINE_ITEM_LABEL];
+const OUTLINE_ITEM_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_OUTLINE_ITEM_DISCLOSURE];
 
 const DEFAULT_OUTLINE_WIDTH: f32 = 220.0;
 const DEFAULT_OUTLINE_HEIGHT: f32 = 160.0;
@@ -1135,6 +1138,13 @@ impl Widget for OutlineItemWidget {
 
     fn default_template(&self) -> Option<&'static dyn crate::Template> {
         Some(&OUTLINE_ITEM_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            OUTLINE_ITEM_TEMPLATE_REQUIRED_SLOTS,
+            OUTLINE_ITEM_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

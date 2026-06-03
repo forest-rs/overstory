@@ -128,6 +128,8 @@ pub struct ElementInspectionRow {
     pub template_slot: Option<&'static str>,
     /// Repeated template item key for this element, if any.
     pub template_key: Option<u64>,
+    /// Control-declared template contract status, when this element owns one.
+    pub template_contract: Option<TemplateContractInspection>,
     /// Sorted class identifiers active on the element.
     pub classes: Vec<ClassId>,
     /// Sorted pseudoclass identifiers active on the element.
@@ -151,6 +153,36 @@ pub struct ElementInspectionRow {
     /// provenance is intentionally left for future drill-down APIs so the main
     /// property grid can stay readable.
     pub properties: Vec<ElementPropertyInspectionRow>,
+}
+
+/// Inspectable status for a control's declared template contract.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TemplateContractInspection {
+    /// Required slots and whether the expanded template provided them.
+    pub required_slots: Vec<TemplateSlotInspectionRow>,
+    /// Recommended slots and whether the expanded template provided them.
+    pub recommended_slots: Vec<TemplateSlotInspectionRow>,
+}
+
+impl TemplateContractInspection {
+    /// Returns whether any required slot is missing.
+    #[must_use]
+    pub fn has_missing_required_slots(&self) -> bool {
+        self.required_slots
+            .iter()
+            .any(|slot| slot.element.is_none())
+    }
+}
+
+/// Inspectable status for one semantic template slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TemplateSlotInspectionRow {
+    /// Stable semantic slot name.
+    pub name: &'static str,
+    /// Owner-local part tag coupled to the slot, if any.
+    pub part_tag: Option<PartTag>,
+    /// Generated element that fills the slot, or `None` when missing.
+    pub element: Option<ElementId>,
 }
 
 /// One inspectable dependency-property value for an element.

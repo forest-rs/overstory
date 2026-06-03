@@ -33,7 +33,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
@@ -50,6 +50,8 @@ pub const PART_SCROLL_BAR_THUMB: PartTag = PartTag(1);
 /// Semantic slot for the draggable scrollbar thumb.
 pub const SLOT_SCROLL_BAR_THUMB: TemplateSlot =
     TemplateSlot::new("scrollbar-thumb").with_part_tag(PART_SCROLL_BAR_THUMB);
+
+const SCROLL_BAR_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SCROLL_BAR_THUMB];
 
 pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
 const DEFAULT_SCROLL_AREA_WIDTH: f32 = 220.0;
@@ -863,6 +865,10 @@ impl Widget for ScrollBarWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&SCROLL_BAR_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(SCROLL_BAR_TEMPLATE_REQUIRED_SLOTS, &[])
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {

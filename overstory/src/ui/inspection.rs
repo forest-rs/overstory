@@ -10,8 +10,8 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
-    TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    TemplateContractInspection, TemplateSlotInspectionRow, TimelineInspectionSnapshot,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
@@ -117,6 +117,7 @@ impl Ui {
             part_tag: element.part_tag(),
             template_slot,
             template_key,
+            template_contract: self.template_contract_inspection(element),
             classes: element.classes().to_vec(),
             pseudos: element.pseudos().to_vec(),
             state: ElementStateInspection {
@@ -140,6 +141,37 @@ impl Ui {
                 .map(SurfaceInspectionId::from_surface),
             composition_policy: self.composition.policy_for(id),
             properties: self.element_property_inspection_rows(element),
+        })
+    }
+
+    fn template_contract_inspection(
+        &self,
+        element: &crate::Element,
+    ) -> Option<TemplateContractInspection> {
+        let contract = element.widget()?.template_contract();
+        if contract.is_empty() {
+            return None;
+        }
+        let instance = self.template_instance(element.id());
+        Some(TemplateContractInspection {
+            required_slots: contract
+                .required_slots()
+                .iter()
+                .map(|slot| TemplateSlotInspectionRow {
+                    name: slot.name(),
+                    part_tag: slot.part_tag(),
+                    element: instance.and_then(|instance| instance.slot(*slot)),
+                })
+                .collect(),
+            recommended_slots: contract
+                .recommended_slots()
+                .iter()
+                .map(|slot| TemplateSlotInspectionRow {
+                    name: slot.name(),
+                    part_tag: slot.part_tag(),
+                    element: instance.and_then(|instance| instance.slot(*slot)),
+                })
+                .collect(),
         })
     }
 

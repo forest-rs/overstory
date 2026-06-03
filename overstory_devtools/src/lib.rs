@@ -26,8 +26,9 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, StyleTokenInspectionName, SurfaceInspectionId, UiInspectionChanges,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    LayerInspectionId, StyleTokenInspectionName, SurfaceInspectionId, TemplateContractInspection,
+    TemplateSlotInspectionRow, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
@@ -289,14 +290,7 @@ fn filter_inspection_changes(
             }
             row.children
                 .retain(|child| target.element_is_included(*child));
-            if row
-                .templated_parent
-                .is_some_and(|owner| !target.element_is_included(owner))
-            {
-                row.templated_parent = None;
-                row.template_slot = None;
-                row.template_key = None;
-            }
+            sanitize_template_links(&mut row, |element| target.element_is_included(element));
             row
         })
         .collect();
@@ -393,14 +387,7 @@ impl DevtoolsSnapshot {
             }
             row.children
                 .retain(|child| contains_element(&live_elements, *child));
-            if row
-                .templated_parent
-                .is_some_and(|owner| !contains_element(&live_elements, owner))
-            {
-                row.templated_parent = None;
-                row.template_slot = None;
-                row.template_key = None;
-            }
+            sanitize_template_links(row, |element| contains_element(&live_elements, element));
         }
 
         self.inspection.elements = ordered_element_rows(
@@ -620,6 +607,35 @@ fn push_ordered_row(
     }
 }
 
+fn sanitize_template_links(
+    row: &mut ElementInspectionRow,
+    is_included: impl Fn(ElementId) -> bool,
+) {
+    if row
+        .templated_parent
+        .is_some_and(|owner| !is_included(owner))
+    {
+        row.templated_parent = None;
+        row.template_slot = None;
+        row.template_key = None;
+    }
+    if let Some(contract) = &mut row.template_contract {
+        sanitize_template_slot_links(&mut contract.required_slots, &is_included);
+        sanitize_template_slot_links(&mut contract.recommended_slots, &is_included);
+    }
+}
+
+fn sanitize_template_slot_links(
+    slots: &mut [TemplateSlotInspectionRow],
+    is_included: &impl Fn(ElementId) -> bool,
+) {
+    for slot in slots {
+        if slot.element.is_some_and(|element| !is_included(element)) {
+            slot.element = None;
+        }
+    }
+}
+
 fn filter_inspection_snapshot(
     mut snapshot: UiInspectionSnapshot,
     root: ElementId,
@@ -640,14 +656,7 @@ fn filter_inspection_snapshot(
             }
             row.children
                 .retain(|child| contains_element(&included, *child));
-            if row
-                .templated_parent
-                .is_some_and(|owner| !contains_element(&included, owner))
-            {
-                row.templated_parent = None;
-                row.template_slot = None;
-                row.template_key = None;
-            }
+            sanitize_template_links(&mut row, |element| contains_element(&included, element));
             row
         })
         .collect();
@@ -1227,7 +1236,7 @@ fn selected_element_property_grid(
             row.templated_parent,
         ));
 
-    let template = PropertyGridSection::new("Template")
+    let mut template = PropertyGridSection::new("Template")
         .row(PropertyGridRow::new("Role", template_role(snapshot, row)))
         .row(PropertyGridRow::new(
             "Owned part count",
@@ -1248,6 +1257,33 @@ fn selected_element_property_grid(
                 .map_or_else(PropertyGridValue::empty, PropertyGridValue::token),
         ))
         .row(PropertyGridRow::new("Key", optional_u64(row.template_key)));
+    if row.templated_parent.is_some() {
+        template.push_row(element_relation_row(
+            snapshot,
+            "Routed physical source",
+            Some(row.id),
+        ));
+        template.push_row(element_relation_row(
+            snapshot,
+            "Routed semantic target",
+            row.templated_parent,
+        ));
+    }
+    if let Some(contract) = &row.template_contract {
+        template.push_row(template_contract_status_row(contract));
+        template.push_row(template_contract_slots_row(
+            snapshot,
+            "Required slots",
+            &contract.required_slots,
+        ));
+        if !contract.recommended_slots.is_empty() {
+            template.push_row(template_contract_slots_row(
+                snapshot,
+                "Recommended slots",
+                &contract.recommended_slots,
+            ));
+        }
+    }
 
     let style = PropertyGridSection::new("Style")
         .row(class_list_row(snapshot, row))
@@ -1354,6 +1390,40 @@ fn element_relation_summary(snapshot: &DevtoolsSnapshot, element: ElementId) -> 
             )
         },
     )
+}
+
+fn template_contract_status_row(contract: &TemplateContractInspection) -> PropertyGridRow {
+    let status = if contract.has_missing_required_slots() {
+        PropertyGridValue::token("missing required")
+    } else {
+        PropertyGridValue::token("satisfied")
+    };
+    PropertyGridRow::new("Contract", status)
+}
+
+fn template_contract_slots_row(
+    snapshot: &DevtoolsSnapshot,
+    label: &str,
+    slots: &[TemplateSlotInspectionRow],
+) -> PropertyGridRow {
+    let mut row = PropertyGridRow::new(label, PropertyGridValue::count(slots.len()));
+    for slot in slots {
+        row.push_child(template_contract_slot_row(snapshot, slot));
+    }
+    row
+}
+
+fn template_contract_slot_row(
+    snapshot: &DevtoolsSnapshot,
+    slot: &TemplateSlotInspectionRow,
+) -> PropertyGridRow {
+    let value = slot.element.map_or_else(
+        || PropertyGridValue::token("missing"),
+        |element| {
+            PropertyGridValue::element_link(element, element_relation_summary(snapshot, element))
+        },
+    );
+    PropertyGridRow::new(slot.name, value)
 }
 
 fn child_relation_label(
@@ -2483,6 +2553,16 @@ mod tests {
             .iter()
             .find(|row| row.label() == "Owned part count")
             .expect("template section should expose owned part count");
+        let contract = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Contract")
+            .expect("template section should expose template contract status");
+        let required_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Required slots")
+            .expect("template section should expose required slots");
 
         assert_eq!(role.value(), &PropertyGridValue::text("templated control"));
         assert_eq!(type_tag.value(), &PropertyGridValue::token("Button"));
@@ -2491,10 +2571,48 @@ mod tests {
             "main details should not expose raw type tag ids"
         );
         assert_eq!(owned_parts.value(), &PropertyGridValue::count(1));
+        assert_eq!(contract.value(), &PropertyGridValue::token("satisfied"));
+        assert_eq!(required_slots.value(), &PropertyGridValue::count(1));
+        assert_eq!(required_slots.children()[0].label(), "content");
+        assert_eq!(
+            required_slots.children()[0].value(),
+            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+        );
         assert_eq!(children.children()[0].label(), "Part 0");
         assert_eq!(
             children.children()[0].value(),
             &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+        );
+
+        let label_row = snapshot
+            .element(label)
+            .expect("button content should be inspectable");
+        let label_grid = selected_element_property_grid(&snapshot, label_row);
+        let label_template = label_grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("template part grid should contain template section");
+        let physical_source = label_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Routed physical source")
+            .expect("template part should expose routed physical source");
+        let semantic_target = label_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Routed semantic target")
+            .expect("template part should expose routed semantic target");
+        assert_eq!(
+            physical_source.value(),
+            &PropertyGridValue::element_link(label, format!("Text {}", element_id_summary(label)))
+        );
+        assert_eq!(
+            semantic_target.value(),
+            &PropertyGridValue::element_link(
+                button,
+                format!("Button {}", element_id_summary(button))
+            )
         );
     }
 

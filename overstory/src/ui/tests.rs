@@ -1672,6 +1672,71 @@ fn template_overrides_replace_visuals_not_control_behavior() {
 }
 
 #[test]
+fn inspection_reports_template_contract_slot_status() {
+    use crate::{Button, SLOT_BUTTON_CONTENT, Template, TemplateChild, TextWidget};
+
+    struct EmptyButtonTemplate;
+    impl Template for EmptyButtonTemplate {
+        fn instantiate(&self, _cx: &mut TemplateContext<'_>) {}
+    }
+
+    struct ContentButtonTemplate;
+    impl Template for ContentButtonTemplate {
+        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+            let _content = cx.insert(TemplateChild::slot(
+                SLOT_BUTTON_CONTENT,
+                Box::new(TextWidget),
+            ));
+        }
+    }
+
+    static EMPTY_TEMPLATE: EmptyButtonTemplate = EmptyButtonTemplate;
+    static CONTENT_TEMPLATE: ContentButtonTemplate = ContentButtonTemplate;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let default_button = ui.append(root, Button::new("Default"));
+    let empty_button = ui.append(root, Button::new("Empty").template(&EMPTY_TEMPLATE));
+    let custom_button = ui.append(root, Button::new("Custom").template(&CONTENT_TEMPLATE));
+
+    let snapshot = ui.inspection_snapshot();
+    let default_contract = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == default_button)
+        .and_then(|row| row.template_contract.as_ref())
+        .expect("default button should expose a template contract");
+    assert_eq!(default_contract.required_slots[0].name, "content");
+    assert_eq!(
+        default_contract.required_slots[0].element,
+        ui.slot(default_button, SLOT_BUTTON_CONTENT)
+    );
+    assert!(!default_contract.has_missing_required_slots());
+
+    let empty_contract = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == empty_button)
+        .and_then(|row| row.template_contract.as_ref())
+        .expect("custom button should expose the same control contract");
+    assert_eq!(empty_contract.required_slots[0].name, "content");
+    assert_eq!(empty_contract.required_slots[0].element, None);
+    assert!(empty_contract.has_missing_required_slots());
+
+    let custom_contract = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == custom_button)
+        .and_then(|row| row.template_contract.as_ref())
+        .expect("custom template with content should expose contract status");
+    assert_eq!(
+        custom_contract.required_slots[0].element,
+        ui.slot(custom_button, SLOT_BUTTON_CONTENT)
+    );
+    assert!(!custom_contract.has_missing_required_slots());
+}
+
+#[test]
 fn surface_template_parts_do_not_match_generic_type_selector() {
     use crate::Slider;
 

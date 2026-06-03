@@ -29,8 +29,8 @@ use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
-    TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode, TemplateSlot,
+    TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -44,6 +44,8 @@ pub const PART_SEGMENTED_ITEM_LABEL: PartTag = PartTag(1);
 /// Semantic slot for a segment's visible label.
 pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("segmented-label").with_part_tag(PART_SEGMENTED_ITEM_LABEL);
+
+const SEGMENTED_ITEM_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SEGMENTED_ITEM_LABEL];
 
 const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
 
@@ -388,6 +390,10 @@ impl Widget for SegmentedItemWidget {
 
     fn default_template(&self) -> Option<&'static dyn crate::Template> {
         Some(&SEGMENTED_ITEM_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(SEGMENTED_ITEM_TEMPLATE_REQUIRED_SLOTS, &[])
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

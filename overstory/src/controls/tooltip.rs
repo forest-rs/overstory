@@ -34,8 +34,8 @@ use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateNode, TemplateSlot, TemplateSpec,
-    TemplateWidgetFactory,
+    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
+    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -47,6 +47,8 @@ pub const PART_TOOLTIP_LABEL: PartTag = PartTag(1);
 /// Semantic slot for tooltip label content.
 pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_TOOLTIP_LABEL);
+
+const TOOLTIP_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_TOOLTIP_CONTENT];
 
 /// Builder + retained configuration for a tooltip.
 #[derive(Clone, Debug)]
@@ -232,6 +234,10 @@ impl Widget for TooltipWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TOOLTIP_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(TOOLTIP_TEMPLATE_REQUIRED_SLOTS, &[])
     }
 
     fn is_hit_test_visible(&self, _element: &Element) -> bool {

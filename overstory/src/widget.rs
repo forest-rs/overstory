@@ -67,7 +67,7 @@ use crate::properties::BuiltInProperties;
 pub use crate::spec_ext::{
     ControlStateSpecExt, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, TextSpecExt,
 };
-use crate::template::{Template, TemplateSlot};
+use crate::template::{Template, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
@@ -197,6 +197,16 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
+    /// Returns the semantic slots this widget expects its template to expose.
+    ///
+    /// The default empty contract is appropriate for non-templated widgets and
+    /// controls whose behavior does not depend on named generated parts.
+    /// Templated controls override this so custom templates can be diagnosed
+    /// without the inspector knowing control-specific details.
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::EMPTY
+    }
+
     /// Called after this widget's default template has expanded.
     ///
     /// Most widgets have all state in properties or template bindings and do
@@ -314,7 +324,8 @@ impl dyn Widget {
 }
 
 /// Widget wrapper that replaces a control's default template without changing
-/// the wrapped widget's selector identity, presentation, or measure behavior.
+/// the wrapped widget's selector identity, semantic contract, presentation, or
+/// measure behavior.
 pub(crate) struct TemplateOverrideWidget<W> {
     widget: W,
     template: &'static dyn Template,
@@ -396,6 +407,10 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(self.template)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        self.widget.template_contract()
     }
 
     fn template_expanded(&mut self, id: ElementId, ui: &mut Ui) {

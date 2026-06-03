@@ -30,7 +30,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateSlot};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
@@ -53,6 +53,10 @@ pub const SLOT_TEXT_INPUT_CARET: TemplateSlot =
 /// Semantic slot for the current selection highlight.
 pub const SLOT_TEXT_INPUT_SELECTION: TemplateSlot =
     TemplateSlot::new("text-input-selection").with_part_tag(PART_TEXT_INPUT_SELECTION);
+
+const TEXT_INPUT_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
+    &[SLOT_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET];
+const TEXT_INPUT_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_TEXT_INPUT_SELECTION];
 
 const TEXT_INPUT_WIDTH: f32 = 280.0;
 const TEXT_INPUT_HEIGHT: f32 = 40.0;
@@ -313,6 +317,13 @@ impl Widget for TextInputWidget {
 
     fn default_template(&self) -> Option<&'static dyn Template> {
         Some(&TEXT_INPUT_TEMPLATE)
+    }
+
+    fn template_contract(&self) -> TemplateContract {
+        TemplateContract::new(
+            TEXT_INPUT_TEMPLATE_REQUIRED_SLOTS,
+            TEXT_INPUT_TEMPLATE_RECOMMENDED_SLOTS,
+        )
     }
 
     fn template_expanded(&mut self, input: ElementId, ui: &mut Ui) {
