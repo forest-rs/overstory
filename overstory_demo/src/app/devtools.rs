@@ -184,17 +184,17 @@ fn open_in_process_devtools(
 
     let dock = ui.append(
         ui.root(),
-        Panel::column(12.0)
+        Panel::column(10.0)
             .class(CLASS_DEMO_CARD)
             .class(CLASS_DEVTOOLS_INSPECTOR_CARD)
             .layout(
-                Layout::column(12.0)
+                Layout::column(10.0)
                     .size(
                         LayoutSize::new()
                             .width(LayoutDimension::Logical(DEVTOOLS_INSPECTOR_WIDTH))
                             .height(LayoutDimension::Percent(1.0)),
                     )
-                    .padding_all(14.0)
+                    .padding_all(12.0)
                     .flex_shrink(0.0),
             ),
     );
@@ -203,7 +203,7 @@ fn open_in_process_devtools(
         let dock_id = dock.parent();
         let shell_for_panel = shell.clone();
         dock.with_child(Panel::row(10.0).align_center(), |header| {
-            header.add(card_title("IN-PROCESS DEVTOOLS"));
+            header.add(card_title("DEVTOOLS INSPECTOR"));
             let refresh = header.add(
                 Button::new("Refresh now")
                     .font_size(13.0)
@@ -222,7 +222,7 @@ fn open_in_process_devtools(
                 .class(CLASS_DEMO_CAPTION)
                 .class(CLASS_DEVTOOLS_STATUS)
                 .wrap()
-                .layout(Layout::new().logical_size(DEVTOOLS_INSPECTOR_WIDTH - 28.0, 44.0)),
+                .layout(Layout::new().logical_size(DEVTOOLS_INSPECTOR_WIDTH - 24.0, 70.0)),
         );
         shell.set_status(status);
         shell.update_status(dock.ui_mut(), 0, None);
@@ -282,7 +282,7 @@ fn format_live_stream_status(
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(
-        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}. Last frame: prepare {}, layout {}, surface refresh {}, compose {}, backend {}, painted {}, surface updates {}",
+        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}.\nFrame - prepare {}, layout {}, surface refresh {}, compose {}, backend {}.\nRealization - widgets {}, changes {}, painted {}, surface updates {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,
@@ -291,6 +291,8 @@ fn format_live_stream_status(
         duration_summary(timings.surface_refresh),
         duration_summary(timings.compose),
         optional_duration_summary(renderer.total),
+        frame.element_realize_widgets,
+        frame.element_realize_changes,
         frame.painted_elements,
         frame.composition_surface_updates,
     )

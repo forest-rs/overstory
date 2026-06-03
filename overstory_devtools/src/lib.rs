@@ -1243,15 +1243,15 @@ fn selected_element_property_grid(
     snapshot: &DevtoolsSnapshot,
     row: &ElementInspectionRow,
 ) -> PropertyGrid {
-    let identity = PropertyGridSection::new("Identity")
+    let identity = PropertyGridSection::new("Element")
         .row(PropertyGridRow::new(
-            "Element",
+            "Element id",
             format!("{}:{}", row.id.slot(), row.id.generation()),
         ))
         .row(PropertyGridRow::new("Type", element_type_label(row)))
         .row(PropertyGridRow::new("Role", element_role(snapshot, row)))
         .row(PropertyGridRow::new(
-            "Widget identity",
+            "Selector identity",
             row.has_widget_identity,
         ))
         .row(type_tag_row(row));
@@ -1276,7 +1276,7 @@ fn selected_element_property_grid(
             PropertyGridValue::count(row.children.len() - MAX_RELATIONSHIP_CHILDREN),
         ));
     }
-    let tree = PropertyGridSection::new("Tree")
+    let tree = PropertyGridSection::new("Hierarchy")
         .row(element_relation_row(snapshot, "Parent", row.parent))
         .row(children)
         .row(element_relation_row(
@@ -1288,7 +1288,7 @@ fn selected_element_property_grid(
     let template = PropertyGridSection::new("Template")
         .row(PropertyGridRow::new("Role", template_role(snapshot, row)))
         .row(PropertyGridRow::new(
-            "Owned parts",
+            "Owned part count",
             template_part_count(snapshot, row.id),
         ))
         .row(element_relation_row(
@@ -1326,7 +1326,7 @@ fn selected_element_property_grid(
             row.state.pointer_captured,
         ));
 
-    let layout = PropertyGridSection::new("Layout")
+    let layout = PropertyGridSection::new("Geometry")
         .row(PropertyGridRow::new("Bounds", rect_summary(row.bounds)));
 
     let mut layer = PropertyGridRow::new("Layer", optional_layer_id(row.layer));
@@ -1368,11 +1368,11 @@ fn selected_element_property_grid(
     let composition = PropertyGridSection::new("Composition")
         .row(layer)
         .row(PropertyGridRow::new(
-            "Surface",
+            "Surface id",
             optional_surface_id(row.surface),
         ))
         .row(PropertyGridRow::new(
-            "Policy",
+            "Layer policy",
             format!("{:?}", row.composition_policy),
         ));
 
@@ -1498,7 +1498,7 @@ fn property_grid_sections(row: &ElementInspectionRow) -> Vec<PropertyGridSection
         &mut sections,
         row,
         ElementPropertyInspectionGroup::Layout,
-        "Layout Properties",
+        "Layout inputs",
     );
     push_property_group(
         &mut sections,
@@ -1510,7 +1510,7 @@ fn property_grid_sections(row: &ElementInspectionRow) -> Vec<PropertyGridSection
         &mut sections,
         row,
         ElementPropertyInspectionGroup::Control,
-        "Control Properties",
+        "Control inputs",
     );
     push_property_group(
         &mut sections,
@@ -2159,13 +2159,13 @@ mod tests {
         let tree = grid
             .sections()
             .iter()
-            .find(|section| section.title() == "Tree")
-            .expect("grid should contain tree section");
+            .find(|section| section.title() == "Hierarchy")
+            .expect("grid should contain hierarchy section");
         let children = tree
             .rows()
             .iter()
             .find(|row| row.label() == "Children")
-            .expect("tree section should contain children row");
+            .expect("hierarchy section should contain children row");
 
         assert_eq!(children.value(), &PropertyGridValue::count(1));
         assert_eq!(children.children().len(), 1);
@@ -2282,16 +2282,16 @@ mod tests {
         let mut inspector = Ui::new();
         let root = inspector.root();
         let elements = append_inspection_view(&mut inspector, root, &snapshot, Some(selected));
-        let identity_section = inspector
+        let element_section = inspector
             .get(elements.details)
             .and_then(|details| details.children().first().copied())
-            .expect("details should contain identity section");
-        let identity_header = inspector
-            .get(identity_section)
+            .expect("details should contain element section");
+        let element_header = inspector
+            .get(element_section)
             .and_then(|section| section.children().first().copied())
-            .expect("identity section should contain a header");
+            .expect("element section should contain a header");
         let header_children = inspector
-            .get(identity_header)
+            .get(element_header)
             .map(overstory::Element::children)
             .expect("section header should exist");
         assert_eq!(
@@ -2303,7 +2303,7 @@ mod tests {
             inspector
                 .get(header_children[0])
                 .and_then(|element| element.get_local_value(inspector.properties().content)),
-            Some(&String::from("IDENTITY"))
+            Some(&String::from("ELEMENT"))
         );
         assert_eq!(
             inspector
@@ -2312,9 +2312,9 @@ mod tests {
             Some(&String::from("6"))
         );
         let element_row = inspector
-            .get(identity_section)
+            .get(element_section)
             .and_then(|section| section.children().get(1).copied())
-            .expect("identity section should contain an element row after its header");
+            .expect("element section should contain an element id row after its header");
 
         let row_children = inspector
             .get(element_row)
@@ -2486,23 +2486,23 @@ mod tests {
         let identity = grid
             .sections()
             .iter()
-            .find(|section| section.title() == "Identity")
-            .expect("grid should contain identity section");
+            .find(|section| section.title() == "Element")
+            .expect("grid should contain element section");
         let role = identity
             .rows()
             .iter()
             .find(|row| row.label() == "Role")
-            .expect("identity section should expose element role");
-        let tree = grid
+            .expect("element section should expose element role");
+        let hierarchy = grid
             .sections()
             .iter()
-            .find(|section| section.title() == "Tree")
-            .expect("grid should contain tree section");
-        let children = tree
+            .find(|section| section.title() == "Hierarchy")
+            .expect("grid should contain hierarchy section");
+        let children = hierarchy
             .rows()
             .iter()
             .find(|row| row.label() == "Children")
-            .expect("tree section should contain children row");
+            .expect("hierarchy section should contain children row");
         let template = grid
             .sections()
             .iter()
@@ -2511,7 +2511,7 @@ mod tests {
         let owned_parts = template
             .rows()
             .iter()
-            .find(|row| row.label() == "Owned parts")
+            .find(|row| row.label() == "Owned part count")
             .expect("template section should expose owned part count");
 
         assert_eq!(role.value(), &PropertyGridValue::text("templated control"));
