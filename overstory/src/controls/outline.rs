@@ -66,9 +66,6 @@ pub const SLOT_OUTLINE_ITEM_DISCLOSURE: TemplateSlot =
 pub const SLOT_OUTLINE_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("label").with_part_tag(PART_OUTLINE_ITEM_LABEL);
 
-const OUTLINE_ITEM_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_OUTLINE_ITEM_LABEL];
-const OUTLINE_ITEM_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_OUTLINE_ITEM_DISCLOSURE];
-
 const DEFAULT_OUTLINE_WIDTH: f32 = 220.0;
 const DEFAULT_OUTLINE_HEIGHT: f32 = 160.0;
 const DEFAULT_OUTLINE_ITEM_EXTENT: f64 = 30.0;
@@ -1141,10 +1138,9 @@ impl Widget for OutlineItemWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            OUTLINE_ITEM_TEMPLATE_REQUIRED_SLOTS,
-            OUTLINE_ITEM_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_OUTLINE_ITEM_LABEL)
+            .with_recommended_slot(SLOT_OUTLINE_ITEM_DISCLOSURE)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

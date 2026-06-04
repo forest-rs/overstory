@@ -67,8 +67,6 @@ pub const PART_LIST_ITEM_LABEL: PartTag = PartTag(2);
 pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
 
-const LIST_ITEM_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_LIST_ITEM_CONTENT];
-
 const DEFAULT_LIST_BOX_WIDTH: f32 = 220.0;
 const DEFAULT_LIST_BOX_HEIGHT: f32 = 160.0;
 const DEFAULT_LIST_ITEM_EXTENT: f64 = 28.0;
@@ -907,7 +905,7 @@ impl Widget for ListItemWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(LIST_ITEM_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_LIST_ITEM_CONTENT)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

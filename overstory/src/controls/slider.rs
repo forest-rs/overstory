@@ -68,9 +68,6 @@ pub const SLOT_SLIDER_TICK: TemplateSlot =
 pub const SLOT_SLIDER_TICK_LABEL: TemplateSlot =
     TemplateSlot::new("slider-tick-label").with_part_tag(PART_SLIDER_TICK_LABEL);
 
-const SLIDER_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SLIDER_TRACK, SLOT_SLIDER_THUMB];
-const SLIDER_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] =
-    &[SLOT_SLIDER_AXIS, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL];
 /// Class applied to major slider tick marks and labels.
 pub const CLASS_SLIDER_MAJOR_TICK: ClassId = ClassId(1);
 /// Class applied to minor slider tick marks and labels.
@@ -309,10 +306,12 @@ impl Widget for SliderWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            SLIDER_TEMPLATE_REQUIRED_SLOTS,
-            SLIDER_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_SLIDER_THUMB)
+            .with_recommended_slot(SLOT_SLIDER_TRACK)
+            .with_optional_slot(SLOT_SLIDER_AXIS)
+            .with_optional_slot(SLOT_SLIDER_TICK)
+            .with_optional_slot(SLOT_SLIDER_TICK_LABEL)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

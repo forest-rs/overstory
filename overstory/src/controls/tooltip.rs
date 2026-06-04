@@ -48,8 +48,6 @@ pub const PART_TOOLTIP_LABEL: PartTag = PartTag(1);
 pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_TOOLTIP_LABEL);
 
-const TOOLTIP_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_TOOLTIP_CONTENT];
-
 /// Builder + retained configuration for a tooltip.
 #[derive(Clone, Debug)]
 pub struct Tooltip {
@@ -237,7 +235,7 @@ impl Widget for TooltipWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(TOOLTIP_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_TOOLTIP_CONTENT)
     }
 
     fn is_hit_test_visible(&self, _element: &Element) -> bool {

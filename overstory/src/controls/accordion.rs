@@ -59,15 +59,6 @@ pub const SLOT_ACCORDION_SECTION_LABEL: TemplateSlot =
 pub const SLOT_ACCORDION_SECTION_CONTENT: TemplateSlot =
     TemplateSlot::new("accordion-section-content").with_part_tag(PART_ACCORDION_SECTION_CONTENT);
 
-const ACCORDION_SECTION_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[
-    SLOT_ACCORDION_SECTION_HEADER,
-    SLOT_ACCORDION_SECTION_CONTENT,
-];
-const ACCORDION_SECTION_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[
-    SLOT_ACCORDION_SECTION_DISCLOSURE,
-    SLOT_ACCORDION_SECTION_LABEL,
-];
-
 type AccordionExpandedChangedHandler = EventHandler<AccordionExpandedChangedEvent>;
 type AccordionExpandedChangedSlot = CallbackSlot<AccordionExpandedChangedEvent>;
 
@@ -390,10 +381,11 @@ impl Widget for AccordionSectionWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            ACCORDION_SECTION_TEMPLATE_REQUIRED_SLOTS,
-            ACCORDION_SECTION_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_ACCORDION_SECTION_HEADER)
+            .with_required_slot(SLOT_ACCORDION_SECTION_CONTENT)
+            .with_recommended_slot(SLOT_ACCORDION_SECTION_DISCLOSURE)
+            .with_recommended_slot(SLOT_ACCORDION_SECTION_LABEL)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

@@ -205,7 +205,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// Templated controls override this so custom templates can be diagnosed
     /// without the inspector knowing control-specific details.
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::EMPTY
+        TemplateContract::new()
     }
 
     /// Called after this widget's default template has expanded.

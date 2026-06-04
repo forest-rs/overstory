@@ -1665,6 +1665,66 @@ fn template_overrides_replace_visuals_not_control_behavior() {
 }
 
 #[test]
+fn inspection_reports_optional_and_recommended_template_slots() {
+    use crate::{
+        SLOT_SLIDER_AXIS, SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL,
+        SLOT_SLIDER_TRACK, Slider, Template, TemplateChild,
+    };
+
+    struct MinimalSliderTemplate;
+    impl Template for MinimalSliderTemplate {
+        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+            let _thumb = cx.insert(TemplateChild::surface_slot(SLOT_SLIDER_THUMB));
+        }
+    }
+
+    static MINIMAL_SLIDER_TEMPLATE: MinimalSliderTemplate = MinimalSliderTemplate;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let slider = ui.append(root, Slider::new().template(&MINIMAL_SLIDER_TEMPLATE));
+
+    let snapshot = ui.inspection_snapshot();
+    let contract = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == slider)
+        .and_then(|row| row.template_contract.as_ref())
+        .expect("slider should expose a template contract");
+
+    assert_eq!(contract.required_slots[0].name, "slider-thumb");
+    assert_eq!(
+        contract.required_slots[0].element,
+        ui.slot(slider, SLOT_SLIDER_THUMB)
+    );
+    assert!(!contract.has_missing_required_slots());
+
+    assert_eq!(contract.recommended_slots.len(), 1);
+    assert_eq!(contract.recommended_slots[0].name, "slider-track");
+    assert_eq!(contract.recommended_slots[0].element, None);
+    assert!(contract.has_missing_recommended_slots());
+    assert!(
+        !contract.has_issues(),
+        "missing recommended slots should be a quality signal, not a contract failure"
+    );
+
+    assert_eq!(contract.optional_slots.len(), 3);
+    assert_eq!(contract.optional_slots[0].name, SLOT_SLIDER_AXIS.name());
+    assert_eq!(contract.optional_slots[1].name, SLOT_SLIDER_TICK.name());
+    assert_eq!(
+        contract.optional_slots[2].name,
+        SLOT_SLIDER_TICK_LABEL.name()
+    );
+    assert!(
+        contract
+            .optional_slots
+            .iter()
+            .all(|slot| slot.element.is_none())
+    );
+    assert_eq!(ui.slot(slider, SLOT_SLIDER_TRACK), None);
+}
+
+#[test]
 fn inspection_reports_template_contract_slot_status() {
     use crate::{
         Button, SLOT_BUTTON_CONTENT, Template, TemplateChild, TemplateDiagnostic, TextWidget,

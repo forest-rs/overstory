@@ -226,7 +226,8 @@ pub use properties::BuiltInProperties;
 pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateChild, TemplateContext,
     TemplateContract, TemplateDiagnostic, TemplateInstance, TemplateItemKey, TemplateNode,
-    TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    TemplatePart, TemplateSlot, TemplateSlotContract, TemplateSlotImportance, TemplateSpec,
+    TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};

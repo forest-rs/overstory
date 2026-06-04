@@ -53,8 +53,6 @@ pub const PART_BUTTON_LABEL: PartTag = PartTag(1);
 pub const SLOT_BUTTON_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_BUTTON_LABEL);
 
-const BUTTON_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_BUTTON_CONTENT];
-
 /// Builder + spec for a `Button`. Use [`Button::new`] to start a
 /// chain, configure with the chaining methods, and pass to
 /// [`Ui::append`].
@@ -260,7 +258,7 @@ impl Widget for ButtonWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(BUTTON_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_BUTTON_CONTENT)
     }
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {

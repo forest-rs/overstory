@@ -64,10 +64,6 @@ pub const SLOT_RADIO_BUTTON_DOT: TemplateSlot =
 pub const SLOT_RADIO_BUTTON_LABEL: TemplateSlot =
     TemplateSlot::new("radio-label").with_part_tag(PART_RADIO_BUTTON_LABEL);
 
-const RADIO_BUTTON_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
-    &[SLOT_RADIO_BUTTON_INDICATOR, SLOT_RADIO_BUTTON_LABEL];
-const RADIO_BUTTON_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_RADIO_BUTTON_DOT];
-
 const DEFAULT_RADIO_GROUP_GAP: f32 = 8.0;
 
 type RadioSelectionChangedHandler = EventHandler<RadioSelectionChangedEvent>;
@@ -470,10 +466,10 @@ impl Widget for RadioButtonWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            RADIO_BUTTON_TEMPLATE_REQUIRED_SLOTS,
-            RADIO_BUTTON_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_RADIO_BUTTON_INDICATOR)
+            .with_required_slot(SLOT_RADIO_BUTTON_LABEL)
+            .with_optional_slot(SLOT_RADIO_BUTTON_DOT)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

@@ -53,10 +53,6 @@ pub const SLOT_CHECK_BOX_MARK: TemplateSlot =
 pub const SLOT_CHECK_BOX_LABEL: TemplateSlot =
     TemplateSlot::new("check-label").with_part_tag(PART_CHECK_BOX_LABEL);
 
-const CHECK_BOX_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
-    &[SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL];
-const CHECK_BOX_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_CHECK_BOX_MARK];
-
 /// Builder + spec for a `CheckBox`.
 pub struct CheckBox {
     content: String,
@@ -246,10 +242,10 @@ impl Widget for CheckBoxWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            CHECK_BOX_TEMPLATE_REQUIRED_SLOTS,
-            CHECK_BOX_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_CHECK_BOX_BOX)
+            .with_required_slot(SLOT_CHECK_BOX_LABEL)
+            .with_optional_slot(SLOT_CHECK_BOX_MARK)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

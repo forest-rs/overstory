@@ -64,7 +64,7 @@
 //!   and layout of the visual subtree. See ticket `ove-733r`.
 //! - Support both compact data-driven templates and custom code templates
 //!   without requiring every visual variation to become a new widget type.
-//! - Grow content slots, repeated keyed parts, optional parts, and eventual
+//! - Grow content slots, repeated keyed parts, optional slots, and eventual
 //!   pseudo-elements into one predictable contract.
 //! - Add diagnostics for required slots, duplicate keys, binding mismatches,
 //!   and template churn so custom templates fail loudly.
@@ -84,6 +84,7 @@ use crate::layouts::{
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
 use crate::widget::{SurfacePartWidget, Widget};
+use smallvec::SmallVec;
 use understory_property::{DependencyObjectExt, Property};
 use understory_property_binding::{BindingError, BindingId, PropertyEndpoint};
 use understory_style::{ClassId, PartTag};
@@ -104,59 +105,6 @@ use understory_style::{ClassId, PartTag};
 pub trait Template: Sync {
     /// Builds this template's subtree under `owner`.
     fn instantiate(&self, cx: &mut TemplateContext<'_>);
-}
-
-/// Control-declared expectations for a visual template.
-///
-/// The contract belongs to the control, not the template instance: the control
-/// knows which semantic slots its behavior can use, while each concrete
-/// template chooses which generated elements fill those slots. Inspectors use
-/// this to report missing custom-template parts without hardcoding per-control
-/// knowledge.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct TemplateContract {
-    required_slots: &'static [TemplateSlot],
-    recommended_slots: &'static [TemplateSlot],
-}
-
-impl TemplateContract {
-    /// Empty contract for widgets with no required template surface.
-    pub const EMPTY: Self = Self::new(&[], &[]);
-
-    /// Creates a contract from required and recommended semantic slots.
-    #[must_use]
-    #[inline]
-    pub const fn new(
-        required_slots: &'static [TemplateSlot],
-        recommended_slots: &'static [TemplateSlot],
-    ) -> Self {
-        Self {
-            required_slots,
-            recommended_slots,
-        }
-    }
-
-    /// Returns slots that should be present for full control behavior.
-    #[must_use]
-    #[inline]
-    pub const fn required_slots(self) -> &'static [TemplateSlot] {
-        self.required_slots
-    }
-
-    /// Returns slots that improve styling, diagnostics, or default visuals but
-    /// are not required for core behavior.
-    #[must_use]
-    #[inline]
-    pub const fn recommended_slots(self) -> &'static [TemplateSlot] {
-        self.recommended_slots
-    }
-
-    /// Returns whether this contract declares no slots.
-    #[must_use]
-    #[inline]
-    pub const fn is_empty(self) -> bool {
-        self.required_slots.is_empty() && self.recommended_slots.is_empty()
-    }
 }
 
 /// Stable per-template item key for repeated template parts.
@@ -226,6 +174,177 @@ impl TemplateSlot {
     pub const fn with_part_tag(mut self, part_tag: PartTag) -> Self {
         self.part_tag = Some(part_tag);
         self
+    }
+}
+
+/// Importance of a slot in a control's visual template contract.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TemplateSlotImportance {
+    /// The control's behavior or semantic content depends on this slot.
+    Required,
+    /// The control knows about this extension point and will use it when
+    /// present, but absence is expected for simpler custom templates.
+    Optional,
+    /// The default look expects this slot, but the control can still function
+    /// when a custom template omits it.
+    Recommended,
+}
+
+/// One slot declaration in a control's visual template contract.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TemplateSlotContract {
+    slot: TemplateSlot,
+    importance: TemplateSlotImportance,
+}
+
+impl TemplateSlotContract {
+    /// Creates a required slot declaration.
+    #[must_use]
+    #[inline]
+    pub const fn required(slot: TemplateSlot) -> Self {
+        Self {
+            slot,
+            importance: TemplateSlotImportance::Required,
+        }
+    }
+
+    /// Creates an optional slot declaration.
+    #[must_use]
+    #[inline]
+    pub const fn optional(slot: TemplateSlot) -> Self {
+        Self {
+            slot,
+            importance: TemplateSlotImportance::Optional,
+        }
+    }
+
+    /// Creates a recommended slot declaration.
+    #[must_use]
+    #[inline]
+    pub const fn recommended(slot: TemplateSlot) -> Self {
+        Self {
+            slot,
+            importance: TemplateSlotImportance::Recommended,
+        }
+    }
+
+    /// Returns the semantic slot.
+    #[must_use]
+    #[inline]
+    pub const fn slot(self) -> TemplateSlot {
+        self.slot
+    }
+
+    /// Returns how strongly the owning control expects this slot.
+    #[must_use]
+    #[inline]
+    pub const fn importance(self) -> TemplateSlotImportance {
+        self.importance
+    }
+}
+
+/// Control-declared expectations for a visual template.
+///
+/// The contract belongs to the control, not the template instance: the control
+/// knows which semantic slots its behavior can use, while each concrete
+/// template chooses which generated elements fill those slots. Inspectors use
+/// this to report missing custom-template parts without hardcoding per-control
+/// knowledge.
+///
+/// Required slots are behavior-critical. Optional slots are known extension
+/// points that custom templates may omit without being considered degraded.
+/// Recommended slots are not required for behavior, but omitting them usually
+/// means the template loses some default visual quality or diagnostic detail.
+///
+/// ```rust,ignore
+/// TemplateContract::new()
+///     .with_required_slot(SLOT_SLIDER_THUMB)
+///     .with_recommended_slot(SLOT_SLIDER_TRACK)
+///     .with_optional_slot(SLOT_SLIDER_AXIS);
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TemplateContract {
+    slots: SmallVec<[TemplateSlotContract; 8]>,
+}
+
+impl TemplateContract {
+    /// Creates an empty contract.
+    #[must_use]
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a required slot and returns the updated contract.
+    #[must_use]
+    #[inline]
+    pub fn with_required_slot(self, slot: TemplateSlot) -> Self {
+        self.with_slot(slot, TemplateSlotImportance::Required)
+    }
+
+    /// Adds an optional slot and returns the updated contract.
+    #[must_use]
+    #[inline]
+    pub fn with_optional_slot(self, slot: TemplateSlot) -> Self {
+        self.with_slot(slot, TemplateSlotImportance::Optional)
+    }
+
+    /// Adds a recommended slot and returns the updated contract.
+    #[must_use]
+    #[inline]
+    pub fn with_recommended_slot(self, slot: TemplateSlot) -> Self {
+        self.with_slot(slot, TemplateSlotImportance::Recommended)
+    }
+
+    /// Adds a slot declaration and returns the updated contract.
+    #[must_use]
+    #[inline]
+    pub fn with_slot(mut self, slot: TemplateSlot, importance: TemplateSlotImportance) -> Self {
+        self.slots.push(TemplateSlotContract { slot, importance });
+        self
+    }
+
+    /// Returns all slot declarations in insertion order.
+    #[must_use]
+    #[inline]
+    pub fn slots(&self) -> &[TemplateSlotContract] {
+        &self.slots
+    }
+
+    /// Returns slots that should be present for full control behavior.
+    #[inline]
+    pub fn required_slots(&self) -> impl Iterator<Item = TemplateSlot> + '_ {
+        self.slots_with_importance(TemplateSlotImportance::Required)
+    }
+
+    /// Returns known extension-point slots that may be omitted intentionally.
+    #[inline]
+    pub fn optional_slots(&self) -> impl Iterator<Item = TemplateSlot> + '_ {
+        self.slots_with_importance(TemplateSlotImportance::Optional)
+    }
+
+    /// Returns slots that improve styling, diagnostics, or default visuals but
+    /// are not required for core behavior.
+    #[inline]
+    pub fn recommended_slots(&self) -> impl Iterator<Item = TemplateSlot> + '_ {
+        self.slots_with_importance(TemplateSlotImportance::Recommended)
+    }
+
+    /// Returns whether this contract declares no slots.
+    #[must_use]
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
+    fn slots_with_importance(
+        &self,
+        importance: TemplateSlotImportance,
+    ) -> impl Iterator<Item = TemplateSlot> + '_ {
+        self.slots
+            .iter()
+            .filter(move |slot| slot.importance == importance)
+            .map(|slot| slot.slot)
     }
 }
 

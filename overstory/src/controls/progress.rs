@@ -41,9 +41,6 @@ pub const SLOT_PROGRESS_BAR_FILL: TemplateSlot =
 pub const SLOT_PROGRESS_BAR_LABEL: TemplateSlot =
     TemplateSlot::new("progress-label").with_part_tag(PART_PROGRESS_BAR_LABEL);
 
-const PROGRESS_BAR_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_PROGRESS_BAR_FILL];
-const PROGRESS_BAR_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_PROGRESS_BAR_LABEL];
-
 const DEFAULT_WIDTH: f32 = 260.0;
 const DEFAULT_HEIGHT: f32 = 18.0;
 const LABEL_FONT_SIZE: f64 = 11.0;
@@ -218,10 +215,9 @@ impl Widget for ProgressBarWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            PROGRESS_BAR_TEMPLATE_REQUIRED_SLOTS,
-            PROGRESS_BAR_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_PROGRESS_BAR_FILL)
+            .with_optional_slot(SLOT_PROGRESS_BAR_LABEL)
     }
 }
 

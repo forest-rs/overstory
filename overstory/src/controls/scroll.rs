@@ -49,8 +49,6 @@ pub const PART_SCROLL_BAR_THUMB: PartTag = PartTag(1);
 pub const SLOT_SCROLL_BAR_THUMB: TemplateSlot =
     TemplateSlot::new("scrollbar-thumb").with_part_tag(PART_SCROLL_BAR_THUMB);
 
-const SCROLL_BAR_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SCROLL_BAR_THUMB];
-
 pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
 const DEFAULT_SCROLL_AREA_WIDTH: f32 = 220.0;
 const DEFAULT_SCROLL_AREA_HEIGHT: f32 = 160.0;
@@ -866,7 +864,7 @@ impl Widget for ScrollBarWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(SCROLL_BAR_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_SCROLL_BAR_THUMB)
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {

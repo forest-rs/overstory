@@ -156,20 +156,26 @@ impl Ui {
         Some(TemplateContractInspection {
             required_slots: contract
                 .required_slots()
-                .iter()
                 .map(|slot| TemplateSlotInspectionRow {
                     name: slot.name(),
                     part_tag: slot.part_tag(),
-                    element: instance.and_then(|instance| instance.slot(*slot)),
+                    element: instance.and_then(|instance| instance.slot(slot)),
+                })
+                .collect(),
+            optional_slots: contract
+                .optional_slots()
+                .map(|slot| TemplateSlotInspectionRow {
+                    name: slot.name(),
+                    part_tag: slot.part_tag(),
+                    element: instance.and_then(|instance| instance.slot(slot)),
                 })
                 .collect(),
             recommended_slots: contract
                 .recommended_slots()
-                .iter()
                 .map(|slot| TemplateSlotInspectionRow {
                     name: slot.name(),
                     part_tag: slot.part_tag(),
-                    element: instance.and_then(|instance| instance.slot(*slot)),
+                    element: instance.and_then(|instance| instance.slot(slot)),
                 })
                 .collect(),
             diagnostics: instance.map_or_else(Vec::new, |instance| instance.diagnostics().to_vec()),

@@ -45,8 +45,6 @@ pub const PART_SEGMENTED_ITEM_LABEL: PartTag = PartTag(1);
 pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("segmented-label").with_part_tag(PART_SEGMENTED_ITEM_LABEL);
 
-const SEGMENTED_ITEM_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SEGMENTED_ITEM_LABEL];
-
 const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
 
 type SegmentedSelectionChangedHandler = EventHandler<SegmentedSelectionChangedEvent>;
@@ -393,7 +391,7 @@ impl Widget for SegmentedItemWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(SEGMENTED_ITEM_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_SEGMENTED_ITEM_LABEL)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

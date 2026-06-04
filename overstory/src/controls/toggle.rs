@@ -42,8 +42,6 @@ pub const PART_TOGGLE_THUMB: PartTag = PartTag(1);
 pub const SLOT_TOGGLE_THUMB: TemplateSlot =
     TemplateSlot::new("toggle-thumb").with_part_tag(PART_TOGGLE_THUMB);
 
-const TOGGLE_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_TOGGLE_THUMB];
-
 /// Builder + spec for a `ToggleSwitch`.
 pub struct ToggleSwitch {
     initial_checked: bool,
@@ -223,7 +221,7 @@ impl Widget for ToggleWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(TOGGLE_TEMPLATE_REQUIRED_SLOTS, &[])
+        TemplateContract::new().with_required_slot(SLOT_TOGGLE_THUMB)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

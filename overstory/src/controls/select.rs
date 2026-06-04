@@ -54,9 +54,6 @@ pub const SLOT_SELECT_LABEL: TemplateSlot =
 pub const SLOT_SELECT_INDICATOR: TemplateSlot =
     TemplateSlot::new("select-indicator").with_part_tag(PART_SELECT_INDICATOR);
 
-const SELECT_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] = &[SLOT_SELECT_LABEL];
-const SELECT_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_SELECT_INDICATOR];
-
 const DEFAULT_SELECT_WIDTH: f32 = 220.0;
 const DEFAULT_SELECT_HEIGHT: f32 = 38.0;
 const DEFAULT_SELECT_POPUP_HEIGHT: f32 = 180.0;
@@ -325,10 +322,9 @@ impl Widget for SelectWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            SELECT_TEMPLATE_REQUIRED_SLOTS,
-            SELECT_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_SELECT_LABEL)
+            .with_recommended_slot(SLOT_SELECT_INDICATOR)
     }
 
     fn template_expanded(&mut self, select: ElementId, ui: &mut Ui) {

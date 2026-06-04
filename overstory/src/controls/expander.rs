@@ -57,11 +57,6 @@ pub const SLOT_EXPANDER_LABEL: TemplateSlot =
 pub const SLOT_EXPANDER_CONTENT: TemplateSlot =
     TemplateSlot::new("expander-content").with_part_tag(PART_EXPANDER_CONTENT);
 
-const EXPANDER_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
-    &[SLOT_EXPANDER_HEADER, SLOT_EXPANDER_CONTENT];
-const EXPANDER_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] =
-    &[SLOT_EXPANDER_DISCLOSURE, SLOT_EXPANDER_LABEL];
-
 type ExpandedChangedHandler = EventHandler<ExpandedChangedEvent>;
 type ExpandedChangedSlot = CallbackSlot<ExpandedChangedEvent>;
 
@@ -232,10 +227,11 @@ impl Widget for ExpanderWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            EXPANDER_TEMPLATE_REQUIRED_SLOTS,
-            EXPANDER_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_EXPANDER_HEADER)
+            .with_required_slot(SLOT_EXPANDER_CONTENT)
+            .with_recommended_slot(SLOT_EXPANDER_DISCLOSURE)
+            .with_recommended_slot(SLOT_EXPANDER_LABEL)
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {

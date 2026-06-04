@@ -174,6 +174,9 @@ pub struct ElementInspectionRow {
 pub struct TemplateContractInspection {
     /// Required slots and whether the expanded template provided them.
     pub required_slots: Vec<TemplateSlotInspectionRow>,
+    /// Optional capability slots and whether the expanded template provided
+    /// them.
+    pub optional_slots: Vec<TemplateSlotInspectionRow>,
     /// Recommended slots and whether the expanded template provided them.
     pub recommended_slots: Vec<TemplateSlotInspectionRow>,
     /// Non-fatal diagnostics reported while expanding the template instance.
@@ -185,6 +188,17 @@ impl TemplateContractInspection {
     #[must_use]
     pub fn has_missing_required_slots(&self) -> bool {
         self.required_slots
+            .iter()
+            .any(|slot| slot.element.is_none())
+    }
+
+    /// Returns whether any recommended slot is missing.
+    ///
+    /// Missing recommended slots do not make the contract invalid, but they are
+    /// useful quality/degradation hints for custom templates.
+    #[must_use]
+    pub fn has_missing_recommended_slots(&self) -> bool {
+        self.recommended_slots
             .iter()
             .any(|slot| slot.element.is_none())
     }

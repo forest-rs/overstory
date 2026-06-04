@@ -621,6 +621,7 @@ fn sanitize_template_links(
     }
     if let Some(contract) = &mut row.template_contract {
         sanitize_template_slot_links(&mut contract.required_slots, &is_included);
+        sanitize_template_slot_links(&mut contract.optional_slots, &is_included);
         sanitize_template_slot_links(&mut contract.recommended_slots, &is_included);
         contract
             .diagnostics
@@ -1300,13 +1301,24 @@ fn selected_element_property_grid(
             row,
             "Required slots",
             &contract.required_slots,
+            "missing",
         ));
+        if !contract.optional_slots.is_empty() {
+            template.push_row(template_contract_slots_row(
+                snapshot,
+                row,
+                "Optional slots",
+                &contract.optional_slots,
+                "not present",
+            ));
+        }
         if !contract.recommended_slots.is_empty() {
             template.push_row(template_contract_slots_row(
                 snapshot,
                 row,
                 "Recommended slots",
                 &contract.recommended_slots,
+                "missing",
             ));
         }
         if !contract.diagnostics.is_empty() {
@@ -1430,6 +1442,8 @@ fn template_contract_status_row(contract: &TemplateContractInspection) -> Proper
         PropertyGridValue::token("missing required")
     } else if !contract.diagnostics.is_empty() {
         PropertyGridValue::token("diagnostics")
+    } else if contract.has_missing_recommended_slots() {
+        PropertyGridValue::token("degraded")
     } else {
         PropertyGridValue::token("satisfied")
     };
@@ -1506,10 +1520,16 @@ fn template_contract_slots_row(
     owner: &ElementInspectionRow,
     label: &str,
     slots: &[TemplateSlotInspectionRow],
+    absent_label: &'static str,
 ) -> PropertyGridRow {
     let mut row = PropertyGridRow::new(label, PropertyGridValue::count(slots.len()));
     for slot in slots {
-        row.push_child(template_contract_slot_row(snapshot, owner, slot));
+        row.push_child(template_contract_slot_row(
+            snapshot,
+            owner,
+            slot,
+            absent_label,
+        ));
     }
     row
 }
@@ -1518,9 +1538,10 @@ fn template_contract_slot_row(
     snapshot: &DevtoolsSnapshot,
     owner: &ElementInspectionRow,
     slot: &TemplateSlotInspectionRow,
+    absent_label: &'static str,
 ) -> PropertyGridRow {
     let value = slot.element.map_or_else(
-        || PropertyGridValue::token("missing"),
+        || PropertyGridValue::token(absent_label),
         |element| {
             PropertyGridValue::element_link(element, element_relation_summary(snapshot, element))
         },
@@ -2931,12 +2952,17 @@ mod tests {
             .iter()
             .find(|section| section.title() == "Template")
             .expect("grid should contain template section");
-        let required_slots = template
+        let recommended_slots = template
             .rows()
             .iter()
-            .find(|row| row.label() == "Required slots")
-            .expect("slider should expose required template slots");
-        let track_slot = required_slots
+            .find(|row| row.label() == "Recommended slots")
+            .expect("slider should expose recommended template slots");
+        let optional_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Optional slots")
+            .expect("slider should expose optional template slots");
+        let track_slot = recommended_slots
             .children()
             .iter()
             .find(|row| row.label() == "slider-track")
@@ -2947,6 +2973,13 @@ mod tests {
                 track,
                 format!("Slider.Track {}", element_id_summary(track))
             )
+        );
+        assert_eq!(optional_slots.value(), &PropertyGridValue::count(3));
+        assert!(
+            optional_slots
+                .children()
+                .iter()
+                .any(|row| row.label() == "slider-axis")
         );
 
         let track_row = snapshot
@@ -2995,6 +3028,82 @@ mod tests {
         assert_eq!(
             track_slot_name.value(),
             &PropertyGridValue::token("slider-track")
+        );
+    }
+
+    #[test]
+    fn selected_element_property_grid_reports_degraded_optional_template_slots() {
+        struct MinimalSliderTemplate;
+        impl overstory::Template for MinimalSliderTemplate {
+            fn instantiate(&self, cx: &mut overstory::TemplateContext<'_>) {
+                let _thumb = cx.insert(overstory::TemplateChild::surface_slot(
+                    overstory::SLOT_SLIDER_THUMB,
+                ));
+            }
+        }
+
+        static MINIMAL_SLIDER_TEMPLATE: MinimalSliderTemplate = MinimalSliderTemplate;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let slider = ui.append(
+            root,
+            overstory::Slider::new().template(&MINIMAL_SLIDER_TEMPLATE),
+        );
+        let thumb = ui
+            .slot(slider, overstory::SLOT_SLIDER_THUMB)
+            .expect("minimal template should expose slider thumb");
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let slider_row = snapshot
+            .element(slider)
+            .expect("slider should be inspectable");
+        let grid = selected_element_property_grid(&snapshot, slider_row);
+        let template = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("grid should contain template section");
+        let contract = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Contract")
+            .expect("template section should expose template contract status");
+        let required_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Required slots")
+            .expect("slider should expose required slots");
+        let optional_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Optional slots")
+            .expect("slider should expose optional slots");
+        let recommended_slots = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Recommended slots")
+            .expect("slider should expose recommended slots");
+
+        assert_eq!(contract.value(), &PropertyGridValue::token("degraded"));
+        assert_eq!(required_slots.value(), &PropertyGridValue::count(1));
+        assert_eq!(
+            required_slots.children()[0].value(),
+            &PropertyGridValue::element_link(
+                thumb,
+                format!("Slider.Thumb {}", element_id_summary(thumb))
+            )
+        );
+        assert_eq!(optional_slots.value(), &PropertyGridValue::count(3));
+        assert!(
+            optional_slots
+                .children()
+                .iter()
+                .all(|row| row.value() == &PropertyGridValue::token("not present"))
+        );
+        assert_eq!(recommended_slots.value(), &PropertyGridValue::count(1));
+        assert_eq!(
+            recommended_slots.children()[0].value(),
+            &PropertyGridValue::token("missing")
         );
     }
 

@@ -52,10 +52,6 @@ pub const SLOT_TEXT_INPUT_CARET: TemplateSlot =
 pub const SLOT_TEXT_INPUT_SELECTION: TemplateSlot =
     TemplateSlot::new("text-input-selection").with_part_tag(PART_TEXT_INPUT_SELECTION);
 
-const TEXT_INPUT_TEMPLATE_REQUIRED_SLOTS: &[TemplateSlot] =
-    &[SLOT_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET];
-const TEXT_INPUT_TEMPLATE_RECOMMENDED_SLOTS: &[TemplateSlot] = &[SLOT_TEXT_INPUT_SELECTION];
-
 const TEXT_INPUT_WIDTH: f32 = 280.0;
 const TEXT_INPUT_HEIGHT: f32 = 40.0;
 const TEXT_INPUT_PADDING_X: f32 = 12.0;
@@ -318,10 +314,10 @@ impl Widget for TextInputWidget {
     }
 
     fn template_contract(&self) -> TemplateContract {
-        TemplateContract::new(
-            TEXT_INPUT_TEMPLATE_REQUIRED_SLOTS,
-            TEXT_INPUT_TEMPLATE_RECOMMENDED_SLOTS,
-        )
+        TemplateContract::new()
+            .with_required_slot(SLOT_TEXT_INPUT_TEXT)
+            .with_required_slot(SLOT_TEXT_INPUT_CARET)
+            .with_optional_slot(SLOT_TEXT_INPUT_SELECTION)
     }
 
     fn template_expanded(&mut self, input: ElementId, ui: &mut Ui) {
