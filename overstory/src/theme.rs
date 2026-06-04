@@ -109,7 +109,67 @@ use crate::pseudos::{
     PSEUDO_HOVER, PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
 use crate::selectors;
+use crate::selectors::TemplatePartSelector;
 use understory_timing::TimerDuration;
+
+const TOGGLE_THUMB_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_TOGGLE, PART_TOGGLE_THUMB);
+const SLIDER_TRACK_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SLIDER, PART_SLIDER_TRACK);
+const SLIDER_THUMB_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SLIDER, PART_SLIDER_THUMB);
+const SLIDER_TICK_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SLIDER, PART_SLIDER_TICK);
+const SLIDER_TICK_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SLIDER, PART_SLIDER_TICK_LABEL);
+const SCROLL_BAR_THUMB_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SCROLL_BAR, PART_SCROLL_BAR_THUMB);
+const CHECK_BOX_BOX_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_CHECK_BOX, PART_CHECK_BOX_BOX);
+const CHECK_BOX_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_CHECK_BOX, PART_CHECK_BOX_LABEL);
+const RADIO_BUTTON_INDICATOR_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_INDICATOR);
+const RADIO_BUTTON_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_LABEL);
+const EXPANDER_HEADER_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_EXPANDER, PART_EXPANDER_HEADER);
+const EXPANDER_DISCLOSURE_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_EXPANDER, PART_EXPANDER_DISCLOSURE);
+const EXPANDER_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_EXPANDER, PART_EXPANDER_LABEL);
+const EXPANDER_CONTENT_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_EXPANDER, PART_EXPANDER_CONTENT);
+const ACCORDION_SECTION_HEADER_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_HEADER);
+const ACCORDION_SECTION_DISCLOSURE_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_DISCLOSURE);
+const ACCORDION_SECTION_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_LABEL);
+const ACCORDION_SECTION_CONTENT_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_CONTENT);
+const PROGRESS_BAR_FILL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_PROGRESS_BAR, PART_PROGRESS_BAR_FILL);
+const PROGRESS_BAR_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_PROGRESS_BAR, PART_PROGRESS_BAR_LABEL);
+const TEXT_INPUT_TEXT_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_TEXT_INPUT, PART_TEXT_INPUT_TEXT);
+const TEXT_INPUT_SELECTION_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_TEXT_INPUT, PART_TEXT_INPUT_SELECTION);
+const TEXT_INPUT_CARET_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_TEXT_INPUT, PART_TEXT_INPUT_CARET);
+const SELECT_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SELECT, PART_SELECT_LABEL);
+const SELECT_INDICATOR_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_SELECT, PART_SELECT_INDICATOR);
+const LIST_ITEM_CONTENT_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_LIST_ITEM, PART_LIST_ITEM_CONTENT);
+const OUTLINE_ITEM_CONTENT_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_CONTENT);
+const OUTLINE_ITEM_DISCLOSURE_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_DISCLOSURE);
+const OUTLINE_ITEM_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_LABEL);
 
 /// Window-wide background surface.
 pub const SURFACE_BG: ResourceKey = ResourceKey::new(0);
@@ -937,45 +997,37 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_TOGGLE, PART_TOGGLE_THUMB),
+            selectors::part(TOGGLE_THUMB_PART),
             thumb_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_SLIDER, PART_SLIDER_TRACK),
+            selectors::part(SLIDER_TRACK_PART),
             slider_track_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part_with_class(TYPE_SLIDER, PART_SLIDER_TICK, CLASS_SLIDER_MAJOR_TICK),
+            selectors::part_with_class(SLIDER_TICK_PART, CLASS_SLIDER_MAJOR_TICK),
             slider_major_tick_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part_with_class(TYPE_SLIDER, PART_SLIDER_TICK, CLASS_SLIDER_MINOR_TICK),
+            selectors::part_with_class(SLIDER_TICK_PART, CLASS_SLIDER_MINOR_TICK),
             slider_minor_tick_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part_with_class(
-                TYPE_SLIDER,
-                PART_SLIDER_TICK_LABEL,
-                CLASS_SLIDER_MAJOR_TICK,
-            ),
+            selectors::part_with_class(SLIDER_TICK_LABEL_PART, CLASS_SLIDER_MAJOR_TICK),
             slider_major_tick_label_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part_with_class(
-                TYPE_SLIDER,
-                PART_SLIDER_TICK_LABEL,
-                CLASS_SLIDER_MINOR_TICK,
-            ),
+            selectors::part_with_class(SLIDER_TICK_LABEL_PART, CLASS_SLIDER_MINOR_TICK),
             slider_minor_tick_label_style,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_SLIDER, PART_SLIDER_THUMB),
+            selectors::part(SLIDER_THUMB_PART),
             slider_thumb_style,
         )
         .push_rule(
@@ -1010,14 +1062,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_SCROLL_BAR, PART_SCROLL_BAR_THUMB),
+            selectors::part(SCROLL_BAR_THUMB_PART),
             scroll_bar_thumb_idle,
         )
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_SCROLL_BAR).with_pseudo(PSEUDO_HOVER),
-                PART_SCROLL_BAR_THUMB,
+                SCROLL_BAR_THUMB_PART,
             ),
             scroll_bar_thumb_hover,
         )
@@ -1043,14 +1095,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_CHECK_BOX, PART_CHECK_BOX_BOX),
+            selectors::part(CHECK_BOX_BOX_PART),
             checkbox_box_idle,
         )
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_CHECK_BOX).with_pseudo(PSEUDO_HOVER),
-                PART_CHECK_BOX_BOX,
+                CHECK_BOX_BOX_PART,
             ),
             checkbox_box_hover,
         )
@@ -1058,7 +1110,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_CHECK_BOX).with_pseudo(PSEUDO_CHECKED),
-                PART_CHECK_BOX_BOX,
+                CHECK_BOX_BOX_PART,
             ),
             checkbox_box_checked,
         )
@@ -1066,7 +1118,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_CHECK_BOX).with_pseudo(PSEUDO_FOCUS_VISIBLE),
-                PART_CHECK_BOX_BOX,
+                CHECK_BOX_BOX_PART,
             ),
             checkbox_box_focused,
         )
@@ -1082,7 +1134,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_CHECK_BOX, PART_CHECK_BOX_LABEL),
+            selectors::part(CHECK_BOX_LABEL_PART),
             checkbox_label,
         )
         .push_rule(
@@ -1097,14 +1149,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_INDICATOR),
+            selectors::part(RADIO_BUTTON_INDICATOR_PART),
             radio_indicator_idle,
         )
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_HOVER),
-                PART_RADIO_BUTTON_INDICATOR,
+                RADIO_BUTTON_INDICATOR_PART,
             ),
             radio_indicator_hover,
         )
@@ -1112,7 +1164,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_CHECKED),
-                PART_RADIO_BUTTON_INDICATOR,
+                RADIO_BUTTON_INDICATOR_PART,
             ),
             radio_indicator_checked,
         )
@@ -1120,7 +1172,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_RADIO_BUTTON).with_pseudo(PSEUDO_FOCUS_VISIBLE),
-                PART_RADIO_BUTTON_INDICATOR,
+                RADIO_BUTTON_INDICATOR_PART,
             ),
             radio_indicator_focused,
         )
@@ -1136,7 +1188,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_RADIO_BUTTON, PART_RADIO_BUTTON_LABEL),
+            selectors::part(RADIO_BUTTON_LABEL_PART),
             radio_label,
         )
         .push_rule(
@@ -1146,14 +1198,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_EXPANDER, PART_EXPANDER_HEADER),
+            selectors::part(EXPANDER_HEADER_PART),
             expander_header,
         )
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_EXPANDER).with_pseudo(PSEUDO_EXPANDED),
-                PART_EXPANDER_HEADER,
+                EXPANDER_HEADER_PART,
             ),
             expander_header_expanded,
         )
@@ -1161,23 +1213,23 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_EXPANDER).with_pseudo(PSEUDO_FOCUS_VISIBLE),
-                PART_EXPANDER_HEADER,
+                EXPANDER_HEADER_PART,
             ),
             expander_header_focused,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_EXPANDER, PART_EXPANDER_DISCLOSURE),
+            selectors::part(EXPANDER_DISCLOSURE_PART),
             expander_disclosure,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_EXPANDER, PART_EXPANDER_LABEL),
+            selectors::part(EXPANDER_LABEL_PART),
             expander_label,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_EXPANDER, PART_EXPANDER_CONTENT),
+            selectors::part(EXPANDER_CONTENT_PART),
             expander_content,
         )
         .push_rule(
@@ -1192,14 +1244,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_HEADER),
+            selectors::part(ACCORDION_SECTION_HEADER_PART),
             accordion_section_header,
         )
         .push_rule(
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_ACCORDION_SECTION).with_pseudo(PSEUDO_EXPANDED),
-                PART_ACCORDION_SECTION_HEADER,
+                ACCORDION_SECTION_HEADER_PART,
             ),
             accordion_section_header_expanded,
         )
@@ -1207,23 +1259,23 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_ACCORDION_SECTION).with_pseudo(PSEUDO_FOCUS_VISIBLE),
-                PART_ACCORDION_SECTION_HEADER,
+                ACCORDION_SECTION_HEADER_PART,
             ),
             accordion_section_header_focused,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_DISCLOSURE),
+            selectors::part(ACCORDION_SECTION_DISCLOSURE_PART),
             accordion_section_disclosure,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_LABEL),
+            selectors::part(ACCORDION_SECTION_LABEL_PART),
             accordion_section_label,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_ACCORDION_SECTION, PART_ACCORDION_SECTION_CONTENT),
+            selectors::part(ACCORDION_SECTION_CONTENT_PART),
             accordion_section_content,
         )
         .push_rule(
@@ -1233,12 +1285,12 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_PROGRESS_BAR, PART_PROGRESS_BAR_FILL),
+            selectors::part(PROGRESS_BAR_FILL_PART),
             progress_fill,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_PROGRESS_BAR, PART_PROGRESS_BAR_LABEL),
+            selectors::part(PROGRESS_BAR_LABEL_PART),
             progress_label,
         )
         .push_rule(
@@ -1270,7 +1322,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_TEXT_INPUT).with_pseudo(PSEUDO_PLACEHOLDER_SHOWN),
-                PART_TEXT_INPUT_TEXT,
+                TEXT_INPUT_TEXT_PART,
             ),
             text_input_placeholder,
         )
@@ -1278,7 +1330,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_TEXT_INPUT).with_pseudo(PSEUDO_FOCUSED),
-                PART_TEXT_INPUT_SELECTION,
+                TEXT_INPUT_SELECTION_PART,
             ),
             text_input_selection,
         )
@@ -1286,7 +1338,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part_when(
                 SelectorStep::type_tag(TYPE_TEXT_INPUT).with_pseudo(PSEUDO_FOCUSED),
-                PART_TEXT_INPUT_CARET,
+                TEXT_INPUT_CARET_PART,
             ),
             text_input_caret,
         )
@@ -1312,12 +1364,12 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_SELECT, PART_SELECT_LABEL),
+            selectors::part(SELECT_LABEL_PART),
             select_label,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_SELECT, PART_SELECT_INDICATOR),
+            selectors::part(SELECT_INDICATOR_PART),
             select_indicator,
         )
         .push_rule(
@@ -1337,7 +1389,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_LIST_ITEM, PART_LIST_ITEM_CONTENT),
+            selectors::part(LIST_ITEM_CONTENT_PART),
             list_item_content,
         )
         .push_rule(
@@ -1402,17 +1454,17 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_CONTENT),
+            selectors::part(OUTLINE_ITEM_CONTENT_PART),
             outline_item_content,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_DISCLOSURE),
+            selectors::part(OUTLINE_ITEM_DISCLOSURE_PART),
             outline_item_disclosure,
         )
         .push_rule(
             StyleOrigin::Base,
-            selectors::part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_LABEL),
+            selectors::part(OUTLINE_ITEM_LABEL_PART),
             outline_item_label,
         )
         .push_rule(

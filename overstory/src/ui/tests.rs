@@ -1767,7 +1767,7 @@ fn surface_template_parts_do_not_match_generic_type_selector() {
 
 #[test]
 fn slider_template_parts_match_owner_local_part_selectors() {
-    use crate::{PART_SLIDER_TRACK, Slider, TYPE_SLIDER};
+    use crate::{PART_SLIDER_THUMB, PART_SLIDER_TRACK, SLOT_SLIDER_THUMB, Slider, TYPE_SLIDER};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -1779,6 +1779,9 @@ fn slider_template_parts_match_owner_local_part_selectors() {
 
     let slider = ui.append(root, Slider::new());
     let track = ui.part(slider, PART_SLIDER_TRACK).unwrap();
+    let thumb = ui
+        .slot(slider, SLOT_SLIDER_THUMB)
+        .expect("slider template should expose a thumb slot");
     let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
     let style = StyleBuilder::new()
         .set(ui.properties().background, red.clone())
@@ -1786,9 +1789,10 @@ fn slider_template_parts_match_owner_local_part_selectors() {
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
-            SelectorBuilder::new(SelectorStep::type_tag(TYPE_SLIDER))
-                .child(SelectorStep::part_tag(PART_SLIDER_TRACK))
-                .build(),
+            crate::selectors::part(crate::selectors::template_part(
+                TYPE_SLIDER,
+                PART_SLIDER_TRACK,
+            )),
             style,
         )
         .build();
@@ -1799,6 +1803,37 @@ fn slider_template_parts_match_owner_local_part_selectors() {
         background, red,
         "owner-local part rule should match the nested slider track"
     );
+
+    let snapshot = ui.inspection_snapshot();
+    let slider_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == slider)
+        .expect("slider should be inspectable");
+    assert_eq!(slider_row.type_tag, Some(TYPE_SLIDER));
+    assert!(slider_row.has_widget_identity);
+
+    let track_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == track)
+        .expect("track should be inspectable");
+    assert_eq!(track_row.templated_parent, Some(slider));
+    assert_eq!(track_row.type_tag, None);
+    assert!(track_row.has_widget_identity);
+    assert_eq!(track_row.part_tag, Some(PART_SLIDER_TRACK));
+    assert_eq!(track_row.template_slot, Some("slider-track"));
+
+    let thumb_row = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == thumb)
+        .expect("thumb should be inspectable");
+    assert_eq!(thumb_row.templated_parent, Some(slider));
+    assert_eq!(thumb_row.type_tag, None);
+    assert!(thumb_row.has_widget_identity);
+    assert_eq!(thumb_row.part_tag, Some(PART_SLIDER_THUMB));
+    assert_eq!(thumb_row.template_slot, Some("slider-thumb"));
 
     ui.compute_layout(Size::new(300.0, 80.0));
     let mut output = Scene::new();
@@ -2003,9 +2038,10 @@ fn owner_pseudo_selector_can_style_template_descendant() {
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
-            SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON).with_pseudo(PSEUDO_PRESSED))
-                .child(SelectorStep::part_tag(PART_BUTTON_LABEL))
-                .build(),
+            crate::selectors::part_when(
+                SelectorStep::type_tag(TYPE_BUTTON).with_pseudo(PSEUDO_PRESSED),
+                crate::selectors::template_part(TYPE_BUTTON, PART_BUTTON_LABEL),
+            ),
             style,
         )
         .build();
