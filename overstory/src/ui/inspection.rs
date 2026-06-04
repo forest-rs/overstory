@@ -10,8 +10,8 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
-    TemplateContractInspection, TemplateSlotInspectionRow, TimelineInspectionSnapshot,
-    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    TemplateContractInspection, TimelineInspectionSnapshot, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
@@ -152,34 +152,8 @@ impl Ui {
         if contract.is_empty() {
             return None;
         }
-        let instance = self.template_instance(element.id());
-        Some(TemplateContractInspection {
-            required_slots: contract
-                .required_slots()
-                .map(|slot| TemplateSlotInspectionRow {
-                    name: slot.name(),
-                    part_tag: slot.part_tag(),
-                    element: instance.and_then(|instance| instance.slot(slot)),
-                })
-                .collect(),
-            optional_slots: contract
-                .optional_slots()
-                .map(|slot| TemplateSlotInspectionRow {
-                    name: slot.name(),
-                    part_tag: slot.part_tag(),
-                    element: instance.and_then(|instance| instance.slot(slot)),
-                })
-                .collect(),
-            recommended_slots: contract
-                .recommended_slots()
-                .map(|slot| TemplateSlotInspectionRow {
-                    name: slot.name(),
-                    part_tag: slot.part_tag(),
-                    element: instance.and_then(|instance| instance.slot(slot)),
-                })
-                .collect(),
-            diagnostics: instance.map_or_else(Vec::new, |instance| instance.diagnostics().to_vec()),
-        })
+        let report = contract.validate_expansion(self.template_instance(element.id()));
+        Some(TemplateContractInspection::from_expansion_report(&report))
     }
 
     fn element_property_inspection_rows(

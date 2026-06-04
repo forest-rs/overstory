@@ -81,6 +81,7 @@ mod identity;
 mod instance;
 pub(crate) mod runtime;
 mod spec;
+mod validation;
 
 pub use binding::{TemplateBinding, TemplateBuiltInProperty};
 pub use child::TemplateChild;
@@ -91,6 +92,7 @@ pub use identity::{TemplateItemKey, TemplatePart, TemplateSlot};
 pub use instance::TemplateInstance;
 pub(crate) use runtime::TemplateRuntime;
 pub use spec::{TemplateNode, TemplateSpec, TemplateWidgetFactory};
+pub use validation::{TemplateExpansionReport, TemplateSlotStatus};
 
 /// Factory that builds a templated control's visual subtree.
 ///

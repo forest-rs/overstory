@@ -3,9 +3,14 @@
 
 //! Control-declared template contracts.
 
+use alloc::vec::Vec;
+
 use smallvec::SmallVec;
 
-use super::TemplateSlot;
+use super::{
+    TemplateExpansionReport, TemplateInstance, TemplateSlot, TemplateSlotStatus,
+    validation::status_for_slot,
+};
 
 /// Importance of a slot in a control's visual template contract.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -167,6 +172,26 @@ impl TemplateContract {
         self.slots.is_empty()
     }
 
+    /// Validates this contract against a retained template expansion.
+    #[must_use]
+    pub fn validate_expansion(
+        &self,
+        instance: Option<&TemplateInstance>,
+    ) -> TemplateExpansionReport {
+        TemplateExpansionReport::new(
+            self.required_slots()
+                .map(|slot| status_for_slot(instance, slot))
+                .collect::<Vec<TemplateSlotStatus>>(),
+            self.optional_slots()
+                .map(|slot| status_for_slot(instance, slot))
+                .collect::<Vec<TemplateSlotStatus>>(),
+            self.recommended_slots()
+                .map(|slot| status_for_slot(instance, slot))
+                .collect::<Vec<TemplateSlotStatus>>(),
+            instance.map_or_else(Vec::new, |instance| instance.diagnostics().to_vec()),
+        )
+    }
+
     fn slots_with_importance(
         &self,
         importance: TemplateSlotImportance,
@@ -175,5 +200,38 @@ impl TemplateContract {
             .iter()
             .filter(move |slot| slot.importance == importance)
             .map(|slot| slot.slot)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const REQUIRED: TemplateSlot = TemplateSlot::new("required");
+    const OPTIONAL: TemplateSlot = TemplateSlot::new("optional");
+    const RECOMMENDED: TemplateSlot = TemplateSlot::new("recommended");
+
+    #[test]
+    fn validate_expansion_preserves_slot_importance() {
+        let report = TemplateContract::new()
+            .with_required_slot(REQUIRED)
+            .with_optional_slot(OPTIONAL)
+            .with_recommended_slot(RECOMMENDED)
+            .validate_expansion(None);
+
+        assert_eq!(report.required_slots()[0].slot(), REQUIRED);
+        assert_eq!(report.optional_slots()[0].slot(), OPTIONAL);
+        assert_eq!(report.recommended_slots()[0].slot(), RECOMMENDED);
+        assert!(report.has_missing_required_slots());
+        assert!(report.has_missing_recommended_slots());
+        assert!(report.has_issues());
+
+        let optional_only = TemplateContract::new()
+            .with_optional_slot(OPTIONAL)
+            .validate_expansion(None);
+
+        assert!(!optional_only.has_missing_required_slots());
+        assert!(!optional_only.has_missing_recommended_slots());
+        assert!(!optional_only.has_issues());
     }
 }

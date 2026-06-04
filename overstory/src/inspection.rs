@@ -18,7 +18,7 @@ use understory_style::{ClassId, PartTag, PseudoClassId, TypeTag};
 use crate::composition::{CompositionPolicy, SurfaceId};
 use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
-use crate::template::TemplateDiagnostic;
+use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
 
 /// Owned snapshot of the inspectable state of one [`crate::Ui`].
 #[derive(Clone, Debug, PartialEq)]
@@ -184,6 +184,30 @@ pub struct TemplateContractInspection {
 }
 
 impl TemplateContractInspection {
+    pub(crate) fn from_expansion_report(report: &TemplateExpansionReport) -> Self {
+        Self {
+            required_slots: report
+                .required_slots()
+                .iter()
+                .copied()
+                .map(template_slot_inspection_row)
+                .collect(),
+            optional_slots: report
+                .optional_slots()
+                .iter()
+                .copied()
+                .map(template_slot_inspection_row)
+                .collect(),
+            recommended_slots: report
+                .recommended_slots()
+                .iter()
+                .copied()
+                .map(template_slot_inspection_row)
+                .collect(),
+            diagnostics: report.diagnostics().to_vec(),
+        }
+    }
+
     /// Returns whether any required slot is missing.
     #[must_use]
     pub fn has_missing_required_slots(&self) -> bool {
@@ -208,6 +232,15 @@ impl TemplateContractInspection {
     #[must_use]
     pub fn has_issues(&self) -> bool {
         self.has_missing_required_slots() || !self.diagnostics.is_empty()
+    }
+}
+
+fn template_slot_inspection_row(status: TemplateSlotStatus) -> TemplateSlotInspectionRow {
+    let slot = status.slot();
+    TemplateSlotInspectionRow {
+        name: slot.name(),
+        part_tag: slot.part_tag(),
+        element: status.element(),
     }
 }
 
