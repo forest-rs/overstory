@@ -10,7 +10,7 @@ use understory_box_tree::NodeFlags;
 use understory_style::PartTag;
 
 use crate::binding::{BindingOwner, LocalState};
-use crate::channels::{COMPOSE, LAYOUT};
+use crate::channels::{COMPOSE, LAYOUT, PAINT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
 use crate::template::{TemplateContext, TemplateExpansionReport, TemplateInstance, TemplateSlot};
@@ -479,6 +479,7 @@ impl Ui {
         // `Layout` would sit in the cascade but never reach the layout engine.
         self.invalidation.mark(child, LAYOUT);
         self.invalidation.mark(parent, COMPOSE);
+        self.mark_child_dependent_presentation(parent);
         if expand_template {
             self.expand_default_template(child);
         }
@@ -535,6 +536,7 @@ impl Ui {
 
         if let Some(parent) = self.elements.detach_from_parent(id) {
             self.invalidation.mark(parent, COMPOSE);
+            self.mark_child_dependent_presentation(parent);
         }
         self.remove_subtree(id);
         for (id, parent) in removed {
@@ -572,6 +574,20 @@ impl Ui {
             self.presentation.remove_node(node);
         }
         self.composition.remove_element(id);
+    }
+
+    fn mark_child_dependent_presentation(&mut self, id: ElementId) {
+        let depends_on_children = self
+            .get(id)
+            .and_then(|element| {
+                element
+                    .widget()
+                    .map(|widget| widget.presentation_depends_on_children(element))
+            })
+            .unwrap_or(false);
+        if depends_on_children {
+            self.invalidation.mark(id, PAINT);
+        }
     }
 
     pub(in crate::ui) fn is_descendant_or_self(

@@ -39,7 +39,9 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
 use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `Button`.
 pub const TYPE_BUTTON: TypeTag = TypeTag(2);
@@ -212,6 +214,10 @@ impl AppendSpec for Button {
         }
         id
     }
+}
+
+impl ContentSlotSpec for Button {
+    const CONTENT_SLOT: TemplateSlot = SLOT_BUTTON_CONTENT;
 }
 
 impl ElementSpec for Button {

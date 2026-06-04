@@ -38,7 +38,9 @@ use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `RadioButton`.
 pub const TYPE_RADIO_BUTTON: TypeTag = TypeTag(23);
@@ -194,6 +196,10 @@ impl AppendSpec for RadioButton {
         set_radio_button_checked(ui, id, self.initial_checked);
         id
     }
+}
+
+impl ContentSlotSpec for RadioButton {
+    const CONTENT_SLOT: TemplateSlot = SLOT_RADIO_BUTTON_LABEL;
 }
 
 impl ElementSpec for RadioButton {

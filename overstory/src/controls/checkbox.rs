@@ -32,7 +32,9 @@ use crate::template::{
     Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `CheckBox`.
 pub const TYPE_CHECK_BOX: TypeTag = TypeTag(8);
@@ -174,6 +176,10 @@ impl AppendSpec for CheckBox {
         set_check_box_checked(ui, id, self.initial_checked);
         id
     }
+}
+
+impl ContentSlotSpec for CheckBox {
+    const CONTENT_SLOT: TemplateSlot = SLOT_CHECK_BOX_LABEL;
 }
 
 impl ElementSpec for CheckBox {

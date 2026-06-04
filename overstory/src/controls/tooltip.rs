@@ -30,7 +30,7 @@ use crate::layouts::Layout;
 use crate::overlay::Placement;
 use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::Ui;
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
+use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Tooltip`.
 pub const TYPE_TOOLTIP: TypeTag = TypeTag(15);
@@ -134,6 +134,10 @@ impl AppendSpec for Tooltip {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         append_tooltip(ui, parent, &self, Point::ZERO)
     }
+}
+
+impl ContentSlotSpec for Tooltip {
+    const CONTENT_SLOT: TemplateSlot = SLOT_TOOLTIP_CONTENT;
 }
 
 impl ElementSpec for Tooltip {

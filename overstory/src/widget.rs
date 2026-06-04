@@ -167,6 +167,17 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
+    /// Returns whether this widget's own presentation changes when its direct
+    /// retained child set changes.
+    ///
+    /// Most widgets paint independently from their children; child insertion or
+    /// removal only affects composition and layout. Slot-hosting widgets such
+    /// as content presenters use this to switch between their own fallback
+    /// presentation and the authored child subtree.
+    fn presentation_depends_on_children(&self, _element: &Element) -> bool {
+        false
+    }
+
     /// Called after layout has arranged this element's bounds and recursively
     /// written all descendant bounds.
     ///

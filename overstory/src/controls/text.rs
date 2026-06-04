@@ -207,11 +207,12 @@ impl Widget for TextWidget {
 
 /// Template-generated content part that presents its templated owner's content.
 ///
-/// The current presenter handles string content slots such as a button label.
-/// It reads `Content` from the template owner, while text style and foreground
-/// still resolve on the presenter element so part selectors and inheritance
-/// remain useful. Future content forms should grow this widget instead of
-/// bringing back template-local copies of owner properties or bindings.
+/// The current presenter has two modes. When it has no authored children, it
+/// presents the templated owner's `Content` string as a text fallback. When
+/// app code adds retained children into the slot, the presenter becomes a
+/// transparent host and lets that subtree provide the content. Future data
+/// templates and non-text content should grow this widget instead of bringing
+/// back template-local copies of owner properties or bindings.
 #[derive(Debug, Default)]
 pub(crate) struct ContentPresenterWidget;
 
@@ -227,6 +228,13 @@ impl Widget for ContentPresenterWidget {
         store: &mut PresentationStore<NodeId, ElementId>,
         node: NodeId,
     ) {
+        if !element.children().is_empty() {
+            if let Some(presentation) = store.node_mut(node) {
+                presentation.clear_primitives();
+            }
+            return;
+        }
+
         let content = content_presenter_text(element, ctx);
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
         let style = text_style(element, ctx);
@@ -245,6 +253,10 @@ impl Widget for ContentPresenterWidget {
         ctx: &MeasureContext<'_>,
         constraints: MeasureConstraints,
     ) -> Option<Size> {
+        if !element.children().is_empty() {
+            return None;
+        }
+
         let content = content_presenter_text(element, ctx);
         if content.is_empty() {
             return Some(Size::ZERO);
@@ -258,6 +270,10 @@ impl Widget for ContentPresenterWidget {
         let width = f64::from(layout.width());
         let height = f64::from(layout.height());
         Some(Size::new(width, height))
+    }
+
+    fn presentation_depends_on_children(&self, _element: &Element) -> bool {
+        true
     }
 }
 

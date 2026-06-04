@@ -2800,17 +2800,21 @@ fn two_independent_bindings_both_propagate() {
     assert_eq!(read(&ui, t2).as_deref(), Some("two"));
 }
 
-fn presented_button_label_text(ui: &mut Ui, button: ElementId) -> Option<String> {
+fn presented_element_text(ui: &mut Ui, element: ElementId) -> Option<String> {
     ui.compute_layout(Size::new(400.0, 120.0));
     let mut output = Scene::new();
     ui.paint(&mut output);
 
-    let label = ui.part(button, crate::PART_BUTTON_LABEL)?;
-    let label_node = ui.box_for(label)?;
+    let node = ui.box_for(element)?;
     ui.presentation
-        .presentation(label_node)?
+        .presentation(node)?
         .plain_text()
         .map(|text| String::from(text.content.as_str()))
+}
+
+fn presented_button_label_text(ui: &mut Ui, button: ElementId) -> Option<String> {
+    let label = ui.part(button, crate::PART_BUTTON_LABEL)?;
+    presented_element_text(ui, label)
 }
 
 #[test]
@@ -2832,6 +2836,102 @@ fn button_label_content_presenter_reads_owner_content() {
     assert_eq!(
         presented_button_label_text(&mut ui, b2).as_deref(),
         Some("Or me")
+    );
+}
+
+#[test]
+fn content_presenter_hosts_retained_children_over_text_fallback() {
+    use crate::{Button, SLOT_BUTTON_CONTENT, Text};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Fallback"));
+    let presenter = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("button template should expose content slot");
+
+    assert_eq!(
+        presented_element_text(&mut ui, presenter).as_deref(),
+        Some("Fallback")
+    );
+
+    let child = ui
+        .slot_children(button, SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Child"))
+        })
+        .expect("button template should expose content slot");
+
+    assert_eq!(ui.get(child).unwrap().parent(), Some(presenter));
+    assert_eq!(presented_element_text(&mut ui, presenter), None);
+    assert_eq!(
+        presented_element_text(&mut ui, child).as_deref(),
+        Some("Child")
+    );
+
+    ui.remove(child);
+    assert_eq!(
+        presented_element_text(&mut ui, presenter).as_deref(),
+        Some("Fallback")
+    );
+}
+
+#[test]
+fn button_uses_shared_content_slot_authoring() {
+    use crate::{Button, Text};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let (button, child) = ui.content(root, Button::new("Fallback"), |content| {
+        content.add(Text::new("Deploy"))
+    });
+    let child = child.expect("button template should expose content slot");
+    let presenter = ui
+        .slot(button, crate::SLOT_BUTTON_CONTENT)
+        .expect("button template should expose content slot");
+
+    assert_eq!(ui.get(child).unwrap().parent(), Some(presenter));
+    assert_eq!(presented_element_text(&mut ui, presenter), None);
+    assert_eq!(
+        presented_element_text(&mut ui, child).as_deref(),
+        Some("Deploy")
+    );
+}
+
+#[test]
+fn label_controls_use_shared_content_slot_authoring() {
+    use crate::{
+        CheckBox, RadioButton, SLOT_CHECK_BOX_LABEL, SLOT_RADIO_BUTTON_LABEL, SLOT_TOOLTIP_CONTENT,
+        Text, Tooltip,
+    };
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    let (checkbox, checkbox_child) = ui.content(root, CheckBox::new(""), |content| {
+        content.add(Text::new("Check"))
+    });
+    let checkbox_child = checkbox_child.expect("checkbox template should expose label slot");
+    assert_eq!(
+        ui.get(checkbox_child).unwrap().parent(),
+        ui.slot(checkbox, SLOT_CHECK_BOX_LABEL)
+    );
+
+    let (radio, radio_child) = ui.content(root, RadioButton::new(""), |content| {
+        content.add(Text::new("Radio"))
+    });
+    let radio_child = radio_child.expect("radio template should expose label slot");
+    assert_eq!(
+        ui.get(radio_child).unwrap().parent(),
+        ui.slot(radio, SLOT_RADIO_BUTTON_LABEL)
+    );
+
+    let (tooltip, tooltip_child) = ui.content(root, Tooltip::new(""), |content| {
+        content.add(Text::new("Tooltip"))
+    });
+    let tooltip_child = tooltip_child.expect("tooltip template should expose content slot");
+    assert_eq!(
+        ui.get(tooltip_child).unwrap().parent(),
+        ui.slot(tooltip, SLOT_TOOLTIP_CONTENT)
     );
 }
 

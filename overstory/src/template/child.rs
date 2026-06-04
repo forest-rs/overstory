@@ -72,10 +72,9 @@ impl TemplateChild {
 
     /// Creates a content presenter child for a content-style semantic slot.
     ///
-    /// Today this is a text-only owner-content presenter: the generated widget
-    /// reads the templated owner's `Content` string and presents it with text
-    /// style resolved on the generated element. It is not yet a general host
-    /// for arbitrary retained child content.
+    /// The generated widget presents the templated owner's `Content` string
+    /// when it has no authored children. If app code adds retained children to
+    /// the slot, the presenter becomes a transparent host for that subtree.
     #[must_use]
     #[inline]
     pub fn content_presenter(slot: TemplateSlot) -> Self {
