@@ -321,22 +321,15 @@ type TooltipTemplate = TemplateSpec;
 static TOOLTIP_TEMPLATE: TooltipTemplate = TemplateSpec::new(TOOLTIP_TEMPLATE_NODES);
 
 const TOOLTIP_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
-const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(tooltip_label_widget))
-            .with_slot(SLOT_TOOLTIP_CONTENT)
-            .with_bindings(TOOLTIP_LABEL_BINDINGS),
-    ];
+const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
+    SLOT_TOOLTIP_CONTENT,
+    TemplateWidgetFactory::new(tooltip_label_widget),
+)
+.with_bindings(TOOLTIP_LABEL_BINDINGS)];
 
 fn tooltip_label_widget() -> Box<dyn Widget> {
     Box::new(TooltipLabelWidget)

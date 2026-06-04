@@ -29,8 +29,9 @@ use crate::template::{
     TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ChildUi, ControlState, Ui};
-use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, SurfacePartWidget};
-use crate::widget::{TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+};
 
 /// Selector identity for `Accordion`.
 pub const TYPE_ACCORDION: TypeTag = TypeTag(28);
@@ -478,37 +479,27 @@ static ACCORDION_SECTION_TEMPLATE: AccordionSectionTemplate =
     TemplateSpec::new(ACCORDION_SECTION_TEMPLATE_NODES);
 
 const ACCORDION_SECTION_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const ACCORDION_SECTION_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(accordion_section_header_widget))
-        .with_slot(SLOT_ACCORDION_SECTION_HEADER)
+    TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_HEADER)
         .with_children(ACCORDION_SECTION_HEADER_CHILDREN),
-    TemplateNode::widget(TemplateWidgetFactory::new(accordion_section_content_widget))
-        .with_slot(SLOT_ACCORDION_SECTION_CONTENT),
+    TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_CONTENT),
 ];
 
 const ACCORDION_SECTION_HEADER_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(
-        accordion_section_disclosure_widget,
-    ))
-    .with_slot(SLOT_ACCORDION_SECTION_DISCLOSURE),
-    TemplateNode::widget(TemplateWidgetFactory::new(accordion_section_label_widget))
-        .with_slot(SLOT_ACCORDION_SECTION_LABEL)
-        .with_bindings(ACCORDION_SECTION_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_ACCORDION_SECTION_DISCLOSURE,
+        TemplateWidgetFactory::new(accordion_section_disclosure_widget),
+    ),
+    TemplateNode::for_slot(
+        SLOT_ACCORDION_SECTION_LABEL,
+        TemplateWidgetFactory::new(accordion_section_label_widget),
+    )
+    .with_bindings(ACCORDION_SECTION_LABEL_BINDINGS),
 ];
-
-fn accordion_section_header_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
 
 fn accordion_section_disclosure_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
@@ -516,10 +507,6 @@ fn accordion_section_disclosure_widget() -> Box<dyn Widget> {
 
 fn accordion_section_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
-}
-
-fn accordion_section_content_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
 }
 
 /// Sets whether an accordion section is expanded.

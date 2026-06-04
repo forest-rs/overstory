@@ -33,9 +33,7 @@ use crate::template::{
     TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
-};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `CheckBox`.
 pub const TYPE_CHECK_BOX: TypeTag = TypeTag(8);
@@ -295,34 +293,23 @@ type CheckBoxTemplate = TemplateSpec;
 static CHECK_BOX_TEMPLATE: CheckBoxTemplate = TemplateSpec::new(CHECK_BOX_TEMPLATE_NODES);
 
 const CHECK_BOX_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const CHECK_BOX_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(check_box_box_widget))
-        .with_slot(SLOT_CHECK_BOX_BOX)
-        .with_children(CHECK_BOX_BOX_CHILDREN),
-    TemplateNode::widget(TemplateWidgetFactory::new(check_box_label_widget))
-        .with_slot(SLOT_CHECK_BOX_LABEL)
-        .with_bindings(CHECK_BOX_LABEL_BINDINGS),
+    TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX).with_children(CHECK_BOX_BOX_CHILDREN),
+    TemplateNode::for_slot(
+        SLOT_CHECK_BOX_LABEL,
+        TemplateWidgetFactory::new(check_box_label_widget),
+    )
+    .with_bindings(CHECK_BOX_LABEL_BINDINGS),
 ];
 
-const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(check_box_mark_widget))
-            .with_slot(SLOT_CHECK_BOX_MARK),
-    ];
-
-fn check_box_box_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
+const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
+    SLOT_CHECK_BOX_MARK,
+    TemplateWidgetFactory::new(check_box_mark_widget),
+)];
 
 fn check_box_mark_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)

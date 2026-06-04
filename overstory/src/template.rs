@@ -268,6 +268,55 @@ impl TemplatePart {
     }
 }
 
+/// Diagnostic emitted while expanding a retained template instance.
+///
+/// Diagnostics are non-fatal: templates may still expand enough for an app to
+/// run, while inspectors and tests can point at ambiguous contracts. Duplicate
+/// records are reported for the concrete lookup identity Overstory would use:
+/// `slot + key` or `part + key`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TemplateDiagnostic {
+    /// Two generated elements registered the same semantic slot/key.
+    DuplicateSlot {
+        /// Semantic slot that was registered more than once.
+        slot: TemplateSlot,
+        /// Optional repeated-item key. `None` means the unkeyed slot was
+        /// duplicated.
+        key: Option<TemplateItemKey>,
+        /// First generated element that registered this identity.
+        first: ElementId,
+        /// Later generated element that registered the same identity.
+        duplicate: ElementId,
+    },
+    /// Two generated elements registered the same owner-local part/key.
+    DuplicatePart {
+        /// Owner-local part that was registered more than once.
+        part_tag: PartTag,
+        /// Optional repeated-item key. `None` means the unkeyed part was
+        /// duplicated.
+        key: Option<TemplateItemKey>,
+        /// First generated element that registered this identity.
+        first: ElementId,
+        /// Later generated element that registered the same identity.
+        duplicate: ElementId,
+    },
+}
+
+impl TemplateDiagnostic {
+    /// Returns whether this diagnostic references `element`.
+    #[must_use]
+    pub fn references(self, element: ElementId) -> bool {
+        match self {
+            Self::DuplicateSlot {
+                first, duplicate, ..
+            }
+            | Self::DuplicatePart {
+                first, duplicate, ..
+            } => first == element || duplicate == element,
+        }
+    }
+}
+
 /// Description of one child element a template wants to insert.
 pub struct TemplateChild {
     widget: Box<dyn Widget>,
@@ -299,6 +348,13 @@ impl TemplateChild {
         }
     }
 
+    /// Creates an unnamed surface-only child.
+    #[must_use]
+    #[inline]
+    pub fn surface() -> Self {
+        Self::widget(Box::new(SurfacePartWidget))
+    }
+
     /// Creates a child that fills a semantic template slot.
     #[must_use]
     #[inline]
@@ -311,6 +367,20 @@ impl TemplateChild {
     #[inline]
     pub fn part(part_tag: PartTag, widget: Box<dyn Widget>) -> Self {
         Self::widget(widget).with_part(part_tag)
+    }
+
+    /// Creates a surface-only child that fills a semantic template slot.
+    #[must_use]
+    #[inline]
+    pub fn surface_slot(slot: TemplateSlot) -> Self {
+        Self::surface().with_slot(slot)
+    }
+
+    /// Creates a surface-only child with an owner-local part tag.
+    #[must_use]
+    #[inline]
+    pub fn surface_part(part_tag: PartTag) -> Self {
+        Self::surface().with_part(part_tag)
     }
 
     /// Assigns this child to a semantic template slot.
@@ -348,6 +418,7 @@ pub struct TemplateInstance {
     owner: ElementId,
     parts: Vec<TemplatePart>,
     bindings: Vec<BindingId>,
+    diagnostics: Vec<TemplateDiagnostic>,
 }
 
 impl TemplateInstance {
@@ -356,6 +427,7 @@ impl TemplateInstance {
             owner,
             parts: Vec::new(),
             bindings: Vec::new(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -436,8 +508,17 @@ impl TemplateInstance {
         &self.bindings
     }
 
+    /// Returns non-fatal diagnostics produced during template expansion.
+    #[must_use]
+    #[inline]
+    pub fn diagnostics(&self) -> &[TemplateDiagnostic] {
+        &self.diagnostics
+    }
+
     pub(crate) fn remove_element(&mut self, element: ElementId) {
         self.parts.retain(|part| part.element != element);
+        self.diagnostics
+            .retain(|diagnostic| !diagnostic.references(element));
     }
 
     fn push_part(
@@ -447,6 +528,34 @@ impl TemplateInstance {
         key: Option<TemplateItemKey>,
         element: ElementId,
     ) {
+        if let Some(slot) = slot
+            && let Some(first) = self
+                .parts
+                .iter()
+                .find(|part| part.slot == Some(slot) && part.key == key)
+                .map(|part| part.element)
+        {
+            self.diagnostics.push(TemplateDiagnostic::DuplicateSlot {
+                slot,
+                key,
+                first,
+                duplicate: element,
+            });
+        }
+        if let Some(part_tag) = part_tag
+            && let Some(first) = self
+                .parts
+                .iter()
+                .find(|part| part.part_tag == Some(part_tag) && part.key == key)
+                .map(|part| part.element)
+        {
+            self.diagnostics.push(TemplateDiagnostic::DuplicatePart {
+                part_tag,
+                key,
+                first,
+                duplicate: element,
+            });
+        }
         self.parts.push(TemplatePart {
             slot,
             part_tag,
@@ -769,11 +878,39 @@ impl TemplateNode {
         }
     }
 
+    /// Creates a node that fills a semantic template slot.
+    #[must_use]
+    #[inline]
+    pub const fn for_slot(slot: TemplateSlot, widget: TemplateWidgetFactory) -> Self {
+        Self::widget(widget).with_slot(slot)
+    }
+
+    /// Creates a node with an owner-local part tag.
+    #[must_use]
+    #[inline]
+    pub const fn for_part(part: PartTag, widget: TemplateWidgetFactory) -> Self {
+        Self::widget(widget).with_part(part)
+    }
+
     /// Creates a surface-only node.
     #[must_use]
     #[inline]
     pub const fn surface() -> Self {
         Self::widget(TemplateWidgetFactory::surface())
+    }
+
+    /// Creates a surface-only node that fills a semantic template slot.
+    #[must_use]
+    #[inline]
+    pub const fn surface_slot(slot: TemplateSlot) -> Self {
+        Self::for_slot(slot, TemplateWidgetFactory::surface())
+    }
+
+    /// Creates a surface-only node with an owner-local part tag.
+    #[must_use]
+    #[inline]
+    pub const fn surface_part(part: PartTag) -> Self {
+        Self::for_part(part, TemplateWidgetFactory::surface())
     }
 
     /// Assigns this node to a semantic template slot.
@@ -953,6 +1090,14 @@ pub struct TemplateBinding {
 }
 
 impl TemplateBinding {
+    /// Creates a binding from an owner property to the same generated-node
+    /// property.
+    #[must_use]
+    #[inline]
+    pub const fn same(property: TemplateBuiltInProperty) -> Self {
+        Self::owner_to_part(property, property)
+    }
+
     /// Creates a binding from an owner property to the generated node.
     #[must_use]
     #[inline]

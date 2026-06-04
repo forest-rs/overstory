@@ -434,22 +434,15 @@ static SEGMENTED_ITEM_TEMPLATE: SegmentedItemTemplate =
     TemplateSpec::new(SEGMENTED_ITEM_TEMPLATE_NODES);
 
 const SEGMENTED_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
-const SEGMENTED_ITEM_TEMPLATE_NODES: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(segmented_item_label_widget))
-            .with_slot(SLOT_SEGMENTED_ITEM_LABEL)
-            .with_bindings(SEGMENTED_ITEM_LABEL_BINDINGS),
-    ];
+const SEGMENTED_ITEM_TEMPLATE_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
+    SLOT_SEGMENTED_ITEM_LABEL,
+    TemplateWidgetFactory::new(segmented_item_label_widget),
+)
+.with_bindings(SEGMENTED_ITEM_LABEL_BINDINGS)];
 
 fn segmented_item_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)

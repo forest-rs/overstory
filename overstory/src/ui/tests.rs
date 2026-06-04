@@ -1577,7 +1577,6 @@ fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {
 
 #[test]
 fn template_overrides_replace_visuals_not_control_behavior() {
-    use crate::widget::SurfacePartWidget;
     use crate::{
         Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
         TemplateChild, TextWidget, ToggleSwitch, set_slider_value,
@@ -1590,14 +1589,8 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     impl Template for DoubleFrameButtonTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
             let props = *cx.properties();
-            let outer = cx.insert(TemplateChild::part(
-                OUTER_FRAME,
-                Box::new(SurfacePartWidget),
-            ));
-            let inner = cx.insert_under(
-                outer,
-                TemplateChild::part(INNER_FRAME, Box::new(SurfacePartWidget)),
-            );
+            let outer = cx.insert(TemplateChild::surface_part(OUTER_FRAME));
+            let inner = cx.insert_under(outer, TemplateChild::surface_part(INNER_FRAME));
             let content = cx.insert_under(
                 inner,
                 TemplateChild::slot(SLOT_BUTTON_CONTENT, Box::new(TextWidget)),
@@ -1612,7 +1605,7 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     struct SingleSlotTemplate(TemplateSlot);
     impl Template for SingleSlotTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let _part = cx.insert(TemplateChild::slot(self.0, Box::new(SurfacePartWidget)));
+            let _part = cx.insert(TemplateChild::surface_slot(self.0));
         }
     }
 
@@ -1673,7 +1666,9 @@ fn template_overrides_replace_visuals_not_control_behavior() {
 
 #[test]
 fn inspection_reports_template_contract_slot_status() {
-    use crate::{Button, SLOT_BUTTON_CONTENT, Template, TemplateChild, TextWidget};
+    use crate::{
+        Button, SLOT_BUTTON_CONTENT, Template, TemplateChild, TemplateDiagnostic, TextWidget,
+    };
 
     struct EmptyButtonTemplate;
     impl Template for EmptyButtonTemplate {
@@ -1690,14 +1685,30 @@ fn inspection_reports_template_contract_slot_status() {
         }
     }
 
+    struct DuplicateButtonTemplate;
+    impl Template for DuplicateButtonTemplate {
+        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+            let _first = cx.insert(TemplateChild::slot(
+                SLOT_BUTTON_CONTENT,
+                Box::new(TextWidget),
+            ));
+            let _duplicate = cx.insert(TemplateChild::slot(
+                SLOT_BUTTON_CONTENT,
+                Box::new(TextWidget),
+            ));
+        }
+    }
+
     static EMPTY_TEMPLATE: EmptyButtonTemplate = EmptyButtonTemplate;
     static CONTENT_TEMPLATE: ContentButtonTemplate = ContentButtonTemplate;
+    static DUPLICATE_TEMPLATE: DuplicateButtonTemplate = DuplicateButtonTemplate;
 
     let mut ui = Ui::new();
     let root = ui.root();
     let default_button = ui.append(root, Button::new("Default"));
     let empty_button = ui.append(root, Button::new("Empty").template(&EMPTY_TEMPLATE));
     let custom_button = ui.append(root, Button::new("Custom").template(&CONTENT_TEMPLATE));
+    let duplicate_button = ui.append(root, Button::new("Duplicate").template(&DUPLICATE_TEMPLATE));
 
     let snapshot = ui.inspection_snapshot();
     let default_contract = snapshot
@@ -1734,6 +1745,43 @@ fn inspection_reports_template_contract_slot_status() {
         ui.slot(custom_button, SLOT_BUTTON_CONTENT)
     );
     assert!(!custom_contract.has_missing_required_slots());
+
+    let duplicate_contract = snapshot
+        .elements
+        .iter()
+        .find(|row| row.id == duplicate_button)
+        .and_then(|row| row.template_contract.as_ref())
+        .expect("duplicate template should expose contract diagnostics");
+    let content_part = SLOT_BUTTON_CONTENT.part_tag().unwrap();
+    assert!(!duplicate_contract.has_missing_required_slots());
+    assert!(duplicate_contract.has_issues());
+    assert_eq!(duplicate_contract.diagnostics.len(), 2);
+    assert!(
+        duplicate_contract
+            .diagnostics
+            .iter()
+            .any(|diagnostic| matches!(
+                *diagnostic,
+                TemplateDiagnostic::DuplicateSlot {
+                    slot,
+                    key: None,
+                    ..
+                } if slot == SLOT_BUTTON_CONTENT
+            ))
+    );
+    assert!(
+        duplicate_contract
+            .diagnostics
+            .iter()
+            .any(|diagnostic| matches!(
+                *diagnostic,
+                TemplateDiagnostic::DuplicatePart {
+                    part_tag,
+                    key: None,
+                    ..
+                } if part_tag == content_part
+            ))
+    );
 }
 
 #[test]
@@ -2535,7 +2583,7 @@ fn external_source_binding_refreshes_when_notified() {
 
 #[test]
 fn template_expansion_inserts_parts_under_owner() {
-    use crate::widget::{AppendSpec, SurfacePartWidget, Widget};
+    use crate::widget::{AppendSpec, Widget};
     use crate::{Template, TemplateChild, TemplateContext};
     use understory_style::TypeTag;
 
@@ -2549,14 +2597,8 @@ fn template_expansion_inserts_parts_under_owner() {
     struct TestTemplate;
     impl Template for TestTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let _a = cx.insert(TemplateChild::part(
-                TEST_PART_A,
-                Box::new(SurfacePartWidget),
-            ));
-            let _b = cx.insert(TemplateChild::part(
-                TEST_PART_B,
-                Box::new(SurfacePartWidget),
-            ));
+            let _a = cx.insert(TemplateChild::surface_part(TEST_PART_A));
+            let _b = cx.insert(TemplateChild::surface_part(TEST_PART_B));
         }
     }
     static TEST_TEMPLATE: TestTemplate = TestTemplate;
@@ -2619,9 +2661,8 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
     const OUTER_CLASS: ClassId = ClassId(0x12);
     const OUTER_CLASSES: &[ClassId] = &[OUTER_CLASS];
-    const CHILDREN: &[TemplateNode] = &[TemplateNode::surface().with_part(INNER_PART)];
-    const NODES: &[TemplateNode] = &[TemplateNode::surface()
-        .with_slot(OUTER_SLOT)
+    const CHILDREN: &[TemplateNode] = &[TemplateNode::surface_part(INNER_PART)];
+    const NODES: &[TemplateNode] = &[TemplateNode::surface_slot(OUTER_SLOT)
         .with_key(OUTER_KEY)
         .with_classes(OUTER_CLASSES)
         .with_children(CHILDREN)];

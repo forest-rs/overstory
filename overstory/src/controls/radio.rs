@@ -42,9 +42,7 @@ use crate::template::{
     TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
-};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `RadioButton`.
 pub const TYPE_RADIO_BUTTON: TypeTag = TypeTag(23);
@@ -627,38 +625,22 @@ type RadioButtonTemplate = TemplateSpec;
 static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = TemplateSpec::new(RADIO_BUTTON_TEMPLATE_NODES);
 
 const RADIO_BUTTON_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const RADIO_BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(radio_indicator_widget))
-        .with_slot(SLOT_RADIO_BUTTON_INDICATOR)
+    TemplateNode::surface_slot(SLOT_RADIO_BUTTON_INDICATOR)
         .with_children(RADIO_BUTTON_INDICATOR_CHILDREN),
-    TemplateNode::widget(TemplateWidgetFactory::new(radio_label_widget))
-        .with_slot(SLOT_RADIO_BUTTON_LABEL)
-        .with_bindings(RADIO_BUTTON_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_RADIO_BUTTON_LABEL,
+        TemplateWidgetFactory::new(radio_label_widget),
+    )
+    .with_bindings(RADIO_BUTTON_LABEL_BINDINGS),
 ];
 
 const RADIO_BUTTON_INDICATOR_CHILDREN: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(radio_dot_widget))
-            .with_slot(SLOT_RADIO_BUTTON_DOT),
-    ];
-
-fn radio_indicator_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
-
-fn radio_dot_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
+    &[TemplateNode::surface_slot(SLOT_RADIO_BUTTON_DOT)];
 
 fn radio_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)

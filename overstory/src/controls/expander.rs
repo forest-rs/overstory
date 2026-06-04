@@ -31,8 +31,7 @@ use crate::template::{
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, SurfacePartWidget,
-    TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
 };
 
 /// Selector identity for `Expander`.
@@ -299,35 +298,26 @@ type ExpanderTemplate = TemplateSpec;
 static EXPANDER_TEMPLATE: ExpanderTemplate = TemplateSpec::new(EXPANDER_TEMPLATE_NODES);
 
 const EXPANDER_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const EXPANDER_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(expander_header_widget))
-        .with_slot(SLOT_EXPANDER_HEADER)
-        .with_children(EXPANDER_HEADER_CHILDREN),
-    TemplateNode::widget(TemplateWidgetFactory::new(expander_content_widget))
-        .with_slot(SLOT_EXPANDER_CONTENT),
+    TemplateNode::surface_slot(SLOT_EXPANDER_HEADER).with_children(EXPANDER_HEADER_CHILDREN),
+    TemplateNode::surface_slot(SLOT_EXPANDER_CONTENT),
 ];
 
 const EXPANDER_HEADER_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(expander_disclosure_widget))
-        .with_slot(SLOT_EXPANDER_DISCLOSURE),
-    TemplateNode::widget(TemplateWidgetFactory::new(expander_label_widget))
-        .with_slot(SLOT_EXPANDER_LABEL)
-        .with_bindings(EXPANDER_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_EXPANDER_DISCLOSURE,
+        TemplateWidgetFactory::new(expander_disclosure_widget),
+    ),
+    TemplateNode::for_slot(
+        SLOT_EXPANDER_LABEL,
+        TemplateWidgetFactory::new(expander_label_widget),
+    )
+    .with_bindings(EXPANDER_LABEL_BINDINGS),
 ];
-
-fn expander_header_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
 
 fn expander_disclosure_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
@@ -335,10 +325,6 @@ fn expander_disclosure_widget() -> Box<dyn Widget> {
 
 fn expander_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
-}
-
-fn expander_content_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
 }
 
 /// Sets whether `expander` is expanded.

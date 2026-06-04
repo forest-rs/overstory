@@ -172,6 +172,7 @@ impl Ui {
                     element: instance.and_then(|instance| instance.slot(*slot)),
                 })
                 .collect(),
+            diagnostics: instance.map_or_else(Vec::new, |instance| instance.diagnostics().to_vec()),
         })
     }
 

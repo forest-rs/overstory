@@ -26,9 +26,7 @@ use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
-};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `ProgressBar`.
 pub const TYPE_PROGRESS_BAR: TypeTag = TypeTag(7);
@@ -234,10 +232,7 @@ struct ProgressTemplate;
 
 impl Template for ProgressTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let fill = cx.insert(TemplateChild::slot(
-            SLOT_PROGRESS_BAR_FILL,
-            Box::new(SurfacePartWidget),
-        ));
+        let fill = cx.insert(TemplateChild::surface_slot(SLOT_PROGRESS_BAR_FILL));
         cx.set_layout_placement(fill, LayoutPlacement::absolute_at(0.0, 0.0));
         cx.set_layout_size(fill, LayoutSize::percent(0.0, 1.0));
 

@@ -53,7 +53,7 @@ use crate::template::{
     TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `ListBox`.
 pub const TYPE_LIST_BOX: TypeTag = TypeTag(11);
@@ -944,33 +944,21 @@ type ListItemTemplate = TemplateSpec;
 static LIST_ITEM_TEMPLATE: ListItemTemplate = TemplateSpec::new(LIST_ITEM_TEMPLATE_NODES);
 
 const LIST_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
-const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(list_item_label_widget))
-            .with_slot(SLOT_LIST_ITEM_CONTENT)
-            .with_bindings(LIST_ITEM_LABEL_BINDINGS),
-    ];
+const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
+    SLOT_LIST_ITEM_CONTENT,
+    TemplateWidgetFactory::new(list_item_label_widget),
+)
+.with_bindings(LIST_ITEM_LABEL_BINDINGS)];
 
 const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
     &[
-        TemplateNode::widget(TemplateWidgetFactory::new(list_item_content_widget))
-            .with_part(PART_LIST_ITEM_CONTENT)
+        TemplateNode::surface_part(PART_LIST_ITEM_CONTENT)
             .with_children(LIST_ITEM_CONTENT_CHILDREN),
     ];
-
-fn list_item_content_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
 
 fn list_item_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)

@@ -26,13 +26,13 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, StyleTokenInspectionName, SurfaceInspectionId, TemplateContractInspection,
-    TemplateSlotInspectionRow, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    LayerInspectionId, PartTagInspectionName, StyleTokenInspectionName, SurfaceInspectionId,
+    TemplateContractInspection, TemplateSlotInspectionRow, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
-    ScrollArea, Text, Ui, scroll_area_viewport, theme,
+    ScrollArea, TemplateDiagnostic, TemplateItemKey, Text, Ui, scroll_area_viewport, theme,
 };
 #[cfg(feature = "spoor-session")]
 use overstory::{expanded_outline_keys, replace_outline_nodes};
@@ -622,6 +622,23 @@ fn sanitize_template_links(
     if let Some(contract) = &mut row.template_contract {
         sanitize_template_slot_links(&mut contract.required_slots, &is_included);
         sanitize_template_slot_links(&mut contract.recommended_slots, &is_included);
+        contract
+            .diagnostics
+            .retain(|diagnostic| template_diagnostic_is_included(diagnostic, &is_included));
+    }
+}
+
+fn template_diagnostic_is_included(
+    diagnostic: &TemplateDiagnostic,
+    is_included: &impl Fn(ElementId) -> bool,
+) -> bool {
+    match *diagnostic {
+        TemplateDiagnostic::DuplicateSlot {
+            first, duplicate, ..
+        }
+        | TemplateDiagnostic::DuplicatePart {
+            first, duplicate, ..
+        } => is_included(first) && is_included(duplicate),
     }
 }
 
@@ -1292,6 +1309,13 @@ fn selected_element_property_grid(
                 &contract.recommended_slots,
             ));
         }
+        if !contract.diagnostics.is_empty() {
+            template.push_row(template_contract_diagnostics_row(
+                snapshot,
+                row,
+                &contract.diagnostics,
+            ));
+        }
     }
 
     let style = PropertyGridSection::new("Style")
@@ -1404,10 +1428,77 @@ fn element_relation_summary(snapshot: &DevtoolsSnapshot, element: ElementId) -> 
 fn template_contract_status_row(contract: &TemplateContractInspection) -> PropertyGridRow {
     let status = if contract.has_missing_required_slots() {
         PropertyGridValue::token("missing required")
+    } else if !contract.diagnostics.is_empty() {
+        PropertyGridValue::token("diagnostics")
     } else {
         PropertyGridValue::token("satisfied")
     };
     PropertyGridRow::new("Contract", status)
+}
+
+fn template_contract_diagnostics_row(
+    snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
+    diagnostics: &[TemplateDiagnostic],
+) -> PropertyGridRow {
+    let mut row = PropertyGridRow::new("Diagnostics", PropertyGridValue::count(diagnostics.len()));
+    for diagnostic in diagnostics {
+        row.push_child(template_diagnostic_row(snapshot, owner, diagnostic));
+    }
+    row
+}
+
+fn template_diagnostic_row(
+    snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
+    diagnostic: &TemplateDiagnostic,
+) -> PropertyGridRow {
+    match *diagnostic {
+        TemplateDiagnostic::DuplicateSlot {
+            slot,
+            key,
+            first,
+            duplicate,
+        } => {
+            let mut row =
+                PropertyGridRow::new("Duplicate slot", PropertyGridValue::token(slot.name()));
+            row.push_child(PropertyGridRow::new("Key", optional_template_key(key)));
+            if let Some(part_tag) = slot.part_tag() {
+                row.push_child(PropertyGridRow::new(
+                    "Style part",
+                    owner_part_tag_value(snapshot, owner, |candidate| {
+                        candidate.part_tag == part_tag
+                    }),
+                ));
+            }
+            push_duplicate_elements(snapshot, &mut row, first, duplicate);
+            row
+        }
+        TemplateDiagnostic::DuplicatePart {
+            part_tag,
+            key,
+            first,
+            duplicate,
+        } => {
+            let mut row = PropertyGridRow::new(
+                "Duplicate style part",
+                owner_part_tag_value(snapshot, owner, |candidate| candidate.part_tag == part_tag),
+            );
+            row.push_child(PropertyGridRow::new("Key", optional_template_key(key)));
+            push_duplicate_elements(snapshot, &mut row, first, duplicate);
+            row
+        }
+    }
+}
+
+fn push_duplicate_elements(
+    snapshot: &DevtoolsSnapshot,
+    row: &mut PropertyGridRow,
+    first: ElementId,
+    duplicate: ElementId,
+) {
+    row.push_child(element_relation_row(snapshot, "First", Some(first)));
+    row.push_child(element_relation_row(snapshot, "Duplicate", Some(duplicate)));
 }
 
 fn template_contract_slots_row(
@@ -1516,6 +1607,14 @@ fn contract_slot_part_tag_value(
     let Some(part_tag) = slot.part_tag else {
         return PropertyGridValue::empty();
     };
+    owner_part_tag_value(snapshot, owner, |candidate| candidate.part_tag == part_tag)
+}
+
+fn owner_part_tag_value(
+    snapshot: &DevtoolsSnapshot,
+    owner: &ElementInspectionRow,
+    matches_part: impl Fn(&PartTagInspectionName) -> bool,
+) -> PropertyGridValue {
     let label = owner
         .type_tag
         .and_then(|owner_type_tag| {
@@ -1525,7 +1624,7 @@ fn contract_slot_part_tag_value(
                 .part_tags
                 .iter()
                 .find(|candidate| {
-                    candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
+                    candidate.owner_type_tag == owner_type_tag && matches_part(candidate)
                 })
                 .map(|candidate| candidate.name)
         })
@@ -1723,6 +1822,10 @@ fn optional_u64(value: Option<u64>) -> PropertyGridValue {
     value.map_or_else(PropertyGridValue::empty, |value| {
         PropertyGridValue::text(format!("{value}"))
     })
+}
+
+fn optional_template_key(key: Option<TemplateItemKey>) -> PropertyGridValue {
+    optional_u64(key.map(TemplateItemKey::value))
 }
 
 fn optional_layer_id(id: Option<LayerInspectionId>) -> PropertyGridValue {
@@ -2736,6 +2839,63 @@ mod tests {
                 format!("Button {}", element_id_summary(button))
             )
         );
+    }
+
+    #[test]
+    fn selected_element_property_grid_reports_template_contract_diagnostics() {
+        use overstory::{
+            Button, SLOT_BUTTON_CONTENT, Template, TemplateChild, TemplateContext, TextWidget,
+        };
+
+        struct DuplicateButtonTemplate;
+        impl Template for DuplicateButtonTemplate {
+            fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+                let _first = cx.insert(TemplateChild::slot(
+                    SLOT_BUTTON_CONTENT,
+                    alloc::boxed::Box::new(TextWidget),
+                ));
+                let _duplicate = cx.insert(TemplateChild::slot(
+                    SLOT_BUTTON_CONTENT,
+                    alloc::boxed::Box::new(TextWidget),
+                ));
+            }
+        }
+        static DUPLICATE_TEMPLATE: DuplicateButtonTemplate = DuplicateButtonTemplate;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Duplicate").template(&DUPLICATE_TEMPLATE));
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let row = snapshot
+            .element(button)
+            .expect("button should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, row);
+        let template = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("grid should contain template section");
+        let contract = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Contract")
+            .expect("template section should expose template contract status");
+        let diagnostics = template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Diagnostics")
+            .expect("template section should expose diagnostics");
+
+        assert_eq!(contract.value(), &PropertyGridValue::token("diagnostics"));
+        assert_eq!(diagnostics.value(), &PropertyGridValue::count(2));
+        assert!(diagnostics.children().iter().any(|row| {
+            row.label() == "Duplicate slot" && row.value() == &PropertyGridValue::token("content")
+        }));
+        assert!(diagnostics.children().iter().any(|row| {
+            row.label() == "Duplicate style part"
+                && row.value() == &PropertyGridValue::token("Button.Label")
+        }));
     }
 
     #[test]

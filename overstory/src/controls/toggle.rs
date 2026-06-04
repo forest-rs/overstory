@@ -32,9 +32,7 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
-};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `ToggleSwitch`.
 pub const TYPE_TOGGLE: TypeTag = TypeTag(3);
@@ -278,10 +276,7 @@ struct ToggleTemplate;
 impl Template for ToggleTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
         // Thumb part. Sized + styled by the cascade.
-        let _thumb = cx.insert(TemplateChild::slot(
-            SLOT_TOGGLE_THUMB,
-            Box::new(SurfacePartWidget),
-        ));
+        let _thumb = cx.insert(TemplateChild::surface_slot(SLOT_TOGGLE_THUMB));
     }
 }
 

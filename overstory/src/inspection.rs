@@ -18,6 +18,7 @@ use understory_style::{ClassId, PartTag, PseudoClassId, TypeTag};
 use crate::composition::{CompositionPolicy, SurfaceId};
 use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
+use crate::template::TemplateDiagnostic;
 
 /// Owned snapshot of the inspectable state of one [`crate::Ui`].
 #[derive(Clone, Debug, PartialEq)]
@@ -175,6 +176,8 @@ pub struct TemplateContractInspection {
     pub required_slots: Vec<TemplateSlotInspectionRow>,
     /// Recommended slots and whether the expanded template provided them.
     pub recommended_slots: Vec<TemplateSlotInspectionRow>,
+    /// Non-fatal diagnostics reported while expanding the template instance.
+    pub diagnostics: Vec<TemplateDiagnostic>,
 }
 
 impl TemplateContractInspection {
@@ -184,6 +187,13 @@ impl TemplateContractInspection {
         self.required_slots
             .iter()
             .any(|slot| slot.element.is_none())
+    }
+
+    /// Returns whether this contract has missing required slots or expansion
+    /// diagnostics.
+    #[must_use]
+    pub fn has_issues(&self) -> bool {
+        self.has_missing_required_slots() || !self.diagnostics.is_empty()
     }
 }
 

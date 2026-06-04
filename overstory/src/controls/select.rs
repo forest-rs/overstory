@@ -553,22 +553,20 @@ type SelectTemplate = TemplateSpec;
 static SELECT_TEMPLATE: SelectTemplate = TemplateSpec::new(SELECT_TEMPLATE_NODES);
 
 const SELECT_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const SELECT_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(select_label_widget))
-        .with_slot(SLOT_SELECT_LABEL)
-        .with_bindings(SELECT_LABEL_BINDINGS),
-    TemplateNode::widget(TemplateWidgetFactory::new(select_indicator_widget))
-        .with_slot(SLOT_SELECT_INDICATOR),
+    TemplateNode::for_slot(
+        SLOT_SELECT_LABEL,
+        TemplateWidgetFactory::new(select_label_widget),
+    )
+    .with_bindings(SELECT_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_SELECT_INDICATOR,
+        TemplateWidgetFactory::new(select_indicator_widget),
+    ),
 ];
 
 fn select_label_widget() -> Box<dyn Widget> {

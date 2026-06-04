@@ -32,9 +32,7 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, TemplateOverrideWidget, Widget,
-};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
 /// Selector identity for `TextInput`.
 pub const TYPE_TEXT_INPUT: TypeTag = TypeTag(9);
@@ -614,10 +612,7 @@ struct TextInputTemplate;
 
 impl Template for TextInputTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let selection = cx.insert(TemplateChild::slot(
-            SLOT_TEXT_INPUT_SELECTION,
-            Box::new(SurfacePartWidget),
-        ));
+        let selection = cx.insert(TemplateChild::surface_slot(SLOT_TEXT_INPUT_SELECTION));
         let (selection_placement, selection_size) =
             editor_rect_parts(Rect::ZERO, DEFAULT_FONT_SIZE);
         cx.set_layout_placement(selection, selection_placement);
@@ -633,10 +628,7 @@ impl Template for TextInputTemplate {
             Box::new(TextWidget),
         ));
 
-        let caret = cx.insert(TemplateChild::slot(
-            SLOT_TEXT_INPUT_CARET,
-            Box::new(SurfacePartWidget),
-        ));
+        let caret = cx.insert(TemplateChild::surface_slot(SLOT_TEXT_INPUT_CARET));
         let (caret_placement, caret_size) = editor_rect_parts(
             Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
             DEFAULT_FONT_SIZE,

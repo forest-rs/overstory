@@ -225,8 +225,8 @@ pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use template::{
     Template, TemplateBinding, TemplateBuiltInProperty, TemplateChild, TemplateContext,
-    TemplateContract, TemplateInstance, TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot,
-    TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateDiagnostic, TemplateInstance, TemplateItemKey, TemplateNode,
+    TemplatePart, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};

@@ -296,22 +296,18 @@ type ButtonTemplate = TemplateSpec;
 static BUTTON_TEMPLATE: ButtonTemplate = TemplateSpec::new(BUTTON_TEMPLATE_NODES);
 
 const BUTTON_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
     // Foreground inherits through the tree, so styled owner foreground remains
     // theme-live instead of being copied into a local template-binding value.
-    TemplateNode::widget(TemplateWidgetFactory::new(button_label_widget))
-        .with_slot(SLOT_BUTTON_CONTENT)
-        .with_bindings(BUTTON_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_BUTTON_CONTENT,
+        TemplateWidgetFactory::new(button_label_widget),
+    )
+    .with_bindings(BUTTON_LABEL_BINDINGS),
 ];
 
 fn button_label_widget() -> Box<dyn Widget> {

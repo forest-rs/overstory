@@ -47,7 +47,7 @@ use crate::template::{
     TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `OutlineView`.
 pub const TYPE_OUTLINE_VIEW: TypeTag = TypeTag(21);
@@ -1247,36 +1247,25 @@ type OutlineItemTemplate = TemplateSpec;
 static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = TemplateSpec::new(OUTLINE_ITEM_TEMPLATE_NODES);
 
 const OUTLINE_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::Content,
-        TemplateBuiltInProperty::Content,
-    ),
-    TemplateBinding::owner_to_part(
-        TemplateBuiltInProperty::FontSize,
-        TemplateBuiltInProperty::FontSize,
-    ),
+    TemplateBinding::same(TemplateBuiltInProperty::Content),
+    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
 ];
 
 const OUTLINE_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::widget(TemplateWidgetFactory::new(outline_item_disclosure_widget))
-        .with_part(PART_OUTLINE_ITEM_DISCLOSURE)
-        .with_slot(SLOT_OUTLINE_ITEM_DISCLOSURE),
-    TemplateNode::widget(TemplateWidgetFactory::new(outline_item_label_widget))
-        .with_part(PART_OUTLINE_ITEM_LABEL)
-        .with_slot(SLOT_OUTLINE_ITEM_LABEL)
-        .with_bindings(OUTLINE_ITEM_LABEL_BINDINGS),
+    TemplateNode::for_slot(
+        SLOT_OUTLINE_ITEM_DISCLOSURE,
+        TemplateWidgetFactory::new(outline_item_disclosure_widget),
+    ),
+    TemplateNode::for_slot(
+        SLOT_OUTLINE_ITEM_LABEL,
+        TemplateWidgetFactory::new(outline_item_label_widget),
+    )
+    .with_bindings(OUTLINE_ITEM_LABEL_BINDINGS),
 ];
 
 const OUTLINE_ITEM_TEMPLATE_NODES: &[TemplateNode] =
-    &[
-        TemplateNode::widget(TemplateWidgetFactory::new(outline_item_content_widget))
-            .with_part(PART_OUTLINE_ITEM_CONTENT)
-            .with_children(OUTLINE_ITEM_CONTENT_CHILDREN),
-    ];
-
-fn outline_item_content_widget() -> Box<dyn Widget> {
-    Box::new(SurfacePartWidget)
-}
+    &[TemplateNode::surface_part(PART_OUTLINE_ITEM_CONTENT)
+        .with_children(OUTLINE_ITEM_CONTENT_CHILDREN)];
 
 fn outline_item_disclosure_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
