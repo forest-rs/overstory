@@ -1209,7 +1209,7 @@ fn selected_element_property_grid(
         ))
         .row(PropertyGridRow::new("Role", element_role(snapshot, row)))
         .row(PropertyGridRow::new(
-            "Selector identity",
+            "Widget behavior",
             row.has_widget_identity,
         ))
         .row(type_tag_row(snapshot, row));
@@ -1255,7 +1255,7 @@ fn selected_element_property_grid(
             row.templated_parent,
         ))
         .row(PropertyGridRow::new(
-            "Part tag",
+            "Style part",
             part_tag_value(snapshot, row),
         ))
         .row(PropertyGridRow::new(
@@ -1437,7 +1437,7 @@ fn template_contract_slot_row(
     let mut row = PropertyGridRow::new(slot.name, value);
     if slot.part_tag.is_some() {
         row.push_child(PropertyGridRow::new(
-            "Part tag",
+            "Style part",
             contract_slot_part_tag_value(snapshot, owner, slot),
         ));
     }
@@ -1454,7 +1454,7 @@ fn child_relation_label(
         .element(child)
         .is_some_and(|row| row.templated_parent == Some(parent.id));
     if is_template_part {
-        format!("Part {index}")
+        format!("Template part {index}")
     } else {
         format!("Child {index}")
     }
@@ -1462,7 +1462,7 @@ fn child_relation_label(
 
 fn element_role(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> &'static str {
     if row.templated_parent.is_some() {
-        "template part"
+        template_child_role(row)
     } else if template_part_count(snapshot, row.id) > 0 {
         "templated control"
     } else if row.has_widget_identity {
@@ -1474,11 +1474,20 @@ fn element_role(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> &'st
 
 fn template_role(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> &'static str {
     if row.templated_parent.is_some() {
-        "part"
+        template_child_role(row)
     } else if template_part_count(snapshot, row.id) > 0 {
         "owner"
     } else {
         "none"
+    }
+}
+
+fn template_child_role(row: &ElementInspectionRow) -> &'static str {
+    match (row.template_slot.is_some(), row.part_tag.is_some()) {
+        (true, true) => "template slot part",
+        (true, false) => "template slot",
+        (false, true) => "template part",
+        (false, false) => "template child",
     }
 }
 
@@ -2650,7 +2659,7 @@ mod tests {
             required_slots.children()[0].children()[0].value(),
             &PropertyGridValue::token("Button.Label")
         );
-        assert_eq!(children.children()[0].label(), "Part 0");
+        assert_eq!(children.children()[0].label(), "Template part 0");
         assert_eq!(
             children.children()[0].value(),
             &PropertyGridValue::element_link(
@@ -2663,11 +2672,31 @@ mod tests {
             .element(label)
             .expect("button content should be inspectable");
         let label_grid = selected_element_property_grid(&snapshot, label_row);
+        let label_identity = label_grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Element")
+            .expect("template part grid should contain element section");
+        let label_role = label_identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Role")
+            .expect("element section should expose role");
+        let label_type_tag = label_identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Type tag")
+            .expect("element section should expose type tag");
         let label_template = label_grid
             .sections()
             .iter()
             .find(|section| section.title() == "Template")
             .expect("template part grid should contain template section");
+        let template_role = label_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Role")
+            .expect("template section should expose template role");
         let physical_source = label_template
             .rows()
             .iter()
@@ -2681,8 +2710,17 @@ mod tests {
         let part_tag = label_template
             .rows()
             .iter()
-            .find(|row| row.label() == "Part tag")
-            .expect("template part should expose part tag");
+            .find(|row| row.label() == "Style part")
+            .expect("template part should expose style part");
+        assert_eq!(
+            label_role.value(),
+            &PropertyGridValue::text("template slot part")
+        );
+        assert_eq!(label_type_tag.value(), &PropertyGridValue::token("Text"));
+        assert_eq!(
+            template_role.value(),
+            &PropertyGridValue::text("template slot part")
+        );
         assert_eq!(part_tag.value(), &PropertyGridValue::token("Button.Label"));
         assert_eq!(
             physical_source.value(),
@@ -2749,6 +2787,54 @@ mod tests {
                 track,
                 format!("Slider.Track {}", element_id_summary(track))
             )
+        );
+
+        let track_row = snapshot
+            .element(track)
+            .expect("track should be inspectable");
+        let track_grid = selected_element_property_grid(&snapshot, track_row);
+        let track_identity = track_grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Element")
+            .expect("track details should contain element section");
+        let track_role = track_identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Role")
+            .expect("track element details should expose role");
+        let track_type_tag = track_identity
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Type tag")
+            .expect("track element details should expose type tag");
+        let track_template = track_grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Template")
+            .expect("track details should contain template section");
+        let track_style_part = track_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Style part")
+            .expect("track template details should expose style part");
+        let track_slot_name = track_template
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Slot")
+            .expect("track template details should expose slot name");
+        assert_eq!(
+            track_role.value(),
+            &PropertyGridValue::text("template slot part")
+        );
+        assert_eq!(track_type_tag.value(), &PropertyGridValue::empty());
+        assert_eq!(
+            track_style_part.value(),
+            &PropertyGridValue::token("Slider.Track")
+        );
+        assert_eq!(
+            track_slot_name.value(),
+            &PropertyGridValue::token("slider-track")
         );
     }
 
