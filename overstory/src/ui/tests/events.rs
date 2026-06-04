@@ -125,6 +125,40 @@ fn button_builder_click_runs_once_for_template_part_source() {
 }
 
 #[test]
+fn button_builder_click_runs_for_retained_content_presenter_child() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{Button, Text};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let count = Rc::new(Cell::new(0));
+    let count_for_handler = Rc::clone(&count);
+    let (button, retained_label) = ui.content(
+        root,
+        Button::new("Run").on_click(move |_ui, event| {
+            assert!(event.is_semantic_target());
+            count_for_handler.set(count_for_handler.get() + 1);
+        }),
+        |content| content.add(Text::new("Deploy")),
+    );
+    let retained_label = retained_label.expect("button should expose a content slot");
+
+    ui.synthesize_click(retained_label, Point::ZERO);
+
+    assert_eq!(
+        count.get(),
+        1,
+        "retained content inside a button content presenter should activate the button"
+    );
+    assert_eq!(
+        ui.get(retained_label).unwrap().parent(),
+        ui.slot(button, crate::SLOT_BUTTON_CONTENT)
+    );
+}
+
+#[test]
 fn explicit_pointer_focus_does_not_set_focus_visible() {
     let mut ui = Ui::new();
     let root = ui.root();

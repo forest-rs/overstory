@@ -1579,7 +1579,7 @@ fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {
 fn template_overrides_replace_visuals_not_control_behavior() {
     use crate::{
         Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
-        TemplateChild, ToggleSwitch, set_slider_value,
+        TemplateChild, Text, ToggleSwitch, set_slider_value,
     };
 
     const OUTER_FRAME: PartTag = PartTag(0x40);
@@ -1619,6 +1619,17 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     assert_eq!(
         presented_button_label_text(&mut ui, button).as_deref(),
         Some("Run")
+    );
+    let structured_label = ui
+        .slot_children(button, SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Retained"))
+        })
+        .expect("custom button template should expose its content slot");
+    assert_eq!(ui.get(structured_label).unwrap().parent(), Some(content));
+    assert_eq!(presented_element_text(&mut ui, content), None);
+    assert_eq!(
+        presented_element_text(&mut ui, structured_label).as_deref(),
+        Some("Retained")
     );
 
     let toggle = ui.append(root, ToggleSwitch::new().template(&TOGGLE_TEMPLATE));
@@ -2877,13 +2888,15 @@ fn content_presenter_hosts_retained_children_over_text_fallback() {
 
 #[test]
 fn button_uses_shared_content_slot_authoring() {
-    use crate::{Button, Text};
+    use crate::{Button, Text, TooltipSpecExt};
 
     let mut ui = Ui::new();
     let root = ui.root();
-    let (button, child) = ui.content(root, Button::new("Fallback"), |content| {
-        content.add(Text::new("Deploy"))
-    });
+    let (button, child) = ui.content(
+        root,
+        Button::new("Fallback").tooltip("Runs the deploy workflow"),
+        |content| content.add(Text::new("Deploy")),
+    );
     let child = child.expect("button template should expose content slot");
     let presenter = ui
         .slot(button, crate::SLOT_BUTTON_CONTENT)
@@ -4317,14 +4330,20 @@ fn press_marks_templated_control_not_inner_part() {
     // `TYPE_BUTTON:pressed` never matches and the button shows
     // no press feedback. Use `press_visual_target` directly so
     // the test doesn't depend on layout + hit-test plumbing.
-    use crate::Button;
+    use crate::{Button, Text};
 
     let mut ui = Ui::new();
     let root = ui.root();
     let button = ui.append(root, Button::new("Click me"));
     let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
+    let retained_label = ui
+        .slot_children(button, crate::SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Retained"))
+        })
+        .expect("button template should expose content slot");
 
     assert_eq!(ui.press_visual_target(label), button);
+    assert_eq!(ui.press_visual_target(retained_label), button);
     assert_eq!(ui.press_visual_target(button), button);
     assert_eq!(ui.press_visual_target(root), root);
 }

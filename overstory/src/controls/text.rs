@@ -275,6 +275,10 @@ impl Widget for ContentPresenterWidget {
     fn presentation_depends_on_children(&self, _element: &Element) -> bool {
         true
     }
+
+    fn routes_descendants_to_template_owner(&self, _element: &Element) -> bool {
+        true
+    }
 }
 
 fn content_presenter_text(element: &Element, source: &impl ResolvedPropertySource) -> String {

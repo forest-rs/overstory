@@ -51,6 +51,8 @@ pub(super) const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
 pub(super) const CLASS_DEVTOOLS_INSPECTOR_CARD: ClassId = ClassId(25);
 pub(super) const CLASS_DEVTOOLS_STATUS: ClassId = ClassId(26);
 pub(super) const CLASS_DEVTOOLS_BUTTON: ClassId = ClassId(27);
+pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_OUTER: ClassId = ClassId(28);
+pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_INNER: ClassId = ClassId(29);
 pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
 pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
 pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
@@ -86,6 +88,14 @@ pub(super) fn register_demo_style_debug_names(ui: &mut Ui) {
     ui.set_class_debug_name(CLASS_DEVTOOLS_INSPECTOR_CARD, ".devtools-inspector-card");
     ui.set_class_debug_name(CLASS_DEVTOOLS_STATUS, ".devtools-status");
     ui.set_class_debug_name(CLASS_DEVTOOLS_BUTTON, ".devtools-button");
+    ui.set_class_debug_name(
+        CLASS_DEMO_TEMPLATE_BUTTON_OUTER,
+        ".demo-template-button-outer",
+    );
+    ui.set_class_debug_name(
+        CLASS_DEMO_TEMPLATE_BUTTON_INNER,
+        ".demo-template-button-inner",
+    );
     ui.set_class_debug_name(CLASS_OKLAB_SWATCH, ".oklab-swatch");
     ui.set_class_debug_name(CLASS_OPACITY_SWATCH, ".opacity-swatch");
     ui.set_class_debug_name(CLASS_BORDER_SWATCH, ".border-swatch");
@@ -346,6 +356,45 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
+            untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
+            StyleBuilder::new()
+                .set(properties.background, opt_solid(0x27, 0x3b, 0x6f, 0xff))
+                .set(properties.border_brush, opt_solid(0x90, 0xa7, 0xff, 0xff))
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 12.0_f64)
+                .set(properties.layout_container, LayoutContainer::row())
+                .set(properties.layout_spacing, LayoutSpacing::padding_all(3.0))
+                .set(
+                    properties.layout_alignment,
+                    LayoutAlignment::new()
+                        .justify_content(LayoutJustify::Center)
+                        .align_items(LayoutAlign::Center),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0x80))
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 9.0_f64)
+                .set(properties.layout_container, LayoutContainer::row())
+                .set(
+                    properties.layout_spacing,
+                    LayoutSpacing::padding_xy(12.0, 8.0),
+                )
+                .set(
+                    properties.layout_alignment,
+                    LayoutAlignment::new()
+                        .justify_content(LayoutJustify::Center)
+                        .align_items(LayoutAlign::Center),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
             text_class_selector(CLASS_DEMO_NUMBER),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
@@ -501,6 +550,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
 }
 pub(super) fn class_selector(class: ClassId) -> Selector {
     Selector::single(SelectorStep::type_tag(TYPE_GENERIC).with_class(class))
+}
+
+pub(super) fn untyped_class_selector(class: ClassId) -> Selector {
+    Selector::single(SelectorStep::class(class))
 }
 
 pub(super) fn text_class_selector(class: ClassId) -> Selector {

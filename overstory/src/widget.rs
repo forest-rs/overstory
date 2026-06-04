@@ -178,6 +178,18 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         false
     }
 
+    /// Returns whether retained descendants should route as semantic content
+    /// of this element's template owner.
+    ///
+    /// Most template parts are only visual structure: authored descendants
+    /// inside them remain ordinary app content. Content presenters are the
+    /// exception for label/content slots such as a button label. A click on
+    /// retained text inside the presenter should still be a semantic click on
+    /// the owning control.
+    fn routes_descendants_to_template_owner(&self, _element: &Element) -> bool {
+        false
+    }
+
     /// Called after layout has arranged this element's bounds and recursively
     /// written all descendant bounds.
     ///
@@ -407,6 +419,14 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         constraints: MeasureConstraints,
     ) -> Option<Size> {
         self.widget.measure(element, ctx, constraints)
+    }
+
+    fn presentation_depends_on_children(&self, element: &Element) -> bool {
+        self.widget.presentation_depends_on_children(element)
+    }
+
+    fn routes_descendants_to_template_owner(&self, element: &Element) -> bool {
+        self.widget.routes_descendants_to_template_owner(element)
     }
 
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {

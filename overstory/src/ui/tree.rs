@@ -590,6 +590,27 @@ impl Ui {
         }
     }
 
+    pub(in crate::ui) fn template_owner_for_presented_descendant(
+        &self,
+        descendant: ElementId,
+    ) -> Option<ElementId> {
+        let mut current = self
+            .get(descendant)
+            .and_then(crate::element::Element::parent);
+        while let Some(id) = current {
+            let element = self.get(id)?;
+            if let Some(owner) = element.templated_parent()
+                && element
+                    .widget()
+                    .is_some_and(|widget| widget.routes_descendants_to_template_owner(element))
+            {
+                return Some(owner);
+            }
+            current = element.parent();
+        }
+        None
+    }
+
     pub(in crate::ui) fn is_descendant_or_self(
         &self,
         descendant: ElementId,

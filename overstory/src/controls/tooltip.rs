@@ -192,6 +192,13 @@ where
     }
 }
 
+impl<S> ContentSlotSpec for TooltipSpec<S>
+where
+    S: ContentSlotSpec,
+{
+    const CONTENT_SLOT: TemplateSlot = S::CONTENT_SLOT;
+}
+
 /// Extension trait for attaching a tooltip at the same call-site as a spec.
 pub trait TooltipSpecExt: AppendSpec + Sized {
     /// Attaches a default tooltip with text content to the inserted element.

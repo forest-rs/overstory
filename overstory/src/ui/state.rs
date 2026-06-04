@@ -415,10 +415,11 @@ impl Ui {
     /// template part rather than the control itself. Cascade rules
     /// keyed on the control's `TypeTag` (`TYPE_BUTTON:pressed`, …)
     /// would never match that part. To match WPF, climb the
-    /// `templated_parent` chain to the first ancestor whose widget
-    /// owns a default template — that ancestor is the templated
-    /// control the part belongs to. Non-template hits return
-    /// themselves.
+    /// `templated_parent` chain to the first ancestor whose widget owns a
+    /// default template — that ancestor is the templated control the part
+    /// belongs to. Retained descendants hosted by a template content presenter
+    /// use the presenter's template owner for the same reason. Non-template
+    /// hits return themselves.
     pub(in crate::ui) fn press_visual_target(&self, hit: ElementId) -> ElementId {
         let mut current = hit;
         loop {
@@ -434,7 +435,11 @@ impl Ui {
             }
             match element.templated_parent() {
                 Some(parent) => current = parent,
-                None => return current,
+                None => {
+                    return self
+                        .template_owner_for_presented_descendant(hit)
+                        .unwrap_or(current);
+                }
             }
         }
     }

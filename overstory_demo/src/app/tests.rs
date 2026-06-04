@@ -357,6 +357,86 @@ fn inputs_page_groups_input_and_choice_cards_without_card_spill() {
 }
 
 #[test]
+fn inputs_page_custom_button_template_frames_retained_content() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Inputs);
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
+
+    let outer = find_by_class(&ui, stage, CLASS_DEMO_TEMPLATE_BUTTON_OUTER)
+        .expect("inputs page should render the custom template outer frame");
+    let inner = find_by_class(&ui, stage, CLASS_DEMO_TEMPLATE_BUTTON_INNER)
+        .expect("inputs page should render the custom template inner frame");
+    let content = ui
+        .get(inner)
+        .expect("inner frame should exist")
+        .children()
+        .first()
+        .copied()
+        .expect("inner frame should host the content presenter");
+    let retained_label = ui
+        .get(content)
+        .expect("content presenter should exist")
+        .children()
+        .first()
+        .copied()
+        .expect("content presenter should host retained label content");
+    let retained_label_text = *ui
+        .get(retained_label)
+        .expect("retained label row should exist")
+        .children()
+        .get(1)
+        .expect("retained label row should contain text after the status dot");
+
+    let outer_bounds = ui.effective_bounds(outer);
+    let inner_bounds = ui.effective_bounds(inner);
+    let retained_bounds = ui.effective_bounds(retained_label);
+
+    assert!(
+        outer_bounds.width() > inner_bounds.width(),
+        "outer frame should add visible padding around inner frame: {outer_bounds:?} <= {inner_bounds:?}",
+    );
+    assert!(
+        inner_bounds.width() > retained_bounds.width(),
+        "inner frame should add visible padding around retained content: {inner_bounds:?} <= {retained_bounds:?}",
+    );
+    assert!(
+        inner_bounds.x0 <= retained_bounds.x0
+            && inner_bounds.y0 <= retained_bounds.y0
+            && inner_bounds.x1 >= retained_bounds.x1
+            && inner_bounds.y1 >= retained_bounds.y1,
+        "inner frame should contain retained content: {inner_bounds:?} vs {retained_bounds:?}",
+    );
+
+    assert_eq!(text_content(&ui, retained_label_text), "Deploy");
+    let text_center = ui.effective_bounds(retained_label_text).center();
+    assert_eq!(
+        ui.hit_test(text_center),
+        Some(retained_label_text),
+        "retained label text should be the hit-tested target at its center",
+    );
+    let down = ui.dispatch_pointer_event(&pointer_down(text_center, 1));
+    assert!(
+        down.changed(),
+        "pointer down on retained text should press the owning button",
+    );
+    assert!(
+        !down.handled,
+        "pointer down on retained text should leave click recognition active",
+    );
+    let up = ui.dispatch_pointer_event(&pointer_up(text_center, 2));
+    assert!(
+        up.changed(),
+        "pointer up on retained text should release the owning button press",
+    );
+    ui.flush_bindings();
+    assert_eq!(text_content(&ui, retained_label_text), "Clicked!");
+}
+
+#[test]
 fn disclosure_page_keeps_expander_and_accordion_cards_together() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);

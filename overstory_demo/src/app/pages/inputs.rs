@@ -3,6 +3,18 @@ use super::super::*;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct InputsPage;
 
+const DOUBLE_FRAME_OUTER_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_BUTTON_OUTER];
+const DOUBLE_FRAME_INNER_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_BUTTON_INNER];
+const DOUBLE_FRAME_CONTENT_NODES: &[TemplateNode] =
+    &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
+const DOUBLE_FRAME_INNER_NODES: &[TemplateNode] = &[TemplateNode::surface()
+    .with_classes(DOUBLE_FRAME_INNER_CLASSES)
+    .with_children(DOUBLE_FRAME_CONTENT_NODES)];
+const DOUBLE_FRAME_BUTTON_NODES: &[TemplateNode] = &[TemplateNode::surface()
+    .with_classes(DOUBLE_FRAME_OUTER_CLASSES)
+    .with_children(DOUBLE_FRAME_INNER_NODES)];
+static DOUBLE_FRAME_BUTTON_TEMPLATE: TemplateSpec = TemplateSpec::new(DOUBLE_FRAME_BUTTON_NODES);
+
 impl View for InputsPage {
     type Output = ();
 
@@ -30,15 +42,34 @@ impl View for InputsPage {
                 row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
                     actions.with_child(Panel::row(10.0).align_center(), |buttons| {
                         let deploy_clicks = buttons.local_state(0_u32);
-                        buttons.add(
+                        buttons.content(
                             Button::new("")
+                                .template(&DOUBLE_FRAME_BUTTON_TEMPLATE)
                                 .font_size(15.0)
+                                .layout(Layout::row(0.0).align_center())
+                                .background(None::<Brush>)
+                                .border_brush(None::<Brush>)
+                                .border_width(0.0)
+                                .corner_radius(0.0)
                                 .on_click(cycling_click_handler(deploy_clicks))
-                                .bind_content(
-                                    deploy_clicks
-                                        .map(|count| cycling_click_label("Deploy", *count)),
-                                )
                                 .tooltip("Run the staged deployment workflow"),
+                            |content| {
+                                content.with_child(Panel::row(8.0).align_center(), |label| {
+                                    label.add(
+                                        Panel::new()
+                                            .layout(Layout::new().logical_size(8.0, 8.0))
+                                            .background(solid(0x9d, 0xf8, 0xb0, 0xff))
+                                            .corner_radius(4.0),
+                                    );
+                                    label.add(
+                                        Text::new("")
+                                            .font_size(15.0)
+                                            .bind_content(deploy_clicks.map(|count| {
+                                                cycling_click_label("Deploy", *count)
+                                            })),
+                                    );
+                                });
+                            },
                         );
                         buttons.add(
                             Button::new("Review")
@@ -48,7 +79,12 @@ impl View for InputsPage {
                         );
                     });
                     actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-                    actions.add(CheckBox::new("Enable staged rollout").checked(true));
+                    actions.content(CheckBox::new("").checked(true), |label| {
+                        label.with_child(Panel::row(8.0).align_center(), |row| {
+                            row.add(Text::new("Enable staged rollout").font_size(15.0));
+                            row.add(caption("template slot"));
+                        });
+                    });
                     actions.add(CheckBox::new("Collect timing traces"));
                     actions.add(CheckBox::new("Send diagnostics").disabled());
                 });
@@ -71,6 +107,12 @@ impl View for InputsPage {
                                 summary.set(ui, format!("Release lane: {selected_item}"));
                             }),
                     );
+                    radios.content(RadioButton::new("").disabled(), |label| {
+                        label.with_child(Panel::row(8.0).align_center(), |row| {
+                            row.add(Text::new("Canary").font_size(15.0));
+                            row.add(caption("retained label"));
+                        });
+                    });
                 });
                 row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
                     let summary = segments.local_state(String::from("View mode: Preview"));

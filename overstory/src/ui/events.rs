@@ -277,13 +277,21 @@ impl Ui {
     }
 
     fn routed_event_origin(&self, source: ElementId) -> RoutedEventOrigin {
-        self.get(source).and_then(Element::templated_parent).map_or(
-            RoutedEventOrigin::Element(source),
-            |owner| RoutedEventOrigin::TemplateChild {
+        if let Some(owner) = self.get(source).and_then(Element::templated_parent) {
+            return RoutedEventOrigin::TemplateChild {
                 owner,
                 child: source,
-            },
-        )
+            };
+        }
+
+        if let Some(owner) = self.template_owner_for_presented_descendant(source) {
+            return RoutedEventOrigin::TemplateChild {
+                owner,
+                child: source,
+            };
+        }
+
+        RoutedEventOrigin::Element(source)
     }
 
     pub(crate) fn with_widget_mut(
