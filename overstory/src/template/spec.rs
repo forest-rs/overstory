@@ -5,7 +5,7 @@
 
 use alloc::boxed::Box;
 
-use crate::controls::text::TextPresenterWidget;
+use crate::controls::text::ContentPresenterWidget;
 use crate::element::ElementId;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_style::{ClassId, PartTag};
@@ -75,11 +75,11 @@ impl TemplateWidgetFactory {
         Self::new(surface_template_widget)
     }
 
-    /// Creates a text presenter widget.
+    /// Creates a content presenter widget.
     #[must_use]
     #[inline]
-    pub const fn text_presenter() -> Self {
-        Self::new(text_presenter_widget)
+    pub const fn content_presenter() -> Self {
+        Self::new(content_presenter_widget)
     }
 
     fn create(self) -> Box<dyn Widget> {
@@ -91,8 +91,8 @@ fn surface_template_widget() -> Box<dyn Widget> {
     Box::new(SurfacePartWidget)
 }
 
-fn text_presenter_widget() -> Box<dyn Widget> {
-    Box::new(TextPresenterWidget)
+fn content_presenter_widget() -> Box<dyn Widget> {
+    Box::new(ContentPresenterWidget)
 }
 
 /// One node in a [`TemplateSpec`].
@@ -156,14 +156,14 @@ impl TemplateNode {
         Self::for_part(part, TemplateWidgetFactory::surface())
     }
 
-    /// Creates a text presenter node for a content-style semantic slot.
+    /// Creates a content presenter node for a content-style semantic slot.
     ///
     /// The generated widget reads `Content` from the template owner and
     /// resolves text styling on the generated element.
     #[must_use]
     #[inline]
-    pub const fn text_presenter(slot: TemplateSlot) -> Self {
-        Self::for_slot(slot, TemplateWidgetFactory::text_presenter())
+    pub const fn content_presenter(slot: TemplateSlot) -> Self {
+        Self::for_slot(slot, TemplateWidgetFactory::content_presenter())
     }
 
     /// Assigns this node to a semantic template slot.

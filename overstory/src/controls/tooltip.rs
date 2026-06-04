@@ -260,4 +260,4 @@ type TooltipTemplate = TemplateSpec;
 static TOOLTIP_TEMPLATE: TooltipTemplate = TemplateSpec::new(TOOLTIP_TEMPLATE_NODES);
 
 const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] =
-    &[TemplateNode::text_presenter(SLOT_TOOLTIP_CONTENT)];
+    &[TemplateNode::content_presenter(SLOT_TOOLTIP_CONTENT)];

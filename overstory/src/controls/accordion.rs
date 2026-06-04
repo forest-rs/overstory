@@ -480,7 +480,7 @@ const ACCORDION_SECTION_HEADER_CHILDREN: &[TemplateNode] = &[
         SLOT_ACCORDION_SECTION_DISCLOSURE,
         TemplateWidgetFactory::new(accordion_section_disclosure_widget),
     ),
-    TemplateNode::text_presenter(SLOT_ACCORDION_SECTION_LABEL),
+    TemplateNode::content_presenter(SLOT_ACCORDION_SECTION_LABEL),
 ];
 
 fn accordion_section_disclosure_widget() -> Box<dyn Widget> {

@@ -289,7 +289,7 @@ static CHECK_BOX_TEMPLATE: CheckBoxTemplate = TemplateSpec::new(CHECK_BOX_TEMPLA
 
 const CHECK_BOX_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX).with_children(CHECK_BOX_BOX_CHILDREN),
-    TemplateNode::text_presenter(SLOT_CHECK_BOX_LABEL),
+    TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
 ];
 
 const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(

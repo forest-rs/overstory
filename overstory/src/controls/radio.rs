@@ -619,7 +619,7 @@ static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = TemplateSpec::new(RADIO_BUTT
 const RADIO_BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_RADIO_BUTTON_INDICATOR)
         .with_children(RADIO_BUTTON_INDICATOR_CHILDREN),
-    TemplateNode::text_presenter(SLOT_RADIO_BUTTON_LABEL),
+    TemplateNode::content_presenter(SLOT_RADIO_BUTTON_LABEL),
 ];
 
 const RADIO_BUTTON_INDICATOR_CHILDREN: &[TemplateNode] =

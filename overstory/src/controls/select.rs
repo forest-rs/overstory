@@ -548,7 +548,7 @@ type SelectTemplate = TemplateSpec;
 static SELECT_TEMPLATE: SelectTemplate = TemplateSpec::new(SELECT_TEMPLATE_NODES);
 
 const SELECT_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::text_presenter(SLOT_SELECT_LABEL),
+    TemplateNode::content_presenter(SLOT_SELECT_LABEL),
     TemplateNode::for_slot(
         SLOT_SELECT_INDICATOR,
         TemplateWidgetFactory::new(select_indicator_widget),

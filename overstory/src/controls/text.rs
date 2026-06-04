@@ -205,16 +205,17 @@ impl Widget for TextWidget {
     }
 }
 
-/// Template-generated text part that presents its templated owner's content.
+/// Template-generated content part that presents its templated owner's content.
 ///
-/// The presenter is for content slots such as a button label. It reads
-/// `Content` from the template owner, while text style and foreground still
-/// resolve on the presenter element so part selectors and inheritance remain
-/// useful.
+/// The current presenter handles string content slots such as a button label.
+/// It reads `Content` from the template owner, while text style and foreground
+/// still resolve on the presenter element so part selectors and inheritance
+/// remain useful. Future content forms should grow this widget instead of
+/// bringing back template-local copies of owner properties.
 #[derive(Debug, Default)]
-pub(crate) struct TextPresenterWidget;
+pub(crate) struct ContentPresenterWidget;
 
-impl Widget for TextPresenterWidget {
+impl Widget for ContentPresenterWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_TEXT)
     }
@@ -226,7 +227,7 @@ impl Widget for TextPresenterWidget {
         store: &mut PresentationStore<NodeId, ElementId>,
         node: NodeId,
     ) {
-        let content = presenter_content(element, ctx);
+        let content = content_presenter_text(element, ctx);
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
         let style = text_style(element, ctx);
 
@@ -244,7 +245,7 @@ impl Widget for TextPresenterWidget {
         ctx: &MeasureContext<'_>,
         constraints: MeasureConstraints,
     ) -> Option<Size> {
-        let content = presenter_content(element, ctx);
+        let content = content_presenter_text(element, ctx);
         if content.is_empty() {
             return Some(Size::ZERO);
         }
@@ -260,7 +261,7 @@ impl Widget for TextPresenterWidget {
     }
 }
 
-fn presenter_content(element: &Element, source: &impl ResolvedPropertySource) -> String {
+fn content_presenter_text(element: &Element, source: &impl ResolvedPropertySource) -> String {
     let content = source.properties().content;
     element
         .templated_parent()

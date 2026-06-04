@@ -142,8 +142,8 @@ impl Button {
     /// Overrides the visual template used when this button is inserted.
     ///
     /// Custom templates should create [`SLOT_BUTTON_CONTENT`] for the visible
-    /// label node. Templates that want the label to mirror the owner should
-    /// bind the owner's `Content` and `FontSize` properties onto that node.
+    /// label node. Templates that want the label to mirror the owner can use a
+    /// content presenter for that slot.
     #[must_use]
     pub fn template(mut self, template: &'static dyn Template) -> Self {
         self.template = Some(template);
@@ -292,7 +292,7 @@ static BUTTON_TEMPLATE: ButtonTemplate = TemplateSpec::new(BUTTON_TEMPLATE_NODES
 const BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
     // Foreground inherits through the tree, so styled owner foreground remains
     // theme-live instead of being copied into a local template value.
-    TemplateNode::text_presenter(SLOT_BUTTON_CONTENT),
+    TemplateNode::content_presenter(SLOT_BUTTON_CONTENT),
 ];
 
 fn button_enabled(ui: &Ui, button: ElementId) -> bool {

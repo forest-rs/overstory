@@ -428,7 +428,7 @@ static SEGMENTED_ITEM_TEMPLATE: SegmentedItemTemplate =
     TemplateSpec::new(SEGMENTED_ITEM_TEMPLATE_NODES);
 
 const SEGMENTED_ITEM_TEMPLATE_NODES: &[TemplateNode] =
-    &[TemplateNode::text_presenter(SLOT_SEGMENTED_ITEM_LABEL)];
+    &[TemplateNode::content_presenter(SLOT_SEGMENTED_ITEM_LABEL)];
 
 fn append_segmented_item(
     ui: &mut Ui,

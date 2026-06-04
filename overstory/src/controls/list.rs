@@ -938,7 +938,7 @@ type ListItemTemplate = TemplateSpec;
 static LIST_ITEM_TEMPLATE: ListItemTemplate = TemplateSpec::new(LIST_ITEM_TEMPLATE_NODES);
 
 const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] =
-    &[TemplateNode::text_presenter(SLOT_LIST_ITEM_CONTENT)];
+    &[TemplateNode::content_presenter(SLOT_LIST_ITEM_CONTENT)];
 
 const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
     &[

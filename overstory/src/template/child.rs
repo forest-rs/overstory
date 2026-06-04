@@ -5,6 +5,7 @@
 
 use alloc::boxed::Box;
 
+use crate::controls::text::ContentPresenterWidget;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_style::PartTag;
 
@@ -67,6 +68,16 @@ impl TemplateChild {
     #[inline]
     pub fn surface_slot(slot: TemplateSlot) -> Self {
         Self::surface().with_slot(slot)
+    }
+
+    /// Creates a content presenter child for a content-style semantic slot.
+    ///
+    /// The generated widget presents the templated owner's `Content` value,
+    /// while style and foreground continue to resolve on the generated element.
+    #[must_use]
+    #[inline]
+    pub fn content_presenter(slot: TemplateSlot) -> Self {
+        Self::slot(slot, Box::new(ContentPresenterWidget))
     }
 
     /// Creates a surface-only child with an owner-local part tag.

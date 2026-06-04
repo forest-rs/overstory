@@ -1579,7 +1579,7 @@ fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {
 fn template_overrides_replace_visuals_not_control_behavior() {
     use crate::{
         Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
-        TemplateChild, TextWidget, ToggleSwitch, set_slider_value,
+        TemplateChild, ToggleSwitch, set_slider_value,
     };
 
     const OUTER_FRAME: PartTag = PartTag(0x40);
@@ -1588,17 +1588,10 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     struct DoubleFrameButtonTemplate;
     impl Template for DoubleFrameButtonTemplate {
         fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let props = *cx.properties();
             let outer = cx.insert(TemplateChild::surface_part(OUTER_FRAME));
             let inner = cx.insert_under(outer, TemplateChild::surface_part(INNER_FRAME));
-            let content = cx.insert_under(
-                inner,
-                TemplateChild::slot(SLOT_BUTTON_CONTENT, Box::new(TextWidget)),
-            );
-            cx.bind_owner_to_part(props.content, content, props.content)
-                .expect("content binding should install");
-            cx.bind_owner_to_part(props.font_size, content, props.font_size)
-                .expect("font size binding should install");
+            let _content =
+                cx.insert_under(inner, TemplateChild::content_presenter(SLOT_BUTTON_CONTENT));
         }
     }
 
@@ -1623,14 +1616,8 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     assert_eq!(ui.get(outer).unwrap().parent(), Some(button));
     assert_eq!(ui.get(inner).unwrap().parent(), Some(outer));
     assert_eq!(ui.get(content).unwrap().parent(), Some(inner));
-    ui.flush_bindings();
     assert_eq!(
-        ui.get(content)
-            .unwrap()
-            .property_store()
-            .effective_local_erased(ui.properties().content.id())
-            .and_then(|value| value.downcast_ref::<String>())
-            .map(String::as_str),
+        presented_button_label_text(&mut ui, button).as_deref(),
         Some("Run")
     );
 
@@ -2827,7 +2814,7 @@ fn presented_button_label_text(ui: &mut Ui, button: ElementId) -> Option<String>
 }
 
 #[test]
-fn button_label_text_presenter_reads_owner_content() {
+fn button_label_content_presenter_reads_owner_content() {
     // Regression guard for two sibling buttons: a template label is a
     // presenter over its owner content, so each generated label must display
     // its own templated owner rather than copied or shared state.

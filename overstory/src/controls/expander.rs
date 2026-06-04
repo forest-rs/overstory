@@ -302,7 +302,7 @@ const EXPANDER_HEADER_CHILDREN: &[TemplateNode] = &[
         SLOT_EXPANDER_DISCLOSURE,
         TemplateWidgetFactory::new(expander_disclosure_widget),
     ),
-    TemplateNode::text_presenter(SLOT_EXPANDER_LABEL),
+    TemplateNode::content_presenter(SLOT_EXPANDER_LABEL),
 ];
 
 fn expander_disclosure_widget() -> Box<dyn Widget> {

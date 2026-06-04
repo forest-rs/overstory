@@ -1246,7 +1246,7 @@ const OUTLINE_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[
         SLOT_OUTLINE_ITEM_DISCLOSURE,
         TemplateWidgetFactory::new(outline_item_disclosure_widget),
     ),
-    TemplateNode::text_presenter(SLOT_OUTLINE_ITEM_LABEL),
+    TemplateNode::content_presenter(SLOT_OUTLINE_ITEM_LABEL),
 ];
 
 const OUTLINE_ITEM_TEMPLATE_NODES: &[TemplateNode] =
