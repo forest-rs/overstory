@@ -51,7 +51,7 @@ use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::scroll_runtime::ScrollRuntime;
 use crate::style_runtime::StyleRuntime;
-use crate::template_runtime::TemplateRuntime;
+use crate::template::TemplateRuntime;
 use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
 use crate::timeline_properties::TimelinePropertyRegistry;
 use crate::timeline_runtime::TimelineRuntime;

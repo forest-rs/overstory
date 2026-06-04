@@ -88,7 +88,6 @@ pub mod selectors;
 mod spec_ext;
 mod style_runtime;
 mod template;
-mod template_runtime;
 #[cfg(test)]
 pub(crate) mod test_support;
 mod text;

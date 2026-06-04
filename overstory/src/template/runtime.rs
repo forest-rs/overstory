@@ -13,11 +13,11 @@
 //! - Keep binding cleanup tied to template lifetime so generated parts do not
 //!   leave property graph edges behind.
 
-use understory_style::PartTag;
-
 use crate::element::ElementId;
 use crate::element_side_map::ElementSideMap;
-use crate::template::{TemplateInstance, TemplateSlot};
+use understory_style::PartTag;
+
+use super::{TemplateInstance, TemplateSlot};
 
 /// Retained default-template expansion metadata for controls.
 pub(crate) struct TemplateRuntime {
