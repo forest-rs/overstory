@@ -35,8 +35,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -548,26 +547,13 @@ type SelectTemplate = TemplateSpec;
 
 static SELECT_TEMPLATE: SelectTemplate = TemplateSpec::new(SELECT_TEMPLATE_NODES);
 
-const SELECT_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const SELECT_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::for_slot(
-        SLOT_SELECT_LABEL,
-        TemplateWidgetFactory::new(select_label_widget),
-    )
-    .with_bindings(SELECT_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_SELECT_LABEL),
     TemplateNode::for_slot(
         SLOT_SELECT_INDICATOR,
         TemplateWidgetFactory::new(select_indicator_widget),
     ),
 ];
-
-fn select_label_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
 
 fn select_indicator_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)

@@ -223,10 +223,10 @@ pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateChild, TemplateContext,
-    TemplateContract, TemplateDiagnostic, TemplateExpansionReport, TemplateInstance,
-    TemplateItemKey, TemplateNode, TemplatePart, TemplateSlot, TemplateSlotContract,
-    TemplateSlotImportance, TemplateSlotStatus, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateChild, TemplateContext, TemplateContract, TemplateDiagnostic,
+    TemplateExpansionReport, TemplateInstance, TemplateItemKey, TemplateNode, TemplatePart,
+    TemplateSlot, TemplateSlotContract, TemplateSlotImportance, TemplateSlotStatus, TemplateSpec,
+    TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};

@@ -304,6 +304,13 @@ pub struct PresentContext<'a> {
 }
 
 impl<'a> PresentContext<'a> {
+    /// Returns a live element by id.
+    #[must_use]
+    #[inline]
+    pub fn element(&self, id: ElementId) -> Option<&'a Element> {
+        self.lookup.element(id)
+    }
+
     /// Resolves `property` for `element` through [`understory_style::ResolveCx`],
     /// including inherited styled values from ancestors.
     #[must_use]
@@ -314,7 +321,7 @@ impl<'a> PresentContext<'a> {
         ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
             element,
             property,
-            Some((self.cascade, self.match_state)),
+            Some((self.cascade, self.lookup.match_state(element.id()))),
         )
     }
 }
@@ -348,6 +355,13 @@ pub struct MeasureContext<'a> {
 }
 
 impl<'a> MeasureContext<'a> {
+    /// Returns a live element by id.
+    #[must_use]
+    #[inline]
+    pub fn element(&self, id: ElementId) -> Option<&'a Element> {
+        self.lookup.element(id)
+    }
+
     /// Resolves a measure-time property value through [`understory_style::ResolveCx`],
     /// including inherited styled values from ancestors.
     #[must_use]
@@ -358,7 +372,7 @@ impl<'a> MeasureContext<'a> {
         ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
             element,
             property,
-            Some((self.cascade, self.match_state)),
+            Some((self.cascade, self.lookup.match_state(element.id()))),
         )
     }
 }

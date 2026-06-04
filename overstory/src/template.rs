@@ -67,12 +67,12 @@
 //!   without requiring every visual variation to become a new widget type.
 //! - Grow content slots, repeated keyed parts, optional slots, and eventual
 //!   pseudo-elements into one predictable contract.
-//! - Add diagnostics for required slots, duplicate keys, binding mismatches,
+//! - Add diagnostics for required slots, duplicate keys, missing presenters,
 //!   and template churn so custom templates fail loudly.
-//! - Keep template bindings using the same property-binding runtime as app
-//!   bindings instead of creating a parallel synchronization path.
+//! - Keep data flow semantic: presenters read owner content or control state at
+//!   measure/present time, while normal property bindings remain part of the
+//!   application property-binding runtime.
 
-mod binding;
 mod child;
 mod context;
 mod contract;
@@ -83,7 +83,6 @@ pub(crate) mod runtime;
 mod spec;
 mod validation;
 
-pub use binding::{TemplateBinding, TemplateBuiltInProperty};
 pub use child::TemplateChild;
 pub use context::TemplateContext;
 pub use contract::{TemplateContract, TemplateSlotContract, TemplateSlotImportance};

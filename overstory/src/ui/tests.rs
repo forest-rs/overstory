@@ -2813,14 +2813,24 @@ fn two_independent_bindings_both_propagate() {
     assert_eq!(read(&ui, t2).as_deref(), Some("two"));
 }
 
+fn presented_button_label_text(ui: &mut Ui, button: ElementId) -> Option<String> {
+    ui.compute_layout(Size::new(400.0, 120.0));
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+
+    let label = ui.part(button, crate::PART_BUTTON_LABEL)?;
+    let label_node = ui.box_for(label)?;
+    ui.presentation
+        .presentation(label_node)?
+        .plain_text()
+        .map(|text| String::from(text.content.as_str()))
+}
+
 #[test]
-fn button_label_content_propagates_through_template_binding() {
-    // The button's template creates a `Text` label, then binds
-    // owner.content → label.content. If `Text::append_to` writes
-    // `Local=""` on the label, that Local would shadow the
-    // binding (Local outranks TemplateBinding) and the label
-    // would never display the button's text. Regression guard
-    // for two sibling buttons (each must propagate independently).
+fn button_label_text_presenter_reads_owner_content() {
+    // Regression guard for two sibling buttons: a template label is a
+    // presenter over its owner content, so each generated label must display
+    // its own templated owner rather than copied or shared state.
     use crate::Button;
 
     let mut ui = Ui::new();
@@ -2828,19 +2838,14 @@ fn button_label_content_propagates_through_template_binding() {
     let b1 = ui.append(root, Button::new("Click me"));
     let b2 = ui.append(root, Button::new("Or me"));
 
-    ui.flush_bindings();
-
-    let content_prop = ui.properties().content;
-    let read_label = |ui: &Ui, button: ElementId| -> Option<String> {
-        let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
-        ui.get(label)
-            .unwrap()
-            .property_store()
-            .effective_local_erased(content_prop.id())
-            .and_then(|v| v.downcast_ref::<String>().cloned())
-    };
-    assert_eq!(read_label(&ui, b1).as_deref(), Some("Click me"));
-    assert_eq!(read_label(&ui, b2).as_deref(), Some("Or me"));
+    assert_eq!(
+        presented_button_label_text(&mut ui, b1).as_deref(),
+        Some("Click me")
+    );
+    assert_eq!(
+        presented_button_label_text(&mut ui, b2).as_deref(),
+        Some("Or me")
+    );
 }
 
 #[test]
@@ -2864,20 +2869,17 @@ fn app_bound_button_content_updates_template_label() {
 
     ui.flush_bindings();
 
-    let content_prop = ui.properties().content;
-    let read_label = |ui: &Ui| -> Option<String> {
-        let label = ui.part(button, crate::PART_BUTTON_LABEL).unwrap();
-        ui.get(label)
-            .unwrap()
-            .property_store()
-            .effective_local_erased(content_prop.id())
-            .and_then(|v| v.downcast_ref::<String>().cloned())
-    };
-    assert_eq!(read_label(&ui).as_deref(), Some("Deploy"));
+    assert_eq!(
+        presented_button_label_text(&mut ui, button).as_deref(),
+        Some("Deploy")
+    );
 
     assert!(activations.set(&mut ui, 2));
     ui.flush_bindings();
-    assert_eq!(read_label(&ui).as_deref(), Some("Clicked 2"));
+    assert_eq!(
+        presented_button_label_text(&mut ui, button).as_deref(),
+        Some("Clicked 2")
+    );
 }
 
 #[test]

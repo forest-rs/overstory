@@ -5,14 +5,12 @@
 
 use alloc::boxed::Box;
 
+use crate::controls::text::TextPresenterWidget;
 use crate::element::ElementId;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_style::{ClassId, PartTag};
 
-use super::binding::apply_template_binding;
-use super::{
-    Template, TemplateBinding, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot,
-};
+use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 
 /// A data-driven default template.
 ///
@@ -77,6 +75,13 @@ impl TemplateWidgetFactory {
         Self::new(surface_template_widget)
     }
 
+    /// Creates a text presenter widget.
+    #[must_use]
+    #[inline]
+    pub const fn text_presenter() -> Self {
+        Self::new(text_presenter_widget)
+    }
+
     fn create(self) -> Box<dyn Widget> {
         (self.create)()
     }
@@ -84,6 +89,10 @@ impl TemplateWidgetFactory {
 
 fn surface_template_widget() -> Box<dyn Widget> {
     Box::new(SurfacePartWidget)
+}
+
+fn text_presenter_widget() -> Box<dyn Widget> {
+    Box::new(TextPresenterWidget)
 }
 
 /// One node in a [`TemplateSpec`].
@@ -94,7 +103,6 @@ pub struct TemplateNode {
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
     classes: &'static [ClassId],
-    bindings: &'static [TemplateBinding],
     children: &'static [Self],
 }
 
@@ -109,7 +117,6 @@ impl TemplateNode {
             part: None,
             key: None,
             classes: &[],
-            bindings: &[],
             children: &[],
         }
     }
@@ -149,6 +156,16 @@ impl TemplateNode {
         Self::for_part(part, TemplateWidgetFactory::surface())
     }
 
+    /// Creates a text presenter node for a content-style semantic slot.
+    ///
+    /// The generated widget reads `Content` from the template owner and
+    /// resolves text styling on the generated element.
+    #[must_use]
+    #[inline]
+    pub const fn text_presenter(slot: TemplateSlot) -> Self {
+        Self::for_slot(slot, TemplateWidgetFactory::text_presenter())
+    }
+
     /// Assigns this node to a semantic template slot.
     #[must_use]
     #[inline]
@@ -178,14 +195,6 @@ impl TemplateNode {
     #[inline]
     pub const fn with_classes(mut self, classes: &'static [ClassId]) -> Self {
         self.classes = classes;
-        self
-    }
-
-    /// Adds owner-to-node property bindings to the generated element.
-    #[must_use]
-    #[inline]
-    pub const fn with_bindings(mut self, bindings: &'static [TemplateBinding]) -> Self {
-        self.bindings = bindings;
         self
     }
 
@@ -232,13 +241,6 @@ impl TemplateNode {
         self.classes
     }
 
-    /// Returns this node's bindings.
-    #[must_use]
-    #[inline]
-    pub const fn bindings(&self) -> &'static [TemplateBinding] {
-        self.bindings
-    }
-
     /// Returns this node's children.
     #[must_use]
     #[inline]
@@ -266,9 +268,6 @@ fn instantiate_spec_node(
 
     for class in node.classes {
         cx.add_class(id, *class);
-    }
-    for binding in node.bindings {
-        apply_template_binding(cx, id, *binding);
     }
     for child in node.children {
         instantiate_spec_node(cx, id, child);

@@ -32,15 +32,11 @@ use crate::controls::support::{
     CallbackSlot, CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, EventHandler,
     dispatch_checked_changed,
 };
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
@@ -620,27 +616,14 @@ type RadioButtonTemplate = TemplateSpec;
 
 static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = TemplateSpec::new(RADIO_BUTTON_TEMPLATE_NODES);
 
-const RADIO_BUTTON_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const RADIO_BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_RADIO_BUTTON_INDICATOR)
         .with_children(RADIO_BUTTON_INDICATOR_CHILDREN),
-    TemplateNode::for_slot(
-        SLOT_RADIO_BUTTON_LABEL,
-        TemplateWidgetFactory::new(radio_label_widget),
-    )
-    .with_bindings(RADIO_BUTTON_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_RADIO_BUTTON_LABEL),
 ];
 
 const RADIO_BUTTON_INDICATOR_CHILDREN: &[TemplateNode] =
     &[TemplateNode::surface_slot(SLOT_RADIO_BUTTON_DOT)];
-
-fn radio_label_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
 
 /// Sets `IsChecked` on `radio` and keeps the `:checked` pseudoclass in sync.
 pub fn set_radio_button_checked(ui: &mut Ui, radio: ElementId, checked: bool) {

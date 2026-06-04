@@ -21,22 +21,14 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 
-use kurbo::{Point, Size, Vec2};
-use peniko::Brush;
-use understory_box_tree::NodeId;
-use understory_presentation::{PresentationStore, TextContent};
+use kurbo::{Point, Vec2};
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext};
 use crate::composition::CompositionPolicy;
-use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
-use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -247,57 +239,6 @@ impl Widget for TooltipWidget {
     }
 }
 
-#[derive(Debug, Default)]
-struct TooltipLabelWidget;
-
-impl Widget for TooltipLabelWidget {
-    fn type_tag(&self) -> Option<TypeTag> {
-        None
-    }
-
-    fn is_hit_test_visible(&self, _element: &Element) -> bool {
-        false
-    }
-
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        let content: String = ctx.get_value(element, ctx.properties.content);
-        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        let style = text_style(element, ctx);
-
-        let Some(text) = store.plain_text_mut(node) else {
-            return;
-        };
-        text.content = TextContent::plain(content);
-        text.foreground = Some(foreground);
-        text.style = style;
-    }
-
-    fn measure(
-        &self,
-        element: &Element,
-        ctx: &MeasureContext<'_>,
-        constraints: MeasureConstraints,
-    ) -> Option<Size> {
-        let _ = constraints;
-        let content: String = ctx.get_value(element, ctx.properties.content);
-        if content.is_empty() {
-            return Some(Size::ZERO);
-        }
-        let style = text_style(element, ctx);
-        let layout = ctx.text.borrow_mut().shape(&content, &style, None);
-        Some(Size::new(
-            f64::from(layout.width()),
-            f64::from(layout.height()),
-        ))
-    }
-}
-
 pub(crate) fn append_overlay_tooltip(ui: &mut Ui, tooltip: &Tooltip, origin: Point) -> ElementId {
     append_tooltip(ui, ui.root(), tooltip, origin)
 }
@@ -318,17 +259,5 @@ type TooltipTemplate = TemplateSpec;
 
 static TOOLTIP_TEMPLATE: TooltipTemplate = TemplateSpec::new(TOOLTIP_TEMPLATE_NODES);
 
-const TOOLTIP_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
-const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
-    SLOT_TOOLTIP_CONTENT,
-    TemplateWidgetFactory::new(tooltip_label_widget),
-)
-.with_bindings(TOOLTIP_LABEL_BINDINGS)];
-
-fn tooltip_label_widget() -> Box<dyn Widget> {
-    Box::new(TooltipLabelWidget)
-}
+const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] =
+    &[TemplateNode::text_presenter(SLOT_TOOLTIP_CONTENT)];

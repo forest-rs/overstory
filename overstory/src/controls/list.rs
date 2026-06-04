@@ -42,16 +42,12 @@ use crate::controls::support::{
     layout_fixed_virtual_rows, reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
     set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
 };
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{
-    TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode, TemplateSlot,
-    TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -941,26 +937,14 @@ type ListItemTemplate = TemplateSpec;
 
 static LIST_ITEM_TEMPLATE: ListItemTemplate = TemplateSpec::new(LIST_ITEM_TEMPLATE_NODES);
 
-const LIST_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
-const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
-    SLOT_LIST_ITEM_CONTENT,
-    TemplateWidgetFactory::new(list_item_label_widget),
-)
-.with_bindings(LIST_ITEM_LABEL_BINDINGS)];
+const LIST_ITEM_CONTENT_CHILDREN: &[TemplateNode] =
+    &[TemplateNode::text_presenter(SLOT_LIST_ITEM_CONTENT)];
 
 const LIST_ITEM_TEMPLATE_NODES: &[TemplateNode] =
     &[
         TemplateNode::surface_part(PART_LIST_ITEM_CONTENT)
             .with_children(LIST_ITEM_CONTENT_CHILDREN),
     ];
-
-fn list_item_label_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
 
 fn append_realized_list_item(
     ui: &mut Ui,

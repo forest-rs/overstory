@@ -121,10 +121,8 @@ impl AppendSpec for Text {
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
         let wrap_mode_prop = ui.properties().text_wrap_mode;
-        // Skip writing `Local` for empty content so a parent's
-        // binding (Button's template binds owner.content →
-        // label.content) isn't shadowed by `Local`-precedence over
-        // `TemplateBinding`.
+        // Skip writing `Local` for empty content so `Text::new("")` can be a
+        // placeholder for bound content without an initial local value.
         if !self.content.is_empty() {
             ui.set_local(id, content_prop, self.content);
         }
@@ -207,6 +205,80 @@ impl Widget for TextWidget {
     }
 }
 
+/// Template-generated text part that presents its templated owner's content.
+///
+/// The presenter is for content slots such as a button label. It reads
+/// `Content` from the template owner, while text style and foreground still
+/// resolve on the presenter element so part selectors and inheritance remain
+/// useful.
+#[derive(Debug, Default)]
+pub(crate) struct TextPresenterWidget;
+
+impl Widget for TextPresenterWidget {
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_TEXT)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &AccessibilityContext<'_>,
+    ) -> Option<accesskit::Role> {
+        Some(accesskit::Role::Label)
+    }
+
+    fn present(
+        &self,
+        element: &Element,
+        ctx: &PresentContext<'_>,
+        store: &mut PresentationStore<NodeId, ElementId>,
+        node: NodeId,
+    ) {
+        let content = presenter_content(element, ctx);
+        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
+        let style = text_style(element, ctx);
+
+        let Some(text) = store.plain_text_mut(node) else {
+            return;
+        };
+        text.content = TextContent::plain(content);
+        text.foreground = Some(foreground);
+        text.style = style;
+    }
+
+    fn measure(
+        &self,
+        element: &Element,
+        ctx: &MeasureContext<'_>,
+        constraints: MeasureConstraints,
+    ) -> Option<Size> {
+        let content = presenter_content(element, ctx);
+        if content.is_empty() {
+            return Some(Size::ZERO);
+        }
+        let style = text_style(element, ctx);
+        let wrap_width = match style.text_wrap_mode {
+            TextWrapMode::NoWrap => None,
+            TextWrapMode::Wrap => constraints.known.width,
+        };
+        let layout = ctx.text.borrow_mut().shape(&content, &style, wrap_width);
+        let width = f64::from(layout.width());
+        let height = f64::from(layout.height());
+        Some(Size::new(width, height))
+    }
+}
+
+fn presenter_content(element: &Element, source: &impl ResolvedPropertySource) -> String {
+    let content = source.properties().content;
+    element
+        .templated_parent()
+        .and_then(|owner| source.element(owner))
+        .map_or_else(
+            || source.resolve_value(element, content),
+            |owner| source.resolve_value(owner, content),
+        )
+}
+
 pub(crate) fn text_style(element: &Element, source: &impl ResolvedPropertySource) -> TextStyle {
     text_style_from_source(element, source)
 }
@@ -215,6 +287,9 @@ pub(crate) fn text_style(element: &Element, source: &impl ResolvedPropertySource
 // resolved-property source abstraction.
 pub(crate) trait ResolvedPropertySource {
     fn properties(&self) -> &BuiltInProperties;
+
+    /// Returns a live element by id.
+    fn element(&self, id: ElementId) -> Option<&Element>;
 
     /// Resolves a typed property for `element` through this source's cascade,
     /// match state, theme, inheritance lookup, and local/animation stores.
@@ -226,6 +301,10 @@ pub(crate) trait ResolvedPropertySource {
 impl ResolvedPropertySource for PresentContext<'_> {
     fn properties(&self) -> &BuiltInProperties {
         self.properties
+    }
+
+    fn element(&self, id: ElementId) -> Option<&Element> {
+        PresentContext::element(self, id)
     }
 
     fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
@@ -241,6 +320,10 @@ impl ResolvedPropertySource for MeasureContext<'_> {
         self.properties
     }
 
+    fn element(&self, id: ElementId) -> Option<&Element> {
+        MeasureContext::element(self, id)
+    }
+
     fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
     where
         T: Clone + 'static,
@@ -252,6 +335,10 @@ impl ResolvedPropertySource for MeasureContext<'_> {
 impl ResolvedPropertySource for WidgetEventContext<'_> {
     fn properties(&self) -> &BuiltInProperties {
         self.ui().properties()
+    }
+
+    fn element(&self, id: ElementId) -> Option<&Element> {
+        self.ui().get(id)
     }
 
     fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
@@ -267,6 +354,10 @@ impl ResolvedPropertySource for AccessibilityContext<'_> {
         self.properties()
     }
 
+    fn element(&self, id: ElementId) -> Option<&Element> {
+        AccessibilityContext::element(self, id)
+    }
+
     fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T
     where
         T: Clone + 'static,
@@ -278,6 +369,10 @@ impl ResolvedPropertySource for AccessibilityContext<'_> {
 impl ResolvedPropertySource for Ui {
     fn properties(&self) -> &BuiltInProperties {
         self.properties()
+    }
+
+    fn element(&self, id: ElementId) -> Option<&Element> {
+        self.get(id)
     }
 
     fn resolve_value<T>(&self, element: &Element, property: Property<T>) -> T

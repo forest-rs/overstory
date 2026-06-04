@@ -25,8 +25,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
@@ -470,11 +469,6 @@ type AccordionSectionTemplate = TemplateSpec;
 static ACCORDION_SECTION_TEMPLATE: AccordionSectionTemplate =
     TemplateSpec::new(ACCORDION_SECTION_TEMPLATE_NODES);
 
-const ACCORDION_SECTION_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const ACCORDION_SECTION_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_HEADER)
         .with_children(ACCORDION_SECTION_HEADER_CHILDREN),
@@ -486,18 +480,10 @@ const ACCORDION_SECTION_HEADER_CHILDREN: &[TemplateNode] = &[
         SLOT_ACCORDION_SECTION_DISCLOSURE,
         TemplateWidgetFactory::new(accordion_section_disclosure_widget),
     ),
-    TemplateNode::for_slot(
-        SLOT_ACCORDION_SECTION_LABEL,
-        TemplateWidgetFactory::new(accordion_section_label_widget),
-    )
-    .with_bindings(ACCORDION_SECTION_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_ACCORDION_SECTION_LABEL),
 ];
 
 fn accordion_section_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
-
-fn accordion_section_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
 }
 

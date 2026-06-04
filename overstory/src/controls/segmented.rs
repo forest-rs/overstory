@@ -23,15 +23,11 @@ use crate::controls::choice::{
     wrapping_previous_enabled_index,
 };
 use crate::controls::support::{CallbackSlot, EventHandler};
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_SELECTED;
-use crate::template::{
-    TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode, TemplateSlot,
-    TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -431,20 +427,8 @@ type SegmentedItemTemplate = TemplateSpec;
 static SEGMENTED_ITEM_TEMPLATE: SegmentedItemTemplate =
     TemplateSpec::new(SEGMENTED_ITEM_TEMPLATE_NODES);
 
-const SEGMENTED_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
-const SEGMENTED_ITEM_TEMPLATE_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
-    SLOT_SEGMENTED_ITEM_LABEL,
-    TemplateWidgetFactory::new(segmented_item_label_widget),
-)
-.with_bindings(SEGMENTED_ITEM_LABEL_BINDINGS)];
-
-fn segmented_item_label_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
+const SEGMENTED_ITEM_TEMPLATE_NODES: &[TemplateNode] =
+    &[TemplateNode::text_presenter(SLOT_SEGMENTED_ITEM_LABEL)];
 
 fn append_segmented_item(
     ui: &mut Ui,

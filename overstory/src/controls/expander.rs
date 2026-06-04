@@ -26,8 +26,7 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -293,11 +292,6 @@ type ExpanderTemplate = TemplateSpec;
 
 static EXPANDER_TEMPLATE: ExpanderTemplate = TemplateSpec::new(EXPANDER_TEMPLATE_NODES);
 
-const EXPANDER_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const EXPANDER_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_EXPANDER_HEADER).with_children(EXPANDER_HEADER_CHILDREN),
     TemplateNode::surface_slot(SLOT_EXPANDER_CONTENT),
@@ -308,18 +302,10 @@ const EXPANDER_HEADER_CHILDREN: &[TemplateNode] = &[
         SLOT_EXPANDER_DISCLOSURE,
         TemplateWidgetFactory::new(expander_disclosure_widget),
     ),
-    TemplateNode::for_slot(
-        SLOT_EXPANDER_LABEL,
-        TemplateWidgetFactory::new(expander_label_widget),
-    )
-    .with_bindings(EXPANDER_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_EXPANDER_LABEL),
 ];
 
 fn expander_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
-
-fn expander_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
 }
 

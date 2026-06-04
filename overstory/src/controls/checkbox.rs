@@ -29,8 +29,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
@@ -288,18 +287,9 @@ type CheckBoxTemplate = TemplateSpec;
 
 static CHECK_BOX_TEMPLATE: CheckBoxTemplate = TemplateSpec::new(CHECK_BOX_TEMPLATE_NODES);
 
-const CHECK_BOX_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const CHECK_BOX_TEMPLATE_NODES: &[TemplateNode] = &[
     TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX).with_children(CHECK_BOX_BOX_CHILDREN),
-    TemplateNode::for_slot(
-        SLOT_CHECK_BOX_LABEL,
-        TemplateWidgetFactory::new(check_box_label_widget),
-    )
-    .with_bindings(CHECK_BOX_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_CHECK_BOX_LABEL),
 ];
 
 const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
@@ -308,10 +298,6 @@ const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
 )];
 
 fn check_box_mark_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
-
-fn check_box_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
 }
 

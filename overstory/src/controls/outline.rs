@@ -43,8 +43,7 @@ use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
 use crate::template::{
-    TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode, TemplateSlot,
-    TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -1242,21 +1241,12 @@ type OutlineItemTemplate = TemplateSpec;
 
 static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = TemplateSpec::new(OUTLINE_ITEM_TEMPLATE_NODES);
 
-const OUTLINE_ITEM_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const OUTLINE_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[
     TemplateNode::for_slot(
         SLOT_OUTLINE_ITEM_DISCLOSURE,
         TemplateWidgetFactory::new(outline_item_disclosure_widget),
     ),
-    TemplateNode::for_slot(
-        SLOT_OUTLINE_ITEM_LABEL,
-        TemplateWidgetFactory::new(outline_item_label_widget),
-    )
-    .with_bindings(OUTLINE_ITEM_LABEL_BINDINGS),
+    TemplateNode::text_presenter(SLOT_OUTLINE_ITEM_LABEL),
 ];
 
 const OUTLINE_ITEM_TEMPLATE_NODES: &[TemplateNode] =
@@ -1264,10 +1254,6 @@ const OUTLINE_ITEM_TEMPLATE_NODES: &[TemplateNode] =
         .with_children(OUTLINE_ITEM_CONTENT_CHILDREN)];
 
 fn outline_item_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
-
-fn outline_item_label_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
 }
 

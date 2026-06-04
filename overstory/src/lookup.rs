@@ -12,9 +12,9 @@
 //!   ancestor style state, pass it through an adapter like `UiResolveLookup`.
 
 use understory_property::{DependencyObject, ParentLookup, PropertyStore};
-use understory_style::{ResolveParent, ResolveParentLookup};
+use understory_style::{MatchState, ResolveParent, ResolveParentLookup};
 
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
 use crate::style_runtime::StyleRuntime;
 use crate::ui::Ui;
@@ -62,6 +62,20 @@ impl<'a> UiResolveLookup<'a> {
     pub fn new(ui: &'a Ui) -> Self {
         Self { ui }
     }
+
+    /// Returns a live element by id.
+    #[must_use]
+    #[inline]
+    pub(crate) fn element(&self, id: ElementId) -> Option<&'a Element> {
+        self.ui.get(id)
+    }
+
+    /// Returns the style match state for `id`.
+    #[must_use]
+    #[inline]
+    pub(crate) fn match_state(&self, id: ElementId) -> MatchState {
+        self.ui.match_state(id)
+    }
 }
 
 impl<'a> ResolveParentLookup<'a, ElementId> for UiResolveLookup<'a> {
@@ -95,6 +109,20 @@ impl<'a> ElementResolveLookup<'a> {
     #[inline]
     pub(crate) fn new(elements: &'a ElementStore, style: &'a StyleRuntime) -> Self {
         Self { elements, style }
+    }
+
+    /// Returns a live element by id.
+    #[must_use]
+    #[inline]
+    pub(crate) fn element(&self, id: ElementId) -> Option<&'a Element> {
+        self.elements.get(id)
+    }
+
+    /// Returns the style match state for `id`.
+    #[must_use]
+    #[inline]
+    pub(crate) fn match_state(&self, id: ElementId) -> MatchState {
+        self.style.match_state(id)
     }
 }
 

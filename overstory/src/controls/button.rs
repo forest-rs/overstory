@@ -35,13 +35,9 @@ use peniko::Brush;
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::WidgetEventContext;
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
-use crate::template::{
-    Template, TemplateBinding, TemplateBuiltInProperty, TemplateContract, TemplateNode,
-    TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
 
@@ -293,24 +289,11 @@ type ButtonTemplate = TemplateSpec;
 
 static BUTTON_TEMPLATE: ButtonTemplate = TemplateSpec::new(BUTTON_TEMPLATE_NODES);
 
-const BUTTON_LABEL_BINDINGS: &[TemplateBinding] = &[
-    TemplateBinding::same(TemplateBuiltInProperty::Content),
-    TemplateBinding::same(TemplateBuiltInProperty::FontSize),
-];
-
 const BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
     // Foreground inherits through the tree, so styled owner foreground remains
-    // theme-live instead of being copied into a local template-binding value.
-    TemplateNode::for_slot(
-        SLOT_BUTTON_CONTENT,
-        TemplateWidgetFactory::new(button_label_widget),
-    )
-    .with_bindings(BUTTON_LABEL_BINDINGS),
+    // theme-live instead of being copied into a local template value.
+    TemplateNode::text_presenter(SLOT_BUTTON_CONTENT),
 ];
-
-fn button_label_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
-}
 
 fn button_enabled(ui: &Ui, button: ElementId) -> bool {
     ui.is_enabled(button)

@@ -66,6 +66,12 @@ impl<'a> AccessibilityContext<'a> {
         self.ui.resolve_value_for(element, property)
     }
 
+    /// Returns a live element by id.
+    #[must_use]
+    pub fn element(&self, id: ElementId) -> Option<&Element> {
+        self.ui.get(id)
+    }
+
     /// Returns the latest computed bounds for `id`.
     #[must_use]
     pub fn bounds(&self, id: ElementId) -> kurbo::Rect {
