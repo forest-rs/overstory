@@ -92,7 +92,8 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ///
     /// Pure template parts should usually return `None` and rely on
     /// the element's owner-local `PartTag` instead. That keeps parts
-    /// from becoming accidental app-wide control types.
+    /// from becoming accidental app-wide control types. See
+    /// [`crate::template`] for the template identity model.
     fn type_tag(&self) -> Option<TypeTag> {
         None
     }
@@ -474,7 +475,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
 ///
 /// It has no global selector type. Style rules should target it with
 /// an owner-local `PartTag`, usually anchored under the owning control
-/// type.
+/// type. See [`crate::template`] for the distinction between global
+/// widget identity and owner-local template part identity.
 #[derive(Debug, Default)]
 pub(crate) struct SurfacePartWidget;
 
