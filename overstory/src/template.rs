@@ -43,6 +43,21 @@
 //! authoring API, it can graduate to its own widget type; pure visuals should
 //! remain owner-local parts.
 //!
+//! A template-generated element does not need every kind of identity. Slots and
+//! parts are independent axes:
+//!
+//! | Devtools label | Has `TemplateSlot` | Has `PartTag` | Meaning |
+//! | --- | --- | --- | --- |
+//! | `template child` | no | no | Generated structure only. Use this for private wrappers, layout helpers, or visuals that neither control behavior nor style rules need to address directly. |
+//! | `template part` | no | yes | Style-addressable owner-local visual. Use this when a theme should target a generated element, but the control does not need to find it as part of its semantic contract. |
+//! | `template slot` | yes | no | Semantic contract only. Use this when control behavior needs to find a generated element, but themes should not target it as an owner-local part. |
+//! | `template slot part` | yes | yes | Semantic contract and style hook. This is common for built-in control parts such as `Button.Label`, `Slider.Track`, and `Slider.Thumb`. |
+//!
+//! Prefer the narrowest identity that does the job. Do not add a slot just
+//! because a part needs styling, and do not add a part tag just because control
+//! behavior needs to find a slot. Add both only when both the control contract
+//! and style contract need to address the same generated element.
+//!
 //! Roadmap:
 //! - Keep templates as the boundary between control behavior and visual
 //!   structure: controls own state and semantics, templates own parts, slots,
