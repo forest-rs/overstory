@@ -211,7 +211,7 @@ impl Widget for TextWidget {
 /// It reads `Content` from the template owner, while text style and foreground
 /// still resolve on the presenter element so part selectors and inheritance
 /// remain useful. Future content forms should grow this widget instead of
-/// bringing back template-local copies of owner properties.
+/// bringing back template-local copies of owner properties or bindings.
 #[derive(Debug, Default)]
 pub(crate) struct ContentPresenterWidget;
 

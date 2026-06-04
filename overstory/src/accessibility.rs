@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn accesskit_tree_skips_visual_template_label_parts() {
+    fn accesskit_tree_skips_presentational_content_presenters() {
         let mut ui = Ui::new();
         let root = ui.root();
         let button = ui.append(root, Button::new("Deploy"));
@@ -508,7 +508,7 @@ mod tests {
                 .nodes
                 .iter()
                 .all(|(id, _node)| *id != accesskit_node_id(label)),
-            "visual template label should not become a separate AccessKit node"
+            "content presenter should remain presentational in the AccessKit tree"
         );
     }
 

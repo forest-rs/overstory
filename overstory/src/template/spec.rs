@@ -75,7 +75,7 @@ impl TemplateWidgetFactory {
         Self::new(surface_template_widget)
     }
 
-    /// Creates a content presenter widget.
+    /// Creates a text-only owner-content presenter widget.
     #[must_use]
     #[inline]
     pub const fn content_presenter() -> Self {
@@ -158,8 +158,10 @@ impl TemplateNode {
 
     /// Creates a content presenter node for a content-style semantic slot.
     ///
-    /// The generated widget reads `Content` from the template owner and
-    /// resolves text styling on the generated element.
+    /// Today this creates a text-only owner-content presenter: the generated
+    /// widget reads the template owner's `Content` string and resolves text
+    /// styling on the generated element. It is not yet a general host for
+    /// arbitrary retained child content.
     #[must_use]
     #[inline]
     pub const fn content_presenter(slot: TemplateSlot) -> Self {
