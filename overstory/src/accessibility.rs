@@ -491,6 +491,28 @@ mod tests {
     }
 
     #[test]
+    fn accesskit_tree_skips_visual_template_label_parts() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Deploy"));
+        let label = ui
+            .slot(button, crate::SLOT_BUTTON_CONTENT)
+            .expect("button template should expose label slot");
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        let update = ui.accesskit_tree_update();
+
+        assert_eq!(node_for(&update, button).label(), Some("Deploy"));
+        assert!(
+            update
+                .nodes
+                .iter()
+                .all(|(id, _node)| *id != accesskit_node_id(label)),
+            "visual template label should not become a separate AccessKit node"
+        );
+    }
+
+    #[test]
     fn accesskit_tree_exposes_checked_and_range_state() {
         let mut ui = Ui::new();
         let root = ui.root();

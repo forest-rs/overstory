@@ -219,14 +219,6 @@ impl Widget for TextPresenterWidget {
         Some(TYPE_TEXT)
     }
 
-    fn accessibility_role(
-        &self,
-        _element: &Element,
-        _ctx: &AccessibilityContext<'_>,
-    ) -> Option<accesskit::Role> {
-        Some(accesskit::Role::Label)
-    }
-
     fn present(
         &self,
         element: &Element,
