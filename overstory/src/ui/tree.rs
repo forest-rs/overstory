@@ -13,7 +13,7 @@ use crate::binding::{BindingOwner, LocalState};
 use crate::channels::{COMPOSE, LAYOUT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
-use crate::template::{TemplateContext, TemplateInstance, TemplateSlot};
+use crate::template::{TemplateContext, TemplateExpansionReport, TemplateInstance, TemplateSlot};
 use crate::view::View;
 use crate::widget::{AppendSpec, ContentSlotSpec, Widget};
 
@@ -221,6 +221,20 @@ impl Ui {
     #[must_use]
     pub fn template_instance(&self, owner: ElementId) -> Option<&TemplateInstance> {
         self.templates.get(owner)
+    }
+
+    /// Returns the control contract report for `owner`'s expanded template.
+    ///
+    /// Non-templated elements, stale ids, and widgets with empty template
+    /// contracts return `None`. The report combines the widget-declared
+    /// contract, the retained template instance, and expansion diagnostics.
+    #[must_use]
+    pub fn template_expansion_report(&self, owner: ElementId) -> Option<TemplateExpansionReport> {
+        let contract = self.get(owner)?.widget()?.template_contract();
+        if contract.is_empty() {
+            return None;
+        }
+        Some(contract.validate_expansion(self.template_instance(owner)))
     }
 
     /// Returns the first template part registered for `owner + tag`.

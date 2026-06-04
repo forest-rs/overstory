@@ -148,11 +148,7 @@ impl Ui {
         &self,
         element: &crate::Element,
     ) -> Option<TemplateContractInspection> {
-        let contract = element.widget()?.template_contract();
-        if contract.is_empty() {
-            return None;
-        }
-        let report = contract.validate_expansion(self.template_instance(element.id()));
+        let report = self.template_expansion_report(element.id())?;
         Some(TemplateContractInspection::from_expansion_report(&report))
     }
 

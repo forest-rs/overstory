@@ -1684,6 +1684,17 @@ fn inspection_reports_optional_and_recommended_template_slots() {
     let root = ui.root();
     let slider = ui.append(root, Slider::new().template(&MINIMAL_SLIDER_TEMPLATE));
 
+    let report = ui
+        .template_expansion_report(slider)
+        .expect("slider should expose a template expansion report");
+    assert_eq!(report.required_slots()[0].slot(), SLOT_SLIDER_THUMB);
+    assert!(report.required_slots()[0].is_present());
+    assert_eq!(report.recommended_slots()[0].slot(), SLOT_SLIDER_TRACK);
+    assert!(!report.recommended_slots()[0].is_present());
+    assert!(!report.has_missing_required_slots());
+    assert!(report.has_missing_recommended_slots());
+    assert!(!report.has_issues());
+
     let snapshot = ui.inspection_snapshot();
     let contract = snapshot
         .elements
