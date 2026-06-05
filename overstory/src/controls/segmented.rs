@@ -385,9 +385,7 @@ impl Widget for SegmentedItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(
-            &SEGMENTED_ITEM_TEMPLATE,
-        ))
+        Some(default_segmented_item_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -428,6 +426,10 @@ impl Widget for SegmentedItemWidget {
 
 static SEGMENTED_ITEM_TEMPLATE: TemplateSpecRecipe =
     TemplateSpecRecipe::new(segmented_item_template_spec);
+
+pub(crate) fn default_segmented_item_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&SEGMENTED_ITEM_TEMPLATE)
+}
 
 fn segmented_item_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_SEGMENTED_ITEM_LABEL)])

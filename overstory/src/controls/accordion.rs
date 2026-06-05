@@ -364,9 +364,7 @@ impl Widget for AccordionSectionWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(
-            &ACCORDION_SECTION_TEMPLATE,
-        ))
+        Some(default_accordion_section_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -456,6 +454,10 @@ impl AccordionSectionWidget {
 
 static ACCORDION_SECTION_TEMPLATE: TemplateSpecRecipe =
     TemplateSpecRecipe::new(accordion_section_template_spec);
+
+pub(crate) fn default_accordion_section_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&ACCORDION_SECTION_TEMPLATE)
+}
 
 fn accordion_section_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

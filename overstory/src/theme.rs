@@ -59,42 +59,53 @@ use understory_style::{Theme, ThemeBuilder};
 use crate::controls::accordion::{
     PART_ACCORDION_SECTION_CONTENT, PART_ACCORDION_SECTION_DISCLOSURE,
     PART_ACCORDION_SECTION_HEADER, PART_ACCORDION_SECTION_LABEL, TYPE_ACCORDION,
-    TYPE_ACCORDION_SECTION,
+    TYPE_ACCORDION_SECTION, default_accordion_section_template,
 };
-use crate::controls::button::TYPE_BUTTON;
+use crate::controls::button::{TYPE_BUTTON, default_button_template};
 use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
+    default_check_box_template,
 };
 use crate::controls::divider::TYPE_DIVIDER;
 use crate::controls::expander::{
     PART_EXPANDER_CONTENT, PART_EXPANDER_DISCLOSURE, PART_EXPANDER_HEADER, PART_EXPANDER_LABEL,
-    TYPE_EXPANDER,
+    TYPE_EXPANDER, default_expander_template,
 };
-use crate::controls::list::{PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM};
+use crate::controls::list::{
+    PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, default_list_item_template,
+};
 use crate::controls::outline::{
     PART_OUTLINE_ITEM_CONTENT, PART_OUTLINE_ITEM_DISCLOSURE, PART_OUTLINE_ITEM_LABEL,
-    TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW,
+    TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, default_outline_item_template,
 };
 use crate::controls::popup::TYPE_POPUP;
 use crate::controls::progress::{
-    PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR,
+    PART_PROGRESS_BAR_FILL, PART_PROGRESS_BAR_LABEL, TYPE_PROGRESS_BAR, default_progress_template,
 };
 use crate::controls::radio::{
     PART_RADIO_BUTTON_DOT, PART_RADIO_BUTTON_INDICATOR, PART_RADIO_BUTTON_LABEL, TYPE_RADIO_BUTTON,
+    default_radio_button_template,
 };
-use crate::controls::scroll::{PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR};
-use crate::controls::segmented::{TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM};
-use crate::controls::select::{PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT};
+use crate::controls::scroll::{
+    PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR, default_scroll_bar_template,
+};
+use crate::controls::segmented::{
+    TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, default_segmented_item_template,
+};
+use crate::controls::select::{
+    PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT, default_select_template,
+};
 use crate::controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_THUMB, PART_SLIDER_TICK,
-    PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER,
+    PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER, default_slider_template,
 };
 use crate::controls::splitter::TYPE_SPLITTER;
 use crate::controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
+    default_text_input_template,
 };
-use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE};
-use crate::controls::tooltip::TYPE_TOOLTIP;
+use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE, default_toggle_template};
+use crate::controls::tooltip::{TYPE_TOOLTIP, default_tooltip_template};
 use crate::layouts::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutGap, LayoutJustify,
     LayoutSize, LayoutSpacing,
@@ -347,6 +358,7 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 #[must_use]
 pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
     let button_idle = StyleBuilder::new()
+        .set(properties.control_template, Some(default_button_template()))
         .set_resource(properties.background, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .set(properties.transitions, button_transition_rules(properties))
@@ -376,6 +388,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let toggle_idle = StyleBuilder::new()
+        .set(properties.control_template, Some(default_toggle_template()))
         .set_resource(properties.background, TRACK_BG)
         .set(properties.transitions, surface_transition_rules(properties))
         .set(properties.corner_radius, 16.0_f64)
@@ -406,6 +419,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let slider_idle = StyleBuilder::new()
+        .set(properties.control_template, Some(default_slider_template()))
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
@@ -462,6 +476,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let scroll_bar_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_scroll_bar_template()),
+        )
         .set_resource(properties.background, TRACK_BG)
         .set(properties.corner_radius, 5.0_f64)
         .build();
@@ -482,6 +500,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let checkbox_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_check_box_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.font_size, 15.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
@@ -525,6 +547,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .build();
     let radio_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_radio_button_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.font_size, 15.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
@@ -567,6 +593,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .build();
     let expander_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_expander_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.font_size, 15.0_f64)
         .set(properties.layout_container, LayoutContainer::column())
@@ -630,6 +660,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
         .build();
     let accordion_section_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_accordion_section_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.layout_container, LayoutContainer::column())
         .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
@@ -687,6 +721,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let progress_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_progress_template()),
+        )
         .set_resource(properties.background, TRACK_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set(properties.border_width, 1.0_f64)
@@ -702,6 +740,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let text_input_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_text_input_template()),
+        )
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
@@ -740,6 +782,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let select_idle = StyleBuilder::new()
+        .set(properties.control_template, Some(default_select_template()))
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
@@ -804,6 +847,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.border_width, 2.0_f64)
         .build();
     let list_item_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_list_item_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(
             properties.transitions,
@@ -855,6 +902,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.border_width, 2.0_f64)
         .build();
     let segmented_item_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_segmented_item_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(
             properties.transitions,
@@ -894,6 +945,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.border_width, 2.0_f64)
         .build();
     let outline_item_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_outline_item_template()),
+        )
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(
             properties.transitions,
@@ -935,6 +990,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let tooltip_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_tooltip_template()),
+        )
         .set_resource(properties.background, CONTROL_BG)
         .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)

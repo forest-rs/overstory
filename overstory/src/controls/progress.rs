@@ -197,7 +197,7 @@ impl Widget for ProgressBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&PROGRESS_TEMPLATE))
+        Some(default_progress_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -208,6 +208,10 @@ impl Widget for ProgressBarWidget {
 }
 
 static PROGRESS_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(progress_template_spec);
+
+pub(crate) fn default_progress_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&PROGRESS_TEMPLATE)
+}
 
 fn progress_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

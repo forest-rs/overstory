@@ -1132,7 +1132,7 @@ impl Widget for OutlineItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&OUTLINE_ITEM_TEMPLATE))
+        Some(default_outline_item_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -1238,6 +1238,10 @@ impl OutlineRowSnapshot {
 
 static OUTLINE_ITEM_TEMPLATE: TemplateSpecRecipe =
     TemplateSpecRecipe::new(outline_item_template_spec);
+
+pub(crate) fn default_outline_item_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&OUTLINE_ITEM_TEMPLATE)
+}
 
 fn outline_item_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::surface_part(PART_OUTLINE_ITEM_CONTENT)

@@ -228,7 +228,7 @@ impl Widget for CheckBoxWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&CHECK_BOX_TEMPLATE))
+        Some(default_check_box_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -275,6 +275,10 @@ impl Widget for CheckBoxWidget {
 }
 
 static CHECK_BOX_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(check_box_template_spec);
+
+pub(crate) fn default_check_box_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&CHECK_BOX_TEMPLATE)
+}
 
 fn check_box_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

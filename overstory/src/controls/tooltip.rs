@@ -236,7 +236,7 @@ impl Widget for TooltipWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&TOOLTIP_TEMPLATE))
+        Some(default_tooltip_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -269,6 +269,10 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
 }
 
 static TOOLTIP_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(tooltip_template_spec);
+
+pub(crate) fn default_tooltip_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&TOOLTIP_TEMPLATE)
+}
 
 fn tooltip_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_TOOLTIP_CONTENT)])

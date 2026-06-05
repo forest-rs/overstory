@@ -1812,6 +1812,73 @@ fn style_can_supply_initial_control_template() {
 }
 
 #[test]
+fn default_cascade_supplies_control_template_property() {
+    use crate::controls::button::default_button_template;
+    use crate::{Button, SLOT_BUTTON_CONTENT, theme};
+
+    let mut ui = Ui::new();
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+
+    let button = ui.append(ui.root(), Button::new("Default"));
+    let element = ui.get(button).unwrap();
+    let resolved = ui.resolve_value_for(element, ui.properties().control_template);
+
+    assert_eq!(
+        resolved.as_ref().map(crate::ControlTemplate::id),
+        Some(default_button_template().id())
+    );
+    assert_eq!(
+        ui.template_instance(button).unwrap().template_id(),
+        default_button_template().id()
+    );
+    assert!(
+        ui.slot(button, SLOT_BUTTON_CONTENT).is_some(),
+        "default template should still expose button content"
+    );
+}
+
+#[test]
+fn sheet_style_control_template_replaces_default_cascade_template() {
+    use crate::controls::button::TYPE_BUTTON;
+    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, theme};
+
+    const STYLE_FRAME: PartTag = PartTag(0x51);
+    let style_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            STYLE_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
+    let style_template_id = style_template.id();
+
+    let mut ui = Ui::new();
+    let style = StyleBuilder::new()
+        .set(ui.properties().control_template, Some(style_template))
+        .build();
+    let cascade = theme::default_cascade_builder(ui.properties())
+        .push_rule(
+            StyleOrigin::Sheet,
+            crate::selectors::type_tag(TYPE_BUTTON),
+            style,
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    let button = ui.append(ui.root(), Button::new("Styled"));
+
+    assert_eq!(
+        ui.template_instance(button).unwrap().template_id(),
+        style_template_id
+    );
+    let frame = ui.part(button, STYLE_FRAME).unwrap();
+    let content = ui.slot(button, SLOT_BUTTON_CONTENT).unwrap();
+    assert_eq!(
+        ui.get(content).unwrap().parent(),
+        Some(frame),
+        "the stronger style template should own the realized visual structure"
+    );
+}
+
+#[test]
 fn changing_control_template_replaces_parts_and_preserves_slot_content() {
     use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, Text};
 

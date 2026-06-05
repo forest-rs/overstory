@@ -899,7 +899,7 @@ impl Widget for ListItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&LIST_ITEM_TEMPLATE))
+        Some(default_list_item_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -936,6 +936,10 @@ struct RealizedListItem {
 }
 
 static LIST_ITEM_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(list_item_template_spec);
+
+pub(crate) fn default_list_item_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&LIST_ITEM_TEMPLATE)
+}
 
 fn list_item_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::surface_part(PART_LIST_ITEM_CONTENT)

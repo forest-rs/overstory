@@ -848,7 +848,7 @@ impl Widget for ScrollBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&SCROLL_BAR_TEMPLATE))
+        Some(default_scroll_bar_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -959,6 +959,10 @@ impl Widget for ScrollBarWidget {
 }
 
 static SCROLL_BAR_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(scroll_bar_template_spec);
+
+pub(crate) fn default_scroll_bar_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&SCROLL_BAR_TEMPLATE)
+}
 
 fn scroll_bar_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

@@ -280,7 +280,7 @@ impl Widget for SliderWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&SLIDER_TEMPLATE))
+        Some(default_slider_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -426,6 +426,10 @@ impl Widget for SliderWidget {
 }
 
 static SLIDER_TEMPLATE: SliderTemplate = SliderTemplate;
+
+pub(crate) fn default_slider_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&SLIDER_TEMPLATE)
+}
 
 #[derive(Debug, Default)]
 struct SliderTemplate;

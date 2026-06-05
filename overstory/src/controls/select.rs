@@ -316,7 +316,7 @@ impl Widget for SelectWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&SELECT_TEMPLATE))
+        Some(default_select_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -543,6 +543,10 @@ impl SelectWidget {
 }
 
 static SELECT_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(select_template_spec);
+
+pub(crate) fn default_select_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&SELECT_TEMPLATE)
+}
 
 fn select_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

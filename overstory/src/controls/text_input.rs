@@ -295,7 +295,7 @@ impl Widget for TextInputWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&TEXT_INPUT_TEMPLATE))
+        Some(default_text_input_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -587,6 +587,10 @@ impl TextInputWidget {
 }
 
 static TEXT_INPUT_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(text_input_template_spec);
+
+pub(crate) fn default_text_input_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&TEXT_INPUT_TEMPLATE)
+}
 
 fn text_input_template_spec() -> TemplateSpec {
     // TODO(text): Editable text is still rendered through a `TextWidget`

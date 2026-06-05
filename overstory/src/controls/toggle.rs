@@ -206,7 +206,7 @@ impl Widget for ToggleWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&TOGGLE_TEMPLATE))
+        Some(default_toggle_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -256,6 +256,10 @@ impl Widget for ToggleWidget {
 }
 
 static TOGGLE_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(toggle_template_spec);
+
+pub(crate) fn default_toggle_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&TOGGLE_TEMPLATE)
+}
 
 fn toggle_template_spec() -> TemplateSpec {
     // Thumb part. Sized + styled by the cascade.

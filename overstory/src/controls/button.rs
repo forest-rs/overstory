@@ -244,7 +244,7 @@ impl Widget for ButtonWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&BUTTON_TEMPLATE))
+        Some(default_button_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -280,6 +280,10 @@ impl Widget for ButtonWidget {
 }
 
 static BUTTON_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(button_template_spec);
+
+pub(crate) fn default_button_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&BUTTON_TEMPLATE)
+}
 
 fn button_template_spec() -> TemplateSpec {
     // Foreground inherits through the tree, so styled owner foreground remains

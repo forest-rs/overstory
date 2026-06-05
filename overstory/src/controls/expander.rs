@@ -210,7 +210,7 @@ impl Widget for ExpanderWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&EXPANDER_TEMPLATE))
+        Some(default_expander_template())
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -277,6 +277,10 @@ impl ExpanderWidget {
 }
 
 static EXPANDER_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(expander_template_spec);
+
+pub(crate) fn default_expander_template() -> crate::ControlTemplate {
+    crate::ControlTemplate::from_static(&EXPANDER_TEMPLATE)
+}
 
 fn expander_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([
