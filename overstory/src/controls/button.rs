@@ -182,7 +182,7 @@ impl AppendSpec for Button {
             ui.set_local(id, fg_prop, brush);
         }
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         if let Some(handler) = self.on_click {
             let mut handler = handler;
             ui.on_click_with_options(

@@ -236,7 +236,7 @@ impl AppendSpec for AccordionSection {
             ui.set_local(id, font_size_prop, font_size);
         }
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         sync_accordion_section_state(ui, id, self.expanded);
         enforce_accordion_after_insert(ui, parent, id);
         id

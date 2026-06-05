@@ -135,7 +135,7 @@ impl AppendSpec for ToggleSwitch {
             Box::new(ToggleWidget::new(self.on_checked_changed)),
         );
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         if self.initial_checked {
             set_toggle_checked(ui, id, true);
         }

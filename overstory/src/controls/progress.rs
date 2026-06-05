@@ -147,7 +147,7 @@ impl AppendSpec for ProgressBar {
         ui.set_local(id, min_prop, self.min);
         ui.set_local(id, max_prop, self.max);
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         set_progress_label_visible(ui, id, self.show_label);
         set_progress_value(ui, id, self.value);
         id

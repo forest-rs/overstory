@@ -33,6 +33,17 @@ impl Ui {
         }
     }
 
+    pub(crate) fn add_initial_class(&mut self, id: ElementId, class: understory_style::ClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.add_class(class))
+            .unwrap_or(false);
+        if changed {
+            self.style_one_for_insert(id);
+            self.record_element_tree_upsert(id);
+        }
+    }
+
     /// Removes `class` from `id` and re-styles the affected subtree.
     pub fn remove_class(&mut self, id: ElementId, class: understory_style::ClassId) {
         let changed = self
@@ -136,6 +147,44 @@ impl Ui {
     pub fn set_control_state(&mut self, id: ElementId, state: ControlState) {
         self.set_focusable(id, state.focusable);
         self.set_enabled(id, state.enabled);
+    }
+
+    pub(crate) fn set_initial_control_state(&mut self, id: ElementId, state: ControlState) {
+        if self.get(id).is_none() {
+            return;
+        }
+        self.focus.set_focusable_preference(id, state.focusable);
+        self.apply_focusable_preference(id);
+        self.set_local(id, self.properties.is_enabled, state.enabled);
+        if state.enabled {
+            self.remove_initial_pseudo(id, PSEUDO_DISABLED);
+            self.apply_focusable_preference(id);
+        } else {
+            self.add_initial_pseudo(id, PSEUDO_DISABLED);
+            self.set_focusable_flag(id, false);
+        }
+    }
+
+    fn add_initial_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.add_pseudo(pseudo))
+            .unwrap_or(false);
+        if changed {
+            self.style_one_for_insert(id);
+            self.record_element_tree_upsert(id);
+        }
+    }
+
+    fn remove_initial_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+        let changed = self
+            .get_mut(id)
+            .map(|el| el.remove_pseudo(pseudo))
+            .unwrap_or(false);
+        if changed {
+            self.style_one_for_insert(id);
+            self.record_element_tree_upsert(id);
+        }
     }
 
     /// Toggles the desired `Focusable` flag for `id`.

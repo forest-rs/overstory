@@ -214,10 +214,13 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         ElementRealizeResult::UNCHANGED
     }
 
-    /// Returns the default template this widget's element should
-    /// expand on insertion, if any. Typical use is a templated
-    /// control creating its parts (e.g. `ToggleSwitch`'s thumb,
-    /// `Slider`'s track + thumb).
+    /// Returns this widget's fallback template when the `ControlTemplate`
+    /// property does not resolve to one.
+    ///
+    /// Built-in controls should normally receive their template from the
+    /// default style cascade through the `ControlTemplate` property. This hook
+    /// exists as a migration backstop and for low-level widgets that are
+    /// intentionally usable without a style cascade.
     fn default_template(&self) -> Option<ControlTemplate> {
         None
     }
@@ -478,13 +481,13 @@ impl ElementConfig {
         }
         for write in self.local_properties {
             let property = write.target.resolve(ui.properties());
-            ui.set_local_erased(id, property, write.value);
+            ui.set_initial_local_erased(id, property, write.value);
         }
         for class in self.classes {
-            ui.add_class(id, class);
+            ui.add_initial_class(id, class);
         }
         if let Some(state) = self.control_state {
-            ui.set_control_state(id, state);
+            ui.set_initial_control_state(id, state);
         }
     }
 

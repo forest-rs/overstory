@@ -118,9 +118,13 @@ pub struct BuiltInProperties {
     /// on the rendered string.
     pub text: Property<String>,
 
-    /// Visual template used to expand a lookless control. Default `None`,
-    /// which means the control falls back to its widget-declared default
-    /// template.
+    /// Visual template used to expand a lookless control.
+    ///
+    /// The built-in default cascade supplies templates for built-in controls at
+    /// base style precedence, so app styles and local `.template(...)` values
+    /// can replace them through ordinary property resolution. The registry
+    /// default is `None`; widgets may still provide a fallback template when no
+    /// style cascade is installed.
     pub control_template: Property<Option<ControlTemplate>>,
 
     /// Foreground brush used to paint text. Default solid black.

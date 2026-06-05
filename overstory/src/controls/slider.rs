@@ -219,7 +219,7 @@ impl AppendSpec for Slider {
             ui.set_local(id, large_change_prop, large_change);
         }
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         sync_slider_tick_labels(ui, id);
         // Initial value: drive through the same setter the runtime
         // path uses so the thumb's Layout matches. The template has

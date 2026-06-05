@@ -344,7 +344,9 @@ fn finish_motion_tokens(builder: ThemeBuilder) -> ThemeBuilder {
 /// The stylesheet uses control `TypeTag`s for owners and owner-local
 /// `PartTag`s for generated template parts. Apps can use it directly, layer
 /// additional rules after it with [`default_cascade_builder`], or replace it
-/// entirely.
+/// entirely. Templated controls receive their built-in templates here through
+/// base-origin `ControlTemplate` setters, matching the same precedence path app
+/// styles use to replace a control's visual tree.
 #[must_use]
 pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     default_cascade_builder(properties).build()

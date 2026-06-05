@@ -116,6 +116,20 @@ impl Ui {
     /// nested controls while child/descendant selectors can carry owner state
     /// into template parts.
     pub(in crate::ui) fn style_one(&mut self, id: ElementId) {
+        self.style_one_inner(id, true);
+    }
+
+    /// Computes initial match state for a newly inserted element without
+    /// materializing templates.
+    ///
+    /// Append paths expand templates after construction-time properties have
+    /// been applied. That ordering matters for deferred controls whose default
+    /// templates read owner properties during expansion.
+    pub(in crate::ui) fn style_one_for_insert(&mut self, id: ElementId) {
+        self.style_one_inner(id, false);
+    }
+
+    fn style_one_inner(&mut self, id: ElementId, allow_retemplate: bool) {
         let Some(element) = self.elements.get(id) else {
             self.style.remove(id);
             return;
@@ -124,6 +138,8 @@ impl Ui {
         if let Some(channels) = channels {
             self.mark_channels(id, channels);
         }
-        self.retemplate_if_needed(id);
+        if allow_retemplate {
+            self.retemplate_if_needed(id);
+        }
     }
 }

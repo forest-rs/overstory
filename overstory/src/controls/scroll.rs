@@ -784,7 +784,7 @@ impl AppendSpec for ScrollBar {
             scroll_bar_layout(self.axis, self.length, self.thickness),
         );
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         sync_scroll_bar_thumb_size(ui, id);
         id
     }

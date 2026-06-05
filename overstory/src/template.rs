@@ -3,11 +3,13 @@
 
 //! Templates: factories that build a templated control's visual subtree.
 //!
-//! A [`Template`] is a `'static` factory returned by
-//! [`crate::Widget::default_template`]. The [`crate::Ui`] expands it when a
-//! widget element is inserted. The template receives a [`TemplateContext`],
-//! which tags each generated node with a `templated_parent:
-//! Option<ElementId>` back-reference (see
+//! A [`Template`] is a reusable factory stored in the
+//! [`crate::BuiltInProperties::control_template`] property by a local value,
+//! style rule, theme default, or temporary widget fallback. The [`crate::Ui`]
+//! expands the resolved template when a widget element is inserted or when
+//! template resolution changes. The template receives a [`TemplateContext`],
+//! which tags each generated node with a `templated_parent: Option<ElementId>`
+//! back-reference (see
 //! [`crate::Element::templated_parent`]) and records the resulting parts in a
 //! retained [`TemplateInstance`].
 //!
@@ -63,6 +65,9 @@
 //! - Keep templates as the boundary between control behavior and visual
 //!   structure: controls own state and semantics, templates own parts, slots,
 //!   and layout of the visual subtree. See ticket `ove-733r`.
+//! - Finish moving built-in default templates out of widget fallback hooks and
+//!   into default style/property resolution so template identity, precedence,
+//!   and retemplating all flow through `ControlTemplate`.
 //! - Support both compact data-driven templates and custom code templates
 //!   without requiring every visual variation to become a new widget type.
 //! - Grow content slots, repeated keyed parts, optional slots, and eventual
@@ -105,7 +110,7 @@ pub use validation::{TemplateExpansionReport, TemplateSlotStatus};
 /// descendants, find named parts after expansion, and clean binding graph edges
 /// when parts are removed.
 ///
-/// Templates are immutable recipes. They may be static unit structs, static
+/// Templates are immutable recipes. They may be static unit structs, reusable
 /// data-driven specs, or owned values stored behind a [`ControlTemplate`].
 pub trait Template: Send + Sync {
     /// Builds this template's subtree under `owner`.

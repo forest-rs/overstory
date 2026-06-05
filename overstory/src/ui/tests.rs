@@ -1879,6 +1879,53 @@ fn sheet_style_control_template_replaces_default_cascade_template() {
 }
 
 #[test]
+fn style_change_can_materialize_template_after_insert() {
+    use crate::{ControlTemplate, TemplateNode, TemplateSpec, Widget};
+
+    const TYPE_LATE_TEMPLATE: understory_style::TypeTag = understory_style::TypeTag(0x52);
+    const LATE_PART: PartTag = PartTag(0x53);
+
+    #[derive(Debug)]
+    struct LateTemplateWidget;
+
+    impl Widget for LateTemplateWidget {
+        fn type_tag(&self) -> Option<understory_style::TypeTag> {
+            Some(TYPE_LATE_TEMPLATE)
+        }
+    }
+
+    let mut ui = Ui::new();
+    let owner = ui.append_widget(ui.root(), Box::new(LateTemplateWidget));
+    assert!(
+        ui.template_instance(owner).is_none(),
+        "the widget starts without a fallback/default template"
+    );
+
+    let template = ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+        LATE_PART,
+    )]));
+    let template_id = template.id();
+    let style = StyleBuilder::new()
+        .set(ui.properties().control_template, Some(template))
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Sheet,
+            crate::selectors::type_tag(TYPE_LATE_TEMPLATE),
+            style,
+        )
+        .build();
+
+    ui.set_cascade(cascade);
+
+    assert_eq!(
+        ui.template_instance(owner).unwrap().template_id(),
+        template_id
+    );
+    assert!(ui.part(owner, LATE_PART).is_some());
+}
+
+#[test]
 fn changing_control_template_replaces_parts_and_preserves_slot_content() {
     use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, Text};
 

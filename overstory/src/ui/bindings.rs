@@ -43,7 +43,7 @@ impl Ui {
         }
     }
 
-    pub(crate) fn set_local_erased(
+    pub(crate) fn set_initial_local_erased(
         &mut self,
         id: ElementId,
         property: PropertyId,
@@ -69,9 +69,6 @@ impl Ui {
         self.mark_channels(id, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
-        if property == self.properties.control_template.id() {
-            self.retemplate_if_needed(id);
-        }
     }
 
     /// Creates a local state value owned by this `Ui`.

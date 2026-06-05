@@ -182,7 +182,7 @@ impl AppendSpec for RadioButton {
             ui.set_local(id, font_size_prop, font_size);
         }
         self.element.apply_to(ui, id);
-        ui.expand_default_template(id);
+        ui.expand_resolved_template(id);
         set_radio_button_checked(ui, id, self.initial_checked);
         id
     }

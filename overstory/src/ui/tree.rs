@@ -480,7 +480,7 @@ impl Ui {
             .get(parent)
             .and_then(|element| element.children().iter().rev().nth(1).copied());
         self.mirror_allocated_element(child, Some(parent));
-        self.style_one(child);
+        self.style_one_for_insert(child);
         // LAYOUT cascades to PAINT and COMPOSE via the tracker's
         // channel cascade. `style_one`'s diff path only marks
         // channels on state transitions — first-time styling skips
@@ -490,7 +490,7 @@ impl Ui {
         self.invalidation.mark(parent, COMPOSE);
         self.mark_child_dependent_presentation(parent);
         if expand_template {
-            self.expand_default_template(child);
+            self.expand_resolved_template(child);
         }
         self.record_element_tree_upsert(parent);
         if let Some(previous_sibling) = previous_sibling {
@@ -500,12 +500,13 @@ impl Ui {
         child
     }
 
-    /// Expands the widget's default template under `owner`, if any.
+    /// Expands the currently resolved control template under `owner`, if any.
     ///
-    /// Template-generated elements are inserted through [`TemplateContext`],
-    /// which records named parts and applies the owner back-reference
-    /// explicitly.
-    pub(crate) fn expand_default_template(&mut self, owner: ElementId) {
+    /// The template may come from the `ControlTemplate` property via local
+    /// value, style, or theme default. During the migration to fully
+    /// property-driven templates, widgets can still provide a fallback default
+    /// template when no property value resolves.
+    pub(crate) fn expand_resolved_template(&mut self, owner: ElementId) {
         let Some(template) = self.resolved_control_template(owner) else {
             return;
         };
@@ -513,25 +514,29 @@ impl Ui {
     }
 
     pub(crate) fn retemplate_if_needed(&mut self, owner: ElementId) {
-        let Some(current_template_id) =
-            self.templates.get(owner).map(TemplateInstance::template_id)
-        else {
-            return;
-        };
-        let Some(template) = self.resolved_control_template(owner) else {
-            if self
-                .get(owner)
-                .is_some_and(|element| element.has_widget_identity() && element.widget().is_none())
-            {
-                return;
+        let current_template_id = self.templates.get(owner).map(TemplateInstance::template_id);
+        let template = self.resolved_control_template(owner);
+
+        match (current_template_id, template) {
+            (None, None) => {}
+            (None, Some(template)) => {
+                self.expand_template(owner, template);
+                self.with_widget_mut(owner, |widget, ui| widget.template_expanded(owner, ui));
             }
-            self.remove_template_instance(owner);
-            return;
-        };
-        if current_template_id == template.id() {
-            return;
+            (Some(_), None) => {
+                if self.get(owner).is_some_and(|element| {
+                    element.has_widget_identity() && element.widget().is_none()
+                }) {
+                    return;
+                }
+                self.remove_template_instance(owner);
+            }
+            (Some(current_template_id), Some(template)) => {
+                if current_template_id != template.id() {
+                    self.replace_template(owner, template);
+                }
+            }
         }
-        self.replace_template(owner, template);
     }
 
     fn resolved_control_template(&self, owner: ElementId) -> Option<ControlTemplate> {
