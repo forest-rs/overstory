@@ -143,28 +143,14 @@ impl From<TemplateSpec> for ControlTemplate {
 /// elements.
 #[derive(Clone, Debug)]
 pub struct TemplateSpec {
-    nodes: &'static [TemplateNode],
-    owned_nodes: Option<Box<[TemplateNode]>>,
+    nodes: Vec<TemplateNode>,
 }
 
 impl TemplateSpec {
-    /// Creates a spec from top-level template nodes.
-    #[must_use]
-    #[inline]
-    pub const fn new(nodes: &'static [TemplateNode]) -> Self {
-        Self {
-            nodes,
-            owned_nodes: None,
-        }
-    }
-
     /// Creates a spec from owned top-level template nodes.
     #[must_use]
     pub fn from_vec(nodes: Vec<TemplateNode>) -> Self {
-        Self {
-            nodes: &[],
-            owned_nodes: Some(nodes.into_boxed_slice()),
-        }
+        Self { nodes }
     }
 
     /// Creates a spec from an owned array of top-level template nodes.
@@ -177,7 +163,7 @@ impl TemplateSpec {
     #[must_use]
     #[inline]
     pub fn nodes(&self) -> &[TemplateNode] {
-        self.owned_nodes.as_deref().unwrap_or(self.nodes)
+        &self.nodes
     }
 }
 
@@ -244,61 +230,57 @@ pub struct TemplateNode {
     slot: Option<TemplateSlot>,
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
-    classes: &'static [ClassId],
-    owned_classes: Option<Box<[ClassId]>>,
-    children: &'static [Self],
-    owned_children: Option<Box<[Self]>>,
+    classes: Vec<ClassId>,
+    children: Vec<Self>,
 }
 
 impl TemplateNode {
     /// Creates a node with the supplied widget factory.
     #[must_use]
     #[inline]
-    pub const fn widget(widget: TemplateWidgetFactory) -> Self {
+    pub fn widget(widget: TemplateWidgetFactory) -> Self {
         Self {
             widget,
             slot: None,
             part: None,
             key: None,
-            classes: &[],
-            owned_classes: None,
-            children: &[],
-            owned_children: None,
+            classes: Vec::new(),
+            children: Vec::new(),
         }
     }
 
     /// Creates a node that fills a semantic template slot.
     #[must_use]
     #[inline]
-    pub const fn for_slot(slot: TemplateSlot, widget: TemplateWidgetFactory) -> Self {
+    pub fn for_slot(slot: TemplateSlot, widget: TemplateWidgetFactory) -> Self {
         Self::widget(widget).with_slot(slot)
     }
 
     /// Creates a node with an owner-local part tag.
     #[must_use]
     #[inline]
-    pub const fn for_part(part: PartTag, widget: TemplateWidgetFactory) -> Self {
+    pub fn for_part(part: PartTag, widget: TemplateWidgetFactory) -> Self {
         Self::widget(widget).with_part(part)
     }
 
     /// Creates a surface-only node.
     #[must_use]
     #[inline]
-    pub const fn surface() -> Self {
+    pub fn surface() -> Self {
         Self::widget(TemplateWidgetFactory::surface())
     }
 
     /// Creates a surface-only node that fills a semantic template slot.
     #[must_use]
     #[inline]
-    pub const fn surface_slot(slot: TemplateSlot) -> Self {
+    pub fn surface_slot(slot: TemplateSlot) -> Self {
         Self::for_slot(slot, TemplateWidgetFactory::surface())
     }
 
     /// Creates a surface-only node with an owner-local part tag.
     #[must_use]
     #[inline]
-    pub const fn surface_part(part: PartTag) -> Self {
+    pub fn surface_part(part: PartTag) -> Self {
         Self::for_part(part, TemplateWidgetFactory::surface())
     }
 
@@ -309,7 +291,7 @@ impl TemplateNode {
     /// the slot, the presenter becomes a transparent host for that subtree.
     #[must_use]
     #[inline]
-    pub const fn content_presenter(slot: TemplateSlot) -> Self {
+    pub fn content_presenter(slot: TemplateSlot) -> Self {
         Self::for_slot(slot, TemplateWidgetFactory::content_presenter())
     }
 
@@ -337,51 +319,41 @@ impl TemplateNode {
         self
     }
 
-    /// Adds classes to the generated element.
-    #[must_use]
-    #[inline]
-    pub const fn with_classes(mut self, classes: &'static [ClassId]) -> Self {
-        self.classes = classes;
-        self
-    }
-
     /// Adds one class to the generated element.
     #[must_use]
     #[inline]
     pub fn with_class(mut self, class: ClassId) -> Self {
-        self.owned_classes = Some(Box::new([class]));
+        self.classes.push(class);
         self
     }
 
-    /// Adds owned classes to the generated element.
+    /// Adds classes to the generated element.
     #[must_use]
     #[inline]
-    pub fn with_owned_classes(mut self, classes: Vec<ClassId>) -> Self {
-        self.owned_classes = Some(classes.into_boxed_slice());
+    pub fn with_classes<I>(mut self, classes: I) -> Self
+    where
+        I: IntoIterator<Item = ClassId>,
+    {
+        self.classes.extend(classes);
         self
     }
 
     /// Adds child nodes under this generated element.
     #[must_use]
     #[inline]
-    pub const fn with_children(mut self, children: &'static [Self]) -> Self {
-        self.children = children;
+    pub fn with_children<I>(mut self, children: I) -> Self
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        self.children.extend(children);
         self
     }
 
-    /// Adds one owned child node under this generated element.
+    /// Adds one child node under this generated element.
     #[must_use]
     #[inline]
     pub fn with_child(mut self, child: Self) -> Self {
-        self.owned_children = Some(Box::new([child]));
-        self
-    }
-
-    /// Adds owned child nodes under this generated element.
-    #[must_use]
-    #[inline]
-    pub fn with_owned_children(mut self, children: Vec<Self>) -> Self {
-        self.owned_children = Some(children.into_boxed_slice());
+        self.children.push(child);
         self
     }
 
@@ -417,14 +389,14 @@ impl TemplateNode {
     #[must_use]
     #[inline]
     pub fn classes(&self) -> &[ClassId] {
-        self.owned_classes.as_deref().unwrap_or(self.classes)
+        &self.classes
     }
 
     /// Returns this node's children.
     #[must_use]
     #[inline]
     pub fn children(&self) -> &[Self] {
-        self.owned_children.as_deref().unwrap_or(self.children)
+        &self.children
     }
 }
 

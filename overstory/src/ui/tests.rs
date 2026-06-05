@@ -1774,19 +1774,16 @@ fn style_can_supply_initial_control_template() {
 
     const TEMPLATE_CLASS: ClassId = ClassId(0x46);
     const STYLE_FRAME: PartTag = PartTag(0x47);
-    const STYLE_TEMPLATE_CHILDREN: &[TemplateNode] =
-        &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
-    const STYLE_TEMPLATE_NODES: &[TemplateNode] =
-        &[TemplateNode::surface_part(STYLE_FRAME).with_children(STYLE_TEMPLATE_CHILDREN)];
-    static STYLE_TEMPLATE: TemplateSpec = TemplateSpec::new(STYLE_TEMPLATE_NODES);
+    let style_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            STYLE_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
 
     let mut ui = Ui::new();
     let root = ui.root();
     let style = StyleBuilder::new()
-        .set(
-            ui.properties().control_template,
-            Some(ControlTemplate::from_static(&STYLE_TEMPLATE)),
-        )
+        .set(ui.properties().control_template, Some(style_template))
         .build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
@@ -1820,18 +1817,20 @@ fn changing_control_template_replaces_parts_and_preserves_slot_content() {
 
     const OLD_FRAME: PartTag = PartTag(0x48);
     const NEW_FRAME: PartTag = PartTag(0x49);
-    const OLD_CHILDREN: &[TemplateNode] = &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
-    const NEW_CHILDREN: &[TemplateNode] = &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
-    const OLD_NODES: &[TemplateNode] =
-        &[TemplateNode::surface_part(OLD_FRAME).with_children(OLD_CHILDREN)];
-    const NEW_NODES: &[TemplateNode] =
-        &[TemplateNode::surface_part(NEW_FRAME).with_children(NEW_CHILDREN)];
-    static OLD_TEMPLATE: TemplateSpec = TemplateSpec::new(OLD_NODES);
-    static NEW_TEMPLATE: TemplateSpec = TemplateSpec::new(NEW_NODES);
+    let old_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            OLD_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
+    let new_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            NEW_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
 
     let mut ui = Ui::new();
     let root = ui.root();
-    let button = ui.append(root, Button::new("Button").template(&OLD_TEMPLATE));
+    let button = ui.append(root, Button::new("Button").template(old_template));
     let old_frame = ui
         .part(button, OLD_FRAME)
         .expect("old template should create its frame");
@@ -1841,11 +1840,7 @@ fn changing_control_template_replaces_parts_and_preserves_slot_content() {
         })
         .expect("old template should expose the content slot");
 
-    ui.set_local(
-        button,
-        ui.properties().control_template,
-        Some(ControlTemplate::from_static(&NEW_TEMPLATE)),
-    );
+    ui.set_local(button, ui.properties().control_template, Some(new_template));
 
     let new_frame = ui
         .part(button, NEW_FRAME)
@@ -2971,7 +2966,7 @@ fn template_expansion_inserts_parts_under_owner() {
 #[test]
 fn template_spec_builds_nested_parts_classes_and_keys() {
     use crate::widget::{AppendSpec, Widget};
-    use crate::{TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
+    use crate::{ControlTemplate, TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
     use understory_style::TypeTag;
 
     const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_CAFE);
@@ -2980,33 +2975,41 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     const OUTER_SLOT: TemplateSlot = TemplateSlot::new("outer").with_part_tag(OUTER_PART);
     const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
     const OUTER_CLASS: ClassId = ClassId(0x12);
-    const OUTER_CLASSES: &[ClassId] = &[OUTER_CLASS];
-    const CHILDREN: &[TemplateNode] = &[TemplateNode::surface_part(INNER_PART)];
-    const NODES: &[TemplateNode] = &[TemplateNode::surface_slot(OUTER_SLOT)
-        .with_key(OUTER_KEY)
-        .with_classes(OUTER_CLASSES)
-        .with_children(CHILDREN)];
-    static SPEC: TemplateSpec = TemplateSpec::new(NODES);
+    let template = ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_slot(
+        OUTER_SLOT,
+    )
+    .with_key(OUTER_KEY)
+    .with_class(OUTER_CLASS)
+    .with_child(TemplateNode::surface_part(INNER_PART))]));
 
     #[derive(Debug)]
-    struct TestWidget;
+    struct TestWidget {
+        template: ControlTemplate,
+    }
     impl Widget for TestWidget {
         fn type_tag(&self) -> Option<TypeTag> {
             Some(TEST_OWNER_TAG)
         }
-        fn default_template(&self) -> Option<crate::ControlTemplate> {
-            Some(crate::ControlTemplate::from_static(&SPEC))
+        fn default_template(&self) -> Option<ControlTemplate> {
+            Some(self.template.clone())
         }
     }
-    struct TestSpec;
+    struct TestSpec {
+        template: ControlTemplate,
+    }
     impl AppendSpec for TestSpec {
         fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-            ui.append_widget(parent, Box::new(TestWidget))
+            ui.append_widget(
+                parent,
+                Box::new(TestWidget {
+                    template: self.template,
+                }),
+            )
         }
     }
 
     let mut ui = Ui::new();
-    let owner = ui.append(ui.root(), TestSpec);
+    let owner = ui.append(ui.root(), TestSpec { template });
     let instance = ui.template_instance(owner).unwrap();
     let outer = instance.keyed_part(OUTER_PART, OUTER_KEY).unwrap();
     let inner = instance.part(INNER_PART).unwrap();
