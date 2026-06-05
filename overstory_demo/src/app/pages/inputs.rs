@@ -3,30 +3,27 @@ use super::super::*;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct InputsPage;
 
-const DOUBLE_FRAME_OUTER_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_BUTTON_OUTER];
-const DOUBLE_FRAME_INNER_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_BUTTON_INNER];
-const DOUBLE_FRAME_CONTENT_NODES: &[TemplateNode] =
-    &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
-const DOUBLE_FRAME_INNER_NODES: &[TemplateNode] = &[TemplateNode::surface()
-    .with_classes(DOUBLE_FRAME_INNER_CLASSES)
-    .with_children(DOUBLE_FRAME_CONTENT_NODES)];
-const DOUBLE_FRAME_BUTTON_NODES: &[TemplateNode] = &[TemplateNode::surface()
-    .with_classes(DOUBLE_FRAME_OUTER_CLASSES)
-    .with_children(DOUBLE_FRAME_INNER_NODES)];
-static DOUBLE_FRAME_BUTTON_TEMPLATE: TemplateSpec = TemplateSpec::new(DOUBLE_FRAME_BUTTON_NODES);
+fn double_frame_button_template() -> TemplateSpec {
+    TemplateSpec::from_nodes([TemplateNode::surface()
+        .with_class(CLASS_DEMO_TEMPLATE_BUTTON_OUTER)
+        .with_child(
+            TemplateNode::surface()
+                .with_class(CLASS_DEMO_TEMPLATE_BUTTON_INNER)
+                .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)),
+        )])
+}
 
-const ROUND_CHECK_BOX_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX];
-const ROUND_CHECK_BOX_MARK_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
-    SLOT_CHECK_BOX_MARK,
-    TemplateWidgetFactory::new(demo_template_text_widget),
-)];
-const ROUND_CHECK_BOX_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX)
-        .with_classes(ROUND_CHECK_BOX_CLASSES)
-        .with_children(ROUND_CHECK_BOX_MARK_NODES),
-    TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
-];
-static ROUND_CHECK_BOX_TEMPLATE: TemplateSpec = TemplateSpec::new(ROUND_CHECK_BOX_NODES);
+fn round_check_box_template() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX)
+            .with_class(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX)
+            .with_child(TemplateNode::for_slot(
+                SLOT_CHECK_BOX_MARK,
+                TemplateWidgetFactory::new(demo_template_text_widget),
+            )),
+        TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
+    ])
+}
 
 fn demo_template_text_widget() -> Box<dyn Widget> {
     Box::new(TextWidget)
@@ -61,7 +58,7 @@ impl View for InputsPage {
                         let deploy_clicks = buttons.local_state(0_u32);
                         buttons.content(
                             Button::new("")
-                                .template(&DOUBLE_FRAME_BUTTON_TEMPLATE)
+                                .template(double_frame_button_template())
                                 .font_size(15.0)
                                 .layout(Layout::row(0.0).align_center())
                                 .background(None::<Brush>)
@@ -99,7 +96,7 @@ impl View for InputsPage {
                     actions.content(
                         CheckBox::new("")
                             .checked(true)
-                            .template(&ROUND_CHECK_BOX_TEMPLATE),
+                            .template(round_check_box_template()),
                         |label| {
                             label.with_child(Panel::row(8.0).align_center(), |row| {
                                 row.add(Text::new("Enable staged rollout").font_size(15.0));

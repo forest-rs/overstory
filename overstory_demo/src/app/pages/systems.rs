@@ -4,13 +4,12 @@ use super::metrics::{append_large_counter_to, drive_progress};
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SystemsPage;
 
-const TEMPLATE_SLIDER_TRACK_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_SLIDER_TRACK];
-const TEMPLATE_SLIDER_THUMB_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_SLIDER_THUMB];
-const TEMPLATE_SLIDER_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_SLIDER_TRACK).with_classes(TEMPLATE_SLIDER_TRACK_CLASSES),
-    TemplateNode::surface_slot(SLOT_SLIDER_THUMB).with_classes(TEMPLATE_SLIDER_THUMB_CLASSES),
-];
-static TEMPLATE_SLIDER_TEMPLATE: TemplateSpec = TemplateSpec::new(TEMPLATE_SLIDER_NODES);
+fn template_slider_template() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_SLIDER_TRACK).with_class(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
+        TemplateNode::surface_slot(SLOT_SLIDER_THUMB).with_class(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+    ])
+}
 
 impl View for SystemsPage {
     type Output = ();
@@ -53,7 +52,7 @@ impl View for SystemsPage {
                         column.add(caption("Custom template"));
                         column.add(
                             Slider::new()
-                                .template(&TEMPLATE_SLIDER_TEMPLATE)
+                                .template(template_slider_template())
                                 .tooltip("Same slider behavior, replacement template")
                                 .bind_property(value_property, slider_value.binding()),
                         );
