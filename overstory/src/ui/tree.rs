@@ -424,9 +424,9 @@ impl Ui {
     /// implementations.
     ///
     /// Allocates a new element under `parent` carrying the supplied
-    /// widget (or `None` for anonymous containers), runs the
-    /// widget's default template if it has one, and returns the new
-    /// id. Most callers should use [`Self::append`] instead.
+    /// widget (or `None` for anonymous containers), expands its resolved
+    /// `ControlTemplate` if it has one, and returns the new id. Most callers
+    /// should use [`Self::append`] instead.
     pub fn append_widget(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
         self.insert_child_inner(parent, None, None, Some(widget), true)
     }
@@ -542,7 +542,6 @@ impl Ui {
     fn resolved_control_template(&self, owner: ElementId) -> Option<ControlTemplate> {
         let element = self.get(owner)?;
         self.resolve_value_for(element, self.properties.control_template)
-            .or_else(|| element.widget().and_then(|w| w.default_template()))
     }
 
     fn expand_template(&mut self, owner: ElementId, template: ControlTemplate) {

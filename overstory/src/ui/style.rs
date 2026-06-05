@@ -15,7 +15,7 @@ use crate::lookup::UiResolveLookup;
 use super::{Ui, collect_preorder};
 
 impl Ui {
-    /// Returns the active style cascade.
+    /// Returns the active combined style cascade.
     #[must_use]
     #[inline]
     pub fn cascade(&self) -> &StyleCascade {
@@ -29,7 +29,12 @@ impl Ui {
         self.style.theme()
     }
 
-    /// Swaps in a new style cascade and restyles the entire tree.
+    /// Swaps in a new app style cascade and restyles the entire tree.
+    ///
+    /// The supplied cascade is layered after Overstory's built-in framework
+    /// cascade. App styles can override default control templates and part
+    /// styles, but replacing the app cascade does not remove built-in control
+    /// behavior.
     ///
     /// Every element is marked LAYOUT-dirty since styled values may
     /// now resolve differently; the channel cascade

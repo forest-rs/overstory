@@ -315,10 +315,6 @@ impl Widget for SelectWidget {
         }
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_select_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_SELECT_LABEL)

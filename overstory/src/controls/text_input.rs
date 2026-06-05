@@ -294,10 +294,6 @@ impl Widget for TextInputWidget {
         ));
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_text_input_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_TEXT_INPUT_TEXT)

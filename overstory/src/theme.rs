@@ -342,11 +342,15 @@ fn finish_motion_tokens(builder: ThemeBuilder) -> ThemeBuilder {
 /// Builds Overstory's default control stylesheet for the built-in controls.
 ///
 /// The stylesheet uses control `TypeTag`s for owners and owner-local
-/// `PartTag`s for generated template parts. Apps can use it directly, layer
-/// additional rules after it with [`default_cascade_builder`], or replace it
-/// entirely. Templated controls receive their built-in templates here through
-/// base-origin `ControlTemplate` setters, matching the same precedence path app
-/// styles use to replace a control's visual tree.
+/// `PartTag`s for generated template parts. [`Ui`](crate::Ui) installs this as
+/// its framework cascade so controls receive built-in templates through the
+/// same `ControlTemplate` property path that app styles use to replace a
+/// control's visual tree.
+///
+/// App code normally calls [`Ui::set_cascade`](crate::Ui::set_cascade) with
+/// app-specific rules instead of installing this cascade manually. Use
+/// [`default_cascade_builder`] when tests or framework-like code need to build
+/// a custom base stylesheet from the built-in rules.
 #[must_use]
 pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
     default_cascade_builder(properties).build()
@@ -354,9 +358,10 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 
 /// Builds a mutable default control stylesheet builder.
 ///
-/// Apps that want the built-in controls plus app-specific selectors can append
-/// their rules to this builder before calling
-/// [`StyleCascadeBuilder::build`].
+/// This is primarily for tests and framework-like code that need a custom base
+/// stylesheet. App-authored rules should usually live in the app cascade passed
+/// to [`Ui::set_cascade`](crate::Ui::set_cascade), where they layer after these
+/// defaults automatically.
 #[must_use]
 pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
     let button_idle = StyleBuilder::new()

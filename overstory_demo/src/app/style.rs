@@ -186,7 +186,7 @@ impl DemoThemeMode {
     }
 }
 pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
-    theme::default_cascade_builder(properties)
+    StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_ROOT),

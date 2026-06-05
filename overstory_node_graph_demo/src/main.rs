@@ -222,7 +222,6 @@ fn build_ui() -> Ui {
 
     install_viewport_interaction(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
     refresh_graph_view(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
-    ui.set_cascade(theme::default_cascade(ui.properties()));
 
     ui
 }

@@ -384,10 +384,6 @@ impl Widget for SegmentedItemWidget {
         node.set_position_in_set(self.index + 1);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_segmented_item_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new().with_required_slot(SLOT_SEGMENTED_ITEM_LABEL)
     }

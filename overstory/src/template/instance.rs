@@ -11,7 +11,7 @@ use understory_style::PartTag;
 
 use super::{TemplateDiagnostic, TemplateId, TemplateItemKey, TemplatePart, TemplateSlot};
 
-/// Retained result of expanding one element's default template.
+/// Retained result of expanding one element's resolved template.
 ///
 /// The instance records the generated part elements and binding ids created
 /// while the template expanded. It is intentionally owner-local: callers ask

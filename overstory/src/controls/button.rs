@@ -243,10 +243,6 @@ impl Widget for ButtonWidget {
         ctx.add_click_action_if_enabled(element, node);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_button_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new().with_required_slot(SLOT_BUTTON_CONTENT)
     }

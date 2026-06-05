@@ -279,10 +279,6 @@ impl Widget for SliderWidget {
         }
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_slider_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_SLIDER_THUMB)

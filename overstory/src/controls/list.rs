@@ -898,10 +898,6 @@ impl Widget for ListItemWidget {
         node.set_position_in_set(self.index + 1);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_list_item_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new().with_required_slot(SLOT_LIST_ITEM_CONTENT)
     }

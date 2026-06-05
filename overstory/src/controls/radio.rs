@@ -455,10 +455,6 @@ impl Widget for RadioButtonWidget {
         ctx.apply_checked_state(element, node);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_radio_button_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_RADIO_BUTTON_INDICATOR)

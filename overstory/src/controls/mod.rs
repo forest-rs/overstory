@@ -5,7 +5,7 @@
 //!
 //! Each module here defines one control: its builder + spec
 //! ([`crate::AppendSpec`]), its per-element widget
-//! ([`crate::Widget`]), and its default template (if any). They
+//! ([`crate::Widget`]), and its default template recipe (if any). They
 //! reach for shared infrastructure (the property store, cascade,
 //! responder, timer queue) through `crate::Ui` and `crate::*`
 //! re-exports.

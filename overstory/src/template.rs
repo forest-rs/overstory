@@ -5,7 +5,7 @@
 //!
 //! A [`Template`] is a reusable factory stored in the
 //! [`crate::BuiltInProperties::control_template`] property by a local value,
-//! style rule, theme default, or temporary widget fallback. The [`crate::Ui`]
+//! app style rule, or framework default style. The [`crate::Ui`]
 //! expands the resolved template when a widget element is inserted or when
 //! template resolution changes. The template receives a [`TemplateContext`],
 //! which tags each generated node with a `templated_parent: Option<ElementId>`
@@ -65,9 +65,9 @@
 //! - Keep templates as the boundary between control behavior and visual
 //!   structure: controls own state and semantics, templates own parts, slots,
 //!   and layout of the visual subtree. See ticket `ove-733r`.
-//! - Finish moving built-in default templates out of widget fallback hooks and
-//!   into default style/property resolution so template identity, precedence,
-//!   and retemplating all flow through `ControlTemplate`.
+//! - Keep built-in default templates in style/property resolution so template
+//!   identity, precedence, and retemplating all flow through
+//!   `ControlTemplate`.
 //! - Support both compact data-driven templates and custom code templates
 //!   without requiring every visual variation to become a new widget type.
 //! - Grow content slots, repeated keyed parts, optional slots, and eventual

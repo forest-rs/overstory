@@ -209,10 +209,6 @@ impl Widget for ExpanderWidget {
         );
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_expander_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_EXPANDER_HEADER)

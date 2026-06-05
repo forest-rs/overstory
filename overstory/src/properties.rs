@@ -123,8 +123,8 @@ pub struct BuiltInProperties {
     /// The built-in default cascade supplies templates for built-in controls at
     /// base style precedence, so app styles and local `.template(...)` values
     /// can replace them through ordinary property resolution. The registry
-    /// default is `None`; widgets may still provide a fallback template when no
-    /// style cascade is installed.
+    /// default is `None`; controls without a resolved template are treated as
+    /// non-templated elements.
     pub control_template: Property<Option<ControlTemplate>>,
 
     /// Foreground brush used to paint text. Default solid black.

@@ -8,7 +8,7 @@
 //! that lives on the element. The widget is the toolkit-side runtime
 //! object: it may expose the element's selector identity, runs the
 //! present pass, runs custom measure for leaf-like controls, and
-//! identifies the default template.
+//! declares the semantic contract its template must satisfy.
 //!
 //! Application code never instantiates widgets directly. The pattern
 //! is always:
@@ -20,14 +20,15 @@
 //! ```
 //!
 //! `AppendSpec::append_to` creates the widget element, writes the builder's
-//! initial properties and handlers, then relies on the widget's default
-//! template for any visual parts. Most controls expand during insertion;
+//! initial properties and handlers, then the UI resolves the
+//! [`ControlTemplate`](crate::ControlTemplate) property through local values,
+//! app styles, and framework defaults. Most controls expand during insertion;
 //! controls whose template structure depends on initial builder state can use
 //! Overstory's crate-internal deferred expansion path.
 //!
 //! Roadmap:
 //! - Keep `Widget` small: identity, presentation, optional measure/layout hooks,
-//!   template discovery, cursor policy, hit testing, and input callbacks.
+//!   template contract, cursor policy, hit testing, and input callbacks.
 //! - Let widgets describe their accessibility role and semantic state directly;
 //!   selector type tags are for styling, not for accessibility lowering.
 //! - Prefer routed events, properties, templates, and runtimes over adding a
@@ -68,7 +69,7 @@ pub use crate::spec_ext::{
     ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt, ElementSpec, ElementSpecExt,
     RangeSpecExt, SurfaceSpecExt, TextSpecExt,
 };
-use crate::template::{ControlTemplate, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
@@ -80,8 +81,8 @@ pub const TYPE_GENERIC: TypeTag = TypeTag(0);
 /// A `Widget` lives in the element as `Box<dyn Widget>`. The trait
 /// methods are how the toolkit walks the tree: `present` writes
 /// drawing intent, `measure` answers leaf-style sizing, and
-/// `default_template` lets templated controls hand back a `&'static`
-/// template recipe the first time their element is constructed.
+/// `template_contract` describes the slots the resolved template should
+/// expose.
 ///
 /// The default `present` writes the standard surface (`Background`,
 /// `BorderBrush`/`BorderWidth`, `CornerRadius`) through the
@@ -214,17 +215,6 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         ElementRealizeResult::UNCHANGED
     }
 
-    /// Returns this widget's fallback template when the `ControlTemplate`
-    /// property does not resolve to one.
-    ///
-    /// Built-in controls should normally receive their template from the
-    /// default style cascade through the `ControlTemplate` property. This hook
-    /// exists as a migration backstop and for low-level widgets that are
-    /// intentionally usable without a style cascade.
-    fn default_template(&self) -> Option<ControlTemplate> {
-        None
-    }
-
     /// Returns the semantic slots this widget expects its template to expose.
     ///
     /// The default empty contract is appropriate for non-templated widgets and
@@ -235,7 +225,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         TemplateContract::new()
     }
 
-    /// Called after this widget's default template has expanded.
+    /// Called after this widget's resolved template has expanded.
     ///
     /// Most widgets have all state in properties or template bindings and do
     /// nothing here. Stateful controls use this to synchronize freshly-created

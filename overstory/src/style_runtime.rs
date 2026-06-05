@@ -1,7 +1,7 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Active style cascade, theme, and per-element selector state.
+//! Active style cascades, theme, and per-element selector state.
 //!
 //! Roadmap:
 //! - Keep cascade logic in `understory_style`; Overstory should provide element
@@ -25,7 +25,15 @@ use crate::widget::TYPE_GENERIC;
 
 /// Active style cascade, theme resources, and per-element match states.
 pub(crate) struct StyleRuntime {
-    /// Selector cascade used to resolve styled property values.
+    /// Framework-supplied defaults for built-in controls.
+    ///
+    /// This layer stays installed when app code replaces the app cascade so
+    /// controls keep their default templates, part styles, and baseline
+    /// property values.
+    framework_cascade: StyleCascade,
+    /// App-authored stylesheet layered after framework defaults.
+    app_cascade: StyleCascade,
+    /// Combined selector cascade used to resolve styled property values.
     cascade: StyleCascade,
     /// Theme resource table used by style resolution.
     theme: Theme,
@@ -38,9 +46,13 @@ pub(crate) struct StyleRuntime {
 }
 
 impl StyleRuntime {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(framework_cascade: StyleCascade) -> Self {
+        let app_cascade = StyleCascadeBuilder::new().build();
+        let cascade = compose_cascades(&framework_cascade, &app_cascade);
         Self {
-            cascade: StyleCascadeBuilder::new().build(),
+            framework_cascade,
+            app_cascade,
+            cascade,
             theme: Theme::default(),
             match_states: ElementSideMap::new(),
         }
@@ -55,7 +67,8 @@ impl StyleRuntime {
     }
 
     pub(crate) fn set_cascade(&mut self, cascade: StyleCascade) {
-        self.cascade = cascade;
+        self.app_cascade = cascade;
+        self.cascade = compose_cascades(&self.framework_cascade, &self.app_cascade);
         self.match_states.clear();
     }
 
@@ -113,4 +126,11 @@ impl StyleRuntime {
         }
         None
     }
+}
+
+fn compose_cascades(framework: &StyleCascade, app: &StyleCascade) -> StyleCascade {
+    StyleCascadeBuilder::new()
+        .push_cascade(framework)
+        .push_cascade(app)
+        .build()
 }

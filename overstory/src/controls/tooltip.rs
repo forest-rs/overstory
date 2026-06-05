@@ -235,10 +235,6 @@ impl Widget for TooltipWidget {
         Some(accesskit::Role::Tooltip)
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_tooltip_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new().with_required_slot(SLOT_TOOLTIP_CONTENT)
     }

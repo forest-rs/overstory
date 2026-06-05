@@ -847,10 +847,6 @@ impl Widget for ScrollBarWidget {
         }
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_scroll_bar_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new().with_required_slot(SLOT_SCROLL_BAR_THUMB)
     }

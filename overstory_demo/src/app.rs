@@ -35,7 +35,7 @@ use peniko::kurbo::{Point, Vec2};
 use peniko::{Brush, Color};
 use understory_style::{
     ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade,
-    StyleOrigin,
+    StyleCascadeBuilder, StyleOrigin,
 };
 use understory_view2d::{ClampMode, FitMode, Viewport2D};
 

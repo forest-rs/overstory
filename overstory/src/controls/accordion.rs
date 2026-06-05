@@ -363,10 +363,6 @@ impl Widget for AccordionSectionWidget {
         );
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_accordion_section_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_ACCORDION_SECTION_HEADER)

@@ -459,13 +459,12 @@ impl Ui {
     /// Resolves a hit element to the element that should carry the
     /// `:pressed` pseudoclass.
     ///
-    /// Hit-testing returns the deepest box under the pointer, which
-    /// for a templated control (Button → label `Text`) is the
-    /// template part rather than the control itself. Cascade rules
-    /// keyed on the control's `TypeTag` (`TYPE_BUTTON:pressed`, …)
-    /// would never match that part. To match WPF, climb the
-    /// `templated_parent` chain to the first ancestor whose widget owns a
-    /// default template — that ancestor is the templated control the part
+    /// Hit-testing returns the deepest box under the pointer, which for a
+    /// templated control (Button → label `Text`) is the template part rather
+    /// than the control itself. Cascade rules keyed on the control's `TypeTag`
+    /// (`TYPE_BUTTON:pressed`, …) would never match that part. To match WPF,
+    /// climb the `templated_parent` chain to the first ancestor with a retained
+    /// template instance — that ancestor is the templated control the part
     /// belongs to. Retained descendants hosted by a template content presenter
     /// use the presenter's template owner for the same reason. Non-template
     /// hits return themselves.
@@ -475,11 +474,7 @@ impl Ui {
             let Some(element) = self.get(current) else {
                 return hit;
             };
-            if element
-                .widget()
-                .and_then(|w| w.default_template())
-                .is_some()
-            {
+            if self.template_instance(current).is_some() {
                 return current;
             }
             match element.templated_parent() {

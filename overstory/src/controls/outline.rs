@@ -1131,10 +1131,6 @@ impl Widget for OutlineItemWidget {
         }
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_outline_item_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_OUTLINE_ITEM_LABEL)

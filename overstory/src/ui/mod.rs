@@ -209,15 +209,15 @@ impl core::fmt::Debug for Ui {
 
 impl Ui {
     /// Creates a new [`Ui`] with an empty root `PanelWidget`, built-in
-    /// properties registered, the generic behavior installed, and an empty
-    /// cascade and theme.
+    /// properties registered, the generic behavior installed, built-in
+    /// framework styles, and an empty app cascade and theme.
     ///
     /// This constructs platform text resources for this UI. Use
     /// [`Self::with_text_resources`] when constructing many UIs that should
     /// share font discovery and source-cache state.
     ///
     /// Use [`Self::set_cascade`] / [`Self::set_theme`] to install
-    /// application-supplied styling.
+    /// application-supplied styling and resources.
     #[cfg(feature = "system-fonts")]
     #[must_use]
     pub fn new() -> Self {
@@ -291,7 +291,7 @@ impl Ui {
             geometry: GeometryRuntime::new(),
             presentation: PresentationRuntime::new(),
             composition: CompositionRuntime::new(),
-            style: StyleRuntime::new(),
+            style: StyleRuntime::new(crate::theme::default_cascade(&properties)),
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
             text: RefCell::new(text_engine),

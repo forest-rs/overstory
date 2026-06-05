@@ -1501,12 +1501,28 @@ fn slider_keyboard_transitions_thumb_offset_but_drag_snaps() {
 
 #[test]
 fn slider_thumb_snaps_without_styled_transition_rule() {
+    use crate::controls::slider::{PART_SLIDER_THUMB, TYPE_SLIDER};
     use crate::{SLOT_SLIDER_THUMB, Slider};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     let mut ui = Ui::new();
     let root = ui.root();
     ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
+    let style = StyleBuilder::new()
+        .set(ui.properties().transitions, TransitionRules::new())
+        .build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Sheet,
+                crate::selectors::part(crate::selectors::template_part(
+                    TYPE_SLIDER,
+                    PART_SLIDER_THUMB,
+                )),
+                style,
+            )
+            .build(),
+    );
     let slider = ui.append(root, Slider::new().value(0.0).small_change(0.5));
     assert!(ui.set_focus(Some(slider)));
     ui.compute_layout(Size::new(300.0, 80.0));
@@ -1812,12 +1828,11 @@ fn style_can_supply_initial_control_template() {
 }
 
 #[test]
-fn default_cascade_supplies_control_template_property() {
+fn ui_new_supplies_framework_control_template_property() {
     use crate::controls::button::default_button_template;
-    use crate::{Button, SLOT_BUTTON_CONTENT, theme};
+    use crate::{Button, SLOT_BUTTON_CONTENT};
 
     let mut ui = Ui::new();
-    ui.set_cascade(theme::default_cascade(ui.properties()));
 
     let button = ui.append(ui.root(), Button::new("Default"));
     let element = ui.get(button).unwrap();
@@ -1838,9 +1853,35 @@ fn default_cascade_supplies_control_template_property() {
 }
 
 #[test]
+fn empty_app_cascade_preserves_framework_control_template_property() {
+    use crate::controls::button::default_button_template;
+    use crate::{Button, SLOT_BUTTON_CONTENT};
+
+    let mut ui = Ui::new();
+    ui.set_cascade(StyleCascadeBuilder::new().build());
+
+    let button = ui.append(ui.root(), Button::new("Default"));
+    let element = ui.get(button).unwrap();
+    let resolved = ui.resolve_value_for(element, ui.properties().control_template);
+
+    assert_eq!(
+        resolved.as_ref().map(crate::ControlTemplate::id),
+        Some(default_button_template().id())
+    );
+    assert_eq!(
+        ui.template_instance(button).unwrap().template_id(),
+        default_button_template().id()
+    );
+    assert!(
+        ui.slot(button, SLOT_BUTTON_CONTENT).is_some(),
+        "framework template should still expose button content"
+    );
+}
+
+#[test]
 fn sheet_style_control_template_replaces_default_cascade_template() {
     use crate::controls::button::TYPE_BUTTON;
-    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, theme};
+    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec};
 
     const STYLE_FRAME: PartTag = PartTag(0x51);
     let style_template =
@@ -1854,7 +1895,7 @@ fn sheet_style_control_template_replaces_default_cascade_template() {
     let style = StyleBuilder::new()
         .set(ui.properties().control_template, Some(style_template))
         .build();
-    let cascade = theme::default_cascade_builder(ui.properties())
+    let cascade = StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Sheet,
             crate::selectors::type_tag(TYPE_BUTTON),
@@ -1898,7 +1939,7 @@ fn style_change_can_materialize_template_after_insert() {
     let owner = ui.append_widget(ui.root(), Box::new(LateTemplateWidget));
     assert!(
         ui.template_instance(owner).is_none(),
-        "the widget starts without a fallback/default template"
+        "the widget starts without a resolved ControlTemplate"
     );
 
     let template = ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
@@ -3009,33 +3050,20 @@ fn external_source_binding_refreshes_when_notified() {
 #[test]
 fn template_expansion_inserts_parts_under_owner() {
     use crate::widget::{AppendSpec, Widget};
-    use crate::{Template, TemplateChild, TemplateContext};
+    use crate::{ControlTemplate, TemplateNode, TemplateSpec};
     use understory_style::TypeTag;
 
-    // A unit-test widget whose default_template inserts two
-    // child panels. Both should have templated_parent = the
-    // owner.
+    // A unit-test widget whose ControlTemplate inserts two child panels. Both
+    // should have templated_parent = the owner.
     const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_BEEF);
     const TEST_PART_A: PartTag = PartTag(0xA);
     const TEST_PART_B: PartTag = PartTag(0xB);
-
-    struct TestTemplate;
-    impl Template for TestTemplate {
-        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-            let _a = cx.insert(TemplateChild::surface_part(TEST_PART_A));
-            let _b = cx.insert(TemplateChild::surface_part(TEST_PART_B));
-        }
-    }
-    static TEST_TEMPLATE: TestTemplate = TestTemplate;
 
     #[derive(Debug)]
     struct TestWidget;
     impl Widget for TestWidget {
         fn type_tag(&self) -> Option<TypeTag> {
             Some(TEST_OWNER_TAG)
-        }
-        fn default_template(&self) -> Option<crate::ControlTemplate> {
-            Some(crate::ControlTemplate::from_static(&TEST_TEMPLATE))
         }
     }
     struct TestSpec;
@@ -3046,6 +3074,21 @@ fn template_expansion_inserts_parts_under_owner() {
     }
 
     let mut ui = Ui::new();
+    let template = ControlTemplate::from(TemplateSpec::from_nodes([
+        TemplateNode::surface_part(TEST_PART_A),
+        TemplateNode::surface_part(TEST_PART_B),
+    ]));
+    let style = StyleBuilder::new()
+        .set(ui.properties().control_template, Some(template))
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Sheet,
+            crate::selectors::type_tag(TEST_OWNER_TAG),
+            style,
+        )
+        .build();
+    ui.set_cascade(cascade);
     let root = ui.root();
     let owner = ui.append(root, TestSpec);
 
@@ -3097,33 +3140,32 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     .with_child(TemplateNode::surface_part(INNER_PART))]));
 
     #[derive(Debug)]
-    struct TestWidget {
-        template: ControlTemplate,
-    }
+    struct TestWidget;
     impl Widget for TestWidget {
         fn type_tag(&self) -> Option<TypeTag> {
             Some(TEST_OWNER_TAG)
         }
-        fn default_template(&self) -> Option<ControlTemplate> {
-            Some(self.template.clone())
-        }
     }
-    struct TestSpec {
-        template: ControlTemplate,
-    }
+    struct TestSpec;
     impl AppendSpec for TestSpec {
         fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-            ui.append_widget(
-                parent,
-                Box::new(TestWidget {
-                    template: self.template,
-                }),
-            )
+            ui.append_widget(parent, Box::new(TestWidget))
         }
     }
 
     let mut ui = Ui::new();
-    let owner = ui.append(ui.root(), TestSpec { template });
+    let style = StyleBuilder::new()
+        .set(ui.properties().control_template, Some(template))
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Sheet,
+            crate::selectors::type_tag(TEST_OWNER_TAG),
+            style,
+        )
+        .build();
+    ui.set_cascade(cascade);
+    let owner = ui.append(ui.root(), TestSpec);
     let instance = ui.template_instance(owner).unwrap();
     let outer = instance.keyed_part(OUTER_PART, OUTER_KEY).unwrap();
     let inner = instance.part(INNER_PART).unwrap();
@@ -4876,7 +4918,12 @@ fn element_spec_ext_applies_shared_settings() {
     assert!(!ui.is_focusable(button));
     assert_eq!(
         ui.effective_layout(button),
-        Layout::new().logical_size(80.0, 30.0)
+        Layout::new()
+            .container(crate::LayoutContainer::row())
+            .logical_size(80.0, 30.0)
+            .padding_xy(32.0, 18.0)
+            .align_center()
+            .justify_center()
     );
 }
 

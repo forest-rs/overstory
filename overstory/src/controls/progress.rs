@@ -196,10 +196,6 @@ impl Widget for ProgressBarWidget {
         ctx.apply_numeric_range(element, node);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_progress_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_PROGRESS_BAR_FILL)

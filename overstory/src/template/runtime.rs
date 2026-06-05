@@ -1,7 +1,7 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Retained default-template expansion metadata for controls.
+//! Retained template expansion metadata for controls.
 //!
 //! Roadmap:
 //! - Keep template children as normal elements while retaining enough slot,
@@ -19,12 +19,12 @@ use understory_style::PartTag;
 
 use super::{TemplateInstance, TemplateSlot};
 
-/// Retained default-template expansion metadata for controls.
+/// Retained template expansion metadata for controls.
 pub(crate) struct TemplateRuntime {
     /// Template instance per owner element.
     ///
     /// The instance records the realized part/slot element ids created when a
-    /// default template expands. Template children remain normal elements.
+    /// resolved template expands. Template children remain normal elements.
     instances: ElementSideMap<TemplateInstance>,
 }
 

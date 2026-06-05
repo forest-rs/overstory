@@ -227,10 +227,6 @@ impl Widget for CheckBoxWidget {
         ctx.apply_checked_state(element, node);
     }
 
-    fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(default_check_box_template())
-    }
-
     fn template_contract(&self) -> TemplateContract {
         TemplateContract::new()
             .with_required_slot(SLOT_CHECK_BOX_BOX)
