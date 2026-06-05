@@ -22,8 +22,8 @@ use understory_style::{PartTag, TypeTag};
 use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
 use crate::controls::support::read_local_or;
 use crate::element::{Element, ElementId};
-use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::layouts::{Layout, LayoutSize};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -42,7 +42,6 @@ pub const SLOT_PROGRESS_BAR_LABEL: TemplateSlot =
 
 const DEFAULT_WIDTH: f32 = 260.0;
 const DEFAULT_HEIGHT: f32 = 18.0;
-const LABEL_FONT_SIZE: f64 = 11.0;
 
 /// Builder + spec for a determinate progress bar.
 pub struct ProgressBar {
@@ -196,7 +195,9 @@ impl Widget for ProgressBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&PROGRESS_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            progress_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -206,20 +207,15 @@ impl Widget for ProgressBarWidget {
     }
 }
 
-static PROGRESS_TEMPLATE: ProgressTemplate = ProgressTemplate;
-
-#[derive(Debug, Default)]
-struct ProgressTemplate;
-
-impl Template for ProgressTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let fill = cx.surface_slot(SLOT_PROGRESS_BAR_FILL);
-        cx.set_layout_placement(fill, LayoutPlacement::absolute_at(0.0, 0.0));
-        cx.set_layout_size(fill, LayoutSize::percent(0.0, 1.0));
-
-        let label = cx.text_slot(SLOT_PROGRESS_BAR_LABEL);
-        cx.set_local(label, cx.properties().font_size, LABEL_FONT_SIZE);
-    }
+fn progress_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_PROGRESS_BAR_FILL).with_layout(
+            Layout::new()
+                .absolute_at(0.0, 0.0)
+                .size(LayoutSize::percent(0.0, 1.0)),
+        ),
+        TemplateNode::text_slot(SLOT_PROGRESS_BAR_LABEL),
+    ])
 }
 
 /// Sets a progress bar's value and synchronizes its default fill and label
