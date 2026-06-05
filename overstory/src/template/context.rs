@@ -3,7 +3,10 @@
 
 //! Expansion context passed to template factories.
 
+use alloc::boxed::Box;
+
 use crate::binding::BindingOwner;
+use crate::controls::text::TextWidget;
 use crate::element::ElementId;
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{
@@ -12,11 +15,12 @@ use crate::layouts::{
 };
 use crate::properties::BuiltInProperties;
 use crate::ui::Ui;
+use crate::widget::Widget;
 use understory_property::{DependencyObjectExt, Property};
 use understory_property_binding::{BindingError, BindingId, PropertyEndpoint};
-use understory_style::ClassId;
+use understory_style::{ClassId, PartTag};
 
-use super::{TemplateChild, TemplateId, TemplateInstance, TemplateSlot};
+use super::{TemplateChild, TemplateId, TemplateInstance, TemplateItemKey, TemplateSlot};
 
 /// Expansion context passed to a [`super::Template`].
 ///
@@ -75,6 +79,97 @@ impl<'a> TemplateContext<'a> {
             self.instance.push_part(child.slot, part_tag, child.key, id);
         }
         id
+    }
+
+    /// Inserts an arbitrary widget child under the template owner.
+    pub fn widget(&mut self, widget: Box<dyn Widget>) -> ElementId {
+        self.insert(TemplateChild::widget(widget))
+    }
+
+    /// Inserts an arbitrary widget child under an existing template-generated
+    /// parent.
+    pub fn widget_under(&mut self, parent: ElementId, widget: Box<dyn Widget>) -> ElementId {
+        self.insert_under(parent, TemplateChild::widget(widget))
+    }
+
+    /// Inserts an unnamed surface-only child under the template owner.
+    pub fn surface(&mut self) -> ElementId {
+        self.insert(TemplateChild::surface())
+    }
+
+    /// Inserts an unnamed surface-only child under an existing
+    /// template-generated parent.
+    pub fn surface_under(&mut self, parent: ElementId) -> ElementId {
+        self.insert_under(parent, TemplateChild::surface())
+    }
+
+    /// Inserts a surface-only child with an owner-local part tag under the
+    /// template owner.
+    pub fn surface_part(&mut self, part: PartTag) -> ElementId {
+        self.insert(TemplateChild::surface_part(part))
+    }
+
+    /// Inserts a surface-only child with an owner-local part tag under an
+    /// existing template-generated parent.
+    pub fn surface_part_under(&mut self, parent: ElementId, part: PartTag) -> ElementId {
+        self.insert_under(parent, TemplateChild::surface_part(part))
+    }
+
+    /// Inserts a surface-only child that fills a semantic slot under the
+    /// template owner.
+    pub fn surface_slot(&mut self, slot: TemplateSlot) -> ElementId {
+        self.insert(TemplateChild::surface_slot(slot))
+    }
+
+    /// Inserts a keyed surface-only child that fills a repeated semantic slot
+    /// under the template owner.
+    pub fn keyed_surface_slot(&mut self, slot: TemplateSlot, key: TemplateItemKey) -> ElementId {
+        self.insert(TemplateChild::surface_slot(slot).with_key(key))
+    }
+
+    /// Inserts a surface-only child that fills a semantic slot under an
+    /// existing template-generated parent.
+    pub fn surface_slot_under(&mut self, parent: ElementId, slot: TemplateSlot) -> ElementId {
+        self.insert_under(parent, TemplateChild::surface_slot(slot))
+    }
+
+    /// Inserts a content presenter for a content-style semantic slot under the
+    /// template owner.
+    ///
+    /// The generated widget presents the templated owner's `Content` property
+    /// when the slot has no authored children. If app code adds retained
+    /// children to the slot, the presenter becomes a transparent host for that
+    /// subtree.
+    pub fn content_presenter(&mut self, slot: TemplateSlot) -> ElementId {
+        self.insert(TemplateChild::content_presenter(slot))
+    }
+
+    /// Inserts a content presenter for a content-style semantic slot under an
+    /// existing template-generated parent.
+    pub fn content_presenter_under(&mut self, parent: ElementId, slot: TemplateSlot) -> ElementId {
+        self.insert_under(parent, TemplateChild::content_presenter(slot))
+    }
+
+    /// Inserts a text element that fills a semantic slot under the template
+    /// owner.
+    ///
+    /// Use this for template-owned glyph or label parts whose text is set by
+    /// the owning control after expansion. Use [`Self::content_presenter`] for
+    /// user-authored content slots.
+    pub fn text_slot(&mut self, slot: TemplateSlot) -> ElementId {
+        self.insert(TemplateChild::slot(slot, Box::new(TextWidget)))
+    }
+
+    /// Inserts a keyed text element that fills a repeated semantic slot under
+    /// the template owner.
+    pub fn keyed_text_slot(&mut self, slot: TemplateSlot, key: TemplateItemKey) -> ElementId {
+        self.insert(TemplateChild::slot(slot, Box::new(TextWidget)).with_key(key))
+    }
+
+    /// Inserts a text element that fills a semantic slot under an existing
+    /// template-generated parent.
+    pub fn text_slot_under(&mut self, parent: ElementId, slot: TemplateSlot) -> ElementId {
+        self.insert_under(parent, TemplateChild::slot(slot, Box::new(TextWidget)))
     }
 
     /// Adds a class to a generated element.
