@@ -17,16 +17,9 @@ fn round_check_box_template() -> TemplateSpec {
     TemplateSpec::from_nodes([
         TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX)
             .with_class(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX)
-            .with_child(TemplateNode::for_slot(
-                SLOT_CHECK_BOX_MARK,
-                TemplateWidgetFactory::new(demo_template_text_widget),
-            )),
+            .with_child(TemplateNode::text_slot(SLOT_CHECK_BOX_MARK)),
         TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
     ])
-}
-
-fn demo_template_text_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
 }
 
 impl View for InputsPage {

@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::controls::text::ContentPresenterWidget;
+use crate::controls::text::{ContentPresenterWidget, TextWidget};
 use crate::element::ElementId;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_style::{ClassId, PartTag};
@@ -135,12 +135,16 @@ impl From<TemplateSpec> for ControlTemplate {
     }
 }
 
-/// A data-driven default template.
+/// A compact data-driven template.
 ///
-/// `TemplateSpec` is intentionally only a compact description of normal
-/// element-tree construction. It does not own layout, styling, or presentation;
-/// those remain ordinary properties and cascade output on the generated
-/// elements.
+/// `TemplateSpec` is intentionally only a description of normal element-tree
+/// construction. It does not own layout, styling, or presentation; those remain
+/// ordinary properties and cascade output on the generated elements.
+///
+/// Prefer the narrow node constructors such as [`TemplateNode::surface`],
+/// [`TemplateNode::surface_slot`], [`TemplateNode::content_presenter`], and
+/// [`TemplateNode::text_slot`]. Reach for [`TemplateWidgetFactory`] only when a
+/// generated template node truly needs custom widget behavior.
 #[derive(Clone, Debug)]
 pub struct TemplateSpec {
     nodes: Vec<TemplateNode>,
@@ -175,7 +179,12 @@ impl Template for TemplateSpec {
     }
 }
 
-/// Factory for a widget node in a [`TemplateSpec`].
+/// Factory for an arbitrary widget node in a [`TemplateSpec`].
+///
+/// This is the escape hatch for generated nodes with custom widget behavior.
+/// Most visual template structure should use [`TemplateNode`]'s convenience
+/// constructors instead, which keep the authored template focused on semantic
+/// slots, owner-local parts, classes, keys, and children.
 #[derive(Copy, Clone)]
 pub struct TemplateWidgetFactory {
     create: fn() -> Box<dyn Widget>,
@@ -210,6 +219,13 @@ impl TemplateWidgetFactory {
         Self::new(content_presenter_widget)
     }
 
+    /// Creates a text widget for template-owned glyph or label parts.
+    #[must_use]
+    #[inline]
+    pub const fn text() -> Self {
+        Self::new(text_template_widget)
+    }
+
     fn create(self) -> Box<dyn Widget> {
         (self.create)()
     }
@@ -221,6 +237,10 @@ fn surface_template_widget() -> Box<dyn Widget> {
 
 fn content_presenter_widget() -> Box<dyn Widget> {
     Box::new(ContentPresenterWidget)
+}
+
+fn text_template_widget() -> Box<dyn Widget> {
+    Box::new(TextWidget)
 }
 
 /// One node in a [`TemplateSpec`].
@@ -293,6 +313,17 @@ impl TemplateNode {
     #[inline]
     pub fn content_presenter(slot: TemplateSlot) -> Self {
         Self::for_slot(slot, TemplateWidgetFactory::content_presenter())
+    }
+
+    /// Creates a text node for a template-owned semantic slot.
+    ///
+    /// Use this for control-owned glyph or label parts whose text is supplied
+    /// by the owning control after expansion. Use
+    /// [`Self::content_presenter`] for user-authored content slots.
+    #[must_use]
+    #[inline]
+    pub fn text_slot(slot: TemplateSlot) -> Self {
+        Self::for_slot(slot, TemplateWidgetFactory::text())
     }
 
     /// Assigns this node to a semantic template slot.
