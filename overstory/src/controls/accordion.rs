@@ -24,9 +24,7 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::template::{
-    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -455,27 +453,24 @@ impl AccordionSectionWidget {
     }
 }
 
-type AccordionSectionTemplate = TemplateSpec;
+#[derive(Debug)]
+struct AccordionSectionTemplate;
 
-static ACCORDION_SECTION_TEMPLATE: AccordionSectionTemplate =
-    TemplateSpec::new(ACCORDION_SECTION_TEMPLATE_NODES);
+static ACCORDION_SECTION_TEMPLATE: AccordionSectionTemplate = AccordionSectionTemplate;
 
-const ACCORDION_SECTION_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_HEADER)
-        .with_children(ACCORDION_SECTION_HEADER_CHILDREN),
-    TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_CONTENT),
-];
-
-const ACCORDION_SECTION_HEADER_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::for_slot(
-        SLOT_ACCORDION_SECTION_DISCLOSURE,
-        TemplateWidgetFactory::new(accordion_section_disclosure_widget),
-    ),
-    TemplateNode::content_presenter(SLOT_ACCORDION_SECTION_LABEL),
-];
-
-fn accordion_section_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
+impl Template for AccordionSectionTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let header = cx.insert(TemplateChild::surface_slot(SLOT_ACCORDION_SECTION_HEADER));
+        cx.insert_under(
+            header,
+            TemplateChild::slot(SLOT_ACCORDION_SECTION_DISCLOSURE, Box::new(TextWidget)),
+        );
+        cx.insert_under(
+            header,
+            TemplateChild::content_presenter(SLOT_ACCORDION_SECTION_LABEL),
+        );
+        cx.insert(TemplateChild::surface_slot(SLOT_ACCORDION_SECTION_CONTENT));
+    }
 }
 
 /// Sets whether an accordion section is expanded.

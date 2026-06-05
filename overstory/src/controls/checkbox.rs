@@ -28,9 +28,7 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{
-    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -275,22 +273,20 @@ impl Widget for CheckBoxWidget {
     }
 }
 
-type CheckBoxTemplate = TemplateSpec;
+#[derive(Debug)]
+struct CheckBoxTemplate;
 
-static CHECK_BOX_TEMPLATE: CheckBoxTemplate = TemplateSpec::new(CHECK_BOX_TEMPLATE_NODES);
+static CHECK_BOX_TEMPLATE: CheckBoxTemplate = CheckBoxTemplate;
 
-const CHECK_BOX_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX).with_children(CHECK_BOX_BOX_CHILDREN),
-    TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
-];
-
-const CHECK_BOX_BOX_CHILDREN: &[TemplateNode] = &[TemplateNode::for_slot(
-    SLOT_CHECK_BOX_MARK,
-    TemplateWidgetFactory::new(check_box_mark_widget),
-)];
-
-fn check_box_mark_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
+impl Template for CheckBoxTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let box_part = cx.insert(TemplateChild::surface_slot(SLOT_CHECK_BOX_BOX));
+        cx.insert_under(
+            box_part,
+            TemplateChild::slot(SLOT_CHECK_BOX_MARK, Box::new(TextWidget)),
+        );
+        cx.insert(TemplateChild::content_presenter(SLOT_CHECK_BOX_LABEL));
+    }
 }
 
 /// Sets `IsChecked` on `checkbox` and keeps the `:checked` pseudoclass in sync.

@@ -34,9 +34,7 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
-use crate::template::{
-    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -543,20 +541,19 @@ impl SelectWidget {
     }
 }
 
-type SelectTemplate = TemplateSpec;
+#[derive(Debug)]
+struct SelectTemplate;
 
-static SELECT_TEMPLATE: SelectTemplate = TemplateSpec::new(SELECT_TEMPLATE_NODES);
+static SELECT_TEMPLATE: SelectTemplate = SelectTemplate;
 
-const SELECT_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::content_presenter(SLOT_SELECT_LABEL),
-    TemplateNode::for_slot(
-        SLOT_SELECT_INDICATOR,
-        TemplateWidgetFactory::new(select_indicator_widget),
-    ),
-];
-
-fn select_indicator_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
+impl Template for SelectTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        cx.insert(TemplateChild::content_presenter(SLOT_SELECT_LABEL));
+        cx.insert(TemplateChild::slot(
+            SLOT_SELECT_INDICATOR,
+            Box::new(TextWidget),
+        ));
+    }
 }
 
 /// Selects `index` in `select`, replacing any previous selected item.

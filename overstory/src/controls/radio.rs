@@ -36,7 +36,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -608,18 +608,21 @@ impl RadioGroupWidget {
     }
 }
 
-type RadioButtonTemplate = TemplateSpec;
+#[derive(Debug)]
+struct RadioButtonTemplate;
 
-static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = TemplateSpec::new(RADIO_BUTTON_TEMPLATE_NODES);
+static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = RadioButtonTemplate;
 
-const RADIO_BUTTON_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_RADIO_BUTTON_INDICATOR)
-        .with_children(RADIO_BUTTON_INDICATOR_CHILDREN),
-    TemplateNode::content_presenter(SLOT_RADIO_BUTTON_LABEL),
-];
-
-const RADIO_BUTTON_INDICATOR_CHILDREN: &[TemplateNode] =
-    &[TemplateNode::surface_slot(SLOT_RADIO_BUTTON_DOT)];
+impl Template for RadioButtonTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let indicator = cx.insert(TemplateChild::surface_slot(SLOT_RADIO_BUTTON_INDICATOR));
+        cx.insert_under(
+            indicator,
+            TemplateChild::surface_slot(SLOT_RADIO_BUTTON_DOT),
+        );
+        cx.insert(TemplateChild::content_presenter(SLOT_RADIO_BUTTON_LABEL));
+    }
+}
 
 /// Sets `IsChecked` on `radio` and keeps the `:checked` pseudoclass in sync.
 pub fn set_radio_button_checked(ui: &mut Ui, radio: ElementId, checked: bool) {

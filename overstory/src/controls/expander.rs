@@ -25,9 +25,7 @@ use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::template::{
-    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -277,25 +275,24 @@ impl ExpanderWidget {
     }
 }
 
-type ExpanderTemplate = TemplateSpec;
+#[derive(Debug)]
+struct ExpanderTemplate;
 
-static EXPANDER_TEMPLATE: ExpanderTemplate = TemplateSpec::new(EXPANDER_TEMPLATE_NODES);
+static EXPANDER_TEMPLATE: ExpanderTemplate = ExpanderTemplate;
 
-const EXPANDER_TEMPLATE_NODES: &[TemplateNode] = &[
-    TemplateNode::surface_slot(SLOT_EXPANDER_HEADER).with_children(EXPANDER_HEADER_CHILDREN),
-    TemplateNode::surface_slot(SLOT_EXPANDER_CONTENT),
-];
-
-const EXPANDER_HEADER_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::for_slot(
-        SLOT_EXPANDER_DISCLOSURE,
-        TemplateWidgetFactory::new(expander_disclosure_widget),
-    ),
-    TemplateNode::content_presenter(SLOT_EXPANDER_LABEL),
-];
-
-fn expander_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
+impl Template for ExpanderTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let header = cx.insert(TemplateChild::surface_slot(SLOT_EXPANDER_HEADER));
+        cx.insert_under(
+            header,
+            TemplateChild::slot(SLOT_EXPANDER_DISCLOSURE, Box::new(TextWidget)),
+        );
+        cx.insert_under(
+            header,
+            TemplateChild::content_presenter(SLOT_EXPANDER_LABEL),
+        );
+        cx.insert(TemplateChild::surface_slot(SLOT_EXPANDER_CONTENT));
+    }
 }
 
 /// Sets whether `expander` is expanded.

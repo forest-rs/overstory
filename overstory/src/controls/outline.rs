@@ -42,9 +42,7 @@ use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{
-    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
-};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -1237,24 +1235,23 @@ impl OutlineRowSnapshot {
     }
 }
 
-type OutlineItemTemplate = TemplateSpec;
+#[derive(Debug)]
+struct OutlineItemTemplate;
 
-static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = TemplateSpec::new(OUTLINE_ITEM_TEMPLATE_NODES);
+static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = OutlineItemTemplate;
 
-const OUTLINE_ITEM_CONTENT_CHILDREN: &[TemplateNode] = &[
-    TemplateNode::for_slot(
-        SLOT_OUTLINE_ITEM_DISCLOSURE,
-        TemplateWidgetFactory::new(outline_item_disclosure_widget),
-    ),
-    TemplateNode::content_presenter(SLOT_OUTLINE_ITEM_LABEL),
-];
-
-const OUTLINE_ITEM_TEMPLATE_NODES: &[TemplateNode] =
-    &[TemplateNode::surface_part(PART_OUTLINE_ITEM_CONTENT)
-        .with_children(OUTLINE_ITEM_CONTENT_CHILDREN)];
-
-fn outline_item_disclosure_widget() -> Box<dyn Widget> {
-    Box::new(TextWidget)
+impl Template for OutlineItemTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        let content = cx.insert(TemplateChild::surface_part(PART_OUTLINE_ITEM_CONTENT));
+        cx.insert_under(
+            content,
+            TemplateChild::slot(SLOT_OUTLINE_ITEM_DISCLOSURE, Box::new(TextWidget)),
+        );
+        cx.insert_under(
+            content,
+            TemplateChild::content_presenter(SLOT_OUTLINE_ITEM_LABEL),
+        );
+    }
 }
 
 fn append_realized_outline_item(

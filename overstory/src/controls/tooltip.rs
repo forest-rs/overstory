@@ -28,7 +28,7 @@ use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, Widget};
 
@@ -266,9 +266,13 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
     id
 }
 
-type TooltipTemplate = TemplateSpec;
+#[derive(Debug)]
+struct TooltipTemplate;
 
-static TOOLTIP_TEMPLATE: TooltipTemplate = TemplateSpec::new(TOOLTIP_TEMPLATE_NODES);
+static TOOLTIP_TEMPLATE: TooltipTemplate = TooltipTemplate;
 
-const TOOLTIP_TEMPLATE_NODES: &[TemplateNode] =
-    &[TemplateNode::content_presenter(SLOT_TOOLTIP_CONTENT)];
+impl Template for TooltipTemplate {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        cx.insert(TemplateChild::content_presenter(SLOT_TOOLTIP_CONTENT));
+    }
+}
