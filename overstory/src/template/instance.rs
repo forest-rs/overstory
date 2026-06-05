@@ -9,7 +9,7 @@ use crate::element::ElementId;
 use understory_property_binding::BindingId;
 use understory_style::PartTag;
 
-use super::{TemplateDiagnostic, TemplateItemKey, TemplatePart, TemplateSlot};
+use super::{TemplateDiagnostic, TemplateId, TemplateItemKey, TemplatePart, TemplateSlot};
 
 /// Retained result of expanding one element's default template.
 ///
@@ -19,15 +19,17 @@ use super::{TemplateDiagnostic, TemplateItemKey, TemplatePart, TemplateSlot};
 #[derive(Debug)]
 pub struct TemplateInstance {
     owner: ElementId,
+    template_id: TemplateId,
     parts: Vec<TemplatePart>,
     bindings: Vec<BindingId>,
     diagnostics: Vec<TemplateDiagnostic>,
 }
 
 impl TemplateInstance {
-    pub(super) fn new(owner: ElementId) -> Self {
+    pub(super) fn new(owner: ElementId, template_id: TemplateId) -> Self {
         Self {
             owner,
+            template_id,
             parts: Vec::new(),
             bindings: Vec::new(),
             diagnostics: Vec::new(),
@@ -39,6 +41,13 @@ impl TemplateInstance {
     #[inline]
     pub fn owner(&self) -> ElementId {
         self.owner
+    }
+
+    /// Returns the identity of the template value that produced this instance.
+    #[must_use]
+    #[inline]
+    pub fn template_id(&self) -> TemplateId {
+        self.template_id
     }
 
     /// Returns all registered parts in template creation order.

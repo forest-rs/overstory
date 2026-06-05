@@ -40,7 +40,6 @@ use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
 };
 
 /// Selector identity for `RadioButton`.
@@ -87,7 +86,6 @@ pub struct RadioButton {
     initial_checked: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
     on_checked_changed: Option<CheckedChangedHandler>,
 }
 
@@ -111,7 +109,6 @@ impl RadioButton {
             initial_checked: false,
             font_size: None,
             element,
-            template: None,
             on_checked_changed: None,
         }
     }
@@ -172,11 +169,10 @@ impl RadioButton {
 
 impl AppendSpec for RadioButton {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(
-            RadioButtonWidget::new(self.on_checked_changed),
-            self.template,
+        let id = ui.append_widget_deferred_template(
+            parent,
+            Box::new(RadioButtonWidget::new(self.on_checked_changed)),
         );
-        let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         ui.set_local(id, content_prop, self.content);
@@ -184,16 +180,13 @@ impl AppendSpec for RadioButton {
             ui.set_local(id, font_size_prop, font_size);
         }
         self.element.apply_to(ui, id);
+        ui.expand_default_template(id);
         set_radio_button_checked(ui, id, self.initial_checked);
         id
     }
 }
 
-impl ControlTemplateSpec for RadioButton {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for RadioButton {}
 
 impl ContentSlotSpec for RadioButton {
     const CONTENT_SLOT: TemplateSlot = SLOT_RADIO_BUTTON_LABEL;

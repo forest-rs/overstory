@@ -39,7 +39,6 @@
 //! - Add diagnostics around slow hooks and re-entrant mutations before widget
 //!   behavior becomes hard to reason about.
 
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::any::Any;
 
@@ -349,174 +348,6 @@ impl dyn Widget {
     }
 }
 
-/// Widget wrapper that replaces a control's default template without changing
-/// the wrapped widget's selector identity, semantic contract, presentation, or
-/// measure behavior.
-pub(crate) struct TemplateOverrideWidget<W> {
-    widget: W,
-    template: ControlTemplate,
-}
-
-impl<W> TemplateOverrideWidget<W> {
-    pub(crate) const fn new(widget: W, template: ControlTemplate) -> Self {
-        Self { widget, template }
-    }
-}
-
-pub(crate) fn widget_with_template_override<W>(
-    widget: W,
-    template: Option<ControlTemplate>,
-) -> Box<dyn Widget>
-where
-    W: Widget,
-{
-    match template {
-        Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
-        None => Box::new(widget),
-    }
-}
-
-impl<W: core::fmt::Debug> core::fmt::Debug for TemplateOverrideWidget<W> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("TemplateOverrideWidget")
-            .field("widget", &self.widget)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<W: Widget> Widget for TemplateOverrideWidget<W> {
-    fn type_tag(&self) -> Option<TypeTag> {
-        self.widget.type_tag()
-    }
-
-    fn accessibility_role(
-        &self,
-        element: &Element,
-        ctx: &AccessibilityContext<'_>,
-    ) -> Option<Role> {
-        self.widget.accessibility_role(element, ctx)
-    }
-
-    fn configure_accessibility(
-        &self,
-        element: &Element,
-        ctx: &AccessibilityContext<'_>,
-        node: &mut Node,
-    ) {
-        self.widget.configure_accessibility(element, ctx, node);
-    }
-
-    fn append_accessibility_children(
-        &self,
-        element: &Element,
-        ctx: &AccessibilityContext<'_>,
-        node: &mut Node,
-        nodes: &mut Vec<(AccessNodeId, Node)>,
-    ) {
-        self.widget
-            .append_accessibility_children(element, ctx, node, nodes);
-    }
-
-    fn present(
-        &self,
-        element: &Element,
-        ctx: &PresentContext<'_>,
-        store: &mut PresentationStore<NodeId, ElementId>,
-        node: NodeId,
-    ) {
-        self.widget.present(element, ctx, store, node);
-    }
-
-    fn measure(
-        &self,
-        element: &Element,
-        ctx: &MeasureContext<'_>,
-        constraints: MeasureConstraints,
-    ) -> Option<Size> {
-        self.widget.measure(element, ctx, constraints)
-    }
-
-    fn presentation_depends_on_children(&self, element: &Element) -> bool {
-        self.widget.presentation_depends_on_children(element)
-    }
-
-    fn routes_descendants_to_template_owner(&self, element: &Element) -> bool {
-        self.widget.routes_descendants_to_template_owner(element)
-    }
-
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
-        self.widget.arrange(ctx)
-    }
-
-    fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
-        self.widget.realize_elements(ctx)
-    }
-
-    fn default_template(&self) -> Option<ControlTemplate> {
-        Some(self.template.clone())
-    }
-
-    fn template_contract(&self) -> TemplateContract {
-        self.widget.template_contract()
-    }
-
-    fn template_expanded(&mut self, id: ElementId, ui: &mut Ui) {
-        self.widget.template_expanded(id, ui);
-    }
-
-    fn cursor_icon(&self, element: &Element) -> Option<CursorIcon> {
-        self.widget.cursor_icon(element)
-    }
-
-    fn is_hit_test_visible(&self, element: &Element) -> bool {
-        self.widget.is_hit_test_visible(element)
-    }
-
-    fn clips_subtree(&self, element: &Element) -> bool {
-        self.widget.clips_subtree(element)
-    }
-
-    fn child_layout_offset(&self, element: &Element) -> Vec2 {
-        self.widget.child_layout_offset(element)
-    }
-
-    fn composition_policy(&self) -> CompositionPolicy {
-        self.widget.composition_policy()
-    }
-
-    fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
-        self.widget.handle_key(ctx, event);
-    }
-
-    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
-        self.widget.handle_click(ctx, event);
-    }
-
-    fn handle_drag(&mut self, ctx: &mut WidgetEventContext<'_>, event: DragEvent<'_>) {
-        self.widget.handle_drag(ctx, event);
-    }
-
-    fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
-        self.widget.handle_scroll(ctx, event);
-    }
-
-    fn handle_focus(&mut self, ctx: &mut WidgetEventContext<'_>, event: FocusEvent<'_>) {
-        self.widget.handle_focus(ctx, event);
-    }
-
-    fn handle_pointer(&mut self, ctx: &mut WidgetEventContext<'_>, event: PointerRoutedEvent<'_>) {
-        self.widget.handle_pointer(ctx, event);
-    }
-
-    fn handle_accessibility_action(
-        &mut self,
-        ctx: &mut WidgetEventContext<'_>,
-        request: &ActionRequest,
-    ) -> bool {
-        self.widget.handle_accessibility_action(ctx, request)
-    }
-}
-
 /// Generic surface-only widget for template parts.
 ///
 /// It has no global selector type. Style rules should target it with
@@ -708,6 +539,7 @@ pub(crate) enum BuiltInPropertyKey {
     BorderBrush,
     BorderWidth,
     Content,
+    ControlTemplate,
     CornerRadius,
     FontFamily,
     FontFeatures,
@@ -745,6 +577,7 @@ impl BuiltInPropertyKey {
             Self::BorderBrush => properties.border_brush.id(),
             Self::BorderWidth => properties.border_width.id(),
             Self::Content => properties.content.id(),
+            Self::ControlTemplate => properties.control_template.id(),
             Self::CornerRadius => properties.corner_radius.id(),
             Self::FontFamily => properties.font_family.id(),
             Self::FontFeatures => properties.font_features.id(),

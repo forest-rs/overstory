@@ -56,6 +56,7 @@ impl Ui {
         let ids = collect_preorder(self, self.root());
         for id in ids {
             self.invalidation.mark(id, LAYOUT);
+            self.retemplate_if_needed(id);
         }
     }
 
@@ -123,5 +124,6 @@ impl Ui {
         if let Some(channels) = channels {
             self.mark_channels(id, channels);
         }
+        self.retemplate_if_needed(id);
     }
 }

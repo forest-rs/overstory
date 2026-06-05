@@ -33,6 +33,7 @@ use crate::layouts::{
     LayoutSpacing,
 };
 use crate::motion::TransitionRules;
+use crate::template::ControlTemplate;
 
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
@@ -83,6 +84,11 @@ pub struct BuiltInProperties {
     /// Default `String::new()`. Writes mark both `LAYOUT` (text size depends on
     /// content) and `PAINT`.
     pub content: Property<String>,
+
+    /// Visual template used to expand a lookless control. Default `None`,
+    /// which means the control falls back to its widget-declared default
+    /// template.
+    pub control_template: Property<Option<ControlTemplate>>,
 
     /// Foreground brush used to paint text. Default solid black.
     pub foreground: Property<Brush>,
@@ -276,6 +282,12 @@ impl BuiltInProperties {
                     // PAINT cascades from LAYOUT via the tracker's
                     // channel cascade — no need to declare it
                     // explicitly here.
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            control_template: registry.register(
+                "ControlTemplate",
+                PropertyMetadataBuilder::new(None::<ControlTemplate>)
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

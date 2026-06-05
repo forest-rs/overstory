@@ -16,7 +16,7 @@ use understory_property::{DependencyObjectExt, Property};
 use understory_property_binding::{BindingError, BindingId, PropertyEndpoint};
 use understory_style::ClassId;
 
-use super::{TemplateChild, TemplateInstance, TemplateSlot};
+use super::{TemplateChild, TemplateId, TemplateInstance, TemplateSlot};
 
 /// Expansion context passed to a [`super::Template`].
 ///
@@ -32,11 +32,11 @@ pub struct TemplateContext<'a> {
 }
 
 impl<'a> TemplateContext<'a> {
-    pub(crate) fn new(ui: &'a mut Ui, owner: ElementId) -> Self {
+    pub(crate) fn new(ui: &'a mut Ui, owner: ElementId, template_id: TemplateId) -> Self {
         Self {
             ui,
             owner,
-            instance: TemplateInstance::new(owner),
+            instance: TemplateInstance::new(owner, template_id),
         }
     }
 

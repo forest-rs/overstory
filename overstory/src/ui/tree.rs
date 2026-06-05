@@ -13,11 +13,20 @@ use crate::binding::{BindingOwner, LocalState};
 use crate::channels::{COMPOSE, LAYOUT, PAINT};
 use crate::controls::panel::Panel;
 use crate::element::ElementId;
-use crate::template::{TemplateContext, TemplateExpansionReport, TemplateInstance, TemplateSlot};
+use crate::template::{
+    ControlTemplate, TemplateContext, TemplateExpansionReport, TemplateInstance, TemplateItemKey,
+    TemplateSlot,
+};
 use crate::view::View;
 use crate::widget::{AppendSpec, ContentSlotSpec, Widget};
 
 use super::{Ui, collect_preorder};
+
+struct PreservedSlotChildren {
+    slot: TemplateSlot,
+    key: Option<TemplateItemKey>,
+    children: Vec<ElementId>,
+}
 
 /// Scoped authoring helper for adding children under one parent.
 ///
@@ -497,16 +506,140 @@ impl Ui {
     /// which records named parts and applies the owner back-reference
     /// explicitly.
     pub(crate) fn expand_default_template(&mut self, owner: ElementId) {
-        let Some(element) = self.get(owner) else {
+        let Some(template) = self.resolved_control_template(owner) else {
             return;
         };
-        let Some(template) = element.widget().and_then(|w| w.default_template()) else {
+        self.expand_template(owner, template);
+    }
+
+    pub(crate) fn retemplate_if_needed(&mut self, owner: ElementId) {
+        let Some(current_template_id) =
+            self.templates.get(owner).map(TemplateInstance::template_id)
+        else {
             return;
         };
-        let mut cx = TemplateContext::new(self, owner);
+        let Some(template) = self.resolved_control_template(owner) else {
+            if self
+                .get(owner)
+                .is_some_and(|element| element.has_widget_identity() && element.widget().is_none())
+            {
+                return;
+            }
+            self.remove_template_instance(owner);
+            return;
+        };
+        if current_template_id == template.id() {
+            return;
+        }
+        self.replace_template(owner, template);
+    }
+
+    fn resolved_control_template(&self, owner: ElementId) -> Option<ControlTemplate> {
+        let element = self.get(owner)?;
+        self.resolve_value_for(element, self.properties.control_template)
+            .or_else(|| element.widget().and_then(|w| w.default_template()))
+    }
+
+    fn expand_template(&mut self, owner: ElementId, template: ControlTemplate) {
+        let template_id = template.id();
+        let mut cx = TemplateContext::new(self, owner, template_id);
         template.instantiate(&mut cx);
         let instance = cx.finish();
         self.templates.insert(owner, instance);
+    }
+
+    fn replace_template(&mut self, owner: ElementId, template: ControlTemplate) {
+        let preserved = self.detach_authored_slot_children(owner);
+        self.remove_template_instance(owner);
+        self.expand_template(owner, template);
+        self.reattach_authored_slot_children(owner, preserved);
+        self.with_widget_mut(owner, |widget, ui| widget.template_expanded(owner, ui));
+    }
+
+    fn remove_template_instance(&mut self, owner: ElementId) {
+        let roots = self.template_root_children(owner);
+        for root in roots {
+            self.remove(root);
+        }
+        self.templates.remove_instance(owner);
+    }
+
+    fn template_root_children(&self, owner: ElementId) -> Vec<ElementId> {
+        self.get(owner)
+            .map(|element| {
+                element
+                    .children()
+                    .iter()
+                    .copied()
+                    .filter(|child| {
+                        self.get(*child)
+                            .is_some_and(|child| child.templated_parent() == Some(owner))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn detach_authored_slot_children(&mut self, owner: ElementId) -> Vec<PreservedSlotChildren> {
+        let parts = self
+            .templates
+            .get(owner)
+            .map(|instance| instance.part_records().to_vec())
+            .unwrap_or_default();
+        let mut preserved = Vec::new();
+        for part in parts {
+            let Some(slot) = part.slot() else {
+                continue;
+            };
+            let children = self
+                .get(part.element())
+                .map(|slot_element| {
+                    slot_element
+                        .children()
+                        .iter()
+                        .copied()
+                        .filter(|child| {
+                            self.get(*child)
+                                .is_some_and(|child| child.templated_parent() != Some(owner))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            for child in &children {
+                let _ = self.elements.detach_from_parent(*child);
+            }
+            if !children.is_empty() {
+                preserved.push(PreservedSlotChildren {
+                    slot,
+                    key: part.key(),
+                    children,
+                });
+            }
+        }
+        preserved
+    }
+
+    fn reattach_authored_slot_children(
+        &mut self,
+        owner: ElementId,
+        preserved: Vec<PreservedSlotChildren>,
+    ) {
+        for preserved in preserved {
+            let target = self.templates.get(owner).and_then(|instance| {
+                preserved
+                    .key
+                    .and_then(|key| instance.keyed_slot(preserved.slot, key))
+                    .or_else(|| instance.slot(preserved.slot))
+            });
+            let target = target.unwrap_or(owner);
+            for child in preserved.children {
+                let _ = self.elements.move_child(child, target);
+                self.invalidation.mark(target, COMPOSE);
+                self.mark_child_dependent_presentation(target);
+                self.record_element_tree_upsert(child);
+            }
+            self.record_element_tree_upsert(target);
+        }
     }
 
     /// Removes `id` and all of its descendants from the tree.

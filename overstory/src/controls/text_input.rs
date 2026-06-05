@@ -32,10 +32,7 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
-};
+use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `TextInput`.
 pub const TYPE_TEXT_INPUT: TypeTag = TypeTag(9);
@@ -67,7 +64,6 @@ pub struct TextInput {
     font_size: Option<f64>,
     read_only: bool,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for TextInput {
@@ -92,7 +88,6 @@ impl TextInput {
             font_size: None,
             read_only: false,
             element,
-            template: None,
         }
     }
 
@@ -180,7 +175,6 @@ impl AppendSpec for TextInput {
             font_size,
             read_only,
             element,
-            template,
         } = self;
         let mut edit = TextInputEditState::new(
             text.clone(),
@@ -192,8 +186,7 @@ impl AppendSpec for TextInput {
             edit,
             pointer: TextInputPointerState::default(),
         };
-        let widget = widget_with_template_override(input_widget, template);
-        let id = ui.append_widget_deferred_template(parent, widget);
+        let id = ui.append_widget_deferred_template(parent, Box::new(input_widget));
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         ui.set_local(id, content_prop, text);
@@ -208,11 +201,7 @@ impl AppendSpec for TextInput {
     }
 }
 
-impl ControlTemplateSpec for TextInput {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for TextInput {}
 
 impl ElementSpec for TextInput {
     fn element_config_mut(&mut self) -> &mut ElementConfig {

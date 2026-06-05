@@ -30,7 +30,6 @@ use crate::template::{
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
 };
 
 /// Selector identity for `Accordion`.
@@ -172,7 +171,6 @@ pub struct AccordionSection {
     expanded: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
     on_expanded_changed: Option<AccordionExpandedChangedHandler>,
 }
 
@@ -196,7 +194,6 @@ impl AccordionSection {
             expanded: false,
             font_size: None,
             element,
-            template: None,
             on_expanded_changed: None,
         }
     }
@@ -232,8 +229,7 @@ impl AppendSpec for AccordionSection {
             expanded: self.expanded,
             expanded_changed: AccordionExpandedChangedSlot::new(self.on_expanded_changed),
         };
-        let widget = widget_with_template_override(widget, self.template);
-        let id = ui.append_widget_deferred_template(parent, widget);
+        let id = ui.append_widget_deferred_template(parent, Box::new(widget));
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         ui.set_local(id, content_prop, self.header);
@@ -248,11 +244,7 @@ impl AppendSpec for AccordionSection {
     }
 }
 
-impl ControlTemplateSpec for AccordionSection {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for AccordionSection {}
 
 impl ContentSlotSpec for AccordionSection {
     const CONTENT_SLOT: TemplateSlot = SLOT_ACCORDION_SECTION_CONTENT;

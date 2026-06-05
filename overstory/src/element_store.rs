@@ -102,7 +102,25 @@ impl ElementStore {
         self.get_mut(parent)?
             .children_mut()
             .retain(|child| *child != id);
+        if let Some(element) = self.get_mut(id) {
+            element.set_parent(None);
+        }
         Some(parent)
+    }
+
+    pub(crate) fn move_child(
+        &mut self,
+        child: ElementId,
+        new_parent: ElementId,
+    ) -> Option<ElementId> {
+        assert!(
+            self.get(new_parent).is_some(),
+            "move_child: new parent id is stale"
+        );
+        let old_parent = self.detach_from_parent(child);
+        self.get_mut(child)?.set_parent(Some(new_parent));
+        self.get_mut(new_parent)?.children_mut().push(child);
+        old_parent
     }
 
     pub(crate) fn remove_slot(&mut self, id: ElementId) -> bool {

@@ -41,7 +41,6 @@ use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
 };
 
 /// Selector identity for `Button`.
@@ -60,7 +59,6 @@ pub struct Button {
     font_size: Option<f64>,
     foreground: Option<Brush>,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
     on_click: Option<BoxedClickHandler>,
     on_key: Option<BoxedKeyHandler>,
 }
@@ -87,7 +85,6 @@ impl Button {
             font_size: None,
             foreground: None,
             element,
-            template: None,
             on_click: None,
             on_key: None,
         }
@@ -171,8 +168,7 @@ impl Button {
 
 impl AppendSpec for Button {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(ButtonWidget, self.template);
-        let id = ui.append_widget(parent, widget);
+        let id = ui.append_widget_deferred_template(parent, Box::new(ButtonWidget));
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
@@ -184,6 +180,7 @@ impl AppendSpec for Button {
             ui.set_local(id, fg_prop, brush);
         }
         self.element.apply_to(ui, id);
+        ui.expand_default_template(id);
         if let Some(handler) = self.on_click {
             let mut handler = handler;
             ui.on_click_with_options(
@@ -203,11 +200,7 @@ impl AppendSpec for Button {
     }
 }
 
-impl ControlTemplateSpec for Button {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for Button {}
 
 impl ContentSlotSpec for Button {
     const CONTENT_SLOT: TemplateSlot = SLOT_BUTTON_CONTENT;

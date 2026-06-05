@@ -26,10 +26,7 @@ use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
-};
+use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `ProgressBar`.
 pub const TYPE_PROGRESS_BAR: TypeTag = TypeTag(7);
@@ -55,7 +52,6 @@ pub struct ProgressBar {
     max: f64,
     show_label: bool,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for ProgressBar {
@@ -82,7 +78,6 @@ impl ProgressBar {
             max: 1.0,
             show_label: true,
             element,
-            template: None,
         }
     }
 
@@ -146,8 +141,7 @@ impl Default for ProgressBar {
 
 impl AppendSpec for ProgressBar {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(ProgressBarWidget, self.template);
-        let id = ui.append_widget_deferred_template(parent, widget);
+        let id = ui.append_widget_deferred_template(parent, Box::new(ProgressBarWidget));
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
         ui.set_local(id, min_prop, self.min);
@@ -160,11 +154,7 @@ impl AppendSpec for ProgressBar {
     }
 }
 
-impl ControlTemplateSpec for ProgressBar {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for ProgressBar {}
 
 impl ElementSpec for ProgressBar {
     fn element_config_mut(&mut self) -> &mut ElementConfig {

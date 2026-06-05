@@ -32,10 +32,7 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
-};
+use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `ToggleSwitch`.
 pub const TYPE_TOGGLE: TypeTag = TypeTag(3);
@@ -49,7 +46,6 @@ pub const SLOT_TOGGLE_THUMB: TemplateSlot =
 pub struct ToggleSwitch {
     initial_checked: bool,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
     on_checked_changed: Option<CheckedChangedHandler>,
 }
 
@@ -70,7 +66,6 @@ impl ToggleSwitch {
         Self {
             initial_checked: false,
             element,
-            template: None,
             on_checked_changed: None,
         }
     }
@@ -133,12 +128,12 @@ impl Default for ToggleSwitch {
 
 impl AppendSpec for ToggleSwitch {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(
-            ToggleWidget::new(self.on_checked_changed),
-            self.template,
+        let id = ui.append_widget_deferred_template(
+            parent,
+            Box::new(ToggleWidget::new(self.on_checked_changed)),
         );
-        let id = ui.append_widget(parent, widget);
         self.element.apply_to(ui, id);
+        ui.expand_default_template(id);
         if self.initial_checked {
             set_toggle_checked(ui, id, true);
         }
@@ -146,11 +141,7 @@ impl AppendSpec for ToggleSwitch {
     }
 }
 
-impl ControlTemplateSpec for ToggleSwitch {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for ToggleSwitch {}
 
 impl ElementSpec for ToggleSwitch {
     fn element_config_mut(&mut self) -> &mut ElementConfig {

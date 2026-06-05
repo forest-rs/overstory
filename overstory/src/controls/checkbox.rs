@@ -34,7 +34,6 @@ use crate::template::{
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
 };
 
 /// Selector identity for `CheckBox`.
@@ -61,7 +60,6 @@ pub struct CheckBox {
     initial_checked: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
     on_checked_changed: Option<CheckedChangedHandler>,
 }
 
@@ -85,7 +83,6 @@ impl CheckBox {
             initial_checked: false,
             font_size: None,
             element,
-            template: None,
             on_checked_changed: None,
         }
     }
@@ -148,11 +145,10 @@ impl CheckBox {
 
 impl AppendSpec for CheckBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(
-            CheckBoxWidget::new(self.on_checked_changed),
-            self.template,
+        let id = ui.append_widget_deferred_template(
+            parent,
+            Box::new(CheckBoxWidget::new(self.on_checked_changed)),
         );
-        let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         ui.set_local(id, content_prop, self.content);
@@ -160,16 +156,13 @@ impl AppendSpec for CheckBox {
             ui.set_local(id, font_size_prop, font_size);
         }
         self.element.apply_to(ui, id);
+        ui.expand_default_template(id);
         set_check_box_checked(ui, id, self.initial_checked);
         id
     }
 }
 
-impl ControlTemplateSpec for CheckBox {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for CheckBox {}
 
 impl ContentSlotSpec for CheckBox {
     const CONTENT_SLOT: TemplateSlot = SLOT_CHECK_BOX_LABEL;

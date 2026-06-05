@@ -35,10 +35,7 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
-};
+use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `ScrollView`.
 pub const TYPE_SCROLL_VIEW: TypeTag = TypeTag(13);
@@ -679,7 +676,6 @@ pub struct ScrollBar {
     thickness: f32,
     thumb_extent: f32,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for ScrollBar {
@@ -720,7 +716,6 @@ impl ScrollBar {
             thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
             element,
-            template: None,
         }
     }
 
@@ -781,8 +776,7 @@ impl AppendSpec for ScrollBar {
             thumb_extent: self.thumb_extent,
             drag: ScrollBarDragState::default(),
         };
-        let boxed = widget_with_template_override(widget, self.template);
-        let id = ui.append_widget_deferred_template(parent, boxed);
+        let id = ui.append_widget_deferred_template(parent, Box::new(widget));
         ui.set_layout(
             id,
             scroll_bar_layout(self.axis, self.length, self.thickness),
@@ -794,11 +788,7 @@ impl AppendSpec for ScrollBar {
     }
 }
 
-impl ControlTemplateSpec for ScrollBar {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for ScrollBar {}
 
 impl ElementSpec for ScrollBar {
     fn element_config_mut(&mut self) -> &mut ElementConfig {

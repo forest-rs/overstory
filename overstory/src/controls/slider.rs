@@ -38,10 +38,7 @@ use crate::template::{
 };
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{
-    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
-    widget_with_template_override,
-};
+use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Slider`.
 pub const TYPE_SLIDER: TypeTag = TypeTag(6);
@@ -98,7 +95,6 @@ pub struct Slider {
     small_change: Option<f64>,
     large_change: Option<f64>,
     element: ElementConfig,
-    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for Slider {
@@ -131,7 +127,6 @@ impl Slider {
             small_change: None,
             large_change: None,
             element,
-            template: None,
         }
     }
 
@@ -213,8 +208,7 @@ impl Default for Slider {
 
 impl AppendSpec for Slider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget = widget_with_template_override(SliderWidget::default(), self.template);
-        let id = ui.append_widget_deferred_template(parent, widget);
+        let id = ui.append_widget_deferred_template(parent, Box::new(SliderWidget::default()));
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
         let small_change_prop = ui.properties().small_change;
@@ -242,11 +236,7 @@ impl AppendSpec for Slider {
     }
 }
 
-impl ControlTemplateSpec for Slider {
-    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
-        &mut self.template
-    }
-}
+impl ControlTemplateSpec for Slider {}
 
 impl ElementSpec for Slider {
     fn element_config_mut(&mut self) -> &mut ElementConfig {

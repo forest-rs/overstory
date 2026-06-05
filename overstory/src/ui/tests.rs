@@ -9,8 +9,8 @@ use crate::pseudos::{
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
-    FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation, Phase,
-    PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
+    ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
+    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
     TemplateSlot, TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
@@ -1753,10 +1753,118 @@ fn owned_template_specs_work_through_control_builders() {
         .expect("owned template should create its content slot");
 
     assert!(ui.get(frame).unwrap().classes().contains(&owned_class));
+    assert!(
+        ui.get(button)
+            .unwrap()
+            .get_local_value(ui.properties().control_template)
+            .is_some()
+    );
     assert_eq!(ui.get(content).unwrap().parent(), Some(frame));
     assert_eq!(
         presented_element_text(&mut ui, content).as_deref(),
         Some("Owned")
+    );
+}
+
+#[test]
+fn style_can_supply_initial_control_template() {
+    use crate::{
+        Button, ControlTemplate, SLOT_BUTTON_CONTENT, TYPE_BUTTON, TemplateNode, TemplateSpec,
+    };
+
+    const TEMPLATE_CLASS: ClassId = ClassId(0x46);
+    const STYLE_FRAME: PartTag = PartTag(0x47);
+    const STYLE_TEMPLATE_CHILDREN: &[TemplateNode] =
+        &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
+    const STYLE_TEMPLATE_NODES: &[TemplateNode] =
+        &[TemplateNode::surface_part(STYLE_FRAME).with_children(STYLE_TEMPLATE_CHILDREN)];
+    static STYLE_TEMPLATE: TemplateSpec = TemplateSpec::new(STYLE_TEMPLATE_NODES);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let style = StyleBuilder::new()
+        .set(
+            ui.properties().control_template,
+            Some(ControlTemplate::from_static(&STYLE_TEMPLATE)),
+        )
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON).with_class(TEMPLATE_CLASS))
+                .build(),
+            style,
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    let button = ui.append(root, Button::new("Styled").class(TEMPLATE_CLASS));
+    let frame = ui
+        .part(button, STYLE_FRAME)
+        .expect("style-authored template should create its frame");
+    let content = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("style-authored template should create its content slot");
+
+    assert_eq!(ui.get(frame).unwrap().parent(), Some(button));
+    assert_eq!(ui.get(content).unwrap().parent(), Some(frame));
+    assert_eq!(
+        presented_element_text(&mut ui, content).as_deref(),
+        Some("Styled")
+    );
+}
+
+#[test]
+fn changing_control_template_replaces_parts_and_preserves_slot_content() {
+    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, Text};
+
+    const OLD_FRAME: PartTag = PartTag(0x48);
+    const NEW_FRAME: PartTag = PartTag(0x49);
+    const OLD_CHILDREN: &[TemplateNode] = &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
+    const NEW_CHILDREN: &[TemplateNode] = &[TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)];
+    const OLD_NODES: &[TemplateNode] =
+        &[TemplateNode::surface_part(OLD_FRAME).with_children(OLD_CHILDREN)];
+    const NEW_NODES: &[TemplateNode] =
+        &[TemplateNode::surface_part(NEW_FRAME).with_children(NEW_CHILDREN)];
+    static OLD_TEMPLATE: TemplateSpec = TemplateSpec::new(OLD_NODES);
+    static NEW_TEMPLATE: TemplateSpec = TemplateSpec::new(NEW_NODES);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Button").template(&OLD_TEMPLATE));
+    let old_frame = ui
+        .part(button, OLD_FRAME)
+        .expect("old template should create its frame");
+    let authored = ui
+        .slot_children(button, SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Retained child"))
+        })
+        .expect("old template should expose the content slot");
+
+    ui.set_local(
+        button,
+        ui.properties().control_template,
+        Some(ControlTemplate::from_static(&NEW_TEMPLATE)),
+    );
+
+    let new_frame = ui
+        .part(button, NEW_FRAME)
+        .expect("new template should create its frame");
+    let content = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("new template should expose the content slot");
+
+    assert!(
+        ui.get(old_frame).is_none(),
+        "old generated frame is removed"
+    );
+    assert_eq!(ui.part(button, OLD_FRAME), None);
+    assert_eq!(ui.get(new_frame).unwrap().parent(), Some(button));
+    assert_eq!(ui.get(content).unwrap().parent(), Some(new_frame));
+    assert_eq!(ui.get(authored).unwrap().parent(), Some(content));
+    assert_eq!(
+        presented_element_text(&mut ui, authored).as_deref(),
+        Some("Retained child")
     );
 }
 

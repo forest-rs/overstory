@@ -300,6 +300,10 @@ impl Element {
     pub(crate) fn children_mut(&mut self) -> &mut SmallVec<[ElementId; CHILDREN_INLINE]> {
         &mut self.children
     }
+
+    pub(crate) fn set_parent(&mut self, parent: Option<ElementId>) {
+        self.parent = parent;
+    }
 }
 
 impl DependencyObject<ElementId> for Element {

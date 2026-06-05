@@ -4,7 +4,7 @@
 //! Control-template authoring extension traits.
 
 use crate::template::ControlTemplate;
-use crate::widget::AppendSpec;
+use crate::widget::{BuiltInPropertyKey, ElementSpec};
 
 /// Append specs that can replace a control's visual template.
 ///
@@ -12,10 +12,7 @@ use crate::widget::AppendSpec;
 /// still owns semantic state, routed input, accessibility role, and property
 /// synchronization; the replacement template owns only the generated visual
 /// tree.
-pub trait ControlTemplateSpec: AppendSpec {
-    /// Returns the pending construction-time template override.
-    fn template_override_mut(&mut self) -> &mut Option<ControlTemplate>;
-}
+pub trait ControlTemplateSpec: ElementSpec {}
 
 /// Builder method shared by specs that support visual-template replacement.
 ///
@@ -26,7 +23,8 @@ pub trait ControlTemplateSpecExt: ControlTemplateSpec + Sized {
     /// by this spec.
     #[must_use]
     fn template(mut self, template: impl Into<ControlTemplate>) -> Self {
-        *self.template_override_mut() = Some(template.into());
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::ControlTemplate, Some(template.into()));
         self
     }
 }

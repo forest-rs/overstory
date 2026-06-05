@@ -39,6 +39,10 @@ impl TemplateRuntime {
         self.instances.insert(owner, instance);
     }
 
+    pub(crate) fn remove_instance(&mut self, owner: ElementId) -> Option<TemplateInstance> {
+        self.instances.remove(owner)
+    }
+
     pub(crate) fn get(&self, owner: ElementId) -> Option<&TemplateInstance> {
         self.instances.get(owner)
     }
