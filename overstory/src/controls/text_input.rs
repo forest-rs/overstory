@@ -30,7 +30,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -293,7 +293,9 @@ impl Widget for TextInputWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&TEXT_INPUT_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            text_input_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -584,34 +586,39 @@ impl TextInputWidget {
     }
 }
 
-static TEXT_INPUT_TEMPLATE: TextInputTemplate = TextInputTemplate;
+fn text_input_template_spec() -> TemplateSpec {
+    // TODO(text): Editable text is still rendered through a `TextWidget`
+    // template part, while `PlainEditor` owns editing, caret, and selection
+    // geometry. That can shape the same text twice after edits. Keep this
+    // conservative until editor-backed rendering can flow through the
+    // presentation model, likely as a keyed prepared-text primitive/store.
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_TEXT_INPUT_SELECTION)
+            .with_layout(text_input_selection_layout()),
+        TemplateNode::text_slot(SLOT_TEXT_INPUT_TEXT),
+        TemplateNode::surface_slot(SLOT_TEXT_INPUT_CARET).with_layout(text_input_caret_layout()),
+    ])
+}
 
-#[derive(Debug, Default)]
-struct TextInputTemplate;
+fn text_input_selection_layout() -> Layout {
+    Layout::new()
+        .absolute_at(
+            TEXT_INPUT_PADDING_X,
+            f32_from_logical(f64::from(text_top(DEFAULT_FONT_SIZE))),
+        )
+        .size(LayoutSize::logical(0.0, 0.0))
+}
 
-impl Template for TextInputTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let selection = cx.surface_slot(SLOT_TEXT_INPUT_SELECTION);
-        let (selection_placement, selection_size) =
-            editor_rect_parts(Rect::ZERO, DEFAULT_FONT_SIZE);
-        cx.set_layout_placement(selection, selection_placement);
-        cx.set_layout_size(selection, selection_size);
-
-        // TODO(text): Editable text is still rendered through a `TextWidget`
-        // template part, while `PlainEditor` owns editing, caret, and selection
-        // geometry. That can shape the same text twice after edits. Keep this
-        // conservative until editor-backed rendering can flow through the
-        // presentation model, likely as a keyed prepared-text primitive/store.
-        cx.text_slot(SLOT_TEXT_INPUT_TEXT);
-
-        let caret = cx.surface_slot(SLOT_TEXT_INPUT_CARET);
-        let (caret_placement, caret_size) = editor_rect_parts(
-            Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
-            DEFAULT_FONT_SIZE,
-        );
-        cx.set_layout_placement(caret, caret_placement);
-        cx.set_layout_size(caret, caret_size);
-    }
+fn text_input_caret_layout() -> Layout {
+    Layout::new()
+        .absolute_at(
+            TEXT_INPUT_PADDING_X,
+            f32_from_logical(f64::from(text_top(DEFAULT_FONT_SIZE))),
+        )
+        .size(LayoutSize::logical(
+            1.5,
+            f32_from_logical(f64::from(DEFAULT_FONT_SIZE) * 1.25),
+        ))
 }
 
 #[derive(Debug, Default)]

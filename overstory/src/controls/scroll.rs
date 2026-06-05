@@ -31,9 +31,9 @@ use crate::controls::support::{
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
-use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
+use crate::layouts::{Layout, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -846,7 +846,9 @@ impl Widget for ScrollBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&SCROLL_BAR_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            scroll_bar_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -956,24 +958,18 @@ impl Widget for ScrollBarWidget {
     }
 }
 
-static SCROLL_BAR_TEMPLATE: ScrollBarTemplate = ScrollBarTemplate;
-
-#[derive(Debug, Default)]
-struct ScrollBarTemplate;
-
-impl Template for ScrollBarTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let thumb = cx.surface_slot(SLOT_SCROLL_BAR_THUMB);
-        cx.set_layout_placement(thumb, LayoutPlacement::absolute_at(0.0, 0.0));
-        cx.set_layout_size(
-            thumb,
-            scroll_bar_thumb_size(
-                Axis::Vertical,
-                DEFAULT_SCROLL_BAR_THICKNESS,
-                DEFAULT_SCROLL_BAR_THUMB_EXTENT,
-            ),
-        );
-    }
+fn scroll_bar_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_SCROLL_BAR_THUMB).with_layout(
+            Layout::new()
+                .absolute_at(0.0, 0.0)
+                .size(scroll_bar_thumb_size(
+                    Axis::Vertical,
+                    DEFAULT_SCROLL_BAR_THICKNESS,
+                    DEFAULT_SCROLL_BAR_THUMB_EXTENT,
+                )),
+        ),
+    ])
 }
 
 /// Returns the current vertical scroll offset for `scroll_view`.

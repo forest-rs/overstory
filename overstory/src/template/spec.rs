@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 
 use crate::controls::text::{ContentPresenterWidget, TextWidget};
 use crate::element::ElementId;
+use crate::layouts::Layout;
 use crate::widget::{SurfacePartWidget, Widget};
 use understory_style::{ClassId, PartTag};
 
@@ -273,6 +274,7 @@ pub struct TemplateNode {
     slot: Option<TemplateSlot>,
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
+    layout: Option<Layout>,
     classes: Vec<ClassId>,
     children: Vec<Self>,
 }
@@ -287,6 +289,7 @@ impl TemplateNode {
             slot: None,
             part: None,
             key: None,
+            layout: None,
             classes: Vec::new(),
             children: Vec::new(),
         }
@@ -392,6 +395,19 @@ impl TemplateNode {
         self
     }
 
+    /// Writes a layout contribution to the generated element.
+    ///
+    /// Only the longhands carried by `layout` are written during template
+    /// expansion, matching [`crate::Ui::set_layout`]. This is for stable
+    /// template-owned defaults such as absolute placement, fixed part sizes,
+    /// or content-host flow behavior.
+    #[must_use]
+    #[inline]
+    pub fn with_layout(mut self, layout: impl Into<Layout>) -> Self {
+        self.layout = Some(layout.into());
+        self
+    }
+
     /// Adds child nodes under this generated element.
     #[must_use]
     #[inline]
@@ -471,6 +487,9 @@ fn instantiate_spec_node(
     }
     let id = cx.insert_under(parent, child);
 
+    if let Some(layout) = node.layout.clone() {
+        cx.set_layout(id, layout);
+    }
     for class in node.classes() {
         cx.add_class(id, *class);
     }

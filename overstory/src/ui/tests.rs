@@ -2962,7 +2962,9 @@ fn template_expansion_inserts_parts_under_owner() {
 #[test]
 fn template_spec_builds_nested_parts_classes_and_keys() {
     use crate::widget::{AppendSpec, Widget};
-    use crate::{ControlTemplate, TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
+    use crate::{
+        ControlTemplate, Layout, TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec,
+    };
     use understory_style::TypeTag;
 
     const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_CAFE);
@@ -2971,11 +2973,13 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     const OUTER_SLOT: TemplateSlot = TemplateSlot::new("outer").with_part_tag(OUTER_PART);
     const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
     const OUTER_CLASS: ClassId = ClassId(0x12);
+    let outer_layout = Layout::new().absolute_at(3.0, 4.0).logical_size(20.0, 10.0);
     let template = ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_slot(
         OUTER_SLOT,
     )
     .with_key(OUTER_KEY)
     .with_class(OUTER_CLASS)
+    .with_layout(outer_layout.clone())
     .with_child(TemplateNode::surface_part(INNER_PART))]));
 
     #[derive(Debug)]
@@ -3016,6 +3020,7 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     assert_eq!(ui.get(outer).unwrap().templated_parent(), Some(owner));
     assert_eq!(ui.get(inner).unwrap().templated_parent(), Some(owner));
     assert!(ui.get(outer).unwrap().classes().contains(&OUTER_CLASS));
+    assert_eq!(ui.effective_layout(outer), outer_layout);
 }
 
 #[test]
