@@ -226,7 +226,7 @@ pub use template::{
     ControlTemplate, Template, TemplateChild, TemplateContext, TemplateContract,
     TemplateDiagnostic, TemplateExpansionReport, TemplateId, TemplateInstance, TemplateItemKey,
     TemplateNode, TemplatePart, TemplateSlot, TemplateSlotContract, TemplateSlotImportance,
-    TemplateSlotStatus, TemplateSpec, TemplateWidgetFactory,
+    TemplateSlotStatus, TemplateSpec, TemplateSpecRecipe, TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};

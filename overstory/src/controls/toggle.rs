@@ -29,7 +29,9 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
@@ -204,9 +206,7 @@ impl Widget for ToggleWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            toggle_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&TOGGLE_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -254,6 +254,8 @@ impl Widget for ToggleWidget {
         ArrangeResult::UNCHANGED
     }
 }
+
+static TOGGLE_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(toggle_template_spec);
 
 fn toggle_template_spec() -> TemplateSpec {
     // Thumb part. Sized + styled by the cascade.

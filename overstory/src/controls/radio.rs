@@ -36,7 +36,9 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -454,9 +456,7 @@ impl Widget for RadioButtonWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            radio_button_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&RADIO_BUTTON_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -609,6 +609,9 @@ impl RadioGroupWidget {
         }
     }
 }
+
+static RADIO_BUTTON_TEMPLATE: TemplateSpecRecipe =
+    TemplateSpecRecipe::new(radio_button_template_spec);
 
 fn radio_button_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

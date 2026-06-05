@@ -33,7 +33,9 @@ use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -314,9 +316,7 @@ impl Widget for SelectWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            select_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&SELECT_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -541,6 +541,8 @@ impl SelectWidget {
         }
     }
 }
+
+static SELECT_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(select_template_spec);
 
 fn select_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

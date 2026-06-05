@@ -37,7 +37,9 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -242,9 +244,7 @@ impl Widget for ButtonWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            button_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&BUTTON_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -278,6 +278,8 @@ impl Widget for ButtonWidget {
         }
     }
 }
+
+static BUTTON_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(button_template_spec);
 
 fn button_template_spec() -> TemplateSpec {
     // Foreground inherits through the tree, so styled owner foreground remains

@@ -24,7 +24,9 @@ use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -208,9 +210,7 @@ impl Widget for ExpanderWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            expander_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&EXPANDER_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -275,6 +275,8 @@ impl ExpanderWidget {
         true
     }
 }
+
+static EXPANDER_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(expander_template_spec);
 
 fn expander_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

@@ -27,7 +27,9 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -226,9 +228,7 @@ impl Widget for CheckBoxWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            check_box_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&CHECK_BOX_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -273,6 +273,8 @@ impl Widget for CheckBoxWidget {
         }
     }
 }
+
+static CHECK_BOX_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(check_box_template_spec);
 
 fn check_box_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

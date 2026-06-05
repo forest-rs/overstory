@@ -28,7 +28,9 @@ use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, Widget};
 
@@ -234,9 +236,7 @@ impl Widget for TooltipWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            tooltip_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&TOOLTIP_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -267,6 +267,8 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
     tooltip.element.clone().apply_to(ui, id);
     id
 }
+
+static TOOLTIP_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(tooltip_template_spec);
 
 fn tooltip_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_TOOLTIP_CONTENT)])

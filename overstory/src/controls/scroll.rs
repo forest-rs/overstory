@@ -33,7 +33,9 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -846,9 +848,7 @@ impl Widget for ScrollBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            scroll_bar_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&SCROLL_BAR_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -957,6 +957,8 @@ impl Widget for ScrollBarWidget {
         set_axis_scroll_offset(ctx, self.viewport, &self.state, self.axis, next)
     }
 }
+
+static SCROLL_BAR_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(scroll_bar_template_spec);
 
 fn scroll_bar_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

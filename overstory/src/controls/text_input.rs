@@ -30,7 +30,9 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -293,9 +295,7 @@ impl Widget for TextInputWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            text_input_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&TEXT_INPUT_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -585,6 +585,8 @@ impl TextInputWidget {
         );
     }
 }
+
+static TEXT_INPUT_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(text_input_template_spec);
 
 fn text_input_template_spec() -> TemplateSpec {
     // TODO(text): Editable text is still rendered through a `TextWidget`

@@ -47,7 +47,9 @@ use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -897,9 +899,7 @@ impl Widget for ListItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            list_item_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&LIST_ITEM_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -934,6 +934,8 @@ struct RealizedListItem {
     index: usize,
     element: ElementId,
 }
+
+static LIST_ITEM_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(list_item_template_spec);
 
 fn list_item_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::surface_part(PART_LIST_ITEM_CONTENT)

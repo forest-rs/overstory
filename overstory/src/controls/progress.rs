@@ -23,7 +23,9 @@ use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
 use crate::controls::support::read_local_or;
 use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutSize};
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -195,9 +197,7 @@ impl Widget for ProgressBarWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            progress_template_spec,
-        ))
+        Some(crate::ControlTemplate::from_static(&PROGRESS_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -206,6 +206,8 @@ impl Widget for ProgressBarWidget {
             .with_optional_slot(SLOT_PROGRESS_BAR_LABEL)
     }
 }
+
+static PROGRESS_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(progress_template_spec);
 
 fn progress_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

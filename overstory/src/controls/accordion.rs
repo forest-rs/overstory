@@ -23,7 +23,9 @@ use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
+};
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -362,8 +364,8 @@ impl Widget for AccordionSectionWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_spec_factory(
-            accordion_section_template_spec,
+        Some(crate::ControlTemplate::from_static(
+            &ACCORDION_SECTION_TEMPLATE,
         ))
     }
 
@@ -451,6 +453,9 @@ impl AccordionSectionWidget {
         true
     }
 }
+
+static ACCORDION_SECTION_TEMPLATE: TemplateSpecRecipe =
+    TemplateSpecRecipe::new(accordion_section_template_spec);
 
 fn accordion_section_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([

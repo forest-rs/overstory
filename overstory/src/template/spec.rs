@@ -15,8 +15,6 @@ use understory_style::{ClassId, PartTag};
 
 use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 
-type TemplateSpecFactory = fn() -> TemplateSpec;
-
 /// Stable identity for a [`ControlTemplate`] value.
 ///
 /// Template equality is identity-based. Rebuilding an equivalent owned
@@ -50,7 +48,6 @@ pub struct ControlTemplate {
 #[derive(Clone)]
 enum ControlTemplateStorage {
     Static(&'static dyn Template),
-    SpecFactory(TemplateSpecFactory),
     Owned(Arc<dyn Template>),
 }
 
@@ -62,25 +59,6 @@ impl ControlTemplate {
         Self {
             id: TemplateId::from_usize(ptr as usize),
             storage: ControlTemplateStorage::Static(template),
-        }
-    }
-
-    /// Creates a stable template value from a data-spec factory.
-    ///
-    /// This is for built-in default templates that should be authored as
-    /// [`TemplateSpec`] data but still need stable identity across repeated
-    /// [`crate::Widget::default_template`] queries. App-authored templates
-    /// should generally use [`Self::new`] or `ControlTemplate::from(spec)`.
-    #[must_use]
-    pub(crate) fn from_spec_factory(factory: TemplateSpecFactory) -> Self {
-        #[expect(
-            clippy::fn_to_numeric_cast_any,
-            reason = "built-in template factories use the function address as a stable identity, not as an arithmetic value"
-        )]
-        let id = TemplateId::from_usize(factory as usize);
-        Self {
-            id,
-            storage: ControlTemplateStorage::SpecFactory(factory),
         }
     }
 
@@ -116,7 +94,6 @@ impl ControlTemplate {
     pub(crate) fn instantiate(&self, cx: &mut TemplateContext<'_>) {
         match &self.storage {
             ControlTemplateStorage::Static(template) => template.instantiate(cx),
-            ControlTemplateStorage::SpecFactory(factory) => factory().instantiate(cx),
             ControlTemplateStorage::Owned(template) => template.instantiate(cx),
         }
     }
@@ -200,6 +177,50 @@ impl Template for TemplateSpec {
         for node in self.nodes() {
             instantiate_spec_node(cx, cx.owner(), node);
         }
+    }
+}
+
+/// Reusable [`Template`] adapter backed by a function that builds a
+/// [`TemplateSpec`].
+///
+/// Use this for static/default templates that should stay data-driven but need
+/// stable identity across repeated [`ControlTemplate::from_static`] calls:
+///
+/// ```ignore
+/// use overstory::{ControlTemplate, TemplateSpecRecipe};
+///
+/// static BUTTON_TEMPLATE: TemplateSpecRecipe =
+///     TemplateSpecRecipe::new(button_template_spec);
+///
+/// let template = ControlTemplate::from_static(&BUTTON_TEMPLATE);
+/// ```
+///
+/// One-off app-authored templates can use `ControlTemplate::from(spec)`
+/// directly. Reusable templates should be stored behind a static template
+/// object like this or a custom [`Template`] implementation.
+#[derive(Clone, Copy)]
+pub struct TemplateSpecRecipe {
+    build: fn() -> TemplateSpec,
+}
+
+impl TemplateSpecRecipe {
+    /// Creates a reusable template recipe from a spec-building function.
+    #[must_use]
+    #[inline]
+    pub const fn new(build: fn() -> TemplateSpec) -> Self {
+        Self { build }
+    }
+}
+
+impl core::fmt::Debug for TemplateSpecRecipe {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TemplateSpecRecipe").finish_non_exhaustive()
+    }
+}
+
+impl Template for TemplateSpecRecipe {
+    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        (self.build)().instantiate(cx);
     }
 }
 

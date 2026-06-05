@@ -90,7 +90,10 @@ pub use diagnostic::TemplateDiagnostic;
 pub use identity::{TemplateItemKey, TemplatePart, TemplateSlot};
 pub use instance::TemplateInstance;
 pub(crate) use runtime::TemplateRuntime;
-pub use spec::{ControlTemplate, TemplateId, TemplateNode, TemplateSpec, TemplateWidgetFactory};
+pub use spec::{
+    ControlTemplate, TemplateId, TemplateNode, TemplateSpec, TemplateSpecRecipe,
+    TemplateWidgetFactory,
+};
 pub use validation::{TemplateExpansionReport, TemplateSlotStatus};
 
 /// Factory that builds a templated control's visual subtree.
