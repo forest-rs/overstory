@@ -234,8 +234,9 @@ pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, Ui};
 pub use view::View;
 pub use widget::{
-    AppendSpec, ContentSlotSpec, ControlStateSpecExt, ElementConfig, ElementSpec, ElementSpecExt,
-    RangeSpecExt, SurfaceSpecExt, TYPE_GENERIC, TextSpecExt, Widget,
+    AppendSpec, ContentSlotSpec, ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt,
+    ElementConfig, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, TYPE_GENERIC,
+    TextSpecExt, Widget,
 };
 
 /// Common imports for authoring Overstory UI trees.
@@ -247,12 +248,12 @@ pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
         BindingSpecExt, Button, CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt,
-        CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt,
-        Expander, ExternalSource, Layout, ListBox, LocalState, OutlineView, Panel, Popup,
-        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView,
-        SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput,
-        TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding,
-        VectorPath, View, Viewport,
+        ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider, ElementId, ElementRef,
+        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
+        LocalState, OutlineView, Panel, Popup, ProgressBar, RadioButton, RadioGroup, RangeSpecExt,
+        ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size, Slider, Spinner,
+        Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch,
+        Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 

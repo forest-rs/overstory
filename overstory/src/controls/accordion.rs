@@ -29,7 +29,8 @@ use crate::template::{
 };
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
 };
 
 /// Selector identity for `Accordion`.
@@ -223,13 +224,6 @@ impl AccordionSection {
         self.on_expanded_changed = Some(Box::new(handler));
         self
     }
-
-    /// Overrides the visual template used when this section is inserted.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl AppendSpec for AccordionSection {
@@ -238,10 +232,7 @@ impl AppendSpec for AccordionSection {
             expanded: self.expanded,
             expanded_changed: AccordionExpandedChangedSlot::new(self.on_expanded_changed),
         };
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
-            None => Box::new(widget),
-        };
+        let widget = widget_with_template_override(widget, self.template);
         let id = ui.append_widget_deferred_template(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
@@ -254,6 +245,12 @@ impl AppendSpec for AccordionSection {
         sync_accordion_section_state(ui, id, self.expanded);
         enforce_accordion_after_insert(ui, parent, id);
         id
+    }
+}
+
+impl ControlTemplateSpec for AccordionSection {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

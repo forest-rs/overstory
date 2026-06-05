@@ -26,7 +26,10 @@ use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
+};
 
 /// Selector identity for `ProgressBar`.
 pub const TYPE_PROGRESS_BAR: TypeTag = TypeTag(7);
@@ -133,16 +136,6 @@ impl ProgressBar {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this progress bar is inserted.
-    ///
-    /// Custom templates should create [`SLOT_PROGRESS_BAR_FILL`] when they want
-    /// [`set_progress_value`] to update the filled extent.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl Default for ProgressBar {
@@ -153,10 +146,7 @@ impl Default for ProgressBar {
 
 impl AppendSpec for ProgressBar {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(ProgressBarWidget, template)),
-            None => Box::new(ProgressBarWidget),
-        };
+        let widget = widget_with_template_override(ProgressBarWidget, self.template);
         let id = ui.append_widget_deferred_template(parent, widget);
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
@@ -167,6 +157,12 @@ impl AppendSpec for ProgressBar {
         set_progress_label_visible(ui, id, self.show_label);
         set_progress_value(ui, id, self.value);
         id
+    }
+}
+
+impl ControlTemplateSpec for ProgressBar {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

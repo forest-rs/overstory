@@ -32,7 +32,10 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
+};
 
 /// Selector identity for `TextInput`.
 pub const TYPE_TEXT_INPUT: TypeTag = TypeTag(9);
@@ -161,18 +164,6 @@ impl TextInput {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this input is inserted.
-    ///
-    /// Custom templates should create [`SLOT_TEXT_INPUT_TEXT`] and
-    /// [`SLOT_TEXT_INPUT_SELECTION`] / [`SLOT_TEXT_INPUT_CARET`] when they
-    /// want built-in editing behavior to synchronize visible text, selection,
-    /// and caret placement.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl Default for TextInput {
@@ -201,10 +192,7 @@ impl AppendSpec for TextInput {
             edit,
             pointer: TextInputPointerState::default(),
         };
-        let widget: Box<dyn Widget> = match template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(input_widget, template)),
-            None => Box::new(input_widget),
-        };
+        let widget = widget_with_template_override(input_widget, template);
         let id = ui.append_widget_deferred_template(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
@@ -217,6 +205,12 @@ impl AppendSpec for TextInput {
         ui.expand_default_template(id);
         ui.with_widget_mut(id, |widget, ui| widget.template_expanded(id, ui));
         id
+    }
+}
+
+impl ControlTemplateSpec for TextInput {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

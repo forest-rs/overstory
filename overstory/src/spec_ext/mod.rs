@@ -7,10 +7,12 @@ mod element;
 mod range;
 mod state;
 mod surface;
+mod template;
 mod text;
 
 pub use element::{ElementSpec, ElementSpecExt};
 pub use range::RangeSpecExt;
 pub use state::ControlStateSpecExt;
 pub use surface::SurfaceSpecExt;
+pub use template::{ControlTemplateSpec, ControlTemplateSpecExt};
 pub use text::TextSpecExt;

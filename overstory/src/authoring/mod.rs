@@ -49,6 +49,11 @@ pub mod surface {
     pub use crate::spec_ext::SurfaceSpecExt;
 }
 
+/// Control-template replacement helpers.
+pub mod template {
+    pub use crate::spec_ext::{ControlTemplateSpec, ControlTemplateSpecExt};
+}
+
 /// Text and font property helpers.
 pub mod text {
     pub use crate::spec_ext::TextSpecExt;
@@ -69,5 +74,6 @@ pub use element::{ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Re
 pub use range::RangeSpecExt;
 pub use state::ControlStateSpecExt;
 pub use surface::SurfaceSpecExt;
+pub use template::{ControlTemplateSpec, ControlTemplateSpecExt};
 pub use text::TextSpecExt;
 pub use tree::{AppendSpec, ChildUi, ContentSlotSpec, View};

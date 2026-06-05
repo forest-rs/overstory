@@ -38,7 +38,10 @@ use crate::template::{
 };
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
+};
 
 /// Selector identity for `Slider`.
 pub const TYPE_SLIDER: TypeTag = TypeTag(6);
@@ -200,18 +203,6 @@ impl Slider {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this slider is inserted.
-    ///
-    /// Custom templates must create [`SLOT_SLIDER_THUMB`] so slider value
-    /// updates have a visual part to move. They can also create keyed
-    /// [`SLOT_SLIDER_TICK`] and [`SLOT_SLIDER_TICK_LABEL`] entries when they
-    /// want the built-in tick styling and label synchronization.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl Default for Slider {
@@ -222,13 +213,7 @@ impl Default for Slider {
 
 impl AppendSpec for Slider {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(
-                SliderWidget::default(),
-                template,
-            )),
-            None => Box::new(SliderWidget::default()),
-        };
+        let widget = widget_with_template_override(SliderWidget::default(), self.template);
         let id = ui.append_widget_deferred_template(parent, widget);
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
@@ -254,6 +239,12 @@ impl AppendSpec for Slider {
             .expect("slider template should create SLOT_SLIDER_THUMB");
         set_value(ui, id, thumb, clamped, ThumbMotion::Snap);
         id
+    }
+}
+
+impl ControlTemplateSpec for Slider {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

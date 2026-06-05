@@ -35,7 +35,10 @@ use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
+};
 
 /// Selector identity for `ScrollView`.
 pub const TYPE_SCROLL_VIEW: TypeTag = TypeTag(13);
@@ -757,16 +760,6 @@ impl ScrollBar {
         self.enabled(false)
     }
 
-    /// Overrides the visual template used when this scrollbar is inserted.
-    ///
-    /// Custom templates should create [`SLOT_SCROLL_BAR_THUMB`] when they want
-    /// the built-in thumb positioning behavior.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
-
     fn control_state(&self) -> ControlState {
         self.element
             .control_state()
@@ -788,10 +781,7 @@ impl AppendSpec for ScrollBar {
             thumb_extent: self.thumb_extent,
             drag: ScrollBarDragState::default(),
         };
-        let boxed: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
-            None => Box::new(widget),
-        };
+        let boxed = widget_with_template_override(widget, self.template);
         let id = ui.append_widget_deferred_template(parent, boxed);
         ui.set_layout(
             id,
@@ -801,6 +791,12 @@ impl AppendSpec for ScrollBar {
         ui.expand_default_template(id);
         sync_scroll_bar_thumb_size(ui, id);
         id
+    }
+}
+
+impl ControlTemplateSpec for ScrollBar {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

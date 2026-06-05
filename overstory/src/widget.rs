@@ -39,10 +39,11 @@
 //! - Add diagnostics around slow hooks and re-entrant mutations before widget
 //!   behavior becomes hard to reason about.
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::any::Any;
 
 use accesskit::{ActionRequest, Node, NodeId as AccessNodeId, Role};
-use alloc::vec::Vec;
 use cursor_icon::CursorIcon;
 use kurbo::{Size, Vec2};
 use smallvec::SmallVec;
@@ -65,7 +66,8 @@ use crate::generic::present_surface;
 use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 pub use crate::spec_ext::{
-    ControlStateSpecExt, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, TextSpecExt,
+    ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt, ElementSpec, ElementSpecExt,
+    RangeSpecExt, SurfaceSpecExt, TextSpecExt,
 };
 use crate::template::{Template, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -358,6 +360,19 @@ pub(crate) struct TemplateOverrideWidget<W> {
 impl<W> TemplateOverrideWidget<W> {
     pub(crate) const fn new(widget: W, template: &'static dyn Template) -> Self {
         Self { widget, template }
+    }
+}
+
+pub(crate) fn widget_with_template_override<W>(
+    widget: W,
+    template: Option<&'static dyn Template>,
+) -> Box<dyn Widget>
+where
+    W: Widget,
+{
+    match template {
+        Some(template) => Box::new(TemplateOverrideWidget::new(widget, template)),
+        None => Box::new(widget),
     }
 }
 

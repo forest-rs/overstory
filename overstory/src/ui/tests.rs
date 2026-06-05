@@ -8,10 +8,10 @@ use crate::pseudos::{
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
-    BindingOwner, CompositionPolicy, ElementRef, ElementRefSpecExt, FocusChangeReason,
-    KeyDispatchResult, Layout, LayoutPlacement, Navigation, Phase, PointerEventKind,
-    RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext, TemplateSlot,
-    TooltipSpecExt, UiResolveLookup,
+    BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
+    FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation, Phase,
+    PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
+    TemplateSlot, TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -1578,8 +1578,9 @@ fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {
 #[test]
 fn template_overrides_replace_visuals_not_control_behavior() {
     use crate::{
-        Button, SLOT_BUTTON_CONTENT, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template,
-        TemplateChild, Text, ToggleSwitch, set_slider_value,
+        Button, CheckBox, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL,
+        SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB, SLOT_TOGGLE_THUMB, Slider, Template, TemplateChild,
+        Text, TextWidget, ToggleSwitch, set_slider_value,
     };
 
     const OUTER_FRAME: PartTag = PartTag(0x40);
@@ -1605,6 +1606,20 @@ fn template_overrides_replace_visuals_not_control_behavior() {
     static BUTTON_TEMPLATE: DoubleFrameButtonTemplate = DoubleFrameButtonTemplate;
     static TOGGLE_TEMPLATE: SingleSlotTemplate = SingleSlotTemplate(SLOT_TOGGLE_THUMB);
     static SLIDER_TEMPLATE: SingleSlotTemplate = SingleSlotTemplate(SLOT_SLIDER_THUMB);
+
+    struct CheckBoxTemplate;
+    impl Template for CheckBoxTemplate {
+        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+            let box_part = cx.insert(TemplateChild::surface_slot(SLOT_CHECK_BOX_BOX));
+            let _mark = cx.insert_under(
+                box_part,
+                TemplateChild::slot(SLOT_CHECK_BOX_MARK, Box::new(TextWidget)),
+            );
+            let _label = cx.insert(TemplateChild::content_presenter(SLOT_CHECK_BOX_LABEL));
+        }
+    }
+
+    static CHECK_BOX_TEMPLATE: CheckBoxTemplate = CheckBoxTemplate;
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -1659,6 +1674,23 @@ fn template_overrides_replace_visuals_not_control_behavior() {
             .get_local_value(ui.properties().value)
             .copied(),
         Some(0.25)
+    );
+
+    let checkbox = ui.append(root, CheckBox::new("Confirm").template(&CHECK_BOX_TEMPLATE));
+    assert!(ui.slot(checkbox, SLOT_CHECK_BOX_BOX).is_some());
+    assert!(ui.slot(checkbox, SLOT_CHECK_BOX_MARK).is_some());
+    let checkbox_label = ui.slot(checkbox, SLOT_CHECK_BOX_LABEL).unwrap();
+    assert_eq!(
+        presented_element_text(&mut ui, checkbox_label).as_deref(),
+        Some("Confirm")
+    );
+    ui.synthesize_click(checkbox, Point::ZERO);
+    assert_eq!(
+        ui.get(checkbox)
+            .unwrap()
+            .get_local_value(ui.properties().is_checked)
+            .copied(),
+        Some(true)
     );
 }
 
@@ -1731,6 +1763,51 @@ fn inspection_reports_optional_and_recommended_template_slots() {
             .all(|slot| slot.element.is_none())
     );
     assert_eq!(ui.slot(slider, SLOT_SLIDER_TRACK), None);
+}
+
+#[test]
+fn checkbox_template_contract_allows_optional_mark_slot() {
+    use crate::{
+        CheckBox, SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, Template,
+        TemplateChild,
+    };
+
+    struct MinimalCheckBoxTemplate;
+    impl Template for MinimalCheckBoxTemplate {
+        fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+            let _box = cx.insert(TemplateChild::surface_slot(SLOT_CHECK_BOX_BOX));
+            let _label = cx.insert(TemplateChild::content_presenter(SLOT_CHECK_BOX_LABEL));
+        }
+    }
+
+    static MINIMAL_CHECK_BOX_TEMPLATE: MinimalCheckBoxTemplate = MinimalCheckBoxTemplate;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let checkbox = ui.append(
+        root,
+        CheckBox::new("Confirm").template(&MINIMAL_CHECK_BOX_TEMPLATE),
+    );
+
+    let report = ui
+        .template_expansion_report(checkbox)
+        .expect("checkbox should expose a template expansion report");
+    assert_eq!(report.required_slots()[0].slot(), SLOT_CHECK_BOX_BOX);
+    assert_eq!(report.required_slots()[1].slot(), SLOT_CHECK_BOX_LABEL);
+    assert!(report.required_slots().iter().all(|slot| slot.is_present()));
+    assert_eq!(report.optional_slots()[0].slot(), SLOT_CHECK_BOX_MARK);
+    assert!(!report.optional_slots()[0].is_present());
+    assert!(!report.has_issues());
+
+    ui.synthesize_click(checkbox, Point::ZERO);
+    assert_eq!(
+        ui.get(checkbox)
+            .unwrap()
+            .get_local_value(ui.properties().is_checked)
+            .copied(),
+        Some(true),
+        "the optional visual mark slot should not be required for checkbox behavior",
+    );
 }
 
 #[test]

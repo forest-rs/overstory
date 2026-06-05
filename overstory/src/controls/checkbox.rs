@@ -33,7 +33,8 @@ use crate::template::{
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
 };
 
 /// Selector identity for `CheckBox`.
@@ -143,28 +144,14 @@ impl CheckBox {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this checkbox is inserted.
-    ///
-    /// Custom templates should create [`SLOT_CHECK_BOX_BOX`],
-    /// [`SLOT_CHECK_BOX_MARK`], and [`SLOT_CHECK_BOX_LABEL`] when they want
-    /// default behavior and styling to keep working.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl AppendSpec for CheckBox {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(
-                CheckBoxWidget::new(self.on_checked_changed),
-                template,
-            )),
-            None => Box::new(CheckBoxWidget::new(self.on_checked_changed)),
-        };
+        let widget = widget_with_template_override(
+            CheckBoxWidget::new(self.on_checked_changed),
+            self.template,
+        );
         let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
@@ -175,6 +162,12 @@ impl AppendSpec for CheckBox {
         self.element.apply_to(ui, id);
         set_check_box_checked(ui, id, self.initial_checked);
         id
+    }
+}
+
+impl ControlTemplateSpec for CheckBox {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

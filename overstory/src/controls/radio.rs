@@ -39,7 +39,8 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
 };
 
 /// Selector identity for `RadioButton`.
@@ -167,24 +168,14 @@ impl RadioButton {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this radio button is inserted.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl AppendSpec for RadioButton {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(
-                RadioButtonWidget::new(self.on_checked_changed),
-                template,
-            )),
-            None => Box::new(RadioButtonWidget::new(self.on_checked_changed)),
-        };
+        let widget = widget_with_template_override(
+            RadioButtonWidget::new(self.on_checked_changed),
+            self.template,
+        );
         let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
@@ -195,6 +186,12 @@ impl AppendSpec for RadioButton {
         self.element.apply_to(ui, id);
         set_radio_button_checked(ui, id, self.initial_checked);
         id
+    }
+}
+
+impl ControlTemplateSpec for RadioButton {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

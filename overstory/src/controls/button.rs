@@ -40,7 +40,8 @@ use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHan
 use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
-    AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget,
+    AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
 };
 
 /// Selector identity for `Button`.
@@ -141,17 +142,6 @@ impl Button {
         self
     }
 
-    /// Overrides the visual template used when this button is inserted.
-    ///
-    /// Custom templates should create [`SLOT_BUTTON_CONTENT`] for the visible
-    /// label node. Templates that want the label to mirror the owner can use a
-    /// content presenter for that slot.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
-
     /// Registers a click handler. Fires on pointer click and on
     /// keyboard activation (Space / Enter while focused). The
     /// closure receives the standard [`ClickEvent`] payload at the button's
@@ -181,10 +171,7 @@ impl Button {
 
 impl AppendSpec for Button {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(ButtonWidget, template)),
-            None => Box::new(ButtonWidget),
-        };
+        let widget = widget_with_template_override(ButtonWidget, self.template);
         let id = ui.append_widget(parent, widget);
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
@@ -213,6 +200,12 @@ impl AppendSpec for Button {
             ui.on_key(id, handler);
         }
         id
+    }
+}
+
+impl ControlTemplateSpec for Button {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 

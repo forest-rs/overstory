@@ -1880,7 +1880,7 @@ fn size_summary(size: overstory::Size) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use overstory::{SurfaceSpecExt, TextSpecExt};
+    use overstory::{ControlTemplateSpecExt, SurfaceSpecExt, TextSpecExt};
     use understory_property::DependencyObjectExt;
 
     #[test]

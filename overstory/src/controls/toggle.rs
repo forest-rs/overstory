@@ -32,7 +32,10 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
 use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TemplateOverrideWidget, Widget};
+use crate::widget::{
+    AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
+    widget_with_template_override,
+};
 
 /// Selector identity for `ToggleSwitch`.
 pub const TYPE_TOGGLE: TypeTag = TypeTag(3);
@@ -120,16 +123,6 @@ impl ToggleSwitch {
         self.element.set_control_state(state);
         self
     }
-
-    /// Overrides the visual template used when this toggle is inserted.
-    ///
-    /// Custom templates should create [`SLOT_TOGGLE_THUMB`] when they want
-    /// the theme's thumb part styling to apply.
-    #[must_use]
-    pub fn template(mut self, template: &'static dyn Template) -> Self {
-        self.template = Some(template);
-        self
-    }
 }
 
 impl Default for ToggleSwitch {
@@ -140,19 +133,22 @@ impl Default for ToggleSwitch {
 
 impl AppendSpec for ToggleSwitch {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let widget: Box<dyn Widget> = match self.template {
-            Some(template) => Box::new(TemplateOverrideWidget::new(
-                ToggleWidget::new(self.on_checked_changed),
-                template,
-            )),
-            None => Box::new(ToggleWidget::new(self.on_checked_changed)),
-        };
+        let widget = widget_with_template_override(
+            ToggleWidget::new(self.on_checked_changed),
+            self.template,
+        );
         let id = ui.append_widget(parent, widget);
         self.element.apply_to(ui, id);
         if self.initial_checked {
             set_toggle_checked(ui, id, true);
         }
         id
+    }
+}
+
+impl ControlTemplateSpec for ToggleSwitch {
+    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+        &mut self.template
     }
 }
 
