@@ -1731,6 +1731,36 @@ fn template_overrides_replace_visuals_not_control_behavior() {
 }
 
 #[test]
+fn owned_template_specs_work_through_control_builders() {
+    use crate::{Button, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec};
+
+    const OWNED_FRAME: PartTag = PartTag(0x44);
+    let owned_class = ClassId(0x45);
+
+    let template = TemplateSpec::from_nodes([TemplateNode::surface_part(OWNED_FRAME)
+        .with_class(owned_class)
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Owned").template(template));
+
+    let frame = ui
+        .part(button, OWNED_FRAME)
+        .expect("owned template should create its surface part");
+    let content = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("owned template should create its content slot");
+
+    assert!(ui.get(frame).unwrap().classes().contains(&owned_class));
+    assert_eq!(ui.get(content).unwrap().parent(), Some(frame));
+    assert_eq!(
+        presented_element_text(&mut ui, content).as_deref(),
+        Some("Owned")
+    );
+}
+
+#[test]
 fn inspection_reports_optional_and_recommended_template_slots() {
     use crate::{
         SLOT_SLIDER_AXIS, SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL,
@@ -2791,8 +2821,8 @@ fn template_expansion_inserts_parts_under_owner() {
         fn type_tag(&self) -> Option<TypeTag> {
             Some(TEST_OWNER_TAG)
         }
-        fn default_template(&self) -> Option<&'static dyn Template> {
-            Some(&TEST_TEMPLATE)
+        fn default_template(&self) -> Option<crate::ControlTemplate> {
+            Some(crate::ControlTemplate::from_static(&TEST_TEMPLATE))
         }
     }
     struct TestSpec;
@@ -2833,7 +2863,7 @@ fn template_expansion_inserts_parts_under_owner() {
 #[test]
 fn template_spec_builds_nested_parts_classes_and_keys() {
     use crate::widget::{AppendSpec, Widget};
-    use crate::{Template, TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
+    use crate::{TemplateItemKey, TemplateNode, TemplateSlot, TemplateSpec};
     use understory_style::TypeTag;
 
     const TEST_OWNER_TAG: TypeTag = TypeTag(0xFEED_CAFE);
@@ -2856,8 +2886,8 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
         fn type_tag(&self) -> Option<TypeTag> {
             Some(TEST_OWNER_TAG)
         }
-        fn default_template(&self) -> Option<&'static dyn Template> {
-            Some(&SPEC)
+        fn default_template(&self) -> Option<crate::ControlTemplate> {
+            Some(crate::ControlTemplate::from_static(&SPEC))
         }
     }
     struct TestSpec;

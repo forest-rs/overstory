@@ -35,7 +35,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
-    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
@@ -316,8 +316,8 @@ impl Widget for SelectWidget {
         }
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&SELECT_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&SELECT_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

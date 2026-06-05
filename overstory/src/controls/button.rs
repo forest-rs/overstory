@@ -37,7 +37,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
-use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -60,7 +60,7 @@ pub struct Button {
     font_size: Option<f64>,
     foreground: Option<Brush>,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
     on_click: Option<BoxedClickHandler>,
     on_key: Option<BoxedKeyHandler>,
 }
@@ -204,7 +204,7 @@ impl AppendSpec for Button {
 }
 
 impl ControlTemplateSpec for Button {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -248,8 +248,8 @@ impl Widget for ButtonWidget {
         ctx.add_click_action_if_enabled(element, node);
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&BUTTON_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&BUTTON_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

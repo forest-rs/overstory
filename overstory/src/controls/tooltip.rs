@@ -28,7 +28,7 @@ use crate::composition::CompositionPolicy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
-use crate::template::{Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ContentSlotSpec, ElementConfig, ElementSpec, Widget};
 
@@ -233,8 +233,8 @@ impl Widget for TooltipWidget {
         Some(accesskit::Role::Tooltip)
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&TOOLTIP_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&TOOLTIP_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

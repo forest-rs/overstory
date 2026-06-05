@@ -90,7 +90,7 @@ pub use diagnostic::TemplateDiagnostic;
 pub use identity::{TemplateItemKey, TemplatePart, TemplateSlot};
 pub use instance::TemplateInstance;
 pub(crate) use runtime::TemplateRuntime;
-pub use spec::{TemplateNode, TemplateSpec, TemplateWidgetFactory};
+pub use spec::{ControlTemplate, TemplateId, TemplateNode, TemplateSpec, TemplateWidgetFactory};
 pub use validation::{TemplateExpansionReport, TemplateSlotStatus};
 
 /// Factory that builds a templated control's visual subtree.
@@ -102,11 +102,9 @@ pub use validation::{TemplateExpansionReport, TemplateSlotStatus};
 /// descendants, find named parts after expansion, and clean binding graph edges
 /// when parts are removed.
 ///
-/// Templates are stored as `&'static dyn Template`, so they should be unit
-/// structs or `LazyLock<...>`-style statics rather than per-instance values.
-/// Controls can expose builder-level template overrides when their behavior
-/// does not depend on the default visual subtree.
-pub trait Template: Sync {
+/// Templates are immutable recipes. They may be static unit structs, static
+/// data-driven specs, or owned values stored behind a [`ControlTemplate`].
+pub trait Template: Send + Sync {
     /// Builds this template's subtree under `owner`.
     fn instantiate(&self, cx: &mut TemplateContext<'_>);
 }

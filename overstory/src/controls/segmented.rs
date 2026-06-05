@@ -382,8 +382,10 @@ impl Widget for SegmentedItemWidget {
         node.set_position_in_set(self.index + 1);
     }
 
-    fn default_template(&self) -> Option<&'static dyn crate::Template> {
-        Some(&SEGMENTED_ITEM_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(
+            &SEGMENTED_ITEM_TEMPLATE,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {

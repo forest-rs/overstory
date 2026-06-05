@@ -223,10 +223,10 @@ pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use template::{
-    Template, TemplateChild, TemplateContext, TemplateContract, TemplateDiagnostic,
-    TemplateExpansionReport, TemplateInstance, TemplateItemKey, TemplateNode, TemplatePart,
-    TemplateSlot, TemplateSlotContract, TemplateSlotImportance, TemplateSlotStatus, TemplateSpec,
-    TemplateWidgetFactory,
+    ControlTemplate, Template, TemplateChild, TemplateContext, TemplateContract,
+    TemplateDiagnostic, TemplateExpansionReport, TemplateId, TemplateInstance, TemplateItemKey,
+    TemplateNode, TemplatePart, TemplateSlot, TemplateSlotContract, TemplateSlotImportance,
+    TemplateSlotStatus, TemplateSpec, TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
@@ -248,12 +248,13 @@ pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
         BindingSpecExt, Button, CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt,
-        ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider, ElementId, ElementRef,
-        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
-        LocalState, OutlineView, Panel, Popup, ProgressBar, RadioButton, RadioGroup, RangeSpecExt,
-        ScrollArea, ScrollBar, ScrollView, SegmentedControl, Select, Size, Slider, Spinner,
-        Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch,
-        Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
+        ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
+        ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander,
+        ExternalSource, Layout, ListBox, LocalState, OutlineView, Panel, Popup, ProgressBar,
+        RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView, SegmentedControl,
+        Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt,
+        TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View,
+        Viewport,
     };
 }
 

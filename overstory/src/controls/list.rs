@@ -896,8 +896,8 @@ impl Widget for ListItemWidget {
         node.set_position_in_set(self.index + 1);
     }
 
-    fn default_template(&self) -> Option<&'static dyn crate::Template> {
-        Some(&LIST_ITEM_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&LIST_ITEM_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

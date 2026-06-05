@@ -69,7 +69,7 @@ pub use crate::spec_ext::{
     ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt, ElementSpec, ElementSpecExt,
     RangeSpecExt, SurfaceSpecExt, TextSpecExt,
 };
-use crate::template::{Template, TemplateContract, TemplateSlot};
+use crate::template::{ControlTemplate, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
@@ -82,7 +82,7 @@ pub const TYPE_GENERIC: TypeTag = TypeTag(0);
 /// methods are how the toolkit walks the tree: `present` writes
 /// drawing intent, `measure` answers leaf-style sizing, and
 /// `default_template` lets templated controls hand back a `&'static`
-/// template the first time their element is constructed.
+/// template recipe the first time their element is constructed.
 ///
 /// The default `present` writes the standard surface (`Background`,
 /// `BorderBrush`/`BorderWidth`, `CornerRadius`) through the
@@ -219,7 +219,7 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     /// expand on insertion, if any. Typical use is a templated
     /// control creating its parts (e.g. `ToggleSwitch`'s thumb,
     /// `Slider`'s track + thumb).
-    fn default_template(&self) -> Option<&'static dyn Template> {
+    fn default_template(&self) -> Option<ControlTemplate> {
         None
     }
 
@@ -354,18 +354,18 @@ impl dyn Widget {
 /// measure behavior.
 pub(crate) struct TemplateOverrideWidget<W> {
     widget: W,
-    template: &'static dyn Template,
+    template: ControlTemplate,
 }
 
 impl<W> TemplateOverrideWidget<W> {
-    pub(crate) const fn new(widget: W, template: &'static dyn Template) -> Self {
+    pub(crate) const fn new(widget: W, template: ControlTemplate) -> Self {
         Self { widget, template }
     }
 }
 
 pub(crate) fn widget_with_template_override<W>(
     widget: W,
-    template: Option<&'static dyn Template>,
+    template: Option<ControlTemplate>,
 ) -> Box<dyn Widget>
 where
     W: Widget,
@@ -452,8 +452,8 @@ impl<W: Widget> Widget for TemplateOverrideWidget<W> {
         self.widget.realize_elements(ctx)
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(self.template)
+    fn default_template(&self) -> Option<ControlTemplate> {
+        Some(self.template.clone())
     }
 
     fn template_contract(&self) -> TemplateContract {

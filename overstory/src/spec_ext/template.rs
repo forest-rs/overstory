@@ -3,7 +3,7 @@
 
 //! Control-template authoring extension traits.
 
-use crate::template::Template;
+use crate::template::ControlTemplate;
 use crate::widget::AppendSpec;
 
 /// Append specs that can replace a control's visual template.
@@ -14,7 +14,7 @@ use crate::widget::AppendSpec;
 /// tree.
 pub trait ControlTemplateSpec: AppendSpec {
     /// Returns the pending construction-time template override.
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template>;
+    fn template_override_mut(&mut self) -> &mut Option<ControlTemplate>;
 }
 
 /// Builder method shared by specs that support visual-template replacement.
@@ -25,8 +25,8 @@ pub trait ControlTemplateSpecExt: ControlTemplateSpec + Sized {
     /// Replaces the control's default visual template for the element created
     /// by this spec.
     #[must_use]
-    fn template(mut self, template: &'static dyn Template) -> Self {
-        *self.template_override_mut() = Some(template);
+    fn template(mut self, template: impl Into<ControlTemplate>) -> Self {
+        *self.template_override_mut() = Some(template.into());
         self
     }
 }

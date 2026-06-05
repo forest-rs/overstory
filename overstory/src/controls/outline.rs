@@ -1132,8 +1132,8 @@ impl Widget for OutlineItemWidget {
         }
     }
 
-    fn default_template(&self) -> Option<&'static dyn crate::Template> {
-        Some(&OUTLINE_ITEM_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&OUTLINE_ITEM_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

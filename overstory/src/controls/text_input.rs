@@ -67,7 +67,7 @@ pub struct TextInput {
     font_size: Option<f64>,
     read_only: bool,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for TextInput {
@@ -209,7 +209,7 @@ impl AppendSpec for TextInput {
 }
 
 impl ControlTemplateSpec for TextInput {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -303,8 +303,8 @@ impl Widget for TextInputWidget {
         ));
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&TEXT_INPUT_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&TEXT_INPUT_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

@@ -25,7 +25,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
 use crate::template::{
-    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
@@ -172,7 +172,7 @@ pub struct AccordionSection {
     expanded: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
     on_expanded_changed: Option<AccordionExpandedChangedHandler>,
 }
 
@@ -249,7 +249,7 @@ impl AppendSpec for AccordionSection {
 }
 
 impl ControlTemplateSpec for AccordionSection {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -372,8 +372,10 @@ impl Widget for AccordionSectionWidget {
         );
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&ACCORDION_SECTION_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(
+            &ACCORDION_SECTION_TEMPLATE,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {

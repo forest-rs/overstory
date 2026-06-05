@@ -26,7 +26,7 @@ use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
-    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -75,7 +75,7 @@ pub struct Expander {
     expanded: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
     on_expanded_changed: Option<ExpandedChangedHandler>,
 }
 
@@ -151,7 +151,7 @@ impl AppendSpec for Expander {
 }
 
 impl ControlTemplateSpec for Expander {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -218,8 +218,8 @@ impl Widget for ExpanderWidget {
         );
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&EXPANDER_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&EXPANDER_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

@@ -55,7 +55,7 @@ pub struct ProgressBar {
     max: f64,
     show_label: bool,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for ProgressBar {
@@ -161,7 +161,7 @@ impl AppendSpec for ProgressBar {
 }
 
 impl ControlTemplateSpec for ProgressBar {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -206,8 +206,8 @@ impl Widget for ProgressBarWidget {
         ctx.apply_numeric_range(element, node);
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&PROGRESS_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&PROGRESS_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

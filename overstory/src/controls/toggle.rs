@@ -49,7 +49,7 @@ pub const SLOT_TOGGLE_THUMB: TemplateSlot =
 pub struct ToggleSwitch {
     initial_checked: bool,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
     on_checked_changed: Option<CheckedChangedHandler>,
 }
 
@@ -147,7 +147,7 @@ impl AppendSpec for ToggleSwitch {
 }
 
 impl ControlTemplateSpec for ToggleSwitch {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -212,8 +212,8 @@ impl Widget for ToggleWidget {
         ctx.apply_checked_state(element, node);
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&TOGGLE_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&TOGGLE_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

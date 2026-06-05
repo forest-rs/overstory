@@ -29,7 +29,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
-    Template, TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
+    TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateWidgetFactory,
 };
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
@@ -61,7 +61,7 @@ pub struct CheckBox {
     initial_checked: bool,
     font_size: Option<f64>,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
     on_checked_changed: Option<CheckedChangedHandler>,
 }
 
@@ -166,7 +166,7 @@ impl AppendSpec for CheckBox {
 }
 
 impl ControlTemplateSpec for CheckBox {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -235,8 +235,8 @@ impl Widget for CheckBoxWidget {
         ctx.apply_checked_state(element, node);
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&CHECK_BOX_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&CHECK_BOX_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {

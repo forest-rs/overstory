@@ -4,6 +4,8 @@
 //! Data-driven template specs.
 
 use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 use crate::controls::text::ContentPresenterWidget;
 use crate::element::ElementId;
@@ -12,15 +14,137 @@ use understory_style::{ClassId, PartTag};
 
 use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 
+/// Stable identity for a [`ControlTemplate`] value.
+///
+/// Template equality is identity-based. Rebuilding an equivalent owned
+/// template creates a new identity and therefore means "retemplate" to the
+/// runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct TemplateId(usize);
+
+impl TemplateId {
+    /// Creates a template id from a thin pointer-sized identity.
+    #[must_use]
+    pub(crate) const fn from_usize(value: usize) -> Self {
+        Self(value)
+    }
+
+    /// Returns the raw identity value.
+    #[must_use]
+    pub const fn get(self) -> usize {
+        self.0
+    }
+}
+
+/// Cloneable control-template value for local properties, styles, and
+/// authoring builders.
+#[derive(Clone)]
+pub struct ControlTemplate {
+    id: TemplateId,
+    storage: ControlTemplateStorage,
+}
+
+#[derive(Clone)]
+enum ControlTemplateStorage {
+    Static(&'static dyn Template),
+    Owned(Arc<dyn Template>),
+}
+
+impl ControlTemplate {
+    /// Creates a template value from a static template recipe.
+    #[must_use]
+    pub fn from_static(template: &'static dyn Template) -> Self {
+        let ptr = template as *const dyn Template as *const ();
+        Self {
+            id: TemplateId::from_usize(ptr as usize),
+            storage: ControlTemplateStorage::Static(template),
+        }
+    }
+
+    /// Creates a template value from an owned template recipe.
+    #[must_use]
+    pub fn new<T>(template: T) -> Self
+    where
+        T: Template + 'static,
+    {
+        Self::from_arc(Arc::new(template))
+    }
+
+    /// Creates a template value from a shared owned template recipe.
+    #[must_use]
+    pub fn from_arc<T>(template: Arc<T>) -> Self
+    where
+        T: Template + 'static,
+    {
+        let template: Arc<dyn Template> = template;
+        let ptr = Arc::as_ptr(&template) as *const ();
+        Self {
+            id: TemplateId::from_usize(ptr as usize),
+            storage: ControlTemplateStorage::Owned(template),
+        }
+    }
+
+    /// Returns this template value's identity.
+    #[must_use]
+    pub const fn id(&self) -> TemplateId {
+        self.id
+    }
+
+    pub(crate) fn instantiate(&self, cx: &mut TemplateContext<'_>) {
+        match &self.storage {
+            ControlTemplateStorage::Static(template) => template.instantiate(cx),
+            ControlTemplateStorage::Owned(template) => template.instantiate(cx),
+        }
+    }
+}
+
+impl core::fmt::Debug for ControlTemplate {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ControlTemplate")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for ControlTemplate {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for ControlTemplate {}
+
+impl<T> From<&'static T> for ControlTemplate
+where
+    T: Template + 'static,
+{
+    fn from(template: &'static T) -> Self {
+        Self::from_static(template)
+    }
+}
+
+impl From<&'static dyn Template> for ControlTemplate {
+    fn from(template: &'static dyn Template) -> Self {
+        Self::from_static(template)
+    }
+}
+
+impl From<TemplateSpec> for ControlTemplate {
+    fn from(template: TemplateSpec) -> Self {
+        Self::new(template)
+    }
+}
+
 /// A data-driven default template.
 ///
 /// `TemplateSpec` is intentionally only a compact description of normal
 /// element-tree construction. It does not own layout, styling, or presentation;
 /// those remain ordinary properties and cascade output on the generated
 /// elements.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct TemplateSpec {
     nodes: &'static [TemplateNode],
+    owned_nodes: Option<Box<[TemplateNode]>>,
 }
 
 impl TemplateSpec {
@@ -28,20 +152,38 @@ impl TemplateSpec {
     #[must_use]
     #[inline]
     pub const fn new(nodes: &'static [TemplateNode]) -> Self {
-        Self { nodes }
+        Self {
+            nodes,
+            owned_nodes: None,
+        }
+    }
+
+    /// Creates a spec from owned top-level template nodes.
+    #[must_use]
+    pub fn from_vec(nodes: Vec<TemplateNode>) -> Self {
+        Self {
+            nodes: &[],
+            owned_nodes: Some(nodes.into_boxed_slice()),
+        }
+    }
+
+    /// Creates a spec from an owned array of top-level template nodes.
+    #[must_use]
+    pub fn from_nodes<const N: usize>(nodes: [TemplateNode; N]) -> Self {
+        Self::from_vec(Vec::from(nodes))
     }
 
     /// Returns the top-level nodes in this spec.
     #[must_use]
     #[inline]
-    pub const fn nodes(&self) -> &'static [TemplateNode] {
-        self.nodes
+    pub fn nodes(&self) -> &[TemplateNode] {
+        self.owned_nodes.as_deref().unwrap_or(self.nodes)
     }
 }
 
 impl Template for TemplateSpec {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        for node in self.nodes {
+        for node in self.nodes() {
             instantiate_spec_node(cx, cx.owner(), node);
         }
     }
@@ -96,14 +238,16 @@ fn content_presenter_widget() -> Box<dyn Widget> {
 }
 
 /// One node in a [`TemplateSpec`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct TemplateNode {
     widget: TemplateWidgetFactory,
     slot: Option<TemplateSlot>,
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
     classes: &'static [ClassId],
+    owned_classes: Option<Box<[ClassId]>>,
     children: &'static [Self],
+    owned_children: Option<Box<[Self]>>,
 }
 
 impl TemplateNode {
@@ -117,7 +261,9 @@ impl TemplateNode {
             part: None,
             key: None,
             classes: &[],
+            owned_classes: None,
             children: &[],
+            owned_children: None,
         }
     }
 
@@ -199,11 +345,43 @@ impl TemplateNode {
         self
     }
 
+    /// Adds one class to the generated element.
+    #[must_use]
+    #[inline]
+    pub fn with_class(mut self, class: ClassId) -> Self {
+        self.owned_classes = Some(Box::new([class]));
+        self
+    }
+
+    /// Adds owned classes to the generated element.
+    #[must_use]
+    #[inline]
+    pub fn with_owned_classes(mut self, classes: Vec<ClassId>) -> Self {
+        self.owned_classes = Some(classes.into_boxed_slice());
+        self
+    }
+
     /// Adds child nodes under this generated element.
     #[must_use]
     #[inline]
     pub const fn with_children(mut self, children: &'static [Self]) -> Self {
         self.children = children;
+        self
+    }
+
+    /// Adds one owned child node under this generated element.
+    #[must_use]
+    #[inline]
+    pub fn with_child(mut self, child: Self) -> Self {
+        self.owned_children = Some(Box::new([child]));
+        self
+    }
+
+    /// Adds owned child nodes under this generated element.
+    #[must_use]
+    #[inline]
+    pub fn with_owned_children(mut self, children: Vec<Self>) -> Self {
+        self.owned_children = Some(children.into_boxed_slice());
         self
     }
 
@@ -238,15 +416,15 @@ impl TemplateNode {
     /// Returns this node's classes.
     #[must_use]
     #[inline]
-    pub const fn classes(&self) -> &'static [ClassId] {
-        self.classes
+    pub fn classes(&self) -> &[ClassId] {
+        self.owned_classes.as_deref().unwrap_or(self.classes)
     }
 
     /// Returns this node's children.
     #[must_use]
     #[inline]
-    pub const fn children(&self) -> &'static [Self] {
-        self.children
+    pub fn children(&self) -> &[Self] {
+        self.owned_children.as_deref().unwrap_or(self.children)
     }
 }
 
@@ -267,10 +445,10 @@ fn instantiate_spec_node(
     }
     let id = cx.insert_under(parent, child);
 
-    for class in node.classes {
+    for class in node.classes() {
         cx.add_class(id, *class);
     }
-    for child in node.children {
+    for child in node.children() {
         instantiate_spec_node(cx, id, child);
     }
     id

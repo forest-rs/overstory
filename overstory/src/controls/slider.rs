@@ -98,7 +98,7 @@ pub struct Slider {
     small_change: Option<f64>,
     large_change: Option<f64>,
     element: ElementConfig,
-    template: Option<&'static dyn Template>,
+    template: Option<crate::ControlTemplate>,
 }
 
 impl core::fmt::Debug for Slider {
@@ -243,7 +243,7 @@ impl AppendSpec for Slider {
 }
 
 impl ControlTemplateSpec for Slider {
-    fn template_override_mut(&mut self) -> &mut Option<&'static dyn Template> {
+    fn template_override_mut(&mut self) -> &mut Option<crate::ControlTemplate> {
         &mut self.template
     }
 }
@@ -292,8 +292,8 @@ impl Widget for SliderWidget {
         }
     }
 
-    fn default_template(&self) -> Option<&'static dyn Template> {
-        Some(&SLIDER_TEMPLATE)
+    fn default_template(&self) -> Option<crate::ControlTemplate> {
+        Some(crate::ControlTemplate::from_static(&SLIDER_TEMPLATE))
     }
 
     fn template_contract(&self) -> TemplateContract {
