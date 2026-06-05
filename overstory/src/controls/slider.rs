@@ -400,6 +400,9 @@ impl Widget for SliderWidget {
 
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let slider = ctx.id();
+        if sync_slider_thumb_layout(ctx.ui_mut(), slider) {
+            return ArrangeResult::LAYOUT_CHANGED;
+        }
         let _ = sync_slider_thumb_offset_target(ctx.ui_mut(), slider);
         ArrangeResult::UNCHANGED
     }
@@ -751,6 +754,30 @@ fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
         ChangeCause::Other
     };
     ui.set_presentation_target(thumb, property, target, cause)
+}
+
+fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
+    let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
+        return false;
+    };
+    let (value, min, max) = {
+        let Some(element) = ui.get(slider) else {
+            return false;
+        };
+        (
+            ui.resolve_value_for(element, ui.properties().value),
+            ui.resolve_value_for(element, ui.properties().minimum),
+            ui.resolve_value_for(element, ui.properties().maximum),
+        )
+    };
+    let left = thumb_left_for_value(value, min, max);
+    let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
+    let placement = LayoutPlacement::absolute_at(left, top);
+    if ui.effective_layout_placement(thumb) == placement {
+        return false;
+    }
+    ui.set_layout_placement(thumb, placement);
+    true
 }
 
 /// Programmatically set a slider's value (and move its thumb).

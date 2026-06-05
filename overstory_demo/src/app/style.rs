@@ -53,6 +53,9 @@ pub(super) const CLASS_DEVTOOLS_STATUS: ClassId = ClassId(26);
 pub(super) const CLASS_DEVTOOLS_BUTTON: ClassId = ClassId(27);
 pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_OUTER: ClassId = ClassId(28);
 pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_INNER: ClassId = ClassId(29);
+pub(super) const CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX: ClassId = ClassId(30);
+pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_TRACK: ClassId = ClassId(31);
+pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_THUMB: ClassId = ClassId(32);
 pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
 pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
 pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
@@ -95,6 +98,18 @@ pub(super) fn register_demo_style_debug_names(ui: &mut Ui) {
     ui.set_class_debug_name(
         CLASS_DEMO_TEMPLATE_BUTTON_INNER,
         ".demo-template-button-inner",
+    );
+    ui.set_class_debug_name(
+        CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX,
+        ".demo-template-check-box-box",
+    );
+    ui.set_class_debug_name(
+        CLASS_DEMO_TEMPLATE_SLIDER_TRACK,
+        ".demo-template-slider-track",
+    );
+    ui.set_class_debug_name(
+        CLASS_DEMO_TEMPLATE_SLIDER_THUMB,
+        ".demo-template-slider-thumb",
     );
     ui.set_class_debug_name(CLASS_OKLAB_SWATCH, ".oklab-swatch");
     ui.set_class_debug_name(CLASS_OPACITY_SWATCH, ".opacity-swatch");
@@ -391,6 +406,43 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
                         .justify_content(LayoutJustify::Center)
                         .align_items(LayoutAlign::Center),
                 )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_selector(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set_resource(properties.border_brush, DEMO_ACCENT_BG)
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 12.0_f64)
+                .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_SPLIT_BORDER)
+                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0x40))
+                .set(properties.border_width, 1.0_f64)
+                .set(properties.corner_radius, 5.0_f64)
+                .set(
+                    properties.layout_placement,
+                    LayoutPlacement::absolute_at(0.0, 22.0),
+                )
+                .set(properties.layout_size, LayoutSize::logical(220.0, 10.0))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+            StyleBuilder::new()
+                .set_resource(properties.background, DEMO_ACCENT_BG)
+                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0xd0))
+                .set(properties.border_width, 2.0_f64)
+                .set(properties.corner_radius, 11.0_f64)
+                .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
                 .build(),
         )
         .push_rule(

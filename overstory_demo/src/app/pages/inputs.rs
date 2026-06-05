@@ -15,6 +15,23 @@ const DOUBLE_FRAME_BUTTON_NODES: &[TemplateNode] = &[TemplateNode::surface()
     .with_children(DOUBLE_FRAME_INNER_NODES)];
 static DOUBLE_FRAME_BUTTON_TEMPLATE: TemplateSpec = TemplateSpec::new(DOUBLE_FRAME_BUTTON_NODES);
 
+const ROUND_CHECK_BOX_CLASSES: &[ClassId] = &[CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX];
+const ROUND_CHECK_BOX_MARK_NODES: &[TemplateNode] = &[TemplateNode::for_slot(
+    SLOT_CHECK_BOX_MARK,
+    TemplateWidgetFactory::new(demo_template_text_widget),
+)];
+const ROUND_CHECK_BOX_NODES: &[TemplateNode] = &[
+    TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX)
+        .with_classes(ROUND_CHECK_BOX_CLASSES)
+        .with_children(ROUND_CHECK_BOX_MARK_NODES),
+    TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
+];
+static ROUND_CHECK_BOX_TEMPLATE: TemplateSpec = TemplateSpec::new(ROUND_CHECK_BOX_NODES);
+
+fn demo_template_text_widget() -> Box<dyn Widget> {
+    Box::new(TextWidget)
+}
+
 impl View for InputsPage {
     type Output = ();
 
@@ -79,12 +96,17 @@ impl View for InputsPage {
                         );
                     });
                     actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
-                    actions.content(CheckBox::new("").checked(true), |label| {
-                        label.with_child(Panel::row(8.0).align_center(), |row| {
-                            row.add(Text::new("Enable staged rollout").font_size(15.0));
-                            row.add(caption("template slot"));
-                        });
-                    });
+                    actions.content(
+                        CheckBox::new("")
+                            .checked(true)
+                            .template(&ROUND_CHECK_BOX_TEMPLATE),
+                        |label| {
+                            label.with_child(Panel::row(8.0).align_center(), |row| {
+                                row.add(Text::new("Enable staged rollout").font_size(15.0));
+                                row.add(caption("template slot"));
+                            });
+                        },
+                    );
                     actions.add(CheckBox::new("Collect timing traces"));
                     actions.add(CheckBox::new("Send diagnostics").disabled());
                 });

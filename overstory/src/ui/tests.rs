@@ -1092,6 +1092,42 @@ fn slider_snap_value_change_updates_layer_without_waiting_for_second_layout() {
 }
 
 #[test]
+fn slider_value_binding_updates_thumb_layout() {
+    use crate::{BindingSpecExt, SLOT_SLIDER_THUMB, Slider};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(520.0, 90.0));
+    let value = ui.local_state(0.25_f64);
+    let value_property = ui.properties().value;
+    let first = ui.append(
+        root,
+        Slider::new().bind_property(value_property, value.binding()),
+    );
+    let second = ui.append(
+        root,
+        Slider::new().bind_property(value_property, value.binding()),
+    );
+
+    ui.compute_layout(Size::new(520.0, 90.0));
+    let first_thumb = ui.slot(first, SLOT_SLIDER_THUMB).unwrap();
+    let second_thumb = ui.slot(second, SLOT_SLIDER_THUMB).unwrap();
+    let first_start = ui.effective_bounds(first_thumb).x0 - ui.effective_bounds(first).x0;
+    let second_start = ui.effective_bounds(second_thumb).x0 - ui.effective_bounds(second).x0;
+    assert_close(first_start, second_start);
+
+    assert!(value.set(&mut ui, 0.75));
+    ui.compute_layout(Size::new(520.0, 90.0));
+    let first_after = ui.effective_bounds(first_thumb).x0 - ui.effective_bounds(first).x0;
+    let second_after = ui.effective_bounds(second_thumb).x0 - ui.effective_bounds(second).x0;
+    assert!(
+        first_after > first_start + 50.0,
+        "binding update should move the first slider thumb: {first_start} -> {first_after}",
+    );
+    assert_close(first_after, second_after);
+}
+
+#[test]
 fn default_templates_label_named_parts() {
     use crate::{
         Button, PART_BUTTON_LABEL, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB,

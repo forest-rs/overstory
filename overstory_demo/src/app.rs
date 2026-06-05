@@ -19,14 +19,16 @@ use overstory::motion::{
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Accordion, AccordionChildUiExt, AccordionSection, Affine, BindingSpecExt, BuiltInProperties,
-    Button, CheckBox, ChildUi, ChoiceOption, CursorIcon, Divider, ElementId, ElementRef,
-    ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment,
-    LayoutContainer, LayoutDimension, LayoutJustify, LayoutSize, LayoutSpacing, ListBox,
-    LocalState, OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioButton, RadioGroup,
-    Rect, SLOT_BUTTON_CONTENT, SegmentedControl, Select, Slider, Spinner, Splitter, SurfaceSpecExt,
-    TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, TemplateNode, TemplateSpec, Text, TextInput, TextSpecExt,
-    TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts,
-    set_progress_value, theme,
+    Button, CheckBox, ChildUi, ChoiceOption, ControlTemplateSpecExt, CursorIcon, Divider,
+    ElementId, ElementRef, ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout,
+    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutPlacement,
+    LayoutSize, LayoutSpacing, ListBox, LocalState, OutlineView, OutlineViewNode, Panel, Popup,
+    ProgressBar, RadioButton, RadioGroup, Rect, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX,
+    SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK,
+    SegmentedControl, Select, Slider, Spinner, Splitter, SurfaceSpecExt, TYPE_BUTTON, TYPE_GENERIC,
+    TYPE_TEXT, TemplateNode, TemplateSpec, TemplateWidgetFactory, Text, TextInput, TextSpecExt,
+    TextWidget, TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, Widget,
+    layouts, set_progress_value, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};

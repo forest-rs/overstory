@@ -52,6 +52,13 @@ pub(super) fn tabular_number_features() -> Box<[FontFeature]> {
 }
 
 pub(super) trait DemoChildUiExt {
+    fn demo_auto_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> R;
+
     fn demo_card<R>(
         &mut self,
         title: &str,
@@ -70,6 +77,29 @@ pub(super) trait DemoChildUiExt {
 }
 
 impl DemoChildUiExt for ChildUi<'_> {
+    fn demo_auto_card<R>(
+        &mut self,
+        title: &str,
+        width: f32,
+        f: impl FnOnce(&mut ChildUi<'_>) -> R,
+    ) -> R {
+        self.with_child(
+            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
+                Layout::column(14.0)
+                    .size(
+                        LayoutSize::new()
+                            .width(LayoutDimension::Logical(width))
+                            .min_width(LayoutDimension::Logical(0.0)),
+                    )
+                    .padding_all(18.0),
+            ),
+            |card| {
+                card.add(card_title(title));
+                f(card)
+            },
+        )
+    }
+
     fn demo_card<R>(
         &mut self,
         title: &str,
