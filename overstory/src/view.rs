@@ -33,7 +33,7 @@
 //!             });
 //!
 //!             card.add_with_children(Panel::column(6.0), |status| {
-//!                 status.add(Text::new("").bind_content(
+//!                 status.add(Text::new("").bind_text(
 //!                     deploy_count.map(|count| format!("Deploy attempts: {count}")),
 //!                 ));
 //!                 status.add(Slider::new().range(0.0, 100.0).value(42.0));

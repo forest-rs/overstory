@@ -203,6 +203,14 @@ impl Ui {
         self.push_property_row(
             &mut rows,
             element,
+            "Text",
+            ElementPropertyInspectionGroup::Text,
+            properties.text,
+            text_value,
+        );
+        self.push_property_row(
+            &mut rows,
+            element,
             "Foreground",
             ElementPropertyInspectionGroup::Text,
             properties.foreground,

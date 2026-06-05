@@ -2535,13 +2535,13 @@ mod tests {
         assert_eq!(
             inspector
                 .get(header_children[0])
-                .and_then(|element| element.get_local_value(inspector.properties().content)),
+                .and_then(|element| element.get_local_value(inspector.properties().text)),
             Some(&String::from("ELEMENT"))
         );
         assert_eq!(
             inspector
                 .get(header_children[1])
-                .and_then(|element| element.get_local_value(inspector.properties().content)),
+                .and_then(|element| element.get_local_value(inspector.properties().text)),
             Some(&String::from("5"))
         );
         let element_row = inspector
@@ -2606,7 +2606,7 @@ mod tests {
         assert_eq!(
             inspector
                 .get(token_text)
-                .and_then(|element| element.get_local_value(inspector.properties().content)),
+                .and_then(|element| element.get_local_value(inspector.properties().text)),
             Some(&String::from(":hover")),
             "token values should render as token chips"
         );

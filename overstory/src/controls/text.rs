@@ -15,7 +15,7 @@
 //!   coherent layout-style key.
 //! - Keep shaping and prepared-layout reuse centralized in the text engine /
 //!   presentation path so repeated labels share work across controls.
-//! - Add richer content only when the presentation model can represent it
+//! - Add richer text content only when the presentation model can represent it
 //!   without bypassing templates, layout, or accessibility.
 
 use alloc::boxed::Box;
@@ -43,7 +43,7 @@ pub const TYPE_TEXT: TypeTag = TypeTag(1);
 /// Text defaults to single-line label behavior. Use [`Self::wrap`] for body
 /// text that should flow inside a chosen layout width.
 pub struct Text {
-    content: String,
+    text: String,
     font_size: Option<f64>,
     foreground: Option<Brush>,
     wrap_mode: Option<TextWrapMode>,
@@ -53,17 +53,17 @@ pub struct Text {
 impl core::fmt::Debug for Text {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Text")
-            .field("content", &self.content)
+            .field("text", &self.text)
             .finish_non_exhaustive()
     }
 }
 
 impl Text {
-    /// Starts a new `Text` builder with the given content.
+    /// Starts a new `Text` builder with the given rendered text.
     #[must_use]
-    pub fn new(content: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<String>) -> Self {
         Self {
-            content: content.into(),
+            text: text.into(),
             font_size: None,
             foreground: None,
             wrap_mode: None,
@@ -117,14 +117,14 @@ impl Text {
 impl AppendSpec for Text {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
         let id = ui.append_widget(parent, Box::new(TextWidget));
-        let content_prop = ui.properties().content;
+        let text_prop = ui.properties().text;
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
         let wrap_mode_prop = ui.properties().text_wrap_mode;
-        // Skip writing `Local` for empty content so `Text::new("")` can be a
-        // placeholder for bound content without an initial local value.
-        if !self.content.is_empty() {
-            ui.set_local(id, content_prop, self.content);
+        // Skip writing `Local` for empty text so `Text::new("")` can be a
+        // placeholder for bound text without an initial local value.
+        if !self.text.is_empty() {
+            ui.set_local(id, text_prop, self.text);
         }
         if let Some(size) = self.font_size {
             ui.set_local(id, font_size_prop, size);
@@ -146,7 +146,7 @@ impl ElementSpec for Text {
     }
 }
 
-/// Per-element widget for `Text`. Stateless — the content / size /
+/// Per-element widget for `Text`. Stateless — the text / size /
 /// foreground all live in the property store.
 #[derive(Debug, Default)]
 pub struct TextWidget;
@@ -171,14 +171,14 @@ impl Widget for TextWidget {
         store: &mut PresentationStore<NodeId, ElementId>,
         node: NodeId,
     ) {
-        let content: String = ctx.get_value(element, ctx.properties.content);
+        let rendered_text: String = ctx.get_value(element, ctx.properties.text);
         let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
         let style = text_style(element, ctx);
 
         let Some(text) = store.plain_text_mut(node) else {
             return;
         };
-        text.content = TextContent::plain(content);
+        text.content = TextContent::plain(rendered_text);
         text.foreground = Some(foreground);
         text.style = style;
     }
@@ -189,8 +189,8 @@ impl Widget for TextWidget {
         ctx: &MeasureContext<'_>,
         constraints: MeasureConstraints,
     ) -> Option<Size> {
-        let content: String = ctx.get_value(element, ctx.properties.content);
-        if content.is_empty() {
+        let text: String = ctx.get_value(element, ctx.properties.text);
+        if text.is_empty() {
             return Some(Size::ZERO);
         }
         let style = text_style(element, ctx);
@@ -198,7 +198,7 @@ impl Widget for TextWidget {
             TextWrapMode::NoWrap => None,
             TextWrapMode::Wrap => constraints.known.width,
         };
-        let layout = ctx.text.borrow_mut().shape(&content, &style, wrap_width);
+        let layout = ctx.text.borrow_mut().shape(&text, &style, wrap_width);
         let width = f64::from(layout.width());
         let height = f64::from(layout.height());
         Some(Size::new(width, height))

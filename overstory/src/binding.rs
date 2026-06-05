@@ -6,6 +6,11 @@
 //! Overstory uses `understory_property_binding` as the generic endpoint graph.
 //! This module owns the UI-specific endpoint owners: retained elements,
 //! local app state, and explicitly refreshed external sources.
+//!
+//! Use [`BindingSpecExt::bind_content`] for semantic owner content that a
+//! template/content presenter reads from a control, and
+//! [`BindingSpecExt::bind_text`] for the rendered string stored on a `Text`
+//! element or template-owned text part.
 
 use alloc::boxed::Box;
 
@@ -346,11 +351,16 @@ pub trait BindingSpecExt: AppendSpec + Sized {
         BoundSpec::new(self, BindingTarget::Property(property), binding)
     }
 
-    /// Binds `binding` into the built-in text/content property.
+    /// Binds `binding` into the built-in semantic owner content property.
     ///
     /// The binding writes into the local property source, not the lower
-    /// template-binding source, so bound content replaces an initial builder
+    /// template-binding source, so bound content replaces an initial control
     /// label.
+    ///
+    /// Use this for values that belong to a control owner and may be projected
+    /// by a template/content presenter, such as a button label, check-box label,
+    /// selected item label, or expander header. Use [`Self::bind_text`] for a
+    /// leaf `Text` element's rendered string.
     #[must_use]
     fn bind_content<Source>(
         self,
@@ -360,6 +370,23 @@ pub trait BindingSpecExt: AppendSpec + Sized {
         Source: Clone + 'static,
     {
         BoundSpec::new(self, BindingTarget::BuiltIn(content_property), binding)
+    }
+
+    /// Binds `binding` into the built-in rendered text property.
+    ///
+    /// Use this for [`crate::Text`] and template-owned text parts, including
+    /// glyphs and labels created by a template. Use [`Self::bind_content`] when
+    /// binding semantic control content that a content presenter should read
+    /// from the owning control.
+    #[must_use]
+    fn bind_text<Source>(
+        self,
+        binding: ValueBinding<Source, alloc::string::String>,
+    ) -> BoundSpec<Self, Source, alloc::string::String>
+    where
+        Source: Clone + 'static,
+    {
+        BoundSpec::new(self, BindingTarget::BuiltIn(text_property), binding)
     }
 }
 
@@ -518,4 +545,8 @@ impl BindingSourceRuntime {
 
 fn content_property(properties: &BuiltInProperties) -> Property<alloc::string::String> {
     properties.content
+}
+
+fn text_property(properties: &BuiltInProperties) -> Property<alloc::string::String> {
+    properties.text
 }

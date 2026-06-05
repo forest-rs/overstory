@@ -240,7 +240,7 @@ pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
     }
     if let Some(label) = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL) {
         let content = label_for_fraction(fraction);
-        ui.set_local(label, ui.properties().content, content);
+        ui.set_local(label, ui.properties().text, content);
     }
 }
 
@@ -249,7 +249,7 @@ fn set_progress_label_visible(ui: &mut Ui, progress: ElementId, visible: bool) {
         return;
     };
     if !visible {
-        ui.set_local(label, ui.properties().content, String::new());
+        ui.set_local(label, ui.properties().text, String::new());
     }
 }
 
@@ -279,7 +279,7 @@ mod tests {
         assert_eq!(ui.effective_bounds(fill).width(), 50.0);
         assert_eq!(
             ui.get(label)
-                .and_then(|el| el.get_local_value(ui.properties().content))
+                .and_then(|el| el.get_local_value(ui.properties().text))
                 .map(String::as_str),
             Some("25%")
         );

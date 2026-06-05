@@ -296,7 +296,7 @@ pub fn set_check_box_checked(ui: &mut Ui, checkbox: ElementId, checked: bool) {
 
     if let Some(mark) = ui.slot(checkbox, SLOT_CHECK_BOX_MARK) {
         let content = if checked { "✓" } else { "" };
-        ui.set_local(mark, ui.properties().content, String::from(content));
+        ui.set_local(mark, ui.properties().text, String::from(content));
     }
 }
 

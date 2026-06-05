@@ -327,7 +327,7 @@ impl Widget for SelectWidget {
         if let Some(indicator) = ui.slot(select, SLOT_SELECT_INDICATOR) {
             ui.set_local(
                 indicator,
-                ui.properties().content,
+                ui.properties().text,
                 String::from(SELECT_INDICATOR),
             );
         }

@@ -31,7 +31,7 @@ pub(super) fn append_tabular_counter_to(
         let counter = row.add(
             number_text("")
                 .font_features(tabular_number_features())
-                .bind_content(value.map(|value| format!("{value:04}")))
+                .bind_text(value.map(|value| format!("{value:04}")))
                 .tooltip("Tabular figures keep neighboring text steady"),
         );
         row.add(caption(suffix));
@@ -54,7 +54,7 @@ pub(super) fn append_large_counter_to(
         let counter = row.add(
             large_number_text("")
                 .font_features(tabular_number_features())
-                .bind_content(value.map(|value| format!("{value:04}")))
+                .bind_text(value.map(|value| format!("{value:04}")))
                 .tooltip("Tabular figures keep neighboring text steady"),
         );
         row.add(caption(suffix));

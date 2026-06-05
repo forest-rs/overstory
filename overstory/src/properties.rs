@@ -41,6 +41,19 @@ use crate::template::ControlTemplate;
 /// Properties are registered once at `Ui` construction; their type-safe
 /// [`Property<T>`] handles are exposed here so application code can read and
 /// write them without re-registering.
+///
+/// Text-like data is intentionally split:
+/// - [`Self::content`] is semantic owner content, such as a button label,
+///   expander header, or selected item label. Templates and content presenters
+///   read this from the owning control.
+/// - [`Self::text`] is the string rendered by a `Text` element or a
+///   template-owned glyph/label part. Text layout and presentation code read
+///   this property directly.
+///
+/// This mirrors the WPF-style distinction between `ContentControl.Content` and
+/// a text element's rendered text. A templated control should usually expose
+/// author-facing labels through `content`, while the elements created by the
+/// template use `text` after the template chooses how to present that content.
 #[derive(Copy, Clone, Debug)]
 pub struct BuiltInProperties {
     /// Fill brush for the element's body. Default `None` (no fill).
@@ -80,10 +93,30 @@ pub struct BuiltInProperties {
     /// own flow/absolute positioning.
     pub layout_placement: Property<LayoutPlacement>,
 
-    /// Textual content for elements that render strings (e.g. [`crate::Text`]).
-    /// Default `String::new()`. Writes mark both `LAYOUT` (text size depends on
-    /// content) and `PAINT`.
+    /// Semantic owner content for controls and content presenters.
+    ///
+    /// Use this for app-authored control labels and other data that a template
+    /// projects through a content presenter. For example, `Button::new("Save")`
+    /// stores `"Save"` here on the button element; the default button template
+    /// then creates a presenter that reads the owner's content. Do not use this
+    /// for the string stored on a leaf `Text` widget.
+    ///
+    /// Default `String::new()`. Writes mark `LAYOUT` so presenters can remeasure
+    /// text fallback when owner content changes.
     pub content: Property<String>,
+
+    /// Rendered text for text widgets and template-owned glyph/label parts.
+    ///
+    /// Use this for the string a `Text` element shapes and paints, including
+    /// template-generated labels such as progress percentages, slider tick
+    /// labels, checkbox glyphs, and disclosure arrows. Do not bind ordinary
+    /// button/check-box/radio labels here; those labels belong on
+    /// [`Self::content`] so a replacement template can decide how to present
+    /// them.
+    ///
+    /// Default `String::new()`. Writes mark `LAYOUT` because text size depends
+    /// on the rendered string.
+    pub text: Property<String>,
 
     /// Visual template used to expand a lookless control. Default `None`,
     /// which means the control falls back to its widget-declared default
@@ -278,6 +311,15 @@ impl BuiltInProperties {
             ),
             content: registry.register(
                 "Content",
+                PropertyMetadataBuilder::new(String::new())
+                    // PAINT cascades from LAYOUT via the tracker's
+                    // channel cascade — no need to declare it
+                    // explicitly here.
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            text: registry.register(
+                "Text",
                 PropertyMetadataBuilder::new(String::new())
                     // PAINT cascades from LAYOUT via the tracker's
                     // channel cascade — no need to declare it

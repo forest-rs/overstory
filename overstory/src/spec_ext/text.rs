@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Text and font authoring extension traits.
+//!
+//! `content(...)` and `text(...)` are deliberately different:
+//! - `content(...)` writes semantic owner content that a control template can
+//!   project through a content presenter.
+//! - `text(...)` writes the rendered string consumed by a leaf `Text` element
+//!   or a template-owned glyph/label part.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -21,11 +27,29 @@ use crate::widget::BuiltInPropertyKey;
 /// requiring the caller to fetch a [`BuiltInProperties`](crate::BuiltInProperties)
 /// handle from a [`Ui`](crate::Ui).
 pub trait TextSpecExt: ElementSpec + Sized {
-    /// Sets the initial textual content property.
+    /// Sets the initial semantic owner content property.
+    ///
+    /// Use this for controls that present author-facing content through a
+    /// content presenter, such as button labels, expander headers, list items,
+    /// and selected values. Use [`Self::text`] for the actual string rendered by
+    /// `Text` elements.
     #[must_use]
     fn content(mut self, content: impl Into<String>) -> Self {
         self.element_config_mut()
             .set_built_in_local(BuiltInPropertyKey::Content, content.into());
+        self
+    }
+
+    /// Sets the initial rendered text property.
+    ///
+    /// Use this for leaf `Text` elements and for template-owned glyph/label
+    /// parts. Owner controls should usually expose their labels through
+    /// [`Self::content`] so replacement templates can choose how to present
+    /// them.
+    #[must_use]
+    fn text(mut self, text: impl Into<String>) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Text, text.into());
         self
     }
 

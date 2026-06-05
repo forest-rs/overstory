@@ -84,10 +84,20 @@ impl<'a> AccessibilityContext<'a> {
         accesskit_node_id(id)
     }
 
-    /// Resolves the textual content associated with `element`.
+    /// Resolves the accessible text associated with `element`.
+    ///
+    /// Controls expose semantic labels through `Content`; text-rendering
+    /// elements expose drawn strings through `Text`. Accessibility uses content
+    /// first because it is the control owner's semantic label, then falls back
+    /// to rendered text for leaf text widgets and template-owned text parts.
     #[must_use]
     pub fn content(&self, element: &Element) -> String {
-        self.get_value(element, self.ui.properties().content)
+        let content = self.get_value(element, self.ui.properties().content);
+        if content.is_empty() {
+            self.get_value(element, self.ui.properties().text)
+        } else {
+            content
+        }
     }
 
     /// Returns whether `id` is currently eligible for focus.

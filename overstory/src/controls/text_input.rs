@@ -828,7 +828,7 @@ fn refresh_text_input_parts(
     } else {
         text
     };
-    ui.set_local(text_part, ui.properties().content, String::from(display));
+    ui.set_local(text_part, ui.properties().text, String::from(display));
     ui.set_layout_placement(
         text_part,
         LayoutPlacement::absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
@@ -1268,7 +1268,7 @@ mod tests {
         );
         assert_eq!(
             ui.get(text)
-                .and_then(|el| el.get_local_value(ui.properties().content))
+                .and_then(|el| el.get_local_value(ui.properties().text))
                 .map(String::as_str),
             Some("new")
         );

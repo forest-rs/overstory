@@ -297,32 +297,28 @@ fn update_svg_inspector(
 ) {
     ui.set_local(
         inspector.paths,
-        ui.properties().content,
+        ui.properties().text,
         state.path_count_readout(),
     );
     ui.set_local(
         inspector.selected,
-        ui.properties().content,
+        ui.properties().text,
         state.selected_path_readout(tree),
     );
     ui.set_local(
         inspector.bounds,
-        ui.properties().content,
+        ui.properties().text,
         state.selected_bounds_readout(tree),
     );
-    ui.set_local(
-        inspector.zoom,
-        ui.properties().content,
-        state.zoom_readout(),
-    );
+    ui.set_local(inspector.zoom, ui.properties().text, state.zoom_readout());
     ui.set_local(
         inspector.visible,
-        ui.properties().content,
+        ui.properties().text,
         state.visible_rect_readout(),
     );
     ui.set_local(
         inspector.transform,
-        ui.properties().content,
+        ui.properties().text,
         state.transform_readout(),
     );
 }
@@ -723,7 +719,7 @@ fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
     append_svg_grid(ui, viewer.grid, &state);
     ui.set_visual_transform(viewer.content, viewport_transform(&state.viewport));
     update_svg_selection_overlay(ui, viewer, &state);
-    ui.set_local(viewer.status, ui.properties().content, state.status());
+    ui.set_local(viewer.status, ui.properties().text, state.status());
     if let Some(inspector) = viewer.runtime.inspector.get() {
         update_svg_inspector(ui, inspector, &state, &viewer.tree);
     }

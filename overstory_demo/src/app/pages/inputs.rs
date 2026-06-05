@@ -71,7 +71,7 @@ impl View for InputsPage {
                                     label.add(
                                         Text::new("")
                                             .font_size(15.0)
-                                            .bind_content(deploy_clicks.map(|count| {
+                                            .bind_text(deploy_clicks.map(|count| {
                                                 cycling_click_label("Deploy", *count)
                                             })),
                                     );
@@ -108,7 +108,7 @@ impl View for InputsPage {
             |row| {
                 row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
                     let summary = radios.local_state(String::from("Release lane: Balanced"));
-                    radios.add(caption("").bind_content(summary.binding()));
+                    radios.add(caption("").bind_text(summary.binding()));
                     radios.add(
                         RadioGroup::new()
                             .items(["Balanced", "Quality", "Low latency"])
@@ -128,7 +128,7 @@ impl View for InputsPage {
                 });
                 row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
                     let summary = segments.local_state(String::from("View mode: Preview"));
-                    segments.add(caption("").bind_content(summary.binding()));
+                    segments.add(caption("").bind_text(summary.binding()));
                     segments.add(
                         SegmentedControl::new()
                             .options([

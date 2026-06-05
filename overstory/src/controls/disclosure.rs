@@ -83,7 +83,7 @@ pub(crate) fn sync_state(
     if let Some(disclosure) = ui.slot(owner, disclosure_slot) {
         ui.set_local(
             disclosure,
-            ui.properties().content,
+            ui.properties().text,
             String::from(glyph(expanded)),
         );
     }

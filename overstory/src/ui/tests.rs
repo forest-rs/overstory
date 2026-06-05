@@ -216,7 +216,7 @@ fn authoring_view_example_builds_and_binds_with_real_api() {
                         |advanced| {
                             advanced.add(crate::CheckBox::new("Require review").checked(true));
                             advanced.add(crate::CheckBox::new("Attach timing traces"));
-                            advanced.add(crate::Text::new("").bind_content(
+                            advanced.add(crate::Text::new("").bind_text(
                                 deploy_count.map(|count| format!("Deploy attempts: {count}")),
                             ))
                         },
@@ -243,11 +243,11 @@ fn authoring_view_example_builds_and_binds_with_real_api() {
         }
     }
 
-    fn resolved_content(ui: &Ui, id: ElementId) -> Option<String> {
+    fn resolved_text(ui: &Ui, id: ElementId) -> Option<String> {
         ui.get(id)
             .unwrap()
             .property_store()
-            .effective_local_erased(ui.properties().content.id())
+            .effective_local_erased(ui.properties().text.id())
             .and_then(|value| value.downcast_ref::<String>().cloned())
     }
 
@@ -260,14 +260,14 @@ fn authoring_view_example_builds_and_binds_with_real_api() {
 
     ui.flush_bindings();
     assert_eq!(
-        resolved_content(&ui, elements.count_label).as_deref(),
+        resolved_text(&ui, elements.count_label).as_deref(),
         Some("Deploy attempts: 0")
     );
 
     assert!(elements.count.set(&mut ui, 3));
     ui.flush_bindings();
     assert_eq!(
-        resolved_content(&ui, elements.count_label).as_deref(),
+        resolved_text(&ui, elements.count_label).as_deref(),
         Some("Deploy attempts: 3")
     );
 }
@@ -313,13 +313,13 @@ fn element_ref_can_write_properties_without_raw_element_id() {
     let label = ElementRef::<crate::Text>::new();
 
     ui.append(root, crate::Text::new("Before").reference(label.clone()));
-    let content = ui.properties().content;
+    let text = ui.properties().text;
 
-    label.set_local(&mut ui, content, String::from("After"));
+    label.set_local(&mut ui, text, String::from("After"));
 
     let id = label.resolve(&ui).expect("label ref should resolve");
     assert_eq!(
-        ui.resolve_value_for(ui.get(id).unwrap(), content),
+        ui.resolve_value_for(ui.get(id).unwrap(), text),
         String::from("After")
     );
 }
@@ -670,7 +670,7 @@ fn default_cascade_supplies_control_font_sizes() {
 }
 
 #[test]
-fn text_measure_uses_styled_content_and_font_size() {
+fn text_measure_uses_styled_text_and_font_size() {
     use crate::{TYPE_TEXT, Text};
     use alloc::string::String;
 
@@ -684,7 +684,7 @@ fn text_measure_uses_styled_content_and_font_size() {
     let text = ui.append(root, Text::new(""));
 
     let style = StyleBuilder::new()
-        .set(ui.properties().content, String::from("Styled text"))
+        .set(ui.properties().text, String::from("Styled text"))
         .set(ui.properties().font_size, 40.0_f64)
         .build();
     let cascade = StyleCascadeBuilder::new()
@@ -701,7 +701,7 @@ fn text_measure_uses_styled_content_and_font_size() {
     let bounds = ui.effective_bounds(text);
     assert!(
         bounds.width() > 0.0 && bounds.height() > 30.0,
-        "styled text content and font size should participate in measure; got {bounds:?}"
+        "styled text and font size should participate in measure; got {bounds:?}"
     );
 }
 
@@ -2254,12 +2254,8 @@ fn slider_template_creates_keyed_major_and_minor_tick_parts() {
         instance.keyed_slot(SLOT_SLIDER_TICK_LABEL, TemplateItemKey::new(2)),
         Some(middle_label)
     );
-    let content = ui.properties().content;
-    let label = ui
-        .get(middle_label)
-        .unwrap()
-        .get_local_value(content)
-        .cloned();
+    let text = ui.properties().text;
+    let label = ui.get(middle_label).unwrap().get_local_value(text).cloned();
     assert_eq!(label.as_deref(), Some("15"));
 }
 
@@ -2807,7 +2803,7 @@ fn remove_clears_bindings_for_subtree() {
 }
 
 #[test]
-fn local_state_binding_updates_element_content() {
+fn local_state_binding_updates_element_text() {
     use crate::{BindingSpecExt, Text};
     use alloc::format;
 
@@ -2815,7 +2811,7 @@ fn local_state_binding_updates_element_content() {
     let count = ui.local_state(0_u32);
     let label = ui.append(
         ui.root(),
-        Text::new("").bind_content(count.map(|count| format!("Count: {count}"))),
+        Text::new("").bind_text(count.map(|count| format!("Count: {count}"))),
     );
 
     ui.flush_bindings();
@@ -2823,7 +2819,7 @@ fn local_state_binding_updates_element_content() {
         ui.get(label)
             .unwrap()
             .property_store()
-            .effective_local_erased(ui.properties().content.id())
+            .effective_local_erased(ui.properties().text.id())
             .and_then(|value| value.downcast_ref::<String>().cloned())
             .as_deref(),
         Some("Count: 0")
@@ -2835,7 +2831,7 @@ fn local_state_binding_updates_element_content() {
         ui.get(label)
             .unwrap()
             .property_store()
-            .effective_local_erased(ui.properties().content.id())
+            .effective_local_erased(ui.properties().text.id())
             .and_then(|value| value.downcast_ref::<String>().cloned())
             .as_deref(),
         Some("Count: 42")
@@ -2868,7 +2864,7 @@ fn external_source_binding_refreshes_when_notified() {
     });
     let label = ui.append(
         ui.root(),
-        Text::new("").bind_content(external.map(|value| format!("External: {value}"))),
+        Text::new("").bind_text(external.map(|value| format!("External: {value}"))),
     );
 
     ui.flush_bindings();
@@ -2876,7 +2872,7 @@ fn external_source_binding_refreshes_when_notified() {
         ui.get(label)
             .unwrap()
             .property_store()
-            .effective_local_erased(ui.properties().content.id())
+            .effective_local_erased(ui.properties().text.id())
             .and_then(|value| value.downcast_ref::<String>().cloned())
             .as_deref(),
         Some("External: 3")
@@ -2889,7 +2885,7 @@ fn external_source_binding_refreshes_when_notified() {
         ui.get(label)
             .unwrap()
             .property_store()
-            .effective_local_erased(ui.properties().content.id())
+            .effective_local_erased(ui.properties().text.id())
             .and_then(|value| value.downcast_ref::<String>().cloned())
             .as_deref(),
         Some("External: 9")
@@ -4964,6 +4960,7 @@ fn element_spec_ext_applies_text_and_range_property_helpers() {
     let text = ui.append(
         root,
         crate::Text::new("0000")
+            .text("1234")
             .font_features(Box::from([feature]))
             .letter_spacing(1.25)
             .text_wrap_mode(crate::TextWrapMode::Wrap),
@@ -4977,6 +4974,10 @@ fn element_spec_ext_applies_text_and_range_property_helpers() {
             .large_change(0.5),
     );
 
+    assert_eq!(
+        ui.get(text).unwrap().get_local_value(ui.properties().text),
+        Some(&String::from("1234"))
+    );
     assert_eq!(
         ui.get(text)
             .unwrap()

@@ -99,7 +99,7 @@ impl InProcessDevtoolsShell {
             stream_item_count,
             tree_patch_counts,
         );
-        ui.set_local(status, ui.properties().content, content);
+        ui.set_local(status, ui.properties().text, content);
     }
 
     fn refresh(&self, ui: &mut Ui) -> bool {
@@ -128,7 +128,7 @@ impl InProcessDevtoolsShell {
             if let Some(status) = self.status.get() {
                 ui.set_local(
                     status,
-                    ui.properties().content,
+                    ui.properties().text,
                     String::from("Live refresh failed"),
                 );
             }

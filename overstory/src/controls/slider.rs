@@ -436,7 +436,7 @@ impl Template for SliderTemplate {
         let value_prop = cx.properties().value;
         let min_prop = cx.properties().minimum;
         let max_prop = cx.properties().maximum;
-        let content_prop = cx.properties().content;
+        let text_prop = cx.properties().text;
 
         // Track: full width, vertically centered.
         let track = cx.surface_slot(SLOT_SLIDER_TRACK);
@@ -470,7 +470,7 @@ impl Template for SliderTemplate {
                 let content = format_tick_value(mark.value);
                 cx.set_layout_placement(label, tick_label_placement(mark, &content));
                 cx.set_layout_size(label, tick_label_size(&content));
-                cx.set_local(label, content_prop, content);
+                cx.set_local(label, text_prop, content);
             }
         }
 
@@ -625,7 +625,7 @@ fn format_tick_value(value: f64) -> String {
 fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
-    let content_prop = ui.properties().content;
+    let text_prop = ui.properties().text;
     let ruler = slider_ruler(min, max);
     for (index, mark) in ruler
         .marks()
@@ -656,7 +656,7 @@ fn sync_slider_tick_labels(ui: &mut Ui, slider: ElementId) {
         let content = format_tick_value(mark.value);
         ui.set_layout_placement(label, tick_label_placement(mark, &content));
         ui.set_layout_size(label, tick_label_size(&content));
-        ui.set_local(label, content_prop, content);
+        ui.set_local(label, text_prop, content);
     }
 }
 

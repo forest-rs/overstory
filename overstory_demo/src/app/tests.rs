@@ -717,7 +717,7 @@ fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementI
 
 fn text_content(ui: &Ui, element: ElementId) -> String {
     ui.get(element)
-        .and_then(|element| element.get_local_value(ui.properties().content))
+        .and_then(|element| element.get_local_value(ui.properties().text))
         .cloned()
         .expect("element should have text content")
 }
