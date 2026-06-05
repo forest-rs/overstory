@@ -27,7 +27,7 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -226,7 +226,9 @@ impl Widget for CheckBoxWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&CHECK_BOX_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            check_box_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -272,17 +274,12 @@ impl Widget for CheckBoxWidget {
     }
 }
 
-#[derive(Debug)]
-struct CheckBoxTemplate;
-
-static CHECK_BOX_TEMPLATE: CheckBoxTemplate = CheckBoxTemplate;
-
-impl Template for CheckBoxTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let box_part = cx.surface_slot(SLOT_CHECK_BOX_BOX);
-        cx.text_slot_under(box_part, SLOT_CHECK_BOX_MARK);
-        cx.content_presenter(SLOT_CHECK_BOX_LABEL);
-    }
+fn check_box_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_CHECK_BOX_BOX)
+            .with_child(TemplateNode::text_slot(SLOT_CHECK_BOX_MARK)),
+        TemplateNode::content_presenter(SLOT_CHECK_BOX_LABEL),
+    ])
 }
 
 /// Sets `IsChecked` on `checkbox` and keeps the `:checked` pseudoclass in sync.

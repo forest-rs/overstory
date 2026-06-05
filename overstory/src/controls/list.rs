@@ -47,7 +47,7 @@ use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -897,7 +897,9 @@ impl Widget for ListItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&LIST_ITEM_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            list_item_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -933,16 +935,9 @@ struct RealizedListItem {
     element: ElementId,
 }
 
-#[derive(Debug)]
-struct ListItemTemplate;
-
-static LIST_ITEM_TEMPLATE: ListItemTemplate = ListItemTemplate;
-
-impl Template for ListItemTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let content = cx.surface_part(PART_LIST_ITEM_CONTENT);
-        cx.content_presenter_under(content, SLOT_LIST_ITEM_CONTENT);
-    }
+fn list_item_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([TemplateNode::surface_part(PART_LIST_ITEM_CONTENT)
+        .with_child(TemplateNode::content_presenter(SLOT_LIST_ITEM_CONTENT))])
 }
 
 fn append_realized_list_item(

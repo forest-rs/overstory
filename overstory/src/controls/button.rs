@@ -37,7 +37,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -242,7 +242,9 @@ impl Widget for ButtonWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&BUTTON_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            button_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -277,18 +279,10 @@ impl Widget for ButtonWidget {
     }
 }
 
-#[derive(Debug)]
-struct ButtonTemplate;
-
-static BUTTON_TEMPLATE: ButtonTemplate = ButtonTemplate;
-
-impl Template for ButtonTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        // Foreground inherits through the tree, so styled owner foreground
-        // remains theme-live instead of being copied into a local template
-        // value.
-        cx.content_presenter(SLOT_BUTTON_CONTENT);
-    }
+fn button_template_spec() -> TemplateSpec {
+    // Foreground inherits through the tree, so styled owner foreground remains
+    // theme-live instead of being copied into a local template value.
+    TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)])
 }
 
 fn button_enabled(ui: &Ui, button: ElementId) -> bool {

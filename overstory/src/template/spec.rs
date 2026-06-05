@@ -14,6 +14,8 @@ use understory_style::{ClassId, PartTag};
 
 use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 
+type TemplateSpecFactory = fn() -> TemplateSpec;
+
 /// Stable identity for a [`ControlTemplate`] value.
 ///
 /// Template equality is identity-based. Rebuilding an equivalent owned
@@ -47,6 +49,7 @@ pub struct ControlTemplate {
 #[derive(Clone)]
 enum ControlTemplateStorage {
     Static(&'static dyn Template),
+    SpecFactory(TemplateSpecFactory),
     Owned(Arc<dyn Template>),
 }
 
@@ -58,6 +61,25 @@ impl ControlTemplate {
         Self {
             id: TemplateId::from_usize(ptr as usize),
             storage: ControlTemplateStorage::Static(template),
+        }
+    }
+
+    /// Creates a stable template value from a data-spec factory.
+    ///
+    /// This is for built-in default templates that should be authored as
+    /// [`TemplateSpec`] data but still need stable identity across repeated
+    /// [`crate::Widget::default_template`] queries. App-authored templates
+    /// should generally use [`Self::new`] or `ControlTemplate::from(spec)`.
+    #[must_use]
+    pub(crate) fn from_spec_factory(factory: TemplateSpecFactory) -> Self {
+        #[expect(
+            clippy::fn_to_numeric_cast_any,
+            reason = "built-in template factories use the function address as a stable identity, not as an arithmetic value"
+        )]
+        let id = TemplateId::from_usize(factory as usize);
+        Self {
+            id,
+            storage: ControlTemplateStorage::SpecFactory(factory),
         }
     }
 
@@ -93,6 +115,7 @@ impl ControlTemplate {
     pub(crate) fn instantiate(&self, cx: &mut TemplateContext<'_>) {
         match &self.storage {
             ControlTemplateStorage::Static(template) => template.instantiate(cx),
+            ControlTemplateStorage::SpecFactory(factory) => factory().instantiate(cx),
             ControlTemplateStorage::Owned(template) => template.instantiate(cx),
         }
     }

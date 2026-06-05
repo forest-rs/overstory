@@ -41,7 +41,7 @@ use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -1130,7 +1130,9 @@ impl Widget for OutlineItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&OUTLINE_ITEM_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            outline_item_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -1234,17 +1236,10 @@ impl OutlineRowSnapshot {
     }
 }
 
-#[derive(Debug)]
-struct OutlineItemTemplate;
-
-static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = OutlineItemTemplate;
-
-impl Template for OutlineItemTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let content = cx.surface_part(PART_OUTLINE_ITEM_CONTENT);
-        cx.text_slot_under(content, SLOT_OUTLINE_ITEM_DISCLOSURE);
-        cx.content_presenter_under(content, SLOT_OUTLINE_ITEM_LABEL);
-    }
+fn outline_item_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([TemplateNode::surface_part(PART_OUTLINE_ITEM_CONTENT)
+        .with_child(TemplateNode::text_slot(SLOT_OUTLINE_ITEM_DISCLOSURE))
+        .with_child(TemplateNode::content_presenter(SLOT_OUTLINE_ITEM_LABEL))])
 }
 
 fn append_realized_outline_item(

@@ -27,7 +27,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_SELECTED;
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -383,8 +383,8 @@ impl Widget for SegmentedItemWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(
-            &SEGMENTED_ITEM_TEMPLATE,
+        Some(crate::ControlTemplate::from_spec_factory(
+            segmented_item_template_spec,
         ))
     }
 
@@ -424,15 +424,8 @@ impl Widget for SegmentedItemWidget {
     }
 }
 
-#[derive(Debug)]
-struct SegmentedItemTemplate;
-
-static SEGMENTED_ITEM_TEMPLATE: SegmentedItemTemplate = SegmentedItemTemplate;
-
-impl Template for SegmentedItemTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        cx.content_presenter(SLOT_SEGMENTED_ITEM_LABEL);
-    }
+fn segmented_item_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_SEGMENTED_ITEM_LABEL)])
 }
 
 fn append_segmented_item(

@@ -24,7 +24,7 @@ use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -208,7 +208,9 @@ impl Widget for ExpanderWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&EXPANDER_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            expander_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -274,18 +276,13 @@ impl ExpanderWidget {
     }
 }
 
-#[derive(Debug)]
-struct ExpanderTemplate;
-
-static EXPANDER_TEMPLATE: ExpanderTemplate = ExpanderTemplate;
-
-impl Template for ExpanderTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let header = cx.surface_slot(SLOT_EXPANDER_HEADER);
-        cx.text_slot_under(header, SLOT_EXPANDER_DISCLOSURE);
-        cx.content_presenter_under(header, SLOT_EXPANDER_LABEL);
-        cx.surface_slot(SLOT_EXPANDER_CONTENT);
-    }
+fn expander_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_EXPANDER_HEADER)
+            .with_child(TemplateNode::text_slot(SLOT_EXPANDER_DISCLOSURE))
+            .with_child(TemplateNode::content_presenter(SLOT_EXPANDER_LABEL)),
+        TemplateNode::surface_slot(SLOT_EXPANDER_CONTENT),
+    ])
 }
 
 /// Sets whether `expander` is expanded.

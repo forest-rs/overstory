@@ -33,7 +33,7 @@ use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -314,7 +314,9 @@ impl Widget for SelectWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(&SELECT_TEMPLATE))
+        Some(crate::ControlTemplate::from_spec_factory(
+            select_template_spec,
+        ))
     }
 
     fn template_contract(&self) -> TemplateContract {
@@ -540,16 +542,11 @@ impl SelectWidget {
     }
 }
 
-#[derive(Debug)]
-struct SelectTemplate;
-
-static SELECT_TEMPLATE: SelectTemplate = SelectTemplate;
-
-impl Template for SelectTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        cx.content_presenter(SLOT_SELECT_LABEL);
-        cx.text_slot(SLOT_SELECT_INDICATOR);
-    }
+fn select_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::content_presenter(SLOT_SELECT_LABEL),
+        TemplateNode::text_slot(SLOT_SELECT_INDICATOR),
+    ])
 }
 
 /// Selects `index` in `select`, replacing any previous selected item.

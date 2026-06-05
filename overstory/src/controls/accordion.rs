@@ -23,7 +23,7 @@ use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::Layout;
-use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{TemplateContract, TemplateNode, TemplateSlot, TemplateSpec};
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -362,8 +362,8 @@ impl Widget for AccordionSectionWidget {
     }
 
     fn default_template(&self) -> Option<crate::ControlTemplate> {
-        Some(crate::ControlTemplate::from_static(
-            &ACCORDION_SECTION_TEMPLATE,
+        Some(crate::ControlTemplate::from_spec_factory(
+            accordion_section_template_spec,
         ))
     }
 
@@ -452,18 +452,15 @@ impl AccordionSectionWidget {
     }
 }
 
-#[derive(Debug)]
-struct AccordionSectionTemplate;
-
-static ACCORDION_SECTION_TEMPLATE: AccordionSectionTemplate = AccordionSectionTemplate;
-
-impl Template for AccordionSectionTemplate {
-    fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let header = cx.surface_slot(SLOT_ACCORDION_SECTION_HEADER);
-        cx.text_slot_under(header, SLOT_ACCORDION_SECTION_DISCLOSURE);
-        cx.content_presenter_under(header, SLOT_ACCORDION_SECTION_LABEL);
-        cx.surface_slot(SLOT_ACCORDION_SECTION_CONTENT);
-    }
+fn accordion_section_template_spec() -> TemplateSpec {
+    TemplateSpec::from_nodes([
+        TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_HEADER)
+            .with_child(TemplateNode::text_slot(SLOT_ACCORDION_SECTION_DISCLOSURE))
+            .with_child(TemplateNode::content_presenter(
+                SLOT_ACCORDION_SECTION_LABEL,
+            )),
+        TemplateNode::surface_slot(SLOT_ACCORDION_SECTION_CONTENT),
+    ])
 }
 
 /// Sets whether an accordion section is expanded.
