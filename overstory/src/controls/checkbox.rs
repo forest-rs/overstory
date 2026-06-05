@@ -24,11 +24,10 @@ use crate::behavior::WidgetEventContext;
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
 };
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -280,12 +279,9 @@ static CHECK_BOX_TEMPLATE: CheckBoxTemplate = CheckBoxTemplate;
 
 impl Template for CheckBoxTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let box_part = cx.insert(TemplateChild::surface_slot(SLOT_CHECK_BOX_BOX));
-        cx.insert_under(
-            box_part,
-            TemplateChild::slot(SLOT_CHECK_BOX_MARK, Box::new(TextWidget)),
-        );
-        cx.insert(TemplateChild::content_presenter(SLOT_CHECK_BOX_LABEL));
+        let box_part = cx.surface_slot(SLOT_CHECK_BOX_BOX);
+        cx.text_slot_under(box_part, SLOT_CHECK_BOX_MARK);
+        cx.content_presenter(SLOT_CHECK_BOX_LABEL);
     }
 }
 

@@ -36,13 +36,12 @@ use crate::controls::support::{
     reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
     set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
 };
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -1242,15 +1241,9 @@ static OUTLINE_ITEM_TEMPLATE: OutlineItemTemplate = OutlineItemTemplate;
 
 impl Template for OutlineItemTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let content = cx.insert(TemplateChild::surface_part(PART_OUTLINE_ITEM_CONTENT));
-        cx.insert_under(
-            content,
-            TemplateChild::slot(SLOT_OUTLINE_ITEM_DISCLOSURE, Box::new(TextWidget)),
-        );
-        cx.insert_under(
-            content,
-            TemplateChild::content_presenter(SLOT_OUTLINE_ITEM_LABEL),
-        );
+        let content = cx.surface_part(PART_OUTLINE_ITEM_CONTENT);
+        cx.text_slot_under(content, SLOT_OUTLINE_ITEM_DISCLOSURE);
+        cx.content_presenter_under(content, SLOT_OUTLINE_ITEM_LABEL);
     }
 }
 

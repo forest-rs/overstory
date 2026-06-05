@@ -25,12 +25,12 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::WidgetEventContext;
 use crate::controls::support::f32_from_logical;
-use crate::controls::text::{TextWidget, text_style};
+use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -591,7 +591,7 @@ struct TextInputTemplate;
 
 impl Template for TextInputTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let selection = cx.insert(TemplateChild::surface_slot(SLOT_TEXT_INPUT_SELECTION));
+        let selection = cx.surface_slot(SLOT_TEXT_INPUT_SELECTION);
         let (selection_placement, selection_size) =
             editor_rect_parts(Rect::ZERO, DEFAULT_FONT_SIZE);
         cx.set_layout_placement(selection, selection_placement);
@@ -602,12 +602,9 @@ impl Template for TextInputTemplate {
         // geometry. That can shape the same text twice after edits. Keep this
         // conservative until editor-backed rendering can flow through the
         // presentation model, likely as a keyed prepared-text primitive/store.
-        let _ = cx.insert(TemplateChild::slot(
-            SLOT_TEXT_INPUT_TEXT,
-            Box::new(TextWidget),
-        ));
+        cx.text_slot(SLOT_TEXT_INPUT_TEXT);
 
-        let caret = cx.insert(TemplateChild::surface_slot(SLOT_TEXT_INPUT_CARET));
+        let caret = cx.surface_slot(SLOT_TEXT_INPUT_CARET);
         let (caret_placement, caret_size) = editor_rect_parts(
             Rect::new(0.0, 0.0, 1.5, f64::from(DEFAULT_FONT_SIZE) * 1.25),
             DEFAULT_FONT_SIZE,

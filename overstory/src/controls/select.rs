@@ -30,11 +30,10 @@ use crate::controls::choice::{
 use crate::controls::list::{ListBox, ListSelectionChangedEvent};
 use crate::controls::popup::Popup;
 use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -548,11 +547,8 @@ static SELECT_TEMPLATE: SelectTemplate = SelectTemplate;
 
 impl Template for SelectTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        cx.insert(TemplateChild::content_presenter(SLOT_SELECT_LABEL));
-        cx.insert(TemplateChild::slot(
-            SLOT_SELECT_INDICATOR,
-            Box::new(TextWidget),
-        ));
+        cx.content_presenter(SLOT_SELECT_LABEL);
+        cx.text_slot(SLOT_SELECT_INDICATOR);
     }
 }
 

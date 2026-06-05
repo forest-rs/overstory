@@ -22,10 +22,9 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::WidgetEventContext;
 use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -282,16 +281,10 @@ static EXPANDER_TEMPLATE: ExpanderTemplate = ExpanderTemplate;
 
 impl Template for ExpanderTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let header = cx.insert(TemplateChild::surface_slot(SLOT_EXPANDER_HEADER));
-        cx.insert_under(
-            header,
-            TemplateChild::slot(SLOT_EXPANDER_DISCLOSURE, Box::new(TextWidget)),
-        );
-        cx.insert_under(
-            header,
-            TemplateChild::content_presenter(SLOT_EXPANDER_LABEL),
-        );
-        cx.insert(TemplateChild::surface_slot(SLOT_EXPANDER_CONTENT));
+        let header = cx.surface_slot(SLOT_EXPANDER_HEADER);
+        cx.text_slot_under(header, SLOT_EXPANDER_DISCLOSURE);
+        cx.content_presenter_under(header, SLOT_EXPANDER_LABEL);
+        cx.surface_slot(SLOT_EXPANDER_CONTENT);
     }
 }
 

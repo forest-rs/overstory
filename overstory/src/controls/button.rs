@@ -37,7 +37,7 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -287,7 +287,7 @@ impl Template for ButtonTemplate {
         // Foreground inherits through the tree, so styled owner foreground
         // remains theme-live instead of being copied into a local template
         // value.
-        cx.insert(TemplateChild::content_presenter(SLOT_BUTTON_CONTENT));
+        cx.content_presenter(SLOT_BUTTON_CONTENT);
     }
 }
 

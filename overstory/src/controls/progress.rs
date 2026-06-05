@@ -21,10 +21,9 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
 use crate::controls::support::read_local_or;
-use crate::controls::text::TextWidget;
 use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -214,14 +213,11 @@ struct ProgressTemplate;
 
 impl Template for ProgressTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let fill = cx.insert(TemplateChild::surface_slot(SLOT_PROGRESS_BAR_FILL));
+        let fill = cx.surface_slot(SLOT_PROGRESS_BAR_FILL);
         cx.set_layout_placement(fill, LayoutPlacement::absolute_at(0.0, 0.0));
         cx.set_layout_size(fill, LayoutSize::percent(0.0, 1.0));
 
-        let label = cx.insert(TemplateChild::slot(
-            SLOT_PROGRESS_BAR_LABEL,
-            Box::new(TextWidget),
-        ));
+        let label = cx.text_slot(SLOT_PROGRESS_BAR_LABEL);
         cx.set_local(label, cx.properties().font_size, LABEL_FONT_SIZE);
     }
 }

@@ -47,7 +47,7 @@ use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::ScrollState;
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -940,11 +940,8 @@ static LIST_ITEM_TEMPLATE: ListItemTemplate = ListItemTemplate;
 
 impl Template for ListItemTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let content = cx.insert(TemplateChild::surface_part(PART_LIST_ITEM_CONTENT));
-        cx.insert_under(
-            content,
-            TemplateChild::content_presenter(SLOT_LIST_ITEM_CONTENT),
-        );
+        let content = cx.surface_part(PART_LIST_ITEM_CONTENT);
+        cx.content_presenter_under(content, SLOT_LIST_ITEM_CONTENT);
     }
 }
 

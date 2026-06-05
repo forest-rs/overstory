@@ -36,7 +36,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
 use crate::pseudos::PSEUDO_CHECKED;
-use crate::template::{Template, TemplateChild, TemplateContext, TemplateContract, TemplateSlot};
+use crate::template::{Template, TemplateContext, TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
@@ -615,12 +615,9 @@ static RADIO_BUTTON_TEMPLATE: RadioButtonTemplate = RadioButtonTemplate;
 
 impl Template for RadioButtonTemplate {
     fn instantiate(&self, cx: &mut TemplateContext<'_>) {
-        let indicator = cx.insert(TemplateChild::surface_slot(SLOT_RADIO_BUTTON_INDICATOR));
-        cx.insert_under(
-            indicator,
-            TemplateChild::surface_slot(SLOT_RADIO_BUTTON_DOT),
-        );
-        cx.insert(TemplateChild::content_presenter(SLOT_RADIO_BUTTON_LABEL));
+        let indicator = cx.surface_slot(SLOT_RADIO_BUTTON_INDICATOR);
+        cx.surface_slot_under(indicator, SLOT_RADIO_BUTTON_DOT);
+        cx.content_presenter(SLOT_RADIO_BUTTON_LABEL);
     }
 }
 
