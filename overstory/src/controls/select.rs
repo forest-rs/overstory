@@ -7,8 +7,8 @@
 //! - Keep `Select` as a composition of ordinary Overstory controls: the
 //!   collapsed owner owns the selected item and activation behavior, while the
 //!   opened popup delegates list realization and selection to `ListBox`.
-//! - Add richer item templating through the existing template/slot system
-//!   instead of inventing a separate menu-item visual model.
+//! - Keep richer popup item visuals on the `ListBox` item-template path instead
+//!   of inventing a separate menu-item visual model.
 //! - Move string/index-only selection toward shared typed option keys with
 //!   `RadioGroup`, `ListBox`, and segmented selection. `Select` should not grow
 //!   a private item model just because it is the first popup-backed picker.
@@ -27,7 +27,9 @@ use crate::controls::choice::{
     last_enabled_index, next_enabled_index, option_label, previous_enabled_index,
     selected_enabled_index,
 };
-use crate::controls::list::{ListBox, ListSelectionChangedEvent};
+use crate::controls::list::{
+    ListBox, ListItemContext, ListSelectionChangedEvent, SharedListItemTemplate,
+};
 use crate::controls::popup::Popup;
 use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
 use crate::element::{Element, ElementId};
@@ -36,7 +38,7 @@ use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::ui::{ControlState, Ui};
+use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Select`.
@@ -76,6 +78,7 @@ pub struct SelectSelectionChangedEvent {
 /// Builder + spec for a collapsed single-choice `Select`.
 pub struct Select {
     options: Vec<ChoiceOption>,
+    item_template: Option<SharedListItemTemplate>,
     selected_index: Option<usize>,
     placeholder: String,
     width: Option<f32>,
@@ -105,6 +108,7 @@ impl Select {
         element.set_control_state(ControlState::interactive());
         Self {
             options: Vec::new(),
+            item_template: None,
             selected_index: None,
             placeholder: String::from(DEFAULT_SELECT_PLACEHOLDER),
             width: None,
@@ -147,6 +151,25 @@ impl Select {
     #[must_use]
     pub fn item(self, item: impl Into<ChoiceOption>) -> Self {
         self.option(item)
+    }
+
+    /// Sets a retained-child template for realized popup rows.
+    ///
+    /// `Select` uses the same item-template path as [`ListBox`], so popup rows
+    /// can have richer retained content without giving `Select` a private menu
+    /// item model. Selection and commit behavior remain owned by the popup list
+    /// item container.
+    ///
+    /// Treat this closure as a repeatable visual recipe. Row-specific mutable
+    /// behavior should live in row controls, bindings, or explicit state rather
+    /// than hidden mutation inside the template closure.
+    #[must_use]
+    pub fn item_template<F>(mut self, template: F) -> Self
+    where
+        F: for<'ui, 'item> Fn(&mut ChildUi<'ui>, ListItemContext<'item>) + 'static,
+    {
+        self.item_template = Some(SharedListItemTemplate::new(template));
+        self
     }
 
     /// Sets the initially selected item index.
@@ -230,6 +253,7 @@ impl AppendSpec for Select {
         let width = self.width.unwrap_or(DEFAULT_SELECT_WIDTH);
         let widget = SelectWidget {
             options: self.options,
+            item_template: self.item_template,
             placeholder: self.placeholder,
             popup: ElementSlot::new(),
             popup_height: self.popup_height,
@@ -264,6 +288,7 @@ impl ElementSpec for Select {
 /// Per-element widget for `Select`.
 pub(crate) struct SelectWidget {
     options: Vec<ChoiceOption>,
+    item_template: Option<SharedListItemTemplate>,
     placeholder: String,
     popup: ElementSlot,
     popup_height: f32,
@@ -275,6 +300,7 @@ impl core::fmt::Debug for SelectWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SelectWidget")
             .field("options_len", &self.options.len())
+            .field("has_item_template", &self.item_template.is_some())
             .field("popup", &self.popup.get())
             .field("popup_height", &self.popup_height)
             .field("item_extent", &self.item_extent)
@@ -425,6 +451,7 @@ impl SelectWidget {
         let popup_height = self.popup_list_height();
         let popup_width = self.popup_width(ui, select);
         let item_extent = self.item_extent;
+        let item_template = self.item_template.clone();
         let selected_index =
             selected_enabled_index(&self.options, selected_select_index_local(ui, select));
         let options = self.options.clone();
@@ -432,15 +459,16 @@ impl SelectWidget {
             select,
             Popup::new().padding(0.0, 0.0).offset(0.0, 4.0),
             |ui, popup| {
-                let _list = ui.append(
-                    popup,
-                    ListBox::new()
-                        .options(options)
-                        .size(popup_width, popup_height)
-                        .item_extent(item_extent)
-                        .selected_index(selected_index.unwrap_or(usize::MAX))
-                        .on_selection_changed(select_commit_handler(select)),
-                );
+                let mut list = ListBox::new()
+                    .options(options)
+                    .size(popup_width, popup_height)
+                    .item_extent(item_extent)
+                    .selected_index(selected_index.unwrap_or(usize::MAX))
+                    .on_selection_changed(select_commit_handler(select));
+                if let Some(template) = item_template {
+                    list = list.shared_item_template(template);
+                }
+                let _list = ui.append(popup, list);
             },
         );
         self.popup.set_option(popup);
@@ -707,6 +735,35 @@ mod tests {
         let third = realized_list_item(&ui, listbox, 2).unwrap();
 
         ui.synthesize_click(third, Point::ZERO);
+
+        assert_eq!(selected_select_index(&ui, select), Some(2));
+        assert!(ui.get(popup).is_none());
+    }
+
+    #[test]
+    fn popup_item_template_child_click_commits_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            test_select().item_template(|row, item| {
+                row.add(crate::Text::new(item.label()));
+            }),
+        );
+        compute_layout(&mut ui);
+
+        ui.synthesize_click(select, Point::ZERO);
+        compute_layout(&mut ui);
+
+        let popup = select_widget(&ui, select).unwrap().popup.get().unwrap();
+        let listbox = ui.get(popup).unwrap().children()[0];
+        let third = realized_list_item(&ui, listbox, 2).unwrap();
+        let slot = ui
+            .slot(third, crate::controls::list::SLOT_LIST_ITEM_CONTENT)
+            .unwrap();
+        let text = ui.get(slot).unwrap().children()[0];
+
+        ui.synthesize_click(text, Point::ZERO);
 
         assert_eq!(selected_select_index(&ui, select), Some(2));
         assert!(ui.get(popup).is_none());

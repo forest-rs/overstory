@@ -132,7 +132,7 @@ pub use controls::expander::{
     set_expander_expanded, toggle_expander,
 };
 pub use controls::list::{
-    ListBox, ListBoxScrollArea, ListSelectionChangedEvent, ListSelectionMode,
+    ListBox, ListBoxScrollArea, ListItemContext, ListSelectionChangedEvent, ListSelectionMode,
     PART_LIST_ITEM_CONTENT, PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX,
     TYPE_LIST_ITEM, list_box_scroll_area_list, list_box_scroll_area_scrollbar,
     list_scroll_offset_y, realized_list_item_index, scroll_list_index_into_view, select_list_index,
@@ -250,11 +250,11 @@ pub mod prelude {
         BindingSpecExt, Button, CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt,
         ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander,
-        ExternalSource, Layout, ListBox, LocalState, OutlineView, Panel, Popup, ProgressBar,
-        RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView, SegmentedControl,
-        Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput, TextSpecExt,
-        TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View,
-        Viewport,
+        ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, Popup,
+        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView,
+        SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput,
+        TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding,
+        VectorPath, View, Viewport,
     };
 }
 

@@ -6,10 +6,9 @@
 //! Roadmap:
 //! - Keep lists virtualized by default, with `understory_virtual_list` owning
 //!   viewport math and Overstory owning realized elements and interaction.
-//! - Replace string-only items with keyed item data and item templates so the
-//!   control can grow toward `ItemsControl` / `ListView` patterns. This should
-//!   also provide the typed option-key shape used by `RadioGroup`, `Select`,
-//!   segmented controls, and other single-selection controls.
+//! - Grow beyond string-only items by making item templates the normal realized
+//!   row customization point. The next step is keyed item data shared by
+//!   `RadioGroup`, `Select`, segmented controls, and other selection controls.
 //! - Keep selection backed by `understory_selection`: focus, current item,
 //!   anchor, primary selection, and realized containers must not drift apart.
 //! - Add mature keyboard behavior: typeahead, Home / End / Page movement,
@@ -18,6 +17,7 @@
 //!   composition-backed virtualization without making apps assemble that by hand.
 
 use alloc::boxed::Box;
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::Range;
@@ -50,7 +50,7 @@ use crate::scroll_runtime::ScrollState;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::ui::{ControlState, Ui};
+use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `ListBox`.
@@ -75,6 +75,27 @@ const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
 
 type ListSelectionChangedHandler = EventHandler<ListSelectionChangedEvent>;
 type ListSelectionChangedSlot = CallbackSlot<ListSelectionChangedEvent>;
+type ListItemTemplateCallback = dyn for<'ui, 'item> Fn(&mut ChildUi<'ui>, ListItemContext<'item>);
+
+#[derive(Clone)]
+pub(crate) struct SharedListItemTemplate {
+    callback: Rc<ListItemTemplateCallback>,
+}
+
+impl SharedListItemTemplate {
+    pub(crate) fn new<F>(template: F) -> Self
+    where
+        F: for<'ui, 'item> Fn(&mut ChildUi<'ui>, ListItemContext<'item>) + 'static,
+    {
+        Self {
+            callback: Rc::new(template),
+        }
+    }
+
+    fn run(&self, row: &mut ChildUi<'_>, item: ListItemContext<'_>) {
+        (self.callback.as_ref())(row, item);
+    }
+}
 
 /// Event delivered when a [`ListBox`] selection changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -98,6 +119,50 @@ pub enum ListSelectionMode {
     Multiple,
 }
 
+/// Data passed to a [`ListBox`] item-template closure for one realized row.
+///
+/// This context describes stable item data. Selection state intentionally stays
+/// on the realized item container as `:selected`, so row templates can style
+/// selected visuals through normal selectors instead of rebuilding retained
+/// children whenever selection changes.
+#[derive(Clone, Copy, Debug)]
+pub struct ListItemContext<'a> {
+    index: usize,
+    option: &'a ChoiceOption,
+}
+
+impl<'a> ListItemContext<'a> {
+    /// Creates a context for `option` at `index`.
+    #[must_use]
+    pub(crate) const fn new(index: usize, option: &'a ChoiceOption) -> Self {
+        Self { index, option }
+    }
+
+    /// Returns the item index in the list's data source.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self.index
+    }
+
+    /// Returns the choice option backing this item.
+    #[must_use]
+    pub const fn option(self) -> &'a ChoiceOption {
+        self.option
+    }
+
+    /// Returns the item label.
+    #[must_use]
+    pub fn label(self) -> &'a str {
+        self.option.label()
+    }
+
+    /// Returns whether the item can be selected by user input.
+    #[must_use]
+    pub const fn is_enabled(self) -> bool {
+        self.option.is_enabled()
+    }
+}
+
 /// Builder + spec for a virtualized selectable list.
 ///
 /// `ListBox` owns its item data and realizes only the visible/overscanned item
@@ -105,6 +170,7 @@ pub enum ListSelectionMode {
 /// indices rather than transient realized [`ElementId`] values.
 pub struct ListBox {
     options: Vec<ChoiceOption>,
+    item_template: Option<SharedListItemTemplate>,
     size: Option<(f32, f32)>,
     item_extent: f64,
     overscan: f64,
@@ -119,6 +185,7 @@ impl core::fmt::Debug for ListBox {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListBox")
             .field("options_len", &self.options.len())
+            .field("has_item_template", &self.item_template.is_some())
             .field("size", &self.size)
             .field("item_extent", &self.item_extent)
             .field("overscan", &self.overscan)
@@ -137,6 +204,7 @@ impl ListBox {
         element.set_control_state(ControlState::interactive());
         Self {
             options: Vec::new(),
+            item_template: None,
             size: None,
             item_extent: DEFAULT_LIST_ITEM_EXTENT,
             overscan: DEFAULT_LIST_OVERSCAN,
@@ -180,6 +248,35 @@ impl ListBox {
     #[must_use]
     pub fn item(self, item: impl Into<ChoiceOption>) -> Self {
         self.option(item)
+    }
+
+    /// Sets a retained-child template for each realized item row.
+    ///
+    /// The template is invoked when virtualization materializes a row. It
+    /// receives a scoped builder whose parent is the row content presenter, so
+    /// appended controls become the row's visual content while selection,
+    /// focus, scrolling, and accessibility remain owned by the item container.
+    ///
+    /// The list still writes the option label to the item container's semantic
+    /// `Content` property before running this template. Custom row visuals can
+    /// therefore coexist with accessibility labels and templates that fall back
+    /// to plain content.
+    ///
+    /// Treat this closure as a repeatable visual recipe. Row-specific mutable
+    /// behavior should live in row controls, bindings, or explicit state rather
+    /// than hidden mutation inside the template closure.
+    #[must_use]
+    pub fn item_template<F>(mut self, template: F) -> Self
+    where
+        F: for<'ui, 'item> Fn(&mut ChildUi<'ui>, ListItemContext<'item>) + 'static,
+    {
+        self.item_template = Some(SharedListItemTemplate::new(template));
+        self
+    }
+
+    pub(crate) fn shared_item_template(mut self, template: SharedListItemTemplate) -> Self {
+        self.item_template = Some(template);
+        self
     }
 
     /// Sets the list's fixed logical-pixel size.
@@ -304,6 +401,7 @@ impl AppendSpec for ListBox {
             parent,
             Box::new(ListBoxWidget {
                 options: self.options,
+                item_template: self.item_template,
                 selection,
                 scroll_state: scroll_state.clone(),
                 selection_mode: self.selection_mode,
@@ -435,6 +533,7 @@ pub fn list_box_scroll_area_scrollbar(ui: &Ui, frame: ElementId) -> Option<Eleme
 /// Per-element widget for `ListBox`.
 pub(crate) struct ListBoxWidget {
     options: Vec<ChoiceOption>,
+    item_template: Option<SharedListItemTemplate>,
     selection: Selection<usize>,
     scroll_state: ScrollState,
     selection_mode: ListSelectionMode,
@@ -449,6 +548,7 @@ impl core::fmt::Debug for ListBoxWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ListBoxWidget")
             .field("options_len", &self.options.len())
+            .field("has_item_template", &self.item_template.is_some())
             .field("selection_mode", &self.selection_mode)
             .field("item_extent", &self.item_extent)
             .field("realized", &self.realized)
@@ -652,7 +752,8 @@ impl ListBoxWidget {
             let Some(option) = self.options.get(index) else {
                 continue;
             };
-            let element = append_realized_list_item(ui, listbox, index, option);
+            let element =
+                append_realized_list_item(ui, listbox, index, option, self.item_template.as_ref());
             self.realized.push(RealizedListItem { index, element });
             changed = true;
         }
@@ -947,6 +1048,7 @@ fn append_realized_list_item(
     listbox: ElementId,
     index: usize,
     option: &ChoiceOption,
+    item_template: Option<&SharedListItemTemplate>,
 ) -> ElementId {
     let id = ui.append_widget(listbox, Box::new(ListItemWidget { index }));
     ui.set_local(id, ui.properties().content, String::from(option.label()));
@@ -956,6 +1058,12 @@ fn append_realized_list_item(
             .focusable(false)
             .enabled(option.is_enabled()),
     );
+    if let Some(template) = item_template {
+        let context = ListItemContext::new(index, option);
+        let _ = ui.slot_children(id, SLOT_LIST_ITEM_CONTENT, |children| {
+            template.run(children, context);
+        });
+    }
     id
 }
 
@@ -1348,6 +1456,61 @@ mod tests {
         assert!(ui.get(listbox).unwrap().children().len() < 100);
         assert!(realized_list_item(&ui, listbox, 0).is_some());
         assert!(realized_list_item(&ui, listbox, 99).is_none());
+    }
+
+    #[test]
+    fn listbox_item_template_builds_retained_row_content() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(
+            root,
+            test_list_box().item_template(|row, item| {
+                row.with_child(crate::Panel::row(6.0).align_center(), |row| {
+                    row.add(crate::Text::new(format!("#{}", item.index())));
+                    row.add(crate::Text::new(item.label()));
+                });
+            }),
+        );
+
+        compute_layout(&mut ui);
+
+        let item = realized_list_item(&ui, listbox, 0).unwrap();
+        let slot = ui.slot(item, SLOT_LIST_ITEM_CONTENT).unwrap();
+        let row = ui.get(slot).unwrap().children()[0];
+        let row_children = ui.get(row).unwrap().children();
+        let index_label = row_children[0];
+        let title_label = row_children[1];
+        let item_content: String =
+            ui.resolve_value_for(ui.get(item).unwrap(), ui.properties().content);
+        let index_text: String =
+            ui.resolve_value_for(ui.get(index_label).unwrap(), ui.properties().text);
+        let title_text: String =
+            ui.resolve_value_for(ui.get(title_label).unwrap(), ui.properties().text);
+
+        assert_eq!(item_content, TEST_ITEMS[0]);
+        assert_eq!(index_text, "#0");
+        assert_eq!(title_text, TEST_ITEMS[0]);
+    }
+
+    #[test]
+    fn listbox_item_template_child_click_selects_item_container() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let listbox = ui.append(
+            root,
+            test_list_box().item_template(|row, item| {
+                row.add(crate::Text::new(item.label()));
+            }),
+        );
+        compute_layout(&mut ui);
+        let second = realized_list_item(&ui, listbox, 1).unwrap();
+        let slot = ui.slot(second, SLOT_LIST_ITEM_CONTENT).unwrap();
+        let text = ui.get(slot).unwrap().children()[0];
+
+        ui.synthesize_click(text, Point::ZERO);
+
+        assert_eq!(selected_list_index(&ui, listbox), Some(1));
+        assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
     }
 
     #[test]
