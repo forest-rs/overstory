@@ -1,0 +1,23 @@
+[package]
+name = "overstory_transcript"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Overstory transcript controls backed by understory_transcript."
+publish = false
+
+[features]
+default = []
+std = ["overstory/std", "understory_transcript/std"]
+
+[dependencies]
+overstory.workspace = true
+understory_transcript.workspace = true
+
+[dev-dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+
+[lints]
+workspace = true

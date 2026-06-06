@@ -8,6 +8,7 @@ mod overview;
 mod selection;
 pub(super) mod svg;
 mod systems;
+mod transcript;
 mod typography;
 
 use super::*;
@@ -36,6 +37,7 @@ pub(super) fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
             DemoPage::Selection => stage.view(selection::SelectionPage),
             DemoPage::Outline => stage.view(outline::OutlinePage),
             DemoPage::Layout => stage.view(layout::LayoutPage),
+            DemoPage::Transcript => stage.view(transcript::TranscriptPage),
             DemoPage::Svg => stage.view(svg::SvgPage),
             DemoPage::Typography => stage.view(typography::TypographyPage),
             DemoPage::Motion => stage.view(motion::MotionPage),

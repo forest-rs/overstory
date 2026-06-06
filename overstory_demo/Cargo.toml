@@ -13,6 +13,7 @@ overstory = { features = ["system-fonts"], workspace = true }
 overstory_devtools = { features = ["spoor-snapshot-session"], workspace = true }
 overstory_host_winit.workspace = true
 overstory_svg.workspace = true
+overstory_transcript.workspace = true
 peniko.workspace = true
 understory_style.workspace = true
 understory_view2d.workspace = true

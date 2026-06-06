@@ -8,6 +8,7 @@ members = [
     "overstory_host_winit",
     "overstory_node_graph_demo",
     "overstory_svg",
+    "overstory_transcript",
     "overstory_wind_tunnel",
 ]
 
@@ -27,6 +28,7 @@ overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 overstory_svg = { path = "overstory_svg", version = "0.0.1" }
+overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 
 # Core data deps
 accesskit = { default-features = false, version = "0.24.0" }
@@ -56,6 +58,7 @@ understory_responder = { default-features = false, git = "https://github.com/for
 understory_selection = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
 understory_style = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
 understory_timing = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
+understory_transcript = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
 understory_view2d = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
 understory_virtual_list = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9125d622a386ad60c25ff2e73491e0ee9c100b51" }
 

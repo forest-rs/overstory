@@ -99,13 +99,14 @@ enum DemoPage {
     Selection,
     Outline,
     Layout,
+    Transcript,
     Svg,
     Typography,
     Motion,
 }
 
 impl DemoPage {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Overview,
         Self::Inputs,
         Self::Disclosure,
@@ -113,6 +114,7 @@ impl DemoPage {
         Self::Selection,
         Self::Outline,
         Self::Layout,
+        Self::Transcript,
         Self::Svg,
         Self::Typography,
         Self::Motion,
@@ -131,9 +133,10 @@ impl DemoPage {
             Self::Selection => 4,
             Self::Outline => 5,
             Self::Layout => 6,
-            Self::Svg => 7,
-            Self::Typography => 8,
-            Self::Motion => 9,
+            Self::Transcript => 7,
+            Self::Svg => 8,
+            Self::Typography => 9,
+            Self::Motion => 10,
         }
     }
 
@@ -146,6 +149,7 @@ impl DemoPage {
             Self::Selection => "Selection",
             Self::Outline => "Outline",
             Self::Layout => "Layout",
+            Self::Transcript => "Transcript",
             Self::Svg => "SVG",
             Self::Typography => "Typography",
             Self::Motion => "Motion",
@@ -161,6 +165,7 @@ impl DemoPage {
             Self::Selection => "Selection and Virtualization",
             Self::Outline => "Expandable Outline",
             Self::Layout => "Layout and Resizing",
+            Self::Transcript => "Agent Transcript",
             Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
             Self::Motion => "Presentation Motion",
@@ -189,6 +194,9 @@ impl DemoPage {
             }
             Self::Layout => {
                 "Resizable panes, fixed-size content, axis-aware controls, and slider ruler marks."
+            }
+            Self::Transcript => {
+                "A rich interaction log backed by understory_transcript and realized as Overstory elements."
             }
             Self::Svg => {
                 "Static SVG paths lowered through overstory_svg into retained VectorPath elements."

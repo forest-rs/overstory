@@ -2153,6 +2153,7 @@ dependencies = [
  "overstory_devtools",
  "overstory_host_winit",
  "overstory_svg",
+ "overstory_transcript",
  "peniko",
  "ui-events",
  "understory_property",
@@ -2218,6 +2219,14 @@ dependencies = [
  "overstory",
  "understory_precise_hit",
  "usvg",
+]
+
+[[package]]
+name = "overstory_transcript"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "understory_transcript",
 ]
 
 [[package]]
@@ -3436,6 +3445,14 @@ dependencies = [
 name = "understory_timing"
 version = "0.1.2"
 source = "git+https://github.com/forest-rs/understory.git?rev=9125d622a386ad60c25ff2e73491e0ee9c100b51#9125d622a386ad60c25ff2e73491e0ee9c100b51"
+
+[[package]]
+name = "understory_transcript"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=9125d622a386ad60c25ff2e73491e0ee9c100b51#9125d622a386ad60c25ff2e73491e0ee9c100b51"
+dependencies = [
+ "hashbrown 0.17.1",
+]
 
 [[package]]
 name = "understory_view2d"
