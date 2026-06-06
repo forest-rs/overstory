@@ -52,10 +52,10 @@ use core::cell::RefCell;
 use core::ops::Range;
 
 use overstory::{
-    AccessibilityContext, AppendSpec, Brush, ChildUi, Color, Element, ElementConfig, ElementId,
-    ElementRealizeContext, ElementRealizeResult, ElementSpec, Layout, LayoutDimension, LayoutSize,
-    Panel, Phase, ScrollBar, ScrollEvent, ScrollState, Size, SurfaceSpecExt, Text, Ui, Vec2,
-    Widget, WidgetEventContext, accesskit,
+    AccessibilityContext, AppendSpec, ArrangeContext, ArrangeResult, Brush, ChildUi, Color,
+    Element, ElementConfig, ElementId, ElementRealizeContext, ElementRealizeResult, ElementSpec,
+    Layout, LayoutDimension, LayoutSize, Panel, Phase, ScrollBar, ScrollEvent, ScrollState, Size,
+    SurfaceSpecExt, Text, Ui, Vec2, Widget, WidgetEventContext, accesskit,
 };
 pub use understory_transcript::{
     AnnotationLevel, EntryBody, EntryId, EntryKind, EntryStatus, MessageRole, NewEntry,
@@ -600,6 +600,10 @@ impl<P: 'static> Widget for TranscriptViewportWidget<P> {
         ElementRealizeResult::from_changed(self.sync_rows(viewport, ctx.ui_mut()))
     }
 
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        ArrangeResult::from_layout_changed(self.sync_measured_extents(ctx.ui()))
+    }
+
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
         if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(ctx.id()) {
             return;
@@ -648,7 +652,6 @@ impl<P: 'static> TranscriptViewportWidget<P> {
         let revision = self.session.revision();
         let revision_changed = self.last_revision != revision;
         let len_changed = self.virtual_list.len() != len;
-        let measured_extents_changed = self.sync_measured_extents(ui);
         let estimated_extents_changed =
             self.sync_estimated_extents(len, revision_changed, len_changed);
         self.last_revision = revision;
@@ -677,11 +680,7 @@ impl<P: 'static> TranscriptViewportWidget<P> {
         TranscriptVirtualRowsSync {
             viewport: viewport_size,
             range: self.virtual_list.materialized_range(),
-            changed: viewport_changed
-                || len_changed
-                || measured_extents_changed
-                || estimated_extents_changed
-                || offset_changed,
+            changed: viewport_changed || len_changed || estimated_extents_changed || offset_changed,
             revision_changed,
         }
     }
@@ -999,7 +998,7 @@ mod tests {
 
     #[test]
     fn template_realizes_one_row_per_entry() {
-        let mut transcript = Transcript::new();
+        let mut transcript: Transcript<EntryBody> = Transcript::new();
         transcript.append(NewEntry::message(MessageRole::User, "inspect"));
         transcript.append(NewEntry::message(MessageRole::Assistant, "done"));
 
@@ -1094,5 +1093,40 @@ mod tests {
         ui.compute_layout(Size::new(320.0, 220.0));
 
         assert_eq!(ui.get(viewport).unwrap().children().len(), 2);
+    }
+
+    #[test]
+    fn measured_rich_rows_feed_back_into_virtual_offsets() {
+        let mut transcript: Transcript<EntryBody> = Transcript::new();
+        transcript.append(NewEntry::message(MessageRole::Assistant, EntryBody::Empty));
+        transcript.append(NewEntry::message(MessageRole::Assistant, EntryBody::Empty));
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let view = ui.append(
+            root,
+            TranscriptView::with_entry_template(
+                transcript,
+                EntryTemplate::new(|row, _entry| {
+                    row.add(Panel::new().layout(Layout::new().logical_size(200.0, 148.0)));
+                }),
+            )
+            .size(240.0, 220.0)
+            .estimated_row_extent(24.0)
+            .overscan(400.0),
+        );
+
+        ui.compute_layout(Size::new(320.0, 280.0));
+
+        let viewport = transcript_view_viewport(&ui, view).unwrap();
+        let children = ui.get(viewport).unwrap().children();
+        assert_eq!(children.len(), 2);
+
+        let first = ui.effective_bounds(children[0]);
+        let second = ui.effective_bounds(children[1]);
+        assert!(
+            second.y0 >= first.y1 + f64::from(DEFAULT_ROW_GAP),
+            "second row should be laid out after the measured first row, got first={first:?}, second={second:?}",
+        );
     }
 }
