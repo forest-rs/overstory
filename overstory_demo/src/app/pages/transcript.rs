@@ -99,6 +99,7 @@ impl View for TranscriptPage {
                         .estimated_entry_extent(estimated_agent_entry_extent)
                         .size(TRANSCRIPT_VIEW_WIDTH, TRANSCRIPT_VIEW_HEIGHT)
                         .row_gap(14.0)
+                        .class(CLASS_DEMO_TRANSCRIPT_VIEWPORT)
                         .background(solid(0x15, 0x17, 0x20, 0xff))
                         .border_brush(solid(0x35, 0x39, 0x48, 0xff))
                         .border_width(1.0)
@@ -240,11 +241,25 @@ fn append_composer(
             .border_width(1.0)
             .corner_radius(14.0),
         move |composer| {
+            let submit_session = session.clone();
+            let submit_stream = stream.clone();
             let input = composer.add(
                 TextInput::new()
                     .placeholder("Ask the agent to continue...")
                     .width(TRANSCRIPT_COMPOSER_WIDTH)
-                    .font_size(14.0),
+                    .font_size(14.0)
+                    .class(CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT)
+                    .on_submit(move |ui, event| {
+                        if submit_agent_prompt(
+                            ui,
+                            transcript,
+                            &submit_session,
+                            &submit_stream,
+                            event.text(),
+                        ) {
+                            event.clear_after_submit();
+                        }
+                    }),
             );
             composer.add(
                 Button::new("Send")
@@ -256,23 +271,39 @@ fn append_composer(
                             return;
                         }
 
-                        let user = session.append(NewEntry::message(MessageRole::User, prompt));
-                        let assistant = session.append(
-                            NewEntry::message(MessageRole::Assistant, EntryBody::Empty)
-                                .with_cause(user)
-                                .with_status(EntryStatus::InProgress),
-                        );
-                        {
-                            let mut stream = stream.borrow_mut();
-                            stream.entry = Some(assistant);
-                            stream.step = 0;
-                        }
+                        submit_agent_prompt(ui, transcript, &session, &stream, prompt);
                         let _ = set_text_input_text(ui, input, "");
-                        let _ = refresh_transcript_view(ui, transcript);
                     }),
             );
         },
     );
+}
+
+fn submit_agent_prompt(
+    ui: &mut Ui,
+    transcript: ElementId,
+    session: &TranscriptSession,
+    stream: &Rc<RefCell<ActiveStream>>,
+    prompt: &str,
+) -> bool {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return false;
+    }
+
+    let user = session.append(NewEntry::message(MessageRole::User, prompt));
+    let assistant = session.append(
+        NewEntry::message(MessageRole::Assistant, EntryBody::Empty)
+            .with_cause(user)
+            .with_status(EntryStatus::InProgress),
+    );
+    {
+        let mut stream = stream.borrow_mut();
+        stream.entry = Some(assistant);
+        stream.step = 0;
+    }
+    let _ = refresh_transcript_view(ui, transcript);
+    true
 }
 
 fn render_agent_entry(row: &mut ChildUi<'_>, context: TranscriptEntryContext<'_, EntryBody>) {
@@ -600,4 +631,70 @@ fn status_label(status: EntryStatus) -> &'static str {
 
 fn accent_brush((r, g, b): (u8, u8, u8), a: u8) -> Brush {
     solid(r, g, b, a)
+}
+
+#[cfg(test)]
+mod tests {
+    use overstory::Size;
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+    use understory_property::DependencyObjectExt;
+
+    use super::*;
+
+    #[test]
+    fn transcript_composer_enter_appends_prompt_and_clears_input() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.with_children(root, |stage| {
+            stage.view(TranscriptPage);
+        });
+        ui.compute_layout(Size::new(980.0, 760.0));
+
+        let input = find_by_class(&ui, root, CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT)
+            .expect("composer input should be built");
+        assert!(set_text_input_text(
+            &mut ui,
+            input,
+            "Show the live event log"
+        ));
+        assert!(ui.set_focus(Some(input)));
+
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&enter);
+        assert!(result.handled);
+        ui.compute_layout(Size::new(980.0, 760.0));
+
+        let viewport = find_by_class(&ui, root, CLASS_DEMO_TRANSCRIPT_VIEWPORT)
+            .expect("transcript viewport should be built");
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some(""));
+        assert!(
+            subtree_contains_text(&ui, viewport, "Show the live event log"),
+            "submitted prompt should be realized in the tail-anchored transcript"
+        );
+    }
+
+    fn subtree_contains_text(ui: &Ui, element: ElementId, expected: &str) -> bool {
+        ui.get(element).is_some_and(|element_ref| {
+            let text_matches = element_ref
+                .get_local_value(ui.properties().text)
+                .is_some_and(|text| text == expected);
+            text_matches
+                || element_ref
+                    .children()
+                    .iter()
+                    .any(|child| subtree_contains_text(ui, *child, expected))
+        })
+    }
+
+    fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+        ui.get(element).and_then(|element_ref| {
+            if element_ref.classes().contains(&class) {
+                return Some(element);
+            }
+            element_ref
+                .children()
+                .iter()
+                .find_map(|child| find_by_class(ui, *child, class))
+        })
+    }
 }
