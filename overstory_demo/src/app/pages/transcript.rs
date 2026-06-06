@@ -1,18 +1,31 @@
 use overstory_transcript::{
-    AnnotationLevel, EntryBody, EntryKind, EntryStatus, EntryTemplate, MessageRole, NewEntry,
-    ProcessStream, ToolOutcome, Transcript, TranscriptEntry, TranscriptEntryContext,
-    TranscriptView,
+    AnnotationLevel, EntryBody, EntryId, EntryKind, EntryStatus, EntryTemplate, MessageRole,
+    NewEntry, ProcessStream, ToolOutcome, Transcript, TranscriptEntry, TranscriptEntryContext,
+    TranscriptSession, TranscriptView, refresh_transcript_view,
 };
 
 use super::super::*;
 
 const TRANSCRIPT_CARD_WIDTH: f32 = 758.0;
 const TRANSCRIPT_VIEW_WIDTH: f32 = 704.0;
-const TRANSCRIPT_VIEW_HEIGHT: f32 = 392.0;
+const TRANSCRIPT_VIEW_HEIGHT: f32 = 420.0;
+const TRANSCRIPT_COMPOSER_WIDTH: f32 = 594.0;
 const AGENT_GREEN: (u8, u8, u8) = (0x69, 0xd2, 0x9b);
 const AGENT_BLUE: (u8, u8, u8) = (0x81, 0x9b, 0xff);
 const AGENT_PURPLE: (u8, u8, u8) = (0xbd, 0x91, 0xff);
 const AGENT_AMBER: (u8, u8, u8) = (0xff, 0xc8, 0x66);
+const TRANSCRIPT_STREAM_INTERVAL: TimerDuration = millis(420);
+const STREAM_CHUNKS: &[&str] = &[
+    "I am keeping the session live while preserving the transcript model. ",
+    "Rows are virtualized, tail anchoring comes from understory_virtual_list, ",
+    "and the UI can keep accepting new prompts without rebuilding the whole log.",
+];
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ActiveStream {
+    entry: Option<EntryId>,
+    step: usize,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TranscriptPage;
@@ -21,13 +34,15 @@ impl View for TranscriptPage {
     type Output = ();
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
+        let (session, active_stream) = agent_session();
+        let stream = Rc::new(RefCell::new(active_stream));
         stage.with_child(
             Panel::row(18.0).layout(
                 Layout::row(18.0)
                     .fill_width()
                     .alignment(LayoutAlignment::new().align_items(LayoutAlign::Start)),
             ),
-            |row| {
+            move |row| {
                 row.demo_auto_card("AGENT INTERACTION", TRANSCRIPT_CARD_WIDTH, |card| {
                     card.with_child(
                         Panel::row(12.0).layout(
@@ -76,11 +91,12 @@ impl View for TranscriptPage {
                             );
                         },
                     );
-                    card.add(
-                        TranscriptView::with_entry_template(
-                            agent_transcript(),
+                    let transcript = card.add(
+                        TranscriptView::with_session(
+                            session.clone(),
                             EntryTemplate::new(render_agent_entry),
                         )
+                        .estimated_entry_extent(estimated_agent_entry_extent)
                         .size(TRANSCRIPT_VIEW_WIDTH, TRANSCRIPT_VIEW_HEIGHT)
                         .row_gap(14.0)
                         .background(solid(0x15, 0x17, 0x20, 0xff))
@@ -88,13 +104,15 @@ impl View for TranscriptPage {
                         .border_width(1.0)
                         .corner_radius(14.0),
                     );
+                    schedule_stream(card.ui_mut(), transcript, session.clone(), stream.clone());
+                    append_composer(card, transcript, session.clone(), stream.clone());
                 });
             },
         );
     }
 }
 
-fn agent_transcript() -> Transcript {
+fn agent_session() -> (TranscriptSession, ActiveStream) {
     let mut transcript = Transcript::new();
 
     let system = transcript.append(NewEntry::message(
@@ -152,15 +170,109 @@ fn agent_transcript() -> Transcript {
         )
         .with_cause(sample),
     );
-    transcript.append(
+    let assistant = transcript.append(
         NewEntry::message(
             MessageRole::Assistant,
             "I found one real source of latency, kept the render path unchanged, and added a reusable transcript display that can grow into agent interaction history.",
         )
-        .with_cause(sample),
+        .with_cause(sample)
+        .with_status(EntryStatus::InProgress),
     );
 
-    transcript
+    (
+        TranscriptSession::from_transcript(transcript),
+        ActiveStream {
+            entry: Some(assistant),
+            step: 0,
+        },
+    )
+}
+
+fn schedule_stream(
+    ui: &mut Ui,
+    transcript: ElementId,
+    session: TranscriptSession,
+    stream: Rc<RefCell<ActiveStream>>,
+) {
+    let _ = ui.schedule_timer_repeating(transcript, TRANSCRIPT_STREAM_INTERVAL);
+    ui.on_timer(transcript, move |ui, _event| {
+        let (entry, chunk, complete) = {
+            let mut stream = stream.borrow_mut();
+            let Some(entry) = stream.entry else {
+                return;
+            };
+            if let Some(chunk) = STREAM_CHUNKS.get(stream.step).copied() {
+                stream.step += 1;
+                (entry, Some(chunk), false)
+            } else {
+                stream.entry = None;
+                stream.step = 0;
+                (entry, None, true)
+            }
+        };
+
+        if let Some(chunk) = chunk {
+            let _ = session.append_chunk(entry, chunk);
+        }
+        if complete {
+            let _ = session.set_status(entry, EntryStatus::Complete);
+        }
+        let _ = refresh_transcript_view(ui, transcript);
+    });
+}
+
+fn append_composer(
+    card: &mut ChildUi<'_>,
+    transcript: ElementId,
+    session: TranscriptSession,
+    stream: Rc<RefCell<ActiveStream>>,
+) {
+    card.with_child(
+        Panel::row(10.0)
+            .layout(
+                Layout::row(10.0)
+                    .fill_width()
+                    .padding_all(10.0)
+                    .align_center(),
+            )
+            .background(solid(0x1c, 0x20, 0x2a, 0xff))
+            .border_brush(solid(0x3a, 0x41, 0x54, 0xff))
+            .border_width(1.0)
+            .corner_radius(14.0),
+        move |composer| {
+            let input = composer.add(
+                TextInput::new()
+                    .placeholder("Ask the agent to continue...")
+                    .width(TRANSCRIPT_COMPOSER_WIDTH)
+                    .font_size(14.0),
+            );
+            composer.add(
+                Button::new("Send")
+                    .font_size(13.0)
+                    .on_click(move |ui, _event| {
+                        let text = text_input_text(ui, input).unwrap_or_default();
+                        let prompt = text.trim();
+                        if prompt.is_empty() {
+                            return;
+                        }
+
+                        let user = session.append(NewEntry::message(MessageRole::User, prompt));
+                        let assistant = session.append(
+                            NewEntry::message(MessageRole::Assistant, EntryBody::Empty)
+                                .with_cause(user)
+                                .with_status(EntryStatus::InProgress),
+                        );
+                        {
+                            let mut stream = stream.borrow_mut();
+                            stream.entry = Some(assistant);
+                            stream.step = 0;
+                        }
+                        let _ = set_text_input_text(ui, input, "");
+                        let _ = refresh_transcript_view(ui, transcript);
+                    }),
+            );
+        },
+    );
 }
 
 fn render_agent_entry(row: &mut ChildUi<'_>, context: TranscriptEntryContext<'_, EntryBody>) {
@@ -171,6 +283,25 @@ fn render_agent_entry(row: &mut ChildUi<'_>, context: TranscriptEntryContext<'_,
         EntryKind::ProcessOutput(output) => render_process_output(row, context, output.stream),
         EntryKind::Annotation(annotation) => render_annotation(row, context, annotation.level),
         EntryKind::State(state) => render_state(row, context, &state.label),
+    }
+}
+
+fn estimated_agent_entry_extent(context: TranscriptEntryContext<'_, EntryBody>) -> f64 {
+    let body_len = body_text_or_empty(context.entry()).len() as f64;
+    let text_lines = (body_len / 92.0).ceil().max(1.0);
+    match &context.entry().kind {
+        EntryKind::Message(message) => match message.role {
+            MessageRole::Assistant if context.index() > 6 => 184.0 + (text_lines * 20.0),
+            MessageRole::Assistant => 104.0 + (text_lines * 20.0),
+            MessageRole::User => 96.0 + (text_lines * 20.0),
+            MessageRole::System => 92.0 + (text_lines * 18.0),
+            MessageRole::Tool | MessageRole::Other => 96.0 + (text_lines * 18.0),
+        },
+        EntryKind::ToolCall(_) => 154.0,
+        EntryKind::ToolResult(_) => 150.0,
+        EntryKind::ProcessOutput(_) => 94.0 + (text_lines * 18.0),
+        EntryKind::Annotation(_) => 82.0 + (text_lines * 18.0),
+        EntryKind::State(_) => 76.0,
     }
 }
 
