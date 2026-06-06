@@ -58,6 +58,7 @@ pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_TRACK: ClassId = ClassId(31);
 pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_THUMB: ClassId = ClassId(32);
 pub(super) const CLASS_DEMO_TRANSCRIPT_VIEWPORT: ClassId = ClassId(33);
 pub(super) const CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT: ClassId = ClassId(34);
+pub(super) const CLASS_DEVTOOLS_EVENT_LOG: ClassId = ClassId(35);
 pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
 pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
 pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
@@ -93,6 +94,7 @@ pub(super) fn register_demo_style_debug_names(ui: &mut Ui) {
     ui.set_class_debug_name(CLASS_DEVTOOLS_INSPECTOR_CARD, ".devtools-inspector-card");
     ui.set_class_debug_name(CLASS_DEVTOOLS_STATUS, ".devtools-status");
     ui.set_class_debug_name(CLASS_DEVTOOLS_BUTTON, ".devtools-button");
+    ui.set_class_debug_name(CLASS_DEVTOOLS_EVENT_LOG, ".devtools-event-log");
     ui.set_class_debug_name(
         CLASS_DEMO_TEMPLATE_BUTTON_OUTER,
         ".demo-template-button-outer",

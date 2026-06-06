@@ -188,6 +188,10 @@ fn gallery_devtools_button_opens_in_process_inspector() {
         find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS).is_some(),
         "in-process devtools should render auto-capture status",
     );
+    assert!(
+        find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_EVENT_LOG).is_some(),
+        "in-process devtools should render a live event log",
+    );
 
     assert!(
         ui.synthesize_click(button, Point::ZERO).handled,
@@ -216,17 +220,31 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
     let stage = stage_element(&ui);
     let button = devtools_button(&ui);
     assert!(ui.synthesize_click(button, Point::ZERO).handled);
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
 
     let status = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS)
         .expect("devtools dock should contain status text");
+    let event_log = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_EVENT_LOG)
+        .expect("devtools dock should contain an event log");
     let outline = find_by_type(&ui, ui.root(), overstory::TYPE_OUTLINE_VIEW)
         .expect("devtools dock should contain an outline");
     let initial_status = text_content(&ui, status);
     let initial_count =
         status_element_count(&initial_status).expect("initial status should report elements");
+    assert!(
+        subtree_contains_text_fragment(&ui, event_log, "Attached to the running gallery"),
+        "opening devtools should log the live attachment"
+    );
 
     show_demo_page(&mut ui, stage, DemoPage::Svg);
     ui.pump_timers(millis(DEVTOOLS_REFRESH_INTERVAL_MS));
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
 
     let refreshed_status = text_content(&ui, status);
     let refreshed_count =
@@ -256,6 +274,12 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
     assert!(
         ui.get(outline).is_some(),
         "timer refresh should preserve the rendered outline element",
+    );
+    assert!(
+        subtree_contains_text_fragment(&ui, event_log, "refresh 1:")
+            && subtree_contains_text_fragment(&ui, event_log, "stream item(s)")
+            && subtree_contains_text_fragment(&ui, event_log, "tree patch +"),
+        "timer refresh should append a concrete event-log row"
     );
 }
 
@@ -720,6 +744,18 @@ fn text_content(ui: &Ui, element: ElementId) -> String {
         .and_then(|element| element.get_local_value(ui.properties().text))
         .cloned()
         .expect("element should have text content")
+}
+
+fn subtree_contains_text_fragment(ui: &Ui, element: ElementId, fragment: &str) -> bool {
+    ui.get(element).is_some_and(|element_ref| {
+        element_ref
+            .get_local_value(ui.properties().text)
+            .is_some_and(|text| text.contains(fragment))
+            || element_ref
+                .children()
+                .iter()
+                .any(|child| subtree_contains_text_fragment(ui, *child, fragment))
+    })
 }
 
 fn status_element_count(status: &str) -> Option<usize> {
