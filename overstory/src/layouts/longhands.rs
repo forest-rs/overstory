@@ -5,6 +5,8 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use understory_presentation::Edges;
+
 use super::LayoutDimension;
 use super::inspection::{join_summary_parts, push_labeled_summary_part, scalar_summary};
 
@@ -591,6 +593,37 @@ impl LayoutEdges {
         }
     }
 
+    const fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
+        Self {
+            left,
+            right,
+            top,
+            bottom,
+        }
+    }
+
+    pub(crate) fn from_surface_edges(edges: Edges<f64>) -> Self {
+        Self::new(
+            f32_from_logical_edge(edges.top),
+            f32_from_logical_edge(edges.right),
+            f32_from_logical_edge(edges.bottom),
+            f32_from_logical_edge(edges.left),
+        )
+    }
+
+    pub(crate) fn is_zero(&self) -> bool {
+        self.left == 0.0 && self.right == 0.0 && self.top == 0.0 && self.bottom == 0.0
+    }
+
+    pub(crate) fn to_surface_edges(self) -> Edges<f64> {
+        Edges::new(
+            f64::from(self.top),
+            f64::from(self.right),
+            f64::from(self.bottom),
+            f64::from(self.left),
+        )
+    }
+
     fn to_taffy_length_percentage(self) -> taffy::Rect<taffy::LengthPercentage> {
         taffy::Rect {
             left: taffy::LengthPercentage::length(self.left),
@@ -627,6 +660,13 @@ impl LayoutEdges {
             scalar_summary(self.top),
             scalar_summary(self.bottom)
         )
+    }
+}
+
+fn f32_from_logical_edge(value: f64) -> f32 {
+    #[expect(clippy::cast_possible_truncation, reason = "layout edges fit f32")]
+    {
+        value as f32
     }
 }
 
@@ -740,6 +780,15 @@ impl LayoutSpacing {
 
     pub(super) fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    pub(crate) fn without_padding(mut self) -> Self {
+        self.padding = None;
+        self
+    }
+
+    pub(crate) fn surface_padding_edges(&self) -> Option<Edges<f64>> {
+        self.padding.map(LayoutEdges::to_surface_edges)
     }
 
     pub(crate) fn inspection_summary(&self) -> String {

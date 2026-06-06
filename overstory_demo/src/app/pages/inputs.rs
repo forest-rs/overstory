@@ -29,7 +29,7 @@ impl View for InputsPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
+                row.demo_fit_card("TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
                     forms.add(
                         TextInput::new()
                             .placeholder("Search command palette")
@@ -46,7 +46,7 @@ impl View for InputsPage {
                     ));
                 });
 
-                row.demo_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
+                row.demo_fit_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
                     actions.with_child(Panel::row(10.0).align_center(), |buttons| {
                         let deploy_clicks = buttons.local_state(0_u32);
                         buttons.content(

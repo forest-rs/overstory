@@ -382,7 +382,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 12.0_f64)
                 .set(properties.layout_container, LayoutContainer::row())
-                .set(properties.layout_spacing, LayoutSpacing::padding_all(3.0))
+                .padding_all(properties, 3.0)
                 .set(
                     properties.layout_alignment,
                     LayoutAlignment::new()
@@ -400,10 +400,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 9.0_f64)
                 .set(properties.layout_container, LayoutContainer::row())
-                .set(
-                    properties.layout_spacing,
-                    LayoutSpacing::padding_xy(12.0, 8.0),
-                )
+                .padding_xy(properties, 12.0, 8.0)
                 .set(
                     properties.layout_alignment,
                     LayoutAlignment::new()

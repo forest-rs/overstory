@@ -59,10 +59,12 @@ use crate::template::ControlTemplate;
 pub struct BuiltInProperties {
     /// Canonical box-decoration surface properties.
     ///
-    /// Backgrounds, border sides, decoration padding widths, corner radii, and
-    /// corner shapes are registered by `understory_presentation_properties`
-    /// and resolved into `understory_presentation::SurfacePrimitive` by the
-    /// shared [`crate::present_surface`] path.
+    /// Backgrounds, border sides, padding widths, corner radii, and corner
+    /// shapes are registered by `understory_presentation_properties` and
+    /// resolved into `understory_presentation::SurfacePrimitive` by the shared
+    /// [`crate::present_surface`] path. Border and padding widths also feed
+    /// layout content insets, so shape-like surface writes start at `LAYOUT`
+    /// invalidation and cascade through geometry and paint.
     pub surface: SurfaceProperties,
 
     /// Bounds in viewport coordinates the element paints into. Layout writes
@@ -248,7 +250,7 @@ impl BuiltInProperties {
         let text_defaults = TextStyle::default();
         let surface = SurfaceProperties::register(
             registry,
-            SurfacePropertyChannels::new(GEOMETRY.into_set(), PAINT.into_set()),
+            SurfacePropertyChannels::new(LAYOUT.into_set(), PAINT.into_set()),
         );
         Self {
             surface,

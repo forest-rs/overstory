@@ -43,25 +43,25 @@ impl View for BoxModelPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_auto_card("LAYOUT PADDING", PAGE_CARD_WIDTH, |card| {
+                row.demo_auto_card("BOX PADDING", PAGE_CARD_WIDTH, |card| {
                     card.add(body_text(
-                        "Layout padding defines the content inset today. The next box-model pass should feed decoration padding from that same resolved value.",
+                        "Surface padding and border widths now define the same content inset used by layout and decoration geometry.",
                     ));
                     card.with_child(
                         Panel::column(8.0)
                             .background(solid(26, 31, 43, 255))
                             .border_brush(opt_solid(126, 155, 255, 255))
                             .border_width(2.0)
+                            .padding_xy(24.0, 18.0)
                             .corner_radius(18.0)
                             .layout(
                                 Layout::column(8.0)
-                                    .logical_size(PAGE_CONTROL_WIDTH, 132.0)
-                                    .padding_xy(24.0, 18.0),
+                                    .logical_size(PAGE_CONTROL_WIDTH, 132.0),
                             ),
                         |box_content| {
                             box_content.add(control_label("content box"));
                             box_content.add(
-                                Text::new("This label sits inside LayoutSpacing::padding, showing the content box that decoration geometry should share.")
+                                Text::new("This label sits inside Surface.Padding plus border thickness, matching the resolved content contour.")
                                     .class(CLASS_DEMO_BODY)
                                     .wrap(),
                             );
@@ -102,7 +102,7 @@ fn corner_specimen(kind: CornerShapeKind) -> Panel {
         .background(solid(38, 46, 65, 255))
         .border_brush(opt_solid(126, 155, 255, 255))
         .border_width(3.0)
-        .decoration_padding(Edges::vertical_horizontal(12.0, 18.0))
+        .padding_widths(Edges::vertical_horizontal(12.0, 18.0))
         .corner_radii(Corners::all(CornerRadius::new(28.0, 20.0)))
         .corner_shape(kind.shape())
 }
@@ -117,7 +117,7 @@ fn asymmetric_border_specimen() -> Panel {
             opt_solid(255, 205, 113, 255),
         )
         .border_widths(Edges::new(6.0, 12.0, 8.0, 3.0))
-        .decoration_padding(Edges::new(14.0, 22.0, 16.0, 12.0))
+        .padding_widths(Edges::new(14.0, 22.0, 16.0, 12.0))
         .corner_radius(0.0)
         .corner_shape(CornerShape::Round)
 }

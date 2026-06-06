@@ -7,13 +7,14 @@ use alloc::vec::Vec;
 
 use kurbo::{Point, Rect, RoundedRect, Size, Vec2};
 use understory_box_tree::NodeId;
+use understory_presentation::Edges;
 
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::LAYOUT;
-use crate::element::ElementId;
+use crate::element::{Element, ElementId};
 use crate::layouts::{
-    Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
-    LayoutSpacing,
+    Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
+    LayoutSize, LayoutSpacing,
 };
 use crate::timeline_runtime::{TimelineTarget, VisualOutput};
 
@@ -23,6 +24,14 @@ fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
         taffy::AvailableSpace::Definite(v) => f64::from(v),
         taffy::AvailableSpace::MinContent | taffy::AvailableSpace::MaxContent => f64::INFINITY,
+    }
+}
+
+fn finite_non_negative(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
     }
 }
 
@@ -66,7 +75,30 @@ impl Ui {
 
     /// Sets an element's padding and child-gap contribution.
     pub fn set_layout_spacing(&mut self, id: ElementId, spacing: impl Into<LayoutSpacing>) {
-        self.set_local(id, self.properties.layout_spacing, spacing.into());
+        let spacing = spacing.into();
+        if let Some(padding) = spacing.surface_padding_edges() {
+            self.set_box_padding(id, padding);
+        }
+        self.set_local(
+            id,
+            self.properties.layout_spacing,
+            spacing.without_padding(),
+        );
+    }
+
+    /// Sets the canonical box padding used by both layout and surface
+    /// decoration geometry.
+    ///
+    /// The values are physical top/right/bottom/left logical pixels. Layout
+    /// combines this padding with resolved border widths to derive the Taffy
+    /// content inset; painting resolves the same properties into
+    /// `SurfacePrimitive::padding_widths`.
+    pub fn set_box_padding(&mut self, id: ElementId, padding: Edges<f64>) {
+        let properties = self.properties.surface.padding_widths;
+        self.set_local(id, properties.top, padding.top);
+        self.set_local(id, properties.right, padding.right);
+        self.set_local(id, properties.bottom, padding.bottom);
+        self.set_local(id, properties.left, padding.left);
     }
 
     /// Sets an element's child and self-alignment contribution.
@@ -139,6 +171,9 @@ impl Ui {
         layout.merge_alignment(self.resolve_value_for(element, self.properties.layout_alignment));
         layout.merge_overflow(self.resolve_value_for(element, self.properties.layout_overflow));
         layout.merge_placement(self.resolve_value_for(element, self.properties.layout_placement));
+        if let Some(inset) = self.effective_box_layout_inset(element) {
+            layout.merge_spacing(LayoutSpacing::new().padding(inset));
+        }
         layout
     }
 
@@ -421,5 +456,31 @@ impl Ui {
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
             local_offset,
         )
+    }
+}
+
+impl Ui {
+    fn effective_box_layout_inset(&self, element: &Element) -> Option<LayoutEdges> {
+        let surface = self.properties.surface;
+        let border = Edges::new(
+            finite_non_negative(self.resolve_value_for(element, surface.border_widths.top)),
+            finite_non_negative(self.resolve_value_for(element, surface.border_widths.right)),
+            finite_non_negative(self.resolve_value_for(element, surface.border_widths.bottom)),
+            finite_non_negative(self.resolve_value_for(element, surface.border_widths.left)),
+        );
+        let padding = Edges::new(
+            finite_non_negative(self.resolve_value_for(element, surface.padding_widths.top)),
+            finite_non_negative(self.resolve_value_for(element, surface.padding_widths.right)),
+            finite_non_negative(self.resolve_value_for(element, surface.padding_widths.bottom)),
+            finite_non_negative(self.resolve_value_for(element, surface.padding_widths.left)),
+        );
+
+        let inset = LayoutEdges::from_surface_edges(Edges::new(
+            border.top + padding.top,
+            border.right + padding.right,
+            border.bottom + padding.bottom,
+            border.left + padding.left,
+        ));
+        (!inset.is_zero()).then_some(inset)
     }
 }

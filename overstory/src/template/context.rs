@@ -228,8 +228,12 @@ impl<'a> TemplateContext<'a> {
 
     /// Writes a generated element's spacing contribution.
     pub fn set_layout_spacing(&mut self, id: ElementId, spacing: impl Into<LayoutSpacing>) {
+        let spacing = spacing.into();
+        if let Some(padding) = spacing.surface_padding_edges() {
+            self.ui.set_box_padding(id, padding);
+        }
         let property = self.properties().layout_spacing;
-        self.set_local(id, property, spacing.into());
+        self.set_local(id, property, spacing.without_padding());
     }
 
     /// Writes a generated element's alignment contribution.

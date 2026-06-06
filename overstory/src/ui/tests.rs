@@ -10,8 +10,8 @@ use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scr
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
     ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
-    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, TYPE_GENERIC, TemplateContext,
-    TemplateSlot, TooltipSpecExt, UiResolveLookup,
+    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, SurfaceStyleExt, TYPE_GENERIC,
+    TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -2615,18 +2615,12 @@ fn hit_test_picks_topmost_child() {
     // giving it 50..150 × 50..150.
     let mut ui = Ui::new();
     let root = ui.root();
-    let layout_prop = ui.properties().layout;
-    ui.set_local(
+    ui.set_layout(
         root,
-        layout_prop,
         Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
     );
     let child = ui.insert_child(root);
-    ui.set_local(
-        child,
-        layout_prop,
-        Layout::new().flex_grow(1.0).align_self_stretch(),
-    );
+    ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
     ui.compute_layout(Size::new(200.0, 200.0));
 
     // Inside child's bounds → child wins (deepest, topmost).
@@ -2788,18 +2782,12 @@ fn hover_path_marks_ancestor_pseudoclasses() {
     // over the child, and verifying both elements have :hover.
     let mut ui = Ui::new();
     let root = ui.root();
-    let layout_prop = ui.properties().layout;
-    ui.set_local(
+    ui.set_layout(
         root,
-        layout_prop,
         Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
     );
     let child = ui.insert_child(root);
-    ui.set_local(
-        child,
-        layout_prop,
-        Layout::new().flex_grow(1.0).align_self_stretch(),
-    );
+    ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
     ui.compute_layout(Size::new(200.0, 200.0));
 
     // Hover via update_hover_at-equivalent path.
@@ -3427,19 +3415,13 @@ fn compute_layout_writes_bounds() {
     let root = ui.root();
     let child = ui.insert_child(root);
 
-    let layout_prop = ui.properties().layout;
     // Root fills the viewport with 10px padding.
-    ui.set_local(
+    ui.set_layout(
         root,
-        layout_prop,
         Layout::flex().percent_size(1.0, 1.0).padding_all(10.0),
     );
     // Child fills the padded content.
-    ui.set_local(
-        child,
-        layout_prop,
-        Layout::new().flex_grow(1.0).align_self_stretch(),
-    );
+    ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
 
     ui.compute_layout(Size::new(200.0, 100.0));
     // Root is the full viewport.
@@ -3448,6 +3430,35 @@ fn compute_layout_writes_bounds() {
     assert_eq!(
         ui.effective_bounds(child),
         Rect::new(10.0, 10.0, 190.0, 90.0)
+    );
+}
+
+#[test]
+fn surface_border_and_padding_define_layout_content_inset() {
+    use crate::SurfaceSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::row(0.0).logical_size(120.0, 80.0));
+
+    let child = ui.append(
+        root,
+        crate::Panel::new()
+            .border_width(3.0)
+            .padding_all(10.0)
+            .layout(Layout::row(0.0).logical_size(80.0, 40.0)),
+    );
+    let grandchild = ui.append(
+        child,
+        crate::Panel::new().layout(Layout::new().logical_size(20.0, 10.0)),
+    );
+
+    ui.compute_layout(Size::new(120.0, 80.0));
+
+    assert_eq!(ui.effective_bounds(child), Rect::new(0.0, 0.0, 80.0, 40.0));
+    assert_eq!(
+        ui.effective_bounds(grandchild),
+        Rect::new(13.0, 13.0, 33.0, 23.0)
     );
 }
 
@@ -3569,7 +3580,7 @@ fn set_layout_without_placement_keeps_styled_placement() {
 }
 
 #[test]
-fn set_layout_size_does_not_replace_styled_spacing() {
+fn set_layout_size_does_not_replace_styled_box_padding() {
     use crate::Panel;
 
     const PADDED: ClassId = ClassId(0x35);
@@ -3592,9 +3603,10 @@ fn set_layout_size_does_not_replace_styled_spacing() {
             StyleOrigin::Base,
             SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(PADDED)).build(),
             StyleBuilder::new()
+                .padding_all(ui.properties(), 10.0)
                 .set(
-                    ui.properties().layout,
-                    Layout::new().padding_all(10.0).justify_center(),
+                    ui.properties().layout_alignment,
+                    crate::LayoutAlignment::new().justify_content(crate::LayoutJustify::Center),
                 )
                 .build(),
         )
@@ -5114,6 +5126,7 @@ fn element_spec_ext_applies_initial_local_properties() {
             .foreground(foreground.clone())
             .border_width(2.0)
             .corner_radius(6.0)
+            .padding_xy(14.0, 8.0)
             .opacity(0.5)
             .content("Configured"),
     );
@@ -5143,10 +5156,50 @@ fn element_spec_ext_applies_initial_local_properties() {
         element.get_local_value(ui.properties().surface.corner_radii.bottom_right),
         Some(&corner_radius)
     );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.top),
+        Some(&8.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.left),
+        Some(&14.0)
+    );
     assert_eq!(element.get_local_value(ui.properties().opacity), Some(&0.5));
     assert_eq!(
         element.get_local_value(ui.properties().content),
         Some(&String::from("Configured"))
+    );
+}
+
+#[test]
+fn layout_padding_shorthand_writes_surface_padding() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(
+        root,
+        crate::Panel::new().layout(Layout::row(4.0).padding_xy(12.0, 8.0)),
+    );
+    let element = ui.get(panel).unwrap();
+
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.top),
+        Some(&8.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.right),
+        Some(&12.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.bottom),
+        Some(&8.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.padding_widths.left),
+        Some(&12.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().layout_spacing),
+        Some(&crate::LayoutSpacing::gap(4.0))
     );
 }
 

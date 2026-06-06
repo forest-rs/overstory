@@ -148,13 +148,31 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets initial decoration padding widths in top/right/bottom/left order.
+    /// Sets uniform initial box padding.
     ///
-    /// This is the presentation-side padding used to derive content contours.
-    /// Layout padding remains separate until Overstory's box-model pass makes
-    /// both concerns resolve from one source of truth.
+    /// Box padding is the canonical content inset for both layout and surface
+    /// decoration geometry.
     #[must_use]
-    fn decoration_padding(mut self, padding: Edges<f64>) -> Self {
+    fn padding_all(self, padding: f64) -> Self {
+        self.padding_widths(Edges::all(padding))
+    }
+
+    /// Sets horizontal and vertical initial box padding.
+    ///
+    /// `horizontal` applies to left/right; `vertical` applies to top/bottom.
+    #[must_use]
+    fn padding_xy(self, horizontal: f64, vertical: f64) -> Self {
+        self.padding_widths(Edges::vertical_horizontal(vertical, horizontal))
+    }
+
+    /// Sets initial physical box padding widths in top/right/bottom/left
+    /// order.
+    ///
+    /// The same values feed Taffy content insets and
+    /// `SurfacePrimitive::padding_widths`, so content placement and decoration
+    /// contours agree.
+    #[must_use]
+    fn padding_widths(mut self, padding: Edges<f64>) -> Self {
         let element = self.element_config_mut();
         element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingTop, padding.top);
         element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingRight, padding.right);

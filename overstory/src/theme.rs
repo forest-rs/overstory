@@ -108,8 +108,8 @@ use crate::controls::text_input::{
 use crate::controls::toggle::{PART_TOGGLE_THUMB, TYPE_TOGGLE, default_toggle_template};
 use crate::controls::tooltip::{TYPE_TOOLTIP, default_tooltip_template};
 use crate::layouts::{
-    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutGap, LayoutJustify,
-    LayoutSize, LayoutSpacing,
+    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutSize,
+    LayoutSpacing,
 };
 use crate::motion::{
     ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
@@ -374,10 +374,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.font_size, 22.0_f64)
         .corner_radius(properties, 10.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(32.0, 18.0),
-        )
+        .padding_xy(properties, 32.0, 18.0)
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let button_hover = StyleBuilder::new()
@@ -403,7 +400,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .corner_radius(properties, 16.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(64.0, 32.0))
-        .set(properties.layout_spacing, LayoutSpacing::padding_all(4.0))
+        .padding_all(properties, 4.0)
         .set(properties.layout_alignment, toggle_alignment(false))
         .build();
     let toggle_checked = StyleBuilder::new()
@@ -621,10 +618,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(10.0, 7.0),
-        )
+        .padding_xy(properties, 10.0, 7.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new().align_items(LayoutAlign::Center),
@@ -657,10 +651,8 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let expander_content = StyleBuilder::new()
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(30.0, 0.0).with_gap(LayoutGap::all(8.0)),
-        )
+        .padding_xy(properties, 30.0, 0.0)
+        .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
         .build();
     let accordion_idle = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
@@ -687,10 +679,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(10.0, 7.0),
-        )
+        .padding_xy(properties, 10.0, 7.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new().align_items(LayoutAlign::Center),
@@ -723,10 +712,8 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let accordion_section_content = StyleBuilder::new()
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(30.0, 0.0).with_gap(LayoutGap::all(8.0)),
-        )
+        .padding_xy(properties, 30.0, 0.0)
+        .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
         .build();
 
     let progress_idle = StyleBuilder::new()
@@ -804,10 +791,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(220.0, 38.0))
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(12.0, 8.0),
-        )
+        .padding_xy(properties, 12.0, 8.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new()
@@ -871,10 +855,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
     let list_item_content = StyleBuilder::new()
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::percent(1.0, 1.0))
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(10.0, 7.0),
-        )
+        .padding_xy(properties, 10.0, 7.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new().align_items(LayoutAlign::Center),
@@ -900,7 +881,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 9.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
-        .set(properties.layout_spacing, LayoutSpacing::padding_all(2.0))
+        .padding_all(properties, 2.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new().align_items(LayoutAlign::Center),
@@ -923,10 +904,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.font_size, 14.0_f64)
         .corner_radius(properties, 7.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(12.0, 6.0),
-        )
+        .padding_xy(properties, 12.0, 6.0)
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let segmented_item_hover = StyleBuilder::new()
@@ -969,10 +947,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
     let outline_item_content = StyleBuilder::new()
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::percent(1.0, 1.0))
-        .set(
-            properties.layout_spacing,
-            LayoutSpacing::padding_xy(8.0, 5.0),
-        )
+        .padding_xy(properties, 8.0, 5.0)
         .set(
             properties.layout_alignment,
             LayoutAlignment::new().align_items(LayoutAlign::Center),

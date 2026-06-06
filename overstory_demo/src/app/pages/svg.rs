@@ -726,11 +726,17 @@ fn refresh_svg_viewer(ui: &mut Ui, viewer: &SvgViewer) {
 }
 
 fn update_svg_selection_overlay(ui: &mut Ui, viewer: &SvgViewer, state: &SvgViewportDemo) {
-    let view_bounds = state
+    let selected_path = state
         .selected_path
-        .and_then(|index| viewer.tree.path(index))
+        .and_then(|index| viewer.tree.path(index));
+    let view_bounds = selected_path
         .map(|path| state.viewport.world_to_view_rect(path.bounds()))
         .unwrap_or(Rect::ZERO);
+    set_svg_selection_border_width(
+        ui,
+        viewer.selection,
+        if selected_path.is_some() { 1.5 } else { 0.0 },
+    );
     ui.set_layout(
         viewer.selection,
         Layout::new()
@@ -740,6 +746,14 @@ fn update_svg_selection_overlay(ui: &mut Ui, viewer: &SvgViewer, state: &SvgView
                 f32_coord(view_bounds.height().max(0.0)),
             ),
     );
+}
+
+fn set_svg_selection_border_width(ui: &mut Ui, selection: ElementId, width: f64) {
+    let border_widths = ui.properties().surface.border_widths;
+    ui.set_local(selection, border_widths.top, width);
+    ui.set_local(selection, border_widths.right, width);
+    ui.set_local(selection, border_widths.bottom, width);
+    ui.set_local(selection, border_widths.left, width);
 }
 
 fn viewport_transform(viewport: &Viewport2D) -> Affine {

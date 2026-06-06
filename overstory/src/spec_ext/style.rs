@@ -59,13 +59,26 @@ pub trait SurfaceStyleExt: Sized {
     #[must_use]
     fn corner_shapes(self, properties: &BuiltInProperties, shapes: CornerShapes) -> Self;
 
-    /// Sets decoration padding widths in top/right/bottom/left order.
+    /// Sets uniform box padding.
     ///
-    /// This is the presentation-side padding used to derive content contours.
-    /// Layout padding remains separate until Overstory's box-model pass makes
-    /// both concerns resolve from one source of truth.
+    /// Box padding is the canonical content inset for both layout and surface
+    /// decoration geometry.
     #[must_use]
-    fn decoration_padding(self, properties: &BuiltInProperties, padding: Edges<f64>) -> Self;
+    fn padding_all(self, properties: &BuiltInProperties, padding: f64) -> Self;
+
+    /// Sets horizontal and vertical box padding.
+    ///
+    /// `horizontal` applies to left/right; `vertical` applies to top/bottom.
+    #[must_use]
+    fn padding_xy(self, properties: &BuiltInProperties, horizontal: f64, vertical: f64) -> Self;
+
+    /// Sets physical box padding widths in top/right/bottom/left order.
+    ///
+    /// The same values feed Taffy content insets and
+    /// `SurfacePrimitive::padding_widths`, so content placement and decoration
+    /// contours agree.
+    #[must_use]
+    fn padding_widths(self, properties: &BuiltInProperties, padding: Edges<f64>) -> Self;
 }
 
 impl SurfaceStyleExt for StyleBuilder {
@@ -137,7 +150,15 @@ impl SurfaceStyleExt for StyleBuilder {
             )
     }
 
-    fn decoration_padding(self, properties: &BuiltInProperties, padding: Edges<f64>) -> Self {
+    fn padding_all(self, properties: &BuiltInProperties, padding: f64) -> Self {
+        self.padding_widths(properties, Edges::all(padding))
+    }
+
+    fn padding_xy(self, properties: &BuiltInProperties, horizontal: f64, vertical: f64) -> Self {
+        self.padding_widths(properties, Edges::vertical_horizontal(vertical, horizontal))
+    }
+
+    fn padding_widths(self, properties: &BuiltInProperties, padding: Edges<f64>) -> Self {
         self.set(properties.surface.padding_widths.top, padding.top)
             .set(properties.surface.padding_widths.right, padding.right)
             .set(properties.surface.padding_widths.bottom, padding.bottom)
