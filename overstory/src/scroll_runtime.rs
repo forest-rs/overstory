@@ -42,8 +42,18 @@ impl ScrollTarget {
 }
 
 /// Shared scroll offset state for viewport-like controls.
+///
+/// A scrollable widget owns one `ScrollState` and registers it against its
+/// viewport element with [`Ui::register_scroll_target`](crate::Ui::register_scroll_target).
+/// Scroll bars, wheel handlers, accessibility actions, and virtualized controls
+/// then share one offset and one viewport/content extent instead of maintaining
+/// side tables keyed by element id.
+///
+/// The setters are intentionally low-level: they update the shared state only.
+/// Widgets that change the offset should also mark the viewport's layout channel
+/// dirty so child layout offsets and realized ranges are recomputed.
 #[derive(Clone)]
-pub(crate) struct ScrollState {
+pub struct ScrollState {
     inner: Rc<ScrollStateInner>,
 }
 
@@ -97,7 +107,7 @@ impl Default for ScrollState {
 impl ScrollState {
     /// Creates shared scroll state with a zero offset.
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             inner: Rc::new(ScrollStateInner {
                 offset: Cell::new(Vec2::ZERO),
@@ -108,7 +118,7 @@ impl ScrollState {
 
     /// Creates shared scroll state with an initial vertical offset.
     #[must_use]
-    pub(crate) fn with_offset_y(offset_y: f64) -> Self {
+    pub fn with_offset_y(offset_y: f64) -> Self {
         let state = Self::new();
         state.set_offset_y_raw(offset_y);
         state
@@ -116,19 +126,19 @@ impl ScrollState {
 
     /// Returns the current scroll offset in logical pixels.
     #[must_use]
-    pub(crate) fn offset(&self) -> Vec2 {
+    pub fn offset(&self) -> Vec2 {
         self.inner.offset.get()
     }
 
     /// Returns the current vertical scroll offset in logical pixels.
     #[must_use]
-    pub(crate) fn offset_y(&self) -> f64 {
+    pub fn offset_y(&self) -> f64 {
         self.inner.offset.get().y
     }
 
     /// Returns the current maximum scroll offset in logical pixels.
     #[must_use]
-    pub(crate) fn max_offset(&self) -> Vec2 {
+    pub fn max_offset(&self) -> Vec2 {
         self.inner.metrics.get().max_offset()
     }
 
@@ -141,7 +151,7 @@ impl ScrollState {
 
     /// Returns the latest viewport size in logical pixels.
     #[must_use]
-    pub(crate) fn viewport_size(&self) -> Size {
+    pub fn viewport_size(&self) -> Size {
         self.inner.metrics.get().viewport
     }
 
@@ -152,7 +162,14 @@ impl ScrollState {
         self.inner.metrics.get().content
     }
 
-    pub(crate) fn set_offset_raw(&self, offset: Vec2) -> bool {
+    /// Sets the current logical scroll offset without clamping to metrics.
+    ///
+    /// This is primarily for viewport widgets that already used their own
+    /// virtualization model to clamp the offset. General callers should prefer
+    /// higher-level helpers such as [`crate::set_scroll_offset_y`].
+    ///
+    /// Returns `true` when the stored offset changed.
+    pub fn set_offset_raw(&self, offset: Vec2) -> bool {
         let offset = Vec2::new(
             normalize_scroll_axis(offset.x),
             normalize_scroll_axis(offset.y),
@@ -167,11 +184,19 @@ impl ScrollState {
         true
     }
 
-    pub(crate) fn set_offset_y_raw(&self, offset_y: f64) -> bool {
+    /// Sets the current vertical scroll offset without clamping to metrics.
+    ///
+    /// Returns `true` when the stored offset changed.
+    pub fn set_offset_y_raw(&self, offset_y: f64) -> bool {
         self.set_offset_raw(Vec2::new(self.inner.offset.get().x, offset_y))
     }
 
-    pub(crate) fn set_metrics(&self, viewport: Size, content: Size) {
+    /// Replaces the latest viewport/content metrics in logical pixels.
+    ///
+    /// Virtualized controls should set this after recomputing their backing
+    /// extent so scrollbars and accessibility can report the same range as the
+    /// widget's own realization model.
+    pub fn set_metrics(&self, viewport: Size, content: Size) {
         self.inner
             .metrics
             .set(ScrollMetrics::new(viewport, content));

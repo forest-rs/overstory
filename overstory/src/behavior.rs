@@ -200,12 +200,13 @@ impl fmt::Debug for WidgetEventContext<'_> {
 /// Mutable context handed to a widget's element-realization hook.
 ///
 /// Element realization runs after arrangement when a widget's final viewport
-/// geometry can determine which retained element children should exist. Visual
-/// or presentation-node realization is deliberately a separate future concern.
-/// The public context is intentionally small while Overstory's item-template
-/// and item-source model is still taking shape; built-in virtualized controls
-/// use crate-private access to reconcile their realized rows without keeping a
-/// general `&mut Ui` escape hatch in the trait.
+/// geometry can determine which retained element children should exist. This is
+/// the hook used by virtualized controls: they inspect the arranged viewport,
+/// reconcile only the child elements that should be retained for that viewport,
+/// and then return whether that retained subtree changed.
+///
+/// Visual or presentation-node realization is deliberately a separate concern.
+/// This context is for retained elements, not renderer display lists.
 pub struct ElementRealizeContext<'a> {
     id: ElementId,
     ui: &'a mut Ui,
@@ -228,7 +229,14 @@ impl<'a> ElementRealizeContext<'a> {
         self.ui
     }
 
-    pub(crate) fn ui_mut(&mut self) -> &mut Ui {
+    /// Returns mutable access to the owning UI.
+    ///
+    /// External virtualized controls use this to append, remove, and lay out
+    /// realized child elements after their own viewport math decides which rows
+    /// should exist. Keep mutations scoped to the realizing element's subtree;
+    /// broad application state changes belong in routed event handlers,
+    /// bindings, or timers.
+    pub fn ui_mut(&mut self) -> &mut Ui {
         self.ui
     }
 }

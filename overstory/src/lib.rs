@@ -222,6 +222,7 @@ pub use layouts::{
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
+pub use scroll_runtime::ScrollState;
 pub use template::{
     ControlTemplate, Template, TemplateChild, TemplateContext, TemplateContract,
     TemplateDiagnostic, TemplateExpansionReport, TemplateId, TemplateInstance, TemplateItemKey,
@@ -251,10 +252,10 @@ pub mod prelude {
         ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander,
         ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, Popup,
-        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollView,
-        SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt, Text, TextInput,
-        TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding,
-        VectorPath, View, Viewport,
+        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollState,
+        ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt,
+        Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui,
+        ValueBinding, VectorPath, View, Viewport,
     };
 }
 
@@ -262,7 +263,7 @@ pub mod prelude {
 // `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
-pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke};
+pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};
 pub use peniko::{Brush, Color, Fill, color::Rgba8};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
