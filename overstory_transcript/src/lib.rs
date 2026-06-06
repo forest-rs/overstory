@@ -172,26 +172,19 @@ impl TranscriptEntryContext<'_, EntryBody> {
 /// Shared live transcript handle used by [`TranscriptView`].
 ///
 /// `TranscriptSession` is intentionally a thin UI-facing wrapper around the
-/// headless [`Transcript`]. It adds a revision counter so retained widgets can
-/// detect append/chunk/status changes without owning protocol-specific agent
-/// runtime state.
+/// headless [`Transcript`]. It gives retained UI code a cloneable shared handle
+/// while content revision tracking stays owned by the transcript model itself.
 #[derive(Clone)]
 pub struct TranscriptSession<P = EntryBody> {
-    inner: Rc<RefCell<TranscriptSessionInner<P>>>,
-}
-
-#[derive(Clone, Debug)]
-struct TranscriptSessionInner<P> {
-    transcript: Transcript<P>,
-    revision: u64,
+    inner: Rc<RefCell<Transcript<P>>>,
 }
 
 impl<P> core::fmt::Debug for TranscriptSession<P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let inner = self.inner.borrow();
+        let transcript = self.inner.borrow();
         f.debug_struct("TranscriptSession")
-            .field("entry_count", &inner.transcript.len())
-            .field("revision", &inner.revision)
+            .field("entry_count", &transcript.len())
+            .field("revision", &transcript.revision())
             .finish()
     }
 }
@@ -207,33 +200,31 @@ impl<P> TranscriptSession<P> {
     #[must_use]
     pub fn from_transcript(transcript: Transcript<P>) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(TranscriptSessionInner {
-                transcript,
-                revision: 0,
-            })),
+            inner: Rc::new(RefCell::new(transcript)),
         }
     }
 
     /// Returns the number of entries currently stored.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.inner.borrow().transcript.len()
+        self.inner.borrow().len()
     }
 
     /// Returns whether the session currently has no entries.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.inner.borrow().transcript.is_empty()
+        self.inner.borrow().is_empty()
     }
 
     /// Returns the current content revision.
     ///
-    /// The revision increments when a mutation changes the transcript. Widgets
-    /// can cache this value to avoid rebuilding realized rows when only layout
-    /// or scroll position changed.
+    /// The revision comes from the headless transcript and increments only when
+    /// transcript storage actually changes. Widgets can cache this value to
+    /// avoid rebuilding realized rows when only layout or scroll position
+    /// changed.
     #[must_use]
     pub fn revision(&self) -> u64 {
-        self.inner.borrow().revision
+        self.inner.borrow().revision()
     }
 
     /// Reads the underlying transcript for the duration of `read`.
@@ -242,15 +233,12 @@ impl<P> TranscriptSession<P> {
     /// session handle small while still allowing row templates and diagnostics
     /// to inspect entries without cloning the whole log.
     pub fn with_transcript<R>(&self, read: impl FnOnce(&Transcript<P>) -> R) -> R {
-        read(&self.inner.borrow().transcript)
+        read(&self.inner.borrow())
     }
 
     /// Appends `entry` and returns its assigned id.
     pub fn append(&self, entry: NewEntry<P>) -> EntryId {
-        let mut inner = self.inner.borrow_mut();
-        let id = inner.transcript.append(entry);
-        inner.revision = inner.revision.wrapping_add(1);
-        id
+        self.inner.borrow_mut().append(entry)
     }
 
     /// Sets the lifecycle status for an entry.
@@ -258,12 +246,7 @@ impl<P> TranscriptSession<P> {
     /// Returns `Ok(true)` when the stored status changed and the session
     /// revision advanced.
     pub fn set_status(&self, id: EntryId, status: EntryStatus) -> Result<bool, TranscriptError> {
-        let mut inner = self.inner.borrow_mut();
-        let changed = inner.transcript.set_status(id, status)?;
-        if changed {
-            inner.revision = inner.revision.wrapping_add(1);
-        }
-        Ok(changed)
+        self.inner.borrow_mut().set_status(id, status)
     }
 }
 
@@ -279,11 +262,8 @@ impl TranscriptSession<EntryBody> {
         &self,
         id: EntryId,
         chunk: impl Into<EntryBody>,
-    ) -> Result<(), TranscriptError> {
-        let mut inner = self.inner.borrow_mut();
-        inner.transcript.append_chunk(id, chunk)?;
-        inner.revision = inner.revision.wrapping_add(1);
-        Ok(())
+    ) -> Result<bool, TranscriptError> {
+        self.inner.borrow_mut().append_chunk(id, chunk)
     }
 }
 
@@ -1074,7 +1054,10 @@ mod tests {
         let entry = session.append(NewEntry::message(MessageRole::Assistant, EntryBody::Empty));
         assert_eq!(session.revision(), 1);
 
-        session.append_chunk(entry, "hello").unwrap();
+        assert!(session.append_chunk(entry, "hello").unwrap());
+        assert_eq!(session.revision(), 2);
+
+        assert!(!session.append_chunk(entry, EntryBody::Empty).unwrap());
         assert_eq!(session.revision(), 2);
 
         assert!(session.set_status(entry, EntryStatus::InProgress).unwrap());
