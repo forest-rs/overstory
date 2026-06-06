@@ -6,6 +6,9 @@
 //! The public API deliberately exposes a compact [`Layout`] builder instead of
 //! the full underlying layout engine. Add named methods here when Overstory
 //! needs to support a new layout concept; do not mirror every engine type.
+//! Padding is accepted here as authoring shorthand, but resolved box padding
+//! lives in the canonical `Surface.Padding*` properties so layout and box
+//! decoration geometry share one source of truth.
 //!
 //! ```ignore
 //! use overstory::{Layout, Panel};
@@ -24,6 +27,8 @@
 //! Roadmap:
 //! - Keep `Layout` as Overstory intent, with Taffy as an implementation detail
 //!   hidden behind conversion during layout. See ticket `ove-9tcf`.
+//! - Keep box padding canonical in `Surface.Padding*`; layout padding methods
+//!   are convenience shorthands for authors, specs, and templates.
 //! - Add builder methods only for concepts the toolkit wants to support long
 //!   term: min/max constraints, margins, flex basis, grid, overflow, and
 //!   alignment should be deliberate API choices.

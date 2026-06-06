@@ -65,9 +65,11 @@ impl Panel {
         self
     }
 
-    /// Adds uniform padding to the panel's existing layout. If no
-    /// layout has been configured yet, the panel becomes a flex
-    /// container with the padding applied.
+    /// Adds uniform box padding to the panel. If no layout has been configured
+    /// yet, the panel becomes a flex container with the padding applied.
+    ///
+    /// The shorthand is resolved into the panel's canonical surface padding
+    /// properties when the panel is inserted.
     #[must_use]
     pub fn padding(mut self, value: f32) -> Self {
         let layout = self

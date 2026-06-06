@@ -708,7 +708,10 @@ impl LayoutGap {
 
 /// Spacing contribution for an element.
 ///
-/// This covers margins, padding, and child gaps.
+/// This covers margins, padding, and child gaps. Padding is an authoring
+/// shorthand contribution: when applied through `Ui`, element specs, or
+/// templates, it is redirected into the canonical `Surface.Padding*`
+/// properties so layout and surface decoration geometry agree.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LayoutSpacing {
     margin: Option<LayoutEdges>,
@@ -739,13 +742,13 @@ impl LayoutSpacing {
         Self::new().margin(LayoutEdges::xy(horizontal, vertical))
     }
 
-    /// Creates a uniform padding contribution.
+    /// Creates a uniform box-padding contribution.
     #[must_use]
     pub const fn padding_all(value: f32) -> Self {
         Self::new().padding(LayoutEdges::all(value))
     }
 
-    /// Creates a horizontal/vertical padding contribution.
+    /// Creates a horizontal/vertical box-padding contribution.
     #[must_use]
     pub const fn padding_xy(horizontal: f32, vertical: f32) -> Self {
         Self::new().padding(LayoutEdges::xy(horizontal, vertical))
@@ -764,7 +767,7 @@ impl LayoutSpacing {
         self
     }
 
-    /// Sets the padding contribution.
+    /// Sets the box-padding contribution.
     #[must_use]
     pub const fn padding(mut self, padding: LayoutEdges) -> Self {
         self.padding = Some(padding);

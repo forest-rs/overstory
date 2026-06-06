@@ -410,7 +410,9 @@ impl ElementConfig {
     ///
     /// This follows [`Ui::set_layout`]: only longhands explicitly carried by
     /// `layout` are written, so a size update does not erase independently
-    /// styled padding, alignment, overflow, or placement.
+    /// styled padding, alignment, overflow, or placement. Padding carried by
+    /// the layout shorthand is written to the canonical `Surface.Padding*`
+    /// properties before layout spacing is stored.
     pub fn set_layout(&mut self, layout: impl Into<Layout>) {
         self.layout = Some(layout.into());
     }
