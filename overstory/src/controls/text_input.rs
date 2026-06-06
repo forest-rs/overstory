@@ -59,12 +59,68 @@ const TEXT_INPUT_HEIGHT: f32 = 40.0;
 const TEXT_INPUT_PADDING_X: f32 = 12.0;
 const DEFAULT_FONT_SIZE: f32 = 15.0;
 
+type TextInputSubmitHandler = Box<dyn FnMut(&mut Ui, &mut TextInputSubmitEvent)>;
+
+/// Submit event emitted by a single-line [`TextInput`].
+///
+/// The event carries a snapshot of the editable text at the moment Enter was
+/// pressed. Handlers that implement composer-style behavior can call
+/// [`Self::clear_after_submit`] to ask the widget to clear its editor after the
+/// handler returns.
+pub struct TextInputSubmitEvent {
+    input: ElementId,
+    text: String,
+    clear_after_submit: bool,
+}
+
+impl TextInputSubmitEvent {
+    fn new(input: ElementId, text: &str) -> Self {
+        Self {
+            input,
+            text: String::from(text),
+            clear_after_submit: false,
+        }
+    }
+
+    /// Returns the text input element that emitted this submit event.
+    #[must_use]
+    pub const fn input(&self) -> ElementId {
+        self.input
+    }
+
+    /// Returns the submitted text snapshot.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        self.text.as_str()
+    }
+
+    /// Requests that the input clear itself after the submit handler returns.
+    pub const fn clear_after_submit(&mut self) {
+        self.clear_after_submit = true;
+    }
+
+    fn should_clear_after_submit(&self) -> bool {
+        self.clear_after_submit
+    }
+}
+
+impl core::fmt::Debug for TextInputSubmitEvent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextInputSubmitEvent")
+            .field("input", &self.input)
+            .field("text_len", &self.text.len())
+            .field("clear_after_submit", &self.clear_after_submit)
+            .finish()
+    }
+}
+
 /// Builder + spec for a single-line text input.
 pub struct TextInput {
     text: String,
     placeholder: Option<String>,
     font_size: Option<f64>,
     read_only: bool,
+    on_submit: Option<TextInputSubmitHandler>,
     element: ElementConfig,
 }
 
@@ -73,6 +129,7 @@ impl core::fmt::Debug for TextInput {
         f.debug_struct("TextInput")
             .field("text_len", &self.text.len())
             .field("placeholder", &self.placeholder)
+            .field("has_submit_handler", &self.on_submit.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -89,6 +146,7 @@ impl TextInput {
             placeholder: None,
             font_size: None,
             read_only: false,
+            on_submit: None,
             element,
         }
     }
@@ -130,6 +188,20 @@ impl TextInput {
     #[must_use]
     pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
+        self
+    }
+
+    /// Runs `handler` when Enter is pressed while the input has keyboard focus.
+    ///
+    /// This is intentionally a text-input affordance, not a general command or
+    /// form-submit system. The handler receives the submitted text snapshot and
+    /// may request clearing through [`TextInputSubmitEvent::clear_after_submit`].
+    #[must_use]
+    pub fn on_submit<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, &mut TextInputSubmitEvent) + 'static,
+    {
+        self.on_submit = Some(Box::new(handler));
         self
     }
 
@@ -176,6 +248,7 @@ impl AppendSpec for TextInput {
             placeholder,
             font_size,
             read_only,
+            on_submit,
             element,
         } = self;
         let mut edit = TextInputEditState::new(
@@ -187,6 +260,7 @@ impl AppendSpec for TextInput {
             placeholder,
             edit,
             pointer: TextInputPointerState::default(),
+            on_submit,
         };
         let id = ui.append_widget_deferred_template(parent, Box::new(input_widget));
         let content_prop = ui.properties().content;
@@ -222,12 +296,14 @@ pub(crate) struct TextInputWidget {
     placeholder: Option<String>,
     edit: TextInputEditState,
     pointer: TextInputPointerState,
+    on_submit: Option<TextInputSubmitHandler>,
 }
 
 impl core::fmt::Debug for TextInputWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TextInputWidget")
             .field("placeholder", &self.placeholder)
+            .field("has_submit_handler", &self.on_submit.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -358,6 +434,7 @@ impl Widget for TextInputWidget {
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::KeyState;
+        use ui_events::keyboard::{Key, NamedKey};
         let input = ctx.id();
         if !event.is_target() {
             return;
@@ -366,6 +443,11 @@ impl Widget for TextInputWidget {
             return;
         }
         if !ctx.is_enabled(input) {
+            return;
+        }
+        if matches!(event.key.key, Key::Named(NamedKey::Enter)) {
+            self.submit(ctx, input);
+            event.mark_handled();
             return;
         }
         let Some(element) = ctx.element() else {
@@ -555,6 +637,21 @@ fn text_word_starts(text: &str) -> Vec<u8> {
 }
 
 impl TextInputWidget {
+    fn submit(&mut self, ctx: &mut WidgetEventContext<'_>, input: ElementId) {
+        let mut submit = TextInputSubmitEvent::new(input, self.edit.text());
+        if let Some(handler) = self.on_submit.as_mut() {
+            handler(ctx.ui_mut(), &mut submit);
+        }
+        if submit.should_clear_after_submit() && !read_only_from_ctx(ctx) {
+            self.edit.editor.set_text("");
+            ctx.with_plain_editor(&mut self.edit.editor, |driver| {
+                driver.move_to_text_end();
+            });
+            self.commit_content(ctx, input);
+        }
+        self.refresh_parts(ctx, input);
+    }
+
     fn commit_content(&self, ui: &mut Ui, input: ElementId) {
         let content = ui.properties().content;
         ui.set_local(input, content, String::from(self.edit.text()));
@@ -1038,6 +1135,9 @@ pub fn set_text_input_text(ui: &mut Ui, input: ElementId, text: impl Into<String
 
 #[cfg(test)]
 mod tests {
+    use alloc::rc::Rc;
+    use core::cell::RefCell;
+
     use super::*;
     use crate::accessibility::accesskit_node_id;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
@@ -1075,6 +1175,32 @@ mod tests {
                 .map(String::as_str),
             Some("")
         );
+    }
+
+    #[test]
+    fn text_input_enter_submits_text_and_can_clear() {
+        let submitted = Rc::new(RefCell::new(Vec::new()));
+        let seen = submitted.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new()
+                .text("send me")
+                .on_submit(move |_ui, event| {
+                    seen.borrow_mut().push(String::from(event.text()));
+                    event.clear_after_submit();
+                }),
+        );
+        ui.set_focus(Some(input));
+
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&enter);
+
+        assert!(result.handled);
+        assert_eq!(submitted.borrow().as_slice(), ["send me"]);
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some(""));
     }
 
     #[test]

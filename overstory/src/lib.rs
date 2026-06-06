@@ -193,7 +193,7 @@ pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET,
     SLOT_TEXT_INPUT_SELECTION, SLOT_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT, TextInput,
-    set_text_input_read_only, set_text_input_text, text_input_text,
+    TextInputSubmitEvent, set_text_input_read_only, set_text_input_text, text_input_text,
 };
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, toggle_checked,
@@ -254,8 +254,8 @@ pub mod prelude {
         ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, Popup,
         ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollState,
         ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt,
-        Text, TextInput, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, Ui,
-        ValueBinding, VectorPath, View, Viewport,
+        Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
+        TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 
