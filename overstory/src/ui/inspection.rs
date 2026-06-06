@@ -471,6 +471,7 @@ impl Ui {
     ) {
         let surface = self.properties.surface;
         let appearance = ElementPropertyInspectionGroup::Appearance;
+        let box_model = ElementPropertyInspectionGroup::Box;
 
         self.push_property_row(
             rows,
@@ -482,69 +483,67 @@ impl Ui {
         );
 
         for (name, property) in [
-            ("BorderTopBrush", surface.border_brushes.top),
-            ("BorderRightBrush", surface.border_brushes.right),
-            ("BorderBottomBrush", surface.border_brushes.bottom),
-            ("BorderLeftBrush", surface.border_brushes.left),
+            ("Border top brush", surface.border_brushes.top),
+            ("Border right brush", surface.border_brushes.right),
+            ("Border bottom brush", surface.border_brushes.bottom),
+            ("Border left brush", surface.border_brushes.left),
+        ] {
+            self.push_property_row(rows, element, name, box_model, property, option_brush_value);
+        }
+
+        for (name, property) in [
+            ("Border top width", surface.border_widths.top),
+            ("Border right width", surface.border_widths.right),
+            ("Border bottom width", surface.border_widths.bottom),
+            ("Border left width", surface.border_widths.left),
+        ] {
+            self.push_property_row(rows, element, name, box_model, property, number_value);
+        }
+
+        for (name, property) in [
+            ("Padding top", surface.padding_widths.top),
+            ("Padding right", surface.padding_widths.right),
+            ("Padding bottom", surface.padding_widths.bottom),
+            ("Padding left", surface.padding_widths.left),
+        ] {
+            self.push_property_row(rows, element, name, box_model, property, number_value);
+        }
+
+        for (name, property) in [
+            ("Top-left corner radius", surface.corner_radii.top_left),
+            ("Top-right corner radius", surface.corner_radii.top_right),
+            (
+                "Bottom-right corner radius",
+                surface.corner_radii.bottom_right,
+            ),
+            (
+                "Bottom-left corner radius",
+                surface.corner_radii.bottom_left,
+            ),
         ] {
             self.push_property_row(
                 rows,
                 element,
                 name,
-                appearance,
-                property,
-                option_brush_value,
-            );
-        }
-
-        for (name, property) in [
-            ("BorderTopWidth", surface.border_widths.top),
-            ("BorderRightWidth", surface.border_widths.right),
-            ("BorderBottomWidth", surface.border_widths.bottom),
-            ("BorderLeftWidth", surface.border_widths.left),
-        ] {
-            self.push_property_row(rows, element, name, appearance, property, number_value);
-        }
-
-        for (name, property) in [
-            ("PaddingTop", surface.padding_widths.top),
-            ("PaddingRight", surface.padding_widths.right),
-            ("PaddingBottom", surface.padding_widths.bottom),
-            ("PaddingLeft", surface.padding_widths.left),
-        ] {
-            self.push_property_row(rows, element, name, appearance, property, number_value);
-        }
-
-        for (name, property) in [
-            ("CornerTopLeftRadius", surface.corner_radii.top_left),
-            ("CornerTopRightRadius", surface.corner_radii.top_right),
-            ("CornerBottomRightRadius", surface.corner_radii.bottom_right),
-            ("CornerBottomLeftRadius", surface.corner_radii.bottom_left),
-        ] {
-            self.push_property_row(
-                rows,
-                element,
-                name,
-                appearance,
+                box_model,
                 property,
                 corner_radius_value,
             );
         }
 
         for (name, property) in [
-            ("CornerTopLeftShape", surface.corner_shapes.top_left),
-            ("CornerTopRightShape", surface.corner_shapes.top_right),
-            ("CornerBottomRightShape", surface.corner_shapes.bottom_right),
-            ("CornerBottomLeftShape", surface.corner_shapes.bottom_left),
+            ("Top-left corner shape", surface.corner_shapes.top_left),
+            ("Top-right corner shape", surface.corner_shapes.top_right),
+            (
+                "Bottom-right corner shape",
+                surface.corner_shapes.bottom_right,
+            ),
+            (
+                "Bottom-left corner shape",
+                surface.corner_shapes.bottom_left,
+            ),
         ] {
-            self.push_property_row(
-                rows,
-                element,
-                name,
-                appearance,
-                property,
-                corner_shape_value,
-            );
+            self.push_property_row(rows, element, name, box_model, property, corner_shape_value);
         }
     }
 

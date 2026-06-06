@@ -1694,6 +1694,12 @@ fn property_grid_sections(row: &ElementInspectionRow) -> Vec<PropertyGridSection
     push_property_group(
         &mut sections,
         row,
+        ElementPropertyInspectionGroup::Box,
+        "Box model",
+    );
+    push_property_group(
+        &mut sections,
+        row,
         ElementPropertyInspectionGroup::Text,
         "Text",
     );
@@ -2428,6 +2434,7 @@ mod tests {
             root,
             Panel::new()
                 .background(Some(background.into()))
+                .padding_xy(12.0, 6.0)
                 .font_size(18.0)
                 .layout(Layout::row(8.0).logical_size(120.0, 64.0)),
         );
@@ -2463,6 +2470,19 @@ mod tests {
                 b: 0x56,
                 a: 0xff,
             })
+        );
+
+        let box_model = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Box model")
+            .expect("grid should contain box model property section");
+        assert!(
+            box_model
+                .rows()
+                .iter()
+                .any(|row| row.label() == "Padding left"
+                    && row.value() == &PropertyGridValue::text("12"))
         );
 
         let text = grid

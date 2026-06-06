@@ -280,8 +280,10 @@ pub struct ElementPropertyInspectionField {
 /// Broad group for an inspectable dependency property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElementPropertyInspectionGroup {
-    /// Fill, border, radius, and other visual appearance properties.
+    /// Fill and other visual appearance properties.
     Appearance,
+    /// Box model and surface decoration geometry properties.
+    Box,
     /// Text content and typography properties.
     Text,
     /// Layout-intent properties.

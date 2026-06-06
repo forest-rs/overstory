@@ -4979,6 +4979,7 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         root,
         crate::Panel::new()
             .background(Some(background.into()))
+            .padding_xy(12.0, 6.0)
             .font_size(18.0)
             .layout(Layout::row(8.0).logical_size(120.0, 64.0))
             .opacity(0.75),
@@ -4998,6 +4999,14 @@ fn inspection_snapshot_reports_effective_property_summaries() {
                 && property.value == ElementPropertyInspectionValue::Color(background.to_rgba8())
         }),
         "snapshot should expose effective appearance properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "Padding left"
+                && property.group == ElementPropertyInspectionGroup::Box
+                && property.value == ElementPropertyInspectionValue::Number(12.0)
+        }),
+        "snapshot should expose box model properties separately from appearance"
     );
     assert!(
         row.properties.iter().any(|property| {
