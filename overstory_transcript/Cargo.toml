@@ -10,11 +10,12 @@ publish = false
 
 [features]
 default = []
-std = ["overstory/std", "understory_transcript/std"]
+std = ["overstory/std", "understory_transcript/std", "understory_virtual_list/std"]
 
 [dependencies]
 overstory.workspace = true
 understory_transcript.workspace = true
+understory_virtual_list.workspace = true
 
 [dev-dependencies]
 overstory = { features = ["system-fonts"], workspace = true }
