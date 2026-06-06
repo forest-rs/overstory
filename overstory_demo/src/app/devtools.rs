@@ -8,14 +8,14 @@ use overstory_devtools::{
     UiLiveInspectionTarget, append_session_view, refresh_session_view_from_mirror,
 };
 use overstory_transcript::{
-    AnnotationLevel, EntryBody, EntryKind, EntryStatus, EntryTemplate, MessageRole, NewEntry,
-    ProcessStream, TranscriptEntry, TranscriptEntryContext, TranscriptSession, TranscriptView,
+    AnnotationLevel, EntryBody, EntryKind, EntryTemplate, MessageRole, NewEntry, ProcessStream,
+    TranscriptEntry, TranscriptEntryContext, TranscriptSession, TranscriptView,
     refresh_transcript_view,
 };
 
 use super::*;
 
-const DEVTOOLS_EVENT_LOG_HEIGHT: f32 = 154.0;
+const DEVTOOLS_EVENT_LOG_HEIGHT: f32 = 112.0;
 
 pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
     let open_dock = Rc::new(Cell::new(None));
@@ -157,17 +157,19 @@ impl InProcessDevtoolsShell {
             return false;
         };
 
-        let refreshed = {
-            let devtools = self.devtools.borrow();
-            refresh_session_view_from_mirror(
-                ui,
-                elements,
-                &previous_tree,
-                devtools.mirror(),
-                self.session.clone(),
-            )
-        };
-        self.view_elements.set(Some(refreshed));
+        if refresh.changes.tree {
+            let refreshed = {
+                let devtools = self.devtools.borrow();
+                refresh_session_view_from_mirror(
+                    ui,
+                    elements,
+                    &previous_tree,
+                    devtools.mirror(),
+                    self.session.clone(),
+                )
+            };
+            self.view_elements.set(Some(refreshed));
+        }
         self.refresh_count
             .set(self.refresh_count.get().saturating_add(1));
         self.update_status(ui, refresh.stream_item_count, refresh.tree_patch_counts());
@@ -235,7 +237,7 @@ fn open_in_process_devtools(
         ui,
         NewEntry::annotation(
             AnnotationLevel::Info,
-            "Attached to the running gallery. Devtools subtree is excluded from target capture.",
+            "Attached to the running gallery; excluding the devtools subtree.",
         ),
     );
     ui.with_children(dock, |dock| {
@@ -270,9 +272,11 @@ fn open_in_process_devtools(
                 shell.event_log.clone(),
                 EntryTemplate::new(render_devtools_event_entry),
             )
-            .estimated_row_extent(62.0)
+            .estimated_row_extent(34.0)
             .size(DEVTOOLS_INSPECTOR_WIDTH - 44.0, DEVTOOLS_EVENT_LOG_HEIGHT)
-            .row_gap(8.0)
+            .row_gap(4.0)
+            .overscan(80.0)
+            .tail_anchored(true)
             .class(CLASS_DEVTOOLS_EVENT_LOG)
             .background(solid(0x13, 0x16, 0x20, 0xff))
             .border_brush(solid(0x39, 0x3f, 0x52, 0xff))
@@ -323,7 +327,9 @@ fn wire_live_stream_timer(ui: &mut Ui, dock: ElementId, shell: InProcessDevtools
 }
 
 fn should_log_refresh_event(refresh: &overstory_devtools::DevtoolsRefresh) -> bool {
-    refresh.stream_item_count > 0 || refresh.tree_patch_counts().is_some()
+    refresh
+        .tree_patch_counts()
+        .is_some_and(|counts| counts.upserted > 0 || counts.removed > 0)
 }
 
 fn refresh_event_log_entry(summary: &str) -> NewEntry<EntryBody> {
@@ -346,23 +352,31 @@ fn render_devtools_event_entry(
     row: &mut ChildUi<'_>,
     context: TranscriptEntryContext<'_, EntryBody>,
 ) {
-    let (label, accent, background) = devtools_event_style(context.entry());
+    let style = devtools_event_style(context.entry());
     row.with_child(
-        Panel::column(5.0)
-            .layout(Layout::column(5.0).fill_width().padding_all(9.0))
-            .background(solid(background.0, background.1, background.2, 0xff))
-            .border_brush(solid(accent.0, accent.1, accent.2, 0xaa))
+        Panel::row(8.0)
+            .layout(
+                Layout::row(8.0)
+                    .fill_width()
+                    .padding_xy(7.0, 5.0)
+                    .align_center()
+                    .min_logical_size(0.0, 0.0),
+            )
+            .background(solid(
+                style.background.0,
+                style.background.1,
+                style.background.2,
+                0xff,
+            ))
+            .border_brush(solid(style.accent.0, style.accent.1, style.accent.2, 0xaa))
             .border_width(1.0)
-            .corner_radius(10.0),
+            .corner_radius(8.0),
         |entry| {
-            entry.with_child(Panel::row(7.0).align_center(), |header| {
-                append_devtools_event_chip(header, label, accent);
-                header.add(caption(status_label(context.entry().status)));
-            });
+            append_devtools_event_chip(entry, style);
             entry.add(
                 Text::new(devtools_event_body(context.entry()))
                     .wrap()
-                    .font_size(12.0)
+                    .font_size(11.0)
                     .foreground(solid(0xee, 0xf1, 0xfa, 0xff))
                     .layout(Layout::new().min_logical_size(0.0, 0.0).flex_shrink(1.0)),
             );
@@ -370,61 +384,78 @@ fn render_devtools_event_entry(
     );
 }
 
-fn devtools_event_style(entry: &TranscriptEntry) -> (&'static str, (u8, u8, u8), (u8, u8, u8)) {
+#[derive(Clone, Copy, Debug)]
+struct DevtoolsEventStyle {
+    label: &'static str,
+    accent: (u8, u8, u8),
+    background: (u8, u8, u8),
+}
+
+fn devtools_event_style(entry: &TranscriptEntry) -> DevtoolsEventStyle {
     match &entry.kind {
         EntryKind::Annotation(annotation) => match annotation.level {
-            AnnotationLevel::Info => ("attach", (0x81, 0x9b, 0xff), (0x1b, 0x20, 0x31)),
-            AnnotationLevel::Warning => ("warning", (0xff, 0xc8, 0x66), (0x2a, 0x25, 0x1a)),
-            AnnotationLevel::Error => ("error", (0xff, 0x8c, 0x8c), (0x2d, 0x1f, 0x24)),
+            AnnotationLevel::Info => event_style("attach", (0x81, 0x9b, 0xff), (0x1b, 0x20, 0x31)),
+            AnnotationLevel::Warning => {
+                event_style("warning", (0xff, 0xc8, 0x66), (0x2a, 0x25, 0x1a))
+            }
+            AnnotationLevel::Error => event_style("error", (0xff, 0x8c, 0x8c), (0x2d, 0x1f, 0x24)),
         },
-        EntryKind::ProcessOutput(_) => ("refresh", (0x69, 0xd2, 0x9b), (0x18, 0x26, 0x22)),
+        EntryKind::ProcessOutput(_) => {
+            event_style("refresh", (0x69, 0xd2, 0x9b), (0x18, 0x26, 0x22))
+        }
         EntryKind::Message(message) => match message.role {
-            MessageRole::User => ("request", (0x81, 0x9b, 0xff), (0x1b, 0x22, 0x3a)),
-            MessageRole::Assistant => ("response", (0x69, 0xd2, 0x9b), (0x18, 0x26, 0x22)),
+            MessageRole::User => event_style("request", (0x81, 0x9b, 0xff), (0x1b, 0x22, 0x3a)),
+            MessageRole::Assistant => {
+                event_style("response", (0x69, 0xd2, 0x9b), (0x18, 0x26, 0x22))
+            }
             MessageRole::System | MessageRole::Tool | MessageRole::Other => {
-                ("message", (0xbd, 0x91, 0xff), (0x22, 0x1f, 0x31))
+                event_style("message", (0xbd, 0x91, 0xff), (0x22, 0x1f, 0x31))
             }
         },
         EntryKind::ToolCall(_) | EntryKind::ToolResult(_) | EntryKind::State(_) => {
-            ("event", (0xbd, 0x91, 0xff), (0x22, 0x1f, 0x31))
+            event_style("event", (0xbd, 0x91, 0xff), (0x22, 0x1f, 0x31))
         }
     }
 }
 
-fn append_devtools_event_chip(ui: &mut ChildUi<'_>, label: &str, accent: (u8, u8, u8)) {
+const fn event_style(
+    label: &'static str,
+    accent: (u8, u8, u8),
+    background: (u8, u8, u8),
+) -> DevtoolsEventStyle {
+    DevtoolsEventStyle {
+        label,
+        accent,
+        background,
+    }
+}
+
+fn append_devtools_event_chip(ui: &mut ChildUi<'_>, style: DevtoolsEventStyle) {
     ui.with_child(
         Panel::row(0.0)
             .layout(
                 Layout::row(0.0)
-                    .logical_size(74.0, 20.0)
-                    .padding_xy(8.0, 0.0)
+                    .logical_size(58.0, 18.0)
+                    .padding_xy(6.0, 0.0)
                     .align_center(),
             )
-            .background(solid(accent.0, accent.1, accent.2, 0x33))
-            .border_brush(solid(accent.0, accent.1, accent.2, 0xbb))
+            .background(solid(style.accent.0, style.accent.1, style.accent.2, 0x33))
+            .border_brush(solid(style.accent.0, style.accent.1, style.accent.2, 0xbb))
             .border_width(1.0)
             .corner_radius(10.0),
         |chip| {
-            chip.add(
-                Text::new(label)
-                    .font_size(10.0)
-                    .foreground(solid(accent.0, accent.1, accent.2, 0xff)),
-            );
+            chip.add(Text::new(style.label).font_size(9.0).foreground(solid(
+                style.accent.0,
+                style.accent.1,
+                style.accent.2,
+                0xff,
+            )));
         },
     );
 }
 
 fn devtools_event_body(entry: &TranscriptEntry) -> &str {
     entry.body().and_then(EntryBody::as_text).unwrap_or("")
-}
-
-fn status_label(status: EntryStatus) -> &'static str {
-    match status {
-        EntryStatus::InProgress => "running",
-        EntryStatus::Complete => "complete",
-        EntryStatus::Failed => "failed",
-        EntryStatus::Cancelled => "cancelled",
-    }
 }
 
 fn format_live_stream_status(

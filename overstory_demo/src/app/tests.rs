@@ -281,6 +281,16 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
             && subtree_contains_text_fragment(&ui, event_log, "tree patch +"),
         "timer refresh should append a concrete event-log row"
     );
+
+    ui.pump_timers(millis(DEVTOOLS_REFRESH_INTERVAL_MS));
+    ui.compute_layout(Size::new(
+        f64::from(INITIAL_SIZE.0),
+        f64::from(INITIAL_SIZE.1),
+    ));
+    assert!(
+        !subtree_contains_text_fragment(&ui, event_log, "refresh 2:"),
+        "frame-only or empty refreshes should not append event-log rows"
+    );
 }
 
 #[test]
