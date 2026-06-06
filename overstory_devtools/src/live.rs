@@ -26,6 +26,8 @@ pub struct DevtoolsRefresh {
     pub stream_item_count: usize,
     /// Selection after stale ids were normalized against the new snapshot.
     pub selected: Option<ElementId>,
+    /// Source-side changes that produced this refresh.
+    pub changes: DevtoolsRefreshChanges,
 }
 
 impl DevtoolsRefresh {
@@ -47,6 +49,15 @@ impl DevtoolsRefresh {
             | None => None,
         }
     }
+}
+
+/// Source-side change categories observed during one devtools refresh.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DevtoolsRefreshChanges {
+    /// Retained element rows were inserted, removed, or updated.
+    pub tree: bool,
+    /// Frame timing or renderer summary counters changed.
+    pub frame: bool,
 }
 
 /// Element-tree operation counts streamed during one refresh.
@@ -161,6 +172,10 @@ impl LiveDevtools {
             event: Some(event),
             stream_item_count,
             selected,
+            changes: DevtoolsRefreshChanges {
+                tree: true,
+                frame: true,
+            },
         })
     }
 
@@ -170,6 +185,10 @@ impl LiveDevtools {
         target: &mut impl LiveDevtoolsTarget,
     ) -> Result<DevtoolsRefresh, SessionError> {
         let changes = target.drain_inspection_changes();
+        let refresh_changes = DevtoolsRefreshChanges {
+            tree: !changes.tree.is_empty(),
+            frame: changes.frame.is_some(),
+        };
         let event = self
             .session
             .with_mut(|session| session.apply_inspection_changes(changes));
@@ -186,6 +205,7 @@ impl LiveDevtools {
             event,
             stream_item_count,
             selected,
+            changes: refresh_changes,
         })
     }
 
@@ -387,6 +407,13 @@ mod tests {
             refresh.event,
             Some(DevtoolsEvent::TargetChanged { selected: None })
         );
+        assert_eq!(
+            refresh.changes,
+            DevtoolsRefreshChanges {
+                tree: false,
+                frame: true,
+            }
+        );
         assert_eq!(refresh.stream_item_count, 1);
         assert_eq!(
             devtools.mirror().summaries().frame.timings.surface_refresh,
@@ -433,6 +460,13 @@ mod tests {
             .expect("live state refresh should update mirror");
 
         assert_eq!(refresh.stream_item_count, 1);
+        assert_eq!(
+            refresh.changes,
+            DevtoolsRefreshChanges {
+                tree: true,
+                frame: false,
+            }
+        );
         assert_eq!(
             refresh.event,
             Some(DevtoolsEvent::TargetChanged {
