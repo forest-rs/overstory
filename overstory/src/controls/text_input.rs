@@ -1002,6 +1002,40 @@ pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) 
     }
 }
 
+/// Returns the current editable text for a text input.
+#[must_use]
+pub fn text_input_text(ui: &Ui, input: ElementId) -> Option<String> {
+    ui.get(input)
+        .map(|element| ui.resolve_value_for(element, ui.properties().content))
+}
+
+/// Replaces the editable text for a text input.
+///
+/// This updates both the semantic `Content` property and the `PlainEditor`
+/// state owned by the widget, then refreshes the text, selection, and caret
+/// template parts. Use this for programmatic edits such as clearing a composer
+/// after a send action.
+pub fn set_text_input_text(ui: &mut Ui, input: ElementId, text: impl Into<String>) -> bool {
+    let text = text.into();
+    let mut changed = false;
+    ui.with_widget_mut(input, |widget, ui| {
+        let Some(widget) = widget.downcast_mut::<TextInputWidget>() else {
+            return;
+        };
+        if widget.edit.text() == text {
+            return;
+        }
+        widget.edit.editor.set_text(&text);
+        ui.with_plain_editor(&mut widget.edit.editor, |driver| {
+            driver.move_to_text_end();
+        });
+        widget.commit_content(ui, input);
+        widget.refresh_parts(ui, input);
+        changed = true;
+    });
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1281,6 +1315,25 @@ mod tests {
                 .map(String::as_str),
             Some("new")
         );
+    }
+
+    #[test]
+    fn set_text_input_text_updates_editor_and_content() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("draft"));
+        let text = ui.slot(input, SLOT_TEXT_INPUT_TEXT).unwrap();
+
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some("draft"));
+        assert!(set_text_input_text(&mut ui, input, "sent"));
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some("sent"));
+        assert_eq!(
+            ui.get(text)
+                .and_then(|el| el.get_local_value(ui.properties().text))
+                .map(String::as_str),
+            Some("sent")
+        );
+        assert!(!set_text_input_text(&mut ui, input, "sent"));
     }
 
     #[test]
