@@ -700,10 +700,19 @@ impl<P: 'static> TranscriptViewportWidget<P> {
         if updates.is_empty() {
             return false;
         }
+        let was_at_tail = self.tail_anchored && self.virtual_list.is_at_tail();
         let model = self.virtual_list.model_mut().inner_mut();
         for (index, extent) in updates {
             model.set_extent(index, extent);
         }
+        self.virtual_list.restore_tail_anchor(was_at_tail);
+        self.virtual_list.clamp_scroll_to_content();
+        self.scroll_state
+            .set_offset_y_raw(self.virtual_list.scroll_offset());
+        self.scroll_state.set_metrics(
+            self.last_viewport,
+            Size::new(self.last_viewport.width, self.virtual_list.total_extent()),
+        );
         true
     }
 
@@ -987,7 +996,7 @@ fn status_label(status: EntryStatus) -> &'static str {
 mod tests {
     use alloc::format;
 
-    use overstory::{Panel, ProgressBar, Size, Text};
+    use overstory::{Panel, ProgressBar, Size, Text, scroll_offset_y};
 
     use super::*;
 
@@ -1127,6 +1136,39 @@ mod tests {
         assert!(
             second.y0 >= first.y1 + f64::from(DEFAULT_ROW_GAP),
             "second row should be laid out after the measured first row, got first={first:?}, second={second:?}",
+        );
+    }
+
+    #[test]
+    fn measured_rows_restore_tail_anchor_after_short_estimates() {
+        let mut transcript: Transcript<EntryBody> = Transcript::new();
+        for _ in 0..6 {
+            transcript.append(NewEntry::message(MessageRole::Assistant, EntryBody::Empty));
+        }
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let view = ui.append(
+            root,
+            TranscriptView::with_entry_template(
+                transcript,
+                EntryTemplate::new(|row, _entry| {
+                    row.add(Panel::new().layout(Layout::new().logical_size(200.0, 50.0)));
+                }),
+            )
+            .size(240.0, 80.0)
+            .row_gap(0.0)
+            .estimated_row_extent(8.0)
+            .overscan(600.0),
+        );
+
+        ui.compute_layout(Size::new(320.0, 160.0));
+
+        let viewport = transcript_view_viewport(&ui, view).unwrap();
+        let offset = scroll_offset_y(&ui, viewport).expect("transcript viewport should scroll");
+        assert!(
+            offset > 100.0,
+            "measured rows should keep the initially anchored viewport pinned to the tail, got {offset}",
         );
     }
 }
