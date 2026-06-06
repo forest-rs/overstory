@@ -24,6 +24,7 @@ std = [
     "understory_focus/std",
     "understory_outline/std",
     "understory_presentation/std",
+    "understory_presentation_properties/std",
     "understory_responder/std",
 ]
 system-fonts = ["std", "parley/system"]
@@ -46,6 +47,7 @@ understory_event_state = { default-features = false, features = ["click", "drag"
 understory_focus = { default-features = false, features = ["box_tree_adapter", "libm"], workspace = true }
 understory_outline = { default-features = false, workspace = true }
 understory_presentation = { default-features = false, features = ["libm"], workspace = true }
+understory_presentation_properties = { default-features = false, features = ["libm"], workspace = true }
 understory_property = { default-features = false, workspace = true }
 understory_property_binding = { default-features = false, workspace = true }
 understory_responder = { default-features = false, features = ["box_tree_adapter"], workspace = true }

@@ -8,14 +8,16 @@ use core::cell::RefCell;
 
 use imaging::record::Scene;
 use kurbo::{Affine, Rect};
+use peniko::{Brush, Fill};
 use subduction_core::layer::SurfaceId;
 use understory_box_tree::NodeId;
 use understory_presentation::{
-    PathPaintOrder, PathPrimitive, PresentationStore, Primitive, TextPrimitive,
+    BorderSide, BorderSideGeometry, BoxContour, BoxDecorationGeometry, PathPaintOrder,
+    PathPrimitive, PresentationStore, Primitive, Side, SurfacePrimitive, TextPrimitive,
 };
 
 use crate::behavior::PresentContext;
-use crate::channels::{COMPOSE, PAINT};
+use crate::channels::{COMPOSE, GEOMETRY, PAINT};
 use crate::element::ElementId;
 use crate::lookup::UiResolveLookup;
 use crate::text::TextEngine;
@@ -67,6 +69,61 @@ fn lower_path_stroke<S: imaging::PaintSink + ?Sized>(
     }
 }
 
+fn fill_contour<S: imaging::PaintSink + ?Sized>(
+    contour: BoxContour,
+    brush: &Brush,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    if let Some(rounded) = contour.rounded_rect() {
+        painter.fill(rounded, brush).draw();
+    } else {
+        let path = contour.to_path();
+        painter.fill(&path, brush).draw();
+    }
+}
+
+fn lower_surface_border<S: imaging::PaintSink + ?Sized>(
+    surface: &SurfacePrimitive,
+    geometry: BoxDecorationGeometry,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    if let Some(side) = surface.border.uniform_visible_side() {
+        let Some(brush) = side.brush.as_ref() else {
+            return;
+        };
+        let path = geometry.to_border_ring_path();
+        painter.fill(&path, brush).fill_rule(Fill::EvenOdd).draw();
+        return;
+    }
+
+    for side in Side::ALL {
+        let border_side = match side {
+            Side::Top => &surface.border.top,
+            Side::Right => &surface.border.right,
+            Side::Bottom => &surface.border.bottom,
+            Side::Left => &surface.border.left,
+        };
+        lower_border_side(geometry.border_side_region(side), border_side, painter);
+    }
+}
+
+fn lower_border_side<S: imaging::PaintSink + ?Sized>(
+    geometry: BorderSideGeometry,
+    side: &BorderSide,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    if geometry.is_empty() {
+        return;
+    }
+    let Some(brush) = side.brush.as_ref() else {
+        return;
+    };
+
+    let mut path = kurbo::BezPath::new();
+    geometry.write_path(&mut path);
+    painter.fill(&path, brush).draw();
+}
+
 /// Lowers a node's resolved presentation primitives into `output`,
 /// positioned at `bounds`. Stand-in for a future `imaging`-side
 /// renderer that consumes `understory_presentation` directly.
@@ -77,39 +134,16 @@ fn lower_presentation(
     text: &RefCell<TextEngine>,
 ) {
     use imaging::Painter;
-    use kurbo::RoundedRect;
 
     let mut painter = Painter::new(output);
     for primitive in primitives {
         match primitive {
             Primitive::Surface(surface) => {
-                let corner_radius = surface.corner_radii.top_left;
+                let geometry = surface.decoration_geometry(bounds);
                 for layer in &surface.backgrounds {
-                    if corner_radius > 0.0 {
-                        let rounded = RoundedRect::from_rect(bounds, corner_radius);
-                        painter.fill(rounded, &layer.brush).draw();
-                    } else {
-                        painter.fill(bounds, &layer.brush).draw();
-                    }
+                    fill_contour(geometry.border_edge, &layer.brush, &mut painter);
                 }
-                // Border. We only lower a uniform border for now —
-                // the same brush + width on all four sides. The top
-                // side carries the source of truth and the other
-                // sides are ignored. Stroked centered on the surface
-                // edge, which leaks half the width outside `bounds`;
-                // a more polished pass would inset by `width / 2`.
-                let side = &surface.border.top;
-                if let Some(brush) = side.brush.as_ref()
-                    && side.width > 0.0
-                {
-                    let stroke = kurbo::Stroke::new(side.width);
-                    if corner_radius > 0.0 {
-                        let rounded = RoundedRect::from_rect(bounds, corner_radius);
-                        painter.stroke(rounded, &stroke, brush).draw();
-                    } else {
-                        painter.stroke(bounds, &stroke, brush).draw();
-                    }
-                }
+                lower_surface_border(surface, geometry, &mut painter);
                 // Shadow lowering — TODO when controls need it.
             }
             Primitive::Text(boxed) => {
@@ -150,8 +184,8 @@ fn lower_presentation(
 impl Ui {
     pub(crate) fn with_plain_editor<R>(
         &self,
-        editor: &mut parley::PlainEditor<peniko::Brush>,
-        f: impl FnOnce(&mut parley::PlainEditorDriver<'_, peniko::Brush>) -> R,
+        editor: &mut parley::PlainEditor<Brush>,
+        f: impl FnOnce(&mut parley::PlainEditorDriver<'_, Brush>) -> R,
     ) -> R {
         self.text.borrow_mut().with_plain_editor(editor, f)
     }
@@ -162,17 +196,19 @@ impl Ui {
     /// Steps:
     ///
     /// 1. Flush any pending STYLE work (it may dirty PAINT).
-    /// 2. For every PAINT-dirty element, call its behavior's `present`
+    /// 2. Drain GEOMETRY work so shape-only invalidations do not stay
+    ///    live after the downstream paint work has refreshed.
+    /// 3. For every PAINT-dirty element, call its behavior's `present`
     ///    so it resolves properties through the cascade and writes
     ///    primitives into [`PresentationStore`].
-    /// 3. Drain the presentation store's dirty set (callers can hook
+    /// 4. Drain the presentation store's dirty set (callers can hook
     ///    in here later for damage-driven re-lowering).
-    /// 4. Rebuild each PAINT-dirty element's composition surface in
+    /// 5. Rebuild each PAINT-dirty element's composition surface in
     ///    layer-local coordinates, lowering only the element's own
     ///    presentation primitives.
-    /// 5. Traverse the Subduction layer tree, appending attached scene
+    /// 6. Traverse the Subduction layer tree, appending attached scene
     ///    surfaces into `output` through layer transforms and clips.
-    /// 6. Clear COMPOSE.
+    /// 7. Clear COMPOSE.
     pub fn paint(&mut self, output: &mut Scene) {
         self.refresh_presentation_surfaces();
         self.composition.render_into(output);
@@ -197,6 +233,8 @@ impl Ui {
         // pipelines) get a correct commit on demand.
         self.geometry.commit();
         self.flush_composition();
+        let geometry_dirty = self.invalidation.drain_sorted(GEOMETRY).count();
+        self.frame_stats.geometry_elements += geometry_dirty;
         let dirty: Vec<ElementId> = self.invalidation.drain_sorted(PAINT).collect();
         self.frame_stats.painted_elements += dirty.len();
         for &id in &dirty {
@@ -277,7 +315,7 @@ impl Ui {
             widget.present(element, &ctx, presentation, node);
         } else {
             // Anonymous container: still render its surface from the
-            // cascade so panels with `Background` rules paint.
+            // cascade so panels with `Surface.Background` rules paint.
             crate::generic::present_surface(element, &ctx, presentation, node);
         }
     }

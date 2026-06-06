@@ -1766,7 +1766,8 @@ mod tests {
         let item = realized_list_item(&ui, listbox, 0).unwrap();
 
         assert!(select_list_index(&mut ui, listbox, 0));
-        let background = ui.resolve_value_for(ui.get(item).unwrap(), ui.properties().background);
+        let background =
+            ui.resolve_value_for(ui.get(item).unwrap(), ui.properties().surface.background);
         assert_eq!(
             background,
             Some(Brush::Solid(Color::from_rgba8(0x3a, 0x69, 0xd6, 0xff)))

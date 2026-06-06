@@ -19,16 +19,16 @@ use overstory::motion::{
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Accordion, AccordionChildUiExt, AccordionSection, Affine, BindingSpecExt, BuiltInProperties,
-    Button, CheckBox, ChildUi, ChoiceOption, ControlTemplateSpecExt, CursorIcon, Divider,
-    ElementId, ElementRef, ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout,
-    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutJustify, LayoutPlacement,
-    LayoutSize, LayoutSpacing, ListBox, LocalState, OutlineView, OutlineViewNode, Panel, Popup,
-    ProgressBar, RadioButton, RadioGroup, Rect, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX,
-    SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK,
-    SegmentedControl, Select, Slider, Spinner, Splitter, SurfaceSpecExt, TYPE_BUTTON, TYPE_GENERIC,
-    TYPE_TEXT, TemplateNode, TemplateSpec, Text, TextInput, TextSpecExt, TimerDuration, TimerId,
-    ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts, set_progress_value,
-    set_text_input_text, text_input_text, theme,
+    Button, CheckBox, ChildUi, ChoiceOption, ControlTemplateSpecExt, CornerRadius, CornerShape,
+    Corners, CursorIcon, Divider, Edges, ElementId, ElementRef, ElementRefSpecExt, ElementSpecExt,
+    Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension,
+    LayoutJustify, LayoutPlacement, LayoutSize, LayoutSpacing, ListBox, LocalState, OutlineView,
+    OutlineViewNode, Panel, Popup, ProgressBar, RadioButton, RadioGroup, Rect, SLOT_BUTTON_CONTENT,
+    SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB,
+    SLOT_SLIDER_TRACK, SegmentedControl, Select, Slider, Spinner, Splitter, SurfaceSpecExt,
+    SurfaceStyleExt, TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, TemplateNode, TemplateSpec, Text,
+    TextInput, TextSpecExt, TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, View,
+    Viewport, layouts, set_progress_value, set_text_input_text, text_input_text, theme,
 };
 use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
@@ -100,6 +100,7 @@ enum DemoPage {
     Selection,
     Outline,
     Layout,
+    BoxModel,
     Transcript,
     Svg,
     Typography,
@@ -107,7 +108,7 @@ enum DemoPage {
 }
 
 impl DemoPage {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::Overview,
         Self::Inputs,
         Self::Disclosure,
@@ -115,6 +116,7 @@ impl DemoPage {
         Self::Selection,
         Self::Outline,
         Self::Layout,
+        Self::BoxModel,
         Self::Transcript,
         Self::Svg,
         Self::Typography,
@@ -134,10 +136,11 @@ impl DemoPage {
             Self::Selection => 4,
             Self::Outline => 5,
             Self::Layout => 6,
-            Self::Transcript => 7,
-            Self::Svg => 8,
-            Self::Typography => 9,
-            Self::Motion => 10,
+            Self::BoxModel => 7,
+            Self::Transcript => 8,
+            Self::Svg => 9,
+            Self::Typography => 10,
+            Self::Motion => 11,
         }
     }
 
@@ -150,6 +153,7 @@ impl DemoPage {
             Self::Selection => "Selection",
             Self::Outline => "Outline",
             Self::Layout => "Layout",
+            Self::BoxModel => "Box Model",
             Self::Transcript => "Transcript",
             Self::Svg => "SVG",
             Self::Typography => "Typography",
@@ -166,6 +170,7 @@ impl DemoPage {
             Self::Selection => "Selection and Virtualization",
             Self::Outline => "Expandable Outline",
             Self::Layout => "Layout and Resizing",
+            Self::BoxModel => "Box Decoration and Contours",
             Self::Transcript => "Agent Transcript",
             Self::Svg => "SVG Import",
             Self::Typography => "Typography and Text Features",
@@ -195,6 +200,9 @@ impl DemoPage {
             }
             Self::Layout => {
                 "Resizable panes, fixed-size content, axis-aware controls, and slider ruler marks."
+            }
+            Self::BoxModel => {
+                "Border sides, padding contours, elliptical radii, and shaped corners resolved through Understory box decoration geometry."
             }
             Self::Transcript => {
                 "A rich interaction log backed by understory_transcript and realized as Overstory elements."

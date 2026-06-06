@@ -15,6 +15,8 @@ use crate::inspection::{
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
+use understory_presentation::CornerShape;
+use understory_presentation_properties::CornerRadius;
 use understory_property::{DependencyObject, Property};
 
 use super::{Ui, collect_preorder};
@@ -159,38 +161,7 @@ impl Ui {
         let mut rows = Vec::new();
         let properties = self.properties;
 
-        self.push_property_row(
-            &mut rows,
-            element,
-            "Background",
-            ElementPropertyInspectionGroup::Appearance,
-            properties.background,
-            option_brush_value,
-        );
-        self.push_property_row(
-            &mut rows,
-            element,
-            "BorderBrush",
-            ElementPropertyInspectionGroup::Appearance,
-            properties.border_brush,
-            option_brush_value,
-        );
-        self.push_property_row(
-            &mut rows,
-            element,
-            "BorderWidth",
-            ElementPropertyInspectionGroup::Appearance,
-            properties.border_width,
-            number_value,
-        );
-        self.push_property_row(
-            &mut rows,
-            element,
-            "CornerRadius",
-            ElementPropertyInspectionGroup::Appearance,
-            properties.corner_radius,
-            number_value,
-        );
+        self.push_surface_property_rows(&mut rows, element);
 
         self.push_property_row(
             &mut rows,
@@ -493,6 +464,90 @@ impl Ui {
         });
     }
 
+    fn push_surface_property_rows(
+        &self,
+        rows: &mut Vec<ElementPropertyInspectionRow>,
+        element: &crate::Element,
+    ) {
+        let surface = self.properties.surface;
+        let appearance = ElementPropertyInspectionGroup::Appearance;
+
+        self.push_property_row(
+            rows,
+            element,
+            "Background",
+            appearance,
+            surface.background,
+            option_brush_value,
+        );
+
+        for (name, property) in [
+            ("BorderTopBrush", surface.border_brushes.top),
+            ("BorderRightBrush", surface.border_brushes.right),
+            ("BorderBottomBrush", surface.border_brushes.bottom),
+            ("BorderLeftBrush", surface.border_brushes.left),
+        ] {
+            self.push_property_row(
+                rows,
+                element,
+                name,
+                appearance,
+                property,
+                option_brush_value,
+            );
+        }
+
+        for (name, property) in [
+            ("BorderTopWidth", surface.border_widths.top),
+            ("BorderRightWidth", surface.border_widths.right),
+            ("BorderBottomWidth", surface.border_widths.bottom),
+            ("BorderLeftWidth", surface.border_widths.left),
+        ] {
+            self.push_property_row(rows, element, name, appearance, property, number_value);
+        }
+
+        for (name, property) in [
+            ("PaddingTop", surface.padding_widths.top),
+            ("PaddingRight", surface.padding_widths.right),
+            ("PaddingBottom", surface.padding_widths.bottom),
+            ("PaddingLeft", surface.padding_widths.left),
+        ] {
+            self.push_property_row(rows, element, name, appearance, property, number_value);
+        }
+
+        for (name, property) in [
+            ("CornerTopLeftRadius", surface.corner_radii.top_left),
+            ("CornerTopRightRadius", surface.corner_radii.top_right),
+            ("CornerBottomRightRadius", surface.corner_radii.bottom_right),
+            ("CornerBottomLeftRadius", surface.corner_radii.bottom_left),
+        ] {
+            self.push_property_row(
+                rows,
+                element,
+                name,
+                appearance,
+                property,
+                corner_radius_value,
+            );
+        }
+
+        for (name, property) in [
+            ("CornerTopLeftShape", surface.corner_shapes.top_left),
+            ("CornerTopRightShape", surface.corner_shapes.top_right),
+            ("CornerBottomRightShape", surface.corner_shapes.bottom_right),
+            ("CornerBottomLeftShape", surface.corner_shapes.bottom_left),
+        ] {
+            self.push_property_row(
+                rows,
+                element,
+                name,
+                appearance,
+                property,
+                corner_shape_value,
+            );
+        }
+    }
+
     fn push_property_row<T>(
         &self,
         rows: &mut Vec<ElementPropertyInspectionRow>,
@@ -663,6 +718,30 @@ fn bool_value(value: bool) -> ElementPropertyInspectionValue {
 
 fn number_value(value: f64) -> ElementPropertyInspectionValue {
     ElementPropertyInspectionValue::Number(value)
+}
+
+fn corner_radius_value(value: CornerRadius) -> ElementPropertyInspectionValue {
+    if value.horizontal == value.vertical {
+        number_value(value.horizontal)
+    } else {
+        let mut fields = Vec::with_capacity(2);
+        fields.push(ElementPropertyInspectionField {
+            name: "horizontal",
+            value: number_value(value.horizontal),
+        });
+        fields.push(ElementPropertyInspectionField {
+            name: "vertical",
+            value: number_value(value.vertical),
+        });
+        ElementPropertyInspectionValue::Record {
+            summary: format!("{} x {}", value.horizontal, value.vertical),
+            fields,
+        }
+    }
+}
+
+fn corner_shape_value(value: CornerShape) -> ElementPropertyInspectionValue {
+    ElementPropertyInspectionValue::Token(format!("{value:?}"))
 }
 
 fn count_value(value: usize) -> ElementPropertyInspectionValue {

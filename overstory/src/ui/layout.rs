@@ -155,8 +155,8 @@ impl Ui {
     /// participate in this frame's layout. Then flushes the LAYOUT
     /// channel: any element whose `Layout` has changed gets its engine style
     /// pushed before layout is recomputed. `Bounds` writes use the standard
-    /// `set_local_notifying` path so PAINT cascades naturally for elements
-    /// whose box changed.
+    /// `set_local_notifying` path so GEOMETRY/PAINT cascade naturally for
+    /// elements whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
         self.flush_bindings();
         if self.last_viewport != viewport {
@@ -188,7 +188,8 @@ impl Ui {
 
     fn compute_layout_pass(&mut self, viewport: Size) -> bool {
         self.frame_stats.layout_passes += 1;
-        // Bindings first — they may dirty LAYOUT/PAINT for their targets.
+        // Bindings first — they may dirty LAYOUT/GEOMETRY/PAINT for their
+        // targets.
         self.flush_bindings();
         // Push any pending Layout changes into the layout engine. We collect
         // first to separate the immutable cascade walk from the mutable engine

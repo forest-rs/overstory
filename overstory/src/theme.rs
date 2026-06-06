@@ -16,10 +16,11 @@
 //!
 //! ```ignore
 //! use overstory::theme;
+//! use overstory::SurfaceStyleExt;
 //! use understory_style::StyleBuilder;
 //!
 //! let style = StyleBuilder::new()
-//!     .set_resource(ui.properties().background, theme::ACCENT_BG)
+//!     .background_resource(ui.properties(), theme::ACCENT_BG)
 //!     .build();
 //! ```
 //!
@@ -31,11 +32,11 @@
 //! ## Token taxonomy
 //!
 //! The starter set is intentionally small. Each token has one role
-//! and a single value type. Background-flavored tokens carry an
-//! `Option<Brush>` to match the `Background` / `BorderBrush`
-//! properties; foreground tokens carry a `Brush` to match
-//! `Foreground`. Motion tokens carry [`understory_timing::TimerDuration`],
-//! easing curves as [`crate::motion::TimingFunction`], or
+//! and a single value type. Surface background and border-brush tokens carry
+//! an `Option<Brush>` to match the canonical `Surface.*` brush longhands;
+//! foreground tokens carry a `Brush` to match `Foreground`. Motion tokens
+//! carry [`understory_timing::TimerDuration`], easing curves as
+//! [`crate::motion::TimingFunction`], or
 //! [`crate::motion::ColorInterpolation`]. Apps with richer palettes or motion
 //! systems should layer additional tokens on top.
 //!
@@ -121,6 +122,7 @@ use crate::pseudos::{
 };
 use crate::selectors;
 use crate::selectors::TemplatePartSelector;
+use crate::spec_ext::SurfaceStyleExt;
 use understory_timing::TimerDuration;
 
 const TOGGLE_THUMB_PART: TemplatePartSelector =
@@ -366,11 +368,11 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
     let button_idle = StyleBuilder::new()
         .set(properties.control_template, Some(default_button_template()))
-        .set_resource(properties.background, ACCENT_BG)
+        .background_resource(properties, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .set(properties.transitions, button_transition_rules(properties))
         .set(properties.font_size, 22.0_f64)
-        .set(properties.corner_radius, 10.0_f64)
+        .corner_radius(properties, 10.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(
             properties.layout_spacing,
@@ -379,41 +381,41 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let button_hover = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_HOVER_BG)
+        .background_resource(properties, ACCENT_HOVER_BG)
         .build();
     let button_pressed = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_PRESSED_BG)
+        .background_resource(properties, ACCENT_PRESSED_BG)
         .set(properties.opacity, 0.92_f32)
         .build();
     let button_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let button_disabled = StyleBuilder::new()
-        .set_resource(properties.background, TRACK_BG)
+        .background_resource(properties, TRACK_BG)
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
 
     let toggle_idle = StyleBuilder::new()
         .set(properties.control_template, Some(default_toggle_template()))
-        .set_resource(properties.background, TRACK_BG)
+        .background_resource(properties, TRACK_BG)
         .set(properties.transitions, surface_transition_rules(properties))
-        .set(properties.corner_radius, 16.0_f64)
+        .corner_radius(properties, 16.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(64.0, 32.0))
         .set(properties.layout_spacing, LayoutSpacing::padding_all(4.0))
         .set(properties.layout_alignment, toggle_alignment(false))
         .build();
     let toggle_checked = StyleBuilder::new()
-        .set_resource(properties.background, SUCCESS_BG)
+        .background_resource(properties, SUCCESS_BG)
         .set(properties.layout_alignment, toggle_alignment(true))
         .build();
     let toggle_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let thumb_style = StyleBuilder::new()
-        .set_resource(properties.background, THUMB_BG)
+        .background_resource(properties, THUMB_BG)
         .set(
             properties.transitions,
             layer_offset_transition_rules(
@@ -421,7 +423,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
                 MOTION_EMPHASIZED_DURATION,
             ),
         )
-        .set(properties.corner_radius, 12.0_f64)
+        .corner_radius(properties, 12.0_f64)
         .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
         .build();
 
@@ -433,24 +435,24 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let slider_track_style = StyleBuilder::new()
-        .set_resource(properties.background, TRACK_BG)
-        .set(properties.corner_radius, 3.0_f64)
+        .background_resource(properties, TRACK_BG)
+        .corner_radius(properties, 3.0_f64)
         .build();
     let slider_thumb_style = StyleBuilder::new()
-        .set_resource(properties.background, THUMB_BG)
+        .background_resource(properties, THUMB_BG)
         .set(
             properties.transitions,
             layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
         )
-        .set(properties.corner_radius, 11.0_f64)
+        .corner_radius(properties, 11.0_f64)
         .build();
     let slider_major_tick_style = StyleBuilder::new()
-        .set_resource(properties.background, SLIDER_MAJOR_TICK_BG)
-        .set(properties.corner_radius, 1.0_f64)
+        .background_resource(properties, SLIDER_MAJOR_TICK_BG)
+        .corner_radius(properties, 1.0_f64)
         .build();
     let slider_minor_tick_style = StyleBuilder::new()
-        .set_resource(properties.background, SLIDER_MINOR_TICK_BG)
-        .set(properties.corner_radius, 1.0_f64)
+        .background_resource(properties, SLIDER_MINOR_TICK_BG)
+        .corner_radius(properties, 1.0_f64)
         .build();
     let slider_major_tick_label_style = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
@@ -461,25 +463,25 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.font_size, 8.0_f64)
         .build();
     let slider_focused_style = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
-        .set(properties.corner_radius, 4.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
+        .corner_radius(properties, 4.0_f64)
         .build();
 
     let splitter_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BORDER)
         .set(properties.transitions, surface_transition_rules(properties))
-        .set(properties.corner_radius, 4.0_f64)
+        .corner_radius(properties, 4.0_f64)
         .build();
     let splitter_hover = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_HOVER_BORDER)
+        .background_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let splitter_pressed = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_BG)
+        .background_resource(properties, ACCENT_BG)
         .build();
     let splitter_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
 
     let scroll_bar_idle = StyleBuilder::new()
@@ -487,23 +489,23 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             properties.control_template,
             Some(default_scroll_bar_template()),
         )
-        .set_resource(properties.background, TRACK_BG)
-        .set(properties.corner_radius, 5.0_f64)
+        .background_resource(properties, TRACK_BG)
+        .corner_radius(properties, 5.0_f64)
         .build();
     let scroll_bar_thumb_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_HOVER_BORDER)
-        .set(properties.corner_radius, 5.0_f64)
+        .background_resource(properties, CONTROL_HOVER_BORDER)
+        .corner_radius(properties, 5.0_f64)
         .build();
     let scroll_bar_thumb_hover = StyleBuilder::new()
-        .set_resource(properties.background, THUMB_BG)
+        .background_resource(properties, THUMB_BG)
         .build();
     let scroll_bar_pressed = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BORDER)
         .build();
 
     let divider_style = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BORDER)
-        .set(properties.corner_radius, 1.0_f64)
+        .background_resource(properties, CONTROL_BORDER)
+        .corner_radius(properties, 1.0_f64)
         .build();
 
     let checkbox_idle = StyleBuilder::new()
@@ -524,24 +526,24 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let checkbox_box_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 5.0_f64)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 5.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let checkbox_box_hover = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let checkbox_box_checked = StyleBuilder::new()
-        .set_resource(properties.background, SUCCESS_BG)
-        .set_resource(properties.border_brush, SUCCESS_BG)
+        .background_resource(properties, SUCCESS_BG)
+        .border_brush_resource(properties, SUCCESS_BG)
         .build();
     let checkbox_box_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let checkbox_mark_idle = StyleBuilder::new()
         .set(properties.foreground, solid(0, 0, 0, 0))
@@ -571,30 +573,30 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let radio_indicator_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 11.0_f64)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 11.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let radio_indicator_hover = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let radio_indicator_checked = StyleBuilder::new()
-        .set_resource(properties.border_brush, SUCCESS_BG)
+        .border_brush_resource(properties, SUCCESS_BG)
         .build();
     let radio_indicator_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let radio_dot_idle = StyleBuilder::new()
-        .set(properties.corner_radius, 5.0_f64)
+        .corner_radius(properties, 5.0_f64)
         .set(properties.layout_size, LayoutSize::logical(10.0, 10.0))
         .build();
     let radio_dot_checked = StyleBuilder::new()
-        .set_resource(properties.background, SUCCESS_BG)
+        .background_resource(properties, SUCCESS_BG)
         .build();
     let radio_label = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
@@ -610,14 +612,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
         .build();
     let expander_header = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(
             properties.layout_spacing,
@@ -629,11 +631,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let expander_header_expanded = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let expander_header_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let expander_disclosure = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
@@ -676,14 +678,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.layout_spacing, LayoutSpacing::gap(8.0))
         .build();
     let accordion_section_header = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(
             properties.layout_spacing,
@@ -695,11 +697,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let accordion_section_header_expanded = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let accordion_section_header_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let accordion_section_disclosure = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
@@ -732,14 +734,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             properties.control_template,
             Some(default_progress_template()),
         )
-        .set_resource(properties.background, TRACK_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 9.0_f64)
+        .background_resource(properties, TRACK_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 9.0_f64)
         .build();
     let progress_fill = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_BG)
-        .set(properties.corner_radius, 8.0_f64)
+        .background_resource(properties, ACCENT_BG)
+        .corner_radius(properties, 8.0_f64)
         .build();
     let progress_label = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_FG)
@@ -751,26 +753,26 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             properties.control_template,
             Some(default_text_input_template()),
         )
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
         .set(properties.font_size, 15.0_f64)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .build();
     let text_input_hover = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .build();
     let text_input_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let text_input_disabled = StyleBuilder::new()
-        .set_resource(properties.background, TRACK_BG)
+        .background_resource(properties, TRACK_BG)
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let text_input_read_only = StyleBuilder::new()
@@ -780,26 +782,26 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let text_input_caret = StyleBuilder::new()
-        .set_resource(properties.background, TEXT_CARET_BG)
-        .set(properties.corner_radius, 0.75_f64)
+        .background_resource(properties, TEXT_CARET_BG)
+        .corner_radius(properties, 0.75_f64)
         .build();
     let text_input_selection = StyleBuilder::new()
-        .set_resource(properties.background, TEXT_SELECTION_BG)
-        .set(properties.corner_radius, 3.0_f64)
+        .background_resource(properties, TEXT_SELECTION_BG)
+        .corner_radius(properties, 3.0_f64)
         .build();
 
     let select_idle = StyleBuilder::new()
         .set(properties.control_template, Some(default_select_template()))
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
         .set(properties.font_size, 14.0_f64)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_size, LayoutSize::logical(220.0, 38.0))
         .set(
@@ -814,15 +816,15 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let select_hover = StyleBuilder::new()
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
-        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
+        .background_resource(properties, CONTROL_HOVER_BG)
         .build();
     let select_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let select_disabled = StyleBuilder::new()
-        .set_resource(properties.background, TRACK_BG)
+        .background_resource(properties, TRACK_BG)
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let select_label = StyleBuilder::new()
@@ -840,18 +842,18 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
 
     let list_box_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .build();
     let list_box_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let list_item_idle = StyleBuilder::new()
         .set(
@@ -864,7 +866,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             background_transition_rules(properties),
         )
         .set(properties.font_size, 14.0_f64)
-        .set(properties.corner_radius, 6.0_f64)
+        .corner_radius(properties, 6.0_f64)
         .build();
     let list_item_content = StyleBuilder::new()
         .set(properties.layout_container, LayoutContainer::row())
@@ -879,24 +881,24 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let list_item_hover = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .background_resource(properties, CONTROL_HOVER_BG)
         .build();
     let list_item_selected = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_BG)
+        .background_resource(properties, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let list_item_disabled = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let segmented_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 9.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 9.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(properties.layout_spacing, LayoutSpacing::padding_all(2.0))
         .set(
@@ -905,8 +907,8 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let segmented_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let segmented_item_idle = StyleBuilder::new()
         .set(
@@ -919,7 +921,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             background_transition_rules(properties),
         )
         .set(properties.font_size, 14.0_f64)
-        .set(properties.corner_radius, 7.0_f64)
+        .corner_radius(properties, 7.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
         .set(
             properties.layout_spacing,
@@ -928,28 +930,28 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.layout_alignment, centered_alignment())
         .build();
     let segmented_item_hover = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .background_resource(properties, CONTROL_HOVER_BG)
         .build();
     let segmented_item_selected = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_BG)
+        .background_resource(properties, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let segmented_item_disabled = StyleBuilder::new()
         .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
         .build();
     let outline_view_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
         .set(
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .build();
     let outline_view_focused = StyleBuilder::new()
-        .set_resource(properties.border_brush, FOCUS_RING_BORDER)
-        .set(properties.border_width, 2.0_f64)
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
         .build();
     let outline_item_idle = StyleBuilder::new()
         .set(
@@ -962,7 +964,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             background_transition_rules(properties),
         )
         .set(properties.font_size, 14.0_f64)
-        .set(properties.corner_radius, 6.0_f64)
+        .corner_radius(properties, 6.0_f64)
         .build();
     let outline_item_content = StyleBuilder::new()
         .set(properties.layout_container, LayoutContainer::row())
@@ -990,10 +992,10 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         )
         .build();
     let outline_item_hover = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_HOVER_BG)
+        .background_resource(properties, CONTROL_HOVER_BG)
         .build();
     let outline_item_selected = StyleBuilder::new()
-        .set_resource(properties.background, ACCENT_BG)
+        .background_resource(properties, ACCENT_BG)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let tooltip_idle = StyleBuilder::new()
@@ -1001,19 +1003,19 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             properties.control_template,
             Some(default_tooltip_template()),
         )
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .set(properties.font_size, 13.0_f64)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 6.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 6.0_f64)
         .build();
     let popup_idle = StyleBuilder::new()
-        .set_resource(properties.background, CONTROL_BG)
-        .set_resource(properties.border_brush, CONTROL_HOVER_BORDER)
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
         .set_resource(properties.foreground, ON_SURFACE_FG)
-        .set(properties.border_width, 1.0_f64)
-        .set(properties.corner_radius, 8.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
         .build();
     StyleCascadeBuilder::new()
         .push_rule(
@@ -1580,38 +1582,54 @@ fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
 }
 
 fn surface_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
-    background_transition_rules(properties)
-        .with_rule(color_transition_rule(
-            TransitionTarget::property(properties.border_brush.id()),
-            DEFAULT_MOTION_NORMAL_DURATION,
-            MOTION_NORMAL_DURATION,
-        ))
-        .with_rule(border_width_transition_rule(properties))
+    with_border_width_transition_rules(
+        with_border_brush_transition_rules(background_transition_rules(properties), properties),
+        properties,
+    )
 }
 
 fn border_affordance_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
-    TransitionRules::new()
-        .with_rule(color_transition_rule(
-            TransitionTarget::property(properties.border_brush.id()),
-            DEFAULT_MOTION_NORMAL_DURATION,
-            MOTION_NORMAL_DURATION,
-        ))
-        .with_rule(border_width_transition_rule(properties))
+    with_border_width_transition_rules(
+        with_border_brush_transition_rules(TransitionRules::new(), properties),
+        properties,
+    )
 }
 
 fn background_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
     TransitionRules::single(color_transition_rule(
-        TransitionTarget::property(properties.background.id()),
+        TransitionTarget::property(properties.surface.background.id()),
         DEFAULT_MOTION_NORMAL_DURATION,
         MOTION_NORMAL_DURATION,
     ))
 }
 
-fn border_width_transition_rule(properties: &BuiltInProperties) -> TransitionRule {
-    TransitionRule::interaction(
-        TransitionTarget::property(properties.border_width.id()),
-        scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
-    )
+fn with_border_brush_transition_rules(
+    mut rules: TransitionRules,
+    properties: &BuiltInProperties,
+) -> TransitionRules {
+    let brushes = properties.surface.border_brushes;
+    for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
+        rules.push(color_transition_rule(
+            TransitionTarget::property(property.id()),
+            DEFAULT_MOTION_NORMAL_DURATION,
+            MOTION_NORMAL_DURATION,
+        ));
+    }
+    rules
+}
+
+fn with_border_width_transition_rules(
+    mut rules: TransitionRules,
+    properties: &BuiltInProperties,
+) -> TransitionRules {
+    let widths = properties.surface.border_widths;
+    for property in [widths.top, widths.right, widths.bottom, widths.left] {
+        rules.push(TransitionRule::interaction(
+            TransitionTarget::property(property.id()),
+            scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
+        ));
+    }
+    rules
 }
 
 fn color_transition_rule(

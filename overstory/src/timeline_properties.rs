@@ -7,7 +7,7 @@
 //! targets. This module owns the per-property lowering step: given a sampled
 //! value for a `PropertyId`, write or clear the corresponding animation-layer
 //! value on an element. Most properties can use the typed adapter; mapped
-//! properties, such as animating the solid color inside `Background`, can
+//! properties, such as animating the solid color inside `Surface.Background`, can
 //! register a custom adapter.
 
 use hashbrown::HashMap;

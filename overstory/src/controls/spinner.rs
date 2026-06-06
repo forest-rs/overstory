@@ -81,8 +81,8 @@ impl AppendSpec for Spinner {
 
         // Build dot children.
         let mut dots: Vec<ElementId> = Vec::with_capacity(DOT_COUNT);
-        let bg_prop = ui.properties().background;
-        let corner_prop = ui.properties().corner_radius;
+        let bg_prop = ui.properties().surface.background;
+        let corner_prop = ui.properties().surface.corner_radii;
         for (i, &(ux, uy)) in DOT_VECTORS.iter().enumerate() {
             let dot = ui.append(
                 id,
@@ -95,7 +95,13 @@ impl AppendSpec for Spinner {
                         .logical_size(DOT_DIAMETER, DOT_DIAMETER),
                 ),
             );
-            ui.set_local(dot, corner_prop, f64::from(DOT_DIAMETER * 0.5));
+            let radius = understory_presentation_properties::CornerRadius::circular(f64::from(
+                DOT_DIAMETER * 0.5,
+            ));
+            ui.set_local(dot, corner_prop.top_left, radius);
+            ui.set_local(dot, corner_prop.top_right, radius);
+            ui.set_local(dot, corner_prop.bottom_right, radius);
+            ui.set_local(dot, corner_prop.bottom_left, radius);
             ui.set_local(dot, bg_prop, Some(dot_brush(i, 0)));
             dots.push(dot);
         }
@@ -107,7 +113,7 @@ impl AppendSpec for Spinner {
         let mut phase: usize = 0;
         ui.on_timer(id, move |ui, _event| {
             phase = (phase + 1) % DOT_COUNT;
-            let bg = ui.properties().background;
+            let bg = ui.properties().surface.background;
             for (i, &dot_id) in dots.iter().enumerate() {
                 ui.set_local(dot_id, bg, Some(dot_brush(i, phase)));
             }

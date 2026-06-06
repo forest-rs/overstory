@@ -6,7 +6,7 @@
 //! The cascade order is the same one validated by the previous prototype:
 //!
 //! ```text
-//! STYLE -> TEMPLATE -> LAYOUT -> PAINT -> COMPOSE
+//! STYLE -> TEMPLATE -> LAYOUT -> GEOMETRY -> PAINT -> COMPOSE
 //! ```
 //!
 //! These are wired as a channel cascade on
@@ -40,16 +40,24 @@ pub const TEMPLATE: Channel = Channel::new(1);
 /// Layout pass (measure + arrange) needs to run. Reserved for Phase 1e.
 pub const LAYOUT: Channel = Channel::new(2);
 
+/// Resolved visual geometry is stale.
+///
+/// This is for bounds-dependent presentation geometry such as border
+/// contours, corner shapes, shadow spread regions, hit contours, and other
+/// shape data that affects paint and possibly picking, but should not imply
+/// a full layout pass by itself.
+pub const GEOMETRY: Channel = Channel::new(3);
+
 /// Per-element paint recording is stale. Behaviors must re-record into the
 /// scene cache.
-pub const PAINT: Channel = Channel::new(3);
+pub const PAINT: Channel = Channel::new(4);
 
 /// Frame composition needs to re-assemble cached scenes into the output.
 /// Marked whenever the tree structure or per-element transforms change even
 /// when no element's paint recording is stale.
-pub const COMPOSE: Channel = Channel::new(4);
+pub const COMPOSE: Channel = Channel::new(5);
 
 /// Binding-internal channel used by `understory_property_binding::BindingSet`
 /// to track dirty bindings. Not part of the regular cascade; Overstory
-/// reserves channel id 5 so the binding set has a unique slot.
-pub const BINDING: Channel = Channel::new(5);
+/// reserves channel id 6 so the binding set has a unique slot.
+pub const BINDING: Channel = Channel::new(6);

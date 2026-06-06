@@ -67,7 +67,7 @@ use crate::layouts::Layout;
 use crate::properties::BuiltInProperties;
 pub use crate::spec_ext::{
     ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt, ElementSpec, ElementSpecExt,
-    RangeSpecExt, SurfaceSpecExt, TextSpecExt,
+    RangeSpecExt, SurfaceSpecExt, SurfaceStyleExt, TextSpecExt,
 };
 use crate::template::{TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
@@ -84,10 +84,10 @@ pub const TYPE_GENERIC: TypeTag = TypeTag(0);
 /// `template_contract` describes the slots the resolved template should
 /// expose.
 ///
-/// The default `present` writes the standard surface (`Background`,
-/// `BorderBrush`/`BorderWidth`, `CornerRadius`) through the
-/// cascade — most controls' surface intent is exactly that.
-/// Controls with bespoke drawing (e.g. shaped text) override.
+/// The default `present` resolves the canonical `Surface.*` longhands through
+/// the cascade and writes a box decoration primitive — most controls' surface
+/// intent is exactly that. Controls with bespoke drawing (e.g. shaped text)
+/// override.
 pub trait Widget: Any + core::fmt::Debug + 'static {
     /// Selector identity for cascade matching, if this widget is a
     /// globally addressable control kind.
@@ -140,11 +140,13 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ) {
     }
 
-    /// Resolves drawing intent into the presentation store. The
-    /// default implementation runs [`present_surface`], which reads
-    /// `Background` / `Border*` / `CornerRadius` through the cascade
-    /// and writes a `SurfacePrimitive` — what every "I am a box that
-    /// fills my bounds" control wants.
+    /// Resolves drawing intent into the presentation store.
+    ///
+    /// The default implementation runs [`present_surface`], which resolves the
+    /// canonical `Surface.*` longhands through the cascade and writes the
+    /// element's box decoration primitive. This is the expected path for
+    /// controls whose own visual is "a box that fills my bounds"; specialized
+    /// controls should override only when they need a different primitive.
     fn present(
         &self,
         element: &Element,
@@ -528,12 +530,8 @@ impl InitialPropertyTarget {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum BuiltInPropertyKey {
-    Background,
-    BorderBrush,
-    BorderWidth,
     Content,
     ControlTemplate,
-    CornerRadius,
     FontFamily,
     FontFeatures,
     FontSize,
@@ -562,17 +560,34 @@ pub(crate) enum BuiltInPropertyKey {
     VisualTransform,
     WordBreak,
     WordSpacing,
+    SurfaceBackground,
+    SurfaceBorderTopBrush,
+    SurfaceBorderRightBrush,
+    SurfaceBorderBottomBrush,
+    SurfaceBorderLeftBrush,
+    SurfaceBorderTopWidth,
+    SurfaceBorderRightWidth,
+    SurfaceBorderBottomWidth,
+    SurfaceBorderLeftWidth,
+    SurfaceCornerTopLeftRadius,
+    SurfaceCornerTopRightRadius,
+    SurfaceCornerBottomRightRadius,
+    SurfaceCornerBottomLeftRadius,
+    SurfaceCornerTopLeftShape,
+    SurfaceCornerTopRightShape,
+    SurfaceCornerBottomRightShape,
+    SurfaceCornerBottomLeftShape,
+    SurfacePaddingTop,
+    SurfacePaddingRight,
+    SurfacePaddingBottom,
+    SurfacePaddingLeft,
 }
 
 impl BuiltInPropertyKey {
     fn resolve(self, properties: &BuiltInProperties) -> PropertyId {
         match self {
-            Self::Background => properties.background.id(),
-            Self::BorderBrush => properties.border_brush.id(),
-            Self::BorderWidth => properties.border_width.id(),
             Self::Content => properties.content.id(),
             Self::ControlTemplate => properties.control_template.id(),
-            Self::CornerRadius => properties.corner_radius.id(),
             Self::FontFamily => properties.font_family.id(),
             Self::FontFeatures => properties.font_features.id(),
             Self::FontSize => properties.font_size.id(),
@@ -601,6 +616,31 @@ impl BuiltInPropertyKey {
             Self::VisualTransform => properties.visual_transform.id(),
             Self::WordBreak => properties.word_break.id(),
             Self::WordSpacing => properties.word_spacing.id(),
+            Self::SurfaceBackground => properties.surface.background.id(),
+            Self::SurfaceBorderTopBrush => properties.surface.border_brushes.top.id(),
+            Self::SurfaceBorderRightBrush => properties.surface.border_brushes.right.id(),
+            Self::SurfaceBorderBottomBrush => properties.surface.border_brushes.bottom.id(),
+            Self::SurfaceBorderLeftBrush => properties.surface.border_brushes.left.id(),
+            Self::SurfaceBorderTopWidth => properties.surface.border_widths.top.id(),
+            Self::SurfaceBorderRightWidth => properties.surface.border_widths.right.id(),
+            Self::SurfaceBorderBottomWidth => properties.surface.border_widths.bottom.id(),
+            Self::SurfaceBorderLeftWidth => properties.surface.border_widths.left.id(),
+            Self::SurfaceCornerTopLeftRadius => properties.surface.corner_radii.top_left.id(),
+            Self::SurfaceCornerTopRightRadius => properties.surface.corner_radii.top_right.id(),
+            Self::SurfaceCornerBottomRightRadius => {
+                properties.surface.corner_radii.bottom_right.id()
+            }
+            Self::SurfaceCornerBottomLeftRadius => properties.surface.corner_radii.bottom_left.id(),
+            Self::SurfaceCornerTopLeftShape => properties.surface.corner_shapes.top_left.id(),
+            Self::SurfaceCornerTopRightShape => properties.surface.corner_shapes.top_right.id(),
+            Self::SurfaceCornerBottomRightShape => {
+                properties.surface.corner_shapes.bottom_right.id()
+            }
+            Self::SurfaceCornerBottomLeftShape => properties.surface.corner_shapes.bottom_left.id(),
+            Self::SurfacePaddingTop => properties.surface.padding_widths.top.id(),
+            Self::SurfacePaddingRight => properties.surface.padding_widths.right.id(),
+            Self::SurfacePaddingBottom => properties.surface.padding_widths.bottom.id(),
+            Self::SurfacePaddingLeft => properties.surface.padding_widths.left.id(),
         }
     }
 }

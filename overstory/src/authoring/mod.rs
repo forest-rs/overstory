@@ -44,6 +44,11 @@ pub mod state {
     pub use crate::spec_ext::ControlStateSpecExt;
 }
 
+/// Style-builder helpers.
+pub mod style {
+    pub use crate::spec_ext::SurfaceStyleExt;
+}
+
 /// Surface, paint, and composition property helpers.
 pub mod surface {
     pub use crate::spec_ext::SurfaceSpecExt;
@@ -73,6 +78,7 @@ pub use binding::{
 pub use element::{ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, ReferencedSpec};
 pub use range::RangeSpecExt;
 pub use state::ControlStateSpecExt;
+pub use style::SurfaceStyleExt;
 pub use surface::SurfaceSpecExt;
 pub use template::{ControlTemplateSpec, ControlTemplateSpecExt};
 pub use text::TextSpecExt;

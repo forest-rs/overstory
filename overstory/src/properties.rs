@@ -25,9 +25,10 @@ use understory_presentation::{
     FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
     TextStyle, TextWrapMode, WordBreak,
 };
+use understory_presentation_properties::{SurfaceProperties, SurfacePropertyChannels};
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
-use crate::channels::{COMPOSE, LAYOUT, PAINT};
+use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
     LayoutSpacing,
@@ -56,16 +57,18 @@ use crate::template::ControlTemplate;
 /// template use `text` after the template chooses how to present that content.
 #[derive(Copy, Clone, Debug)]
 pub struct BuiltInProperties {
-    /// Fill brush for the element's body. Default `None` (no fill).
-    pub background: Property<Option<Brush>>,
+    /// Canonical box-decoration surface properties.
+    ///
+    /// Backgrounds, border sides, decoration padding widths, corner radii, and
+    /// corner shapes are registered by `understory_presentation_properties`
+    /// and resolved into `understory_presentation::SurfacePrimitive` by the
+    /// shared [`crate::present_surface`] path.
+    pub surface: SurfaceProperties,
 
     /// Bounds in viewport coordinates the element paints into. Layout writes
     /// this after computing the frame. Default [`Rect::ZERO`] — a zero-area
     /// element paints nothing.
     pub bounds: Property<Rect>,
-
-    /// Corner radius for the background fill. Default `0.0` (rectangular).
-    pub corner_radius: Property<f64>,
 
     /// Shorthand layout contribution for this element. Prefer the
     /// [`Self::layout_container`], [`Self::layout_size`],
@@ -170,19 +173,10 @@ pub struct BuiltInProperties {
     pub overflow_wrap: Property<OverflowWrap>,
 
     /// Text line wrapping policy. Default [`TextWrapMode::NoWrap`].
-    /// Writes mark `LAYOUT`, which cascades through paint because wrapping
-    /// can change both measured size and final glyph placement.
+    /// Writes mark `LAYOUT`, which cascades through geometry and paint
+    /// because wrapping can change both measured size and final glyph
+    /// placement.
     pub text_wrap_mode: Property<TextWrapMode>,
-
-    /// Border brush. `None` (the default) means the element has no
-    /// border. Stroked at [`Self::border_width`] around the same
-    /// rounded rect [`Self::background`] fills.
-    pub border_brush: Property<Option<Brush>>,
-
-    /// Border stroke width in logical pixels. Default `0.0` — the
-    /// border isn't drawn when either the brush is `None` or the
-    /// width is zero.
-    pub border_width: Property<f64>,
 
     /// Layer opacity sampled by composition. Default `1.0`.
     pub opacity: Property<f32>,
@@ -252,23 +246,16 @@ impl BuiltInProperties {
     /// type-safe handles.
     pub(crate) fn register(registry: &mut PropertyRegistry) -> Self {
         let text_defaults = TextStyle::default();
+        let surface = SurfaceProperties::register(
+            registry,
+            SurfacePropertyChannels::new(GEOMETRY.into_set(), PAINT.into_set()),
+        );
         Self {
-            background: registry.register(
-                "Background",
-                PropertyMetadataBuilder::<Option<Brush>>::new(None)
-                    .affects_channels(PAINT.into_set())
-                    .build(),
-            ),
+            surface,
             bounds: registry.register(
                 "Bounds",
                 PropertyMetadataBuilder::new(Rect::ZERO)
-                    .affects_channels(PAINT.into_set())
-                    .build(),
-            ),
-            corner_radius: registry.register(
-                "CornerRadius",
-                PropertyMetadataBuilder::new(0.0_f64)
-                    .affects_channels(PAINT.into_set())
+                    .affects_channels(GEOMETRY.into_set())
                     .build(),
             ),
             layout: registry.register(
@@ -316,7 +303,7 @@ impl BuiltInProperties {
             content: registry.register(
                 "Content",
                 PropertyMetadataBuilder::new(String::new())
-                    // PAINT cascades from LAYOUT via the tracker's
+                    // GEOMETRY/PAINT cascade from LAYOUT via the tracker's
                     // channel cascade — no need to declare it
                     // explicitly here.
                     .affects_channels(LAYOUT.into_set())
@@ -325,7 +312,7 @@ impl BuiltInProperties {
             text: registry.register(
                 "Text",
                 PropertyMetadataBuilder::new(String::new())
-                    // PAINT cascades from LAYOUT via the tracker's
+                    // GEOMETRY/PAINT cascade from LAYOUT via the tracker's
                     // channel cascade — no need to declare it
                     // explicitly here.
                     .affects_channels(LAYOUT.into_set())
@@ -449,18 +436,6 @@ impl BuiltInProperties {
                 PropertyMetadataBuilder::new(text_defaults.text_wrap_mode)
                     .affects_channels(LAYOUT.into_set())
                     .inherits(true)
-                    .build(),
-            ),
-            border_brush: registry.register(
-                "BorderBrush",
-                PropertyMetadataBuilder::<Option<Brush>>::new(None)
-                    .affects_channels(PAINT.into_set())
-                    .build(),
-            ),
-            border_width: registry.register(
-                "BorderWidth",
-                PropertyMetadataBuilder::new(0.0_f64)
-                    .affects_channels(PAINT.into_set())
                     .build(),
             ),
             opacity: registry.register(

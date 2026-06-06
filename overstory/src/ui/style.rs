@@ -38,7 +38,7 @@ impl Ui {
     ///
     /// Every element is marked LAYOUT-dirty since styled values may
     /// now resolve differently; the channel cascade
-    /// (LAYOUT → PAINT → COMPOSE) handles the rest. Match states
+    /// (LAYOUT → GEOMETRY → PAINT → COMPOSE) handles the rest. Match states
     /// from the previous cascade are discarded — the [`MatchState`]
     /// type is bound to its originating cascade, so they can't be
     /// reused after a swap. The LAYOUT mark catches cascades that

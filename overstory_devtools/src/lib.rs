@@ -2594,7 +2594,9 @@ mod tests {
         assert!(
             inspector
                 .get(color_children[0])
-                .and_then(|element| element.get_local_value(inspector.properties().background))
+                .and_then(|element| {
+                    element.get_local_value(inspector.properties().surface.background)
+                })
                 .is_some_and(Option::is_some),
             "color swatch should carry a local background brush"
         );

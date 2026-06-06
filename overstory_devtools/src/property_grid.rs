@@ -843,12 +843,23 @@ fn set_grid_surface(
     border: Option<Brush>,
     radius: f64,
 ) {
-    ui.set_local(element, ui.properties().background, background);
+    let surface = ui.properties().surface;
+    ui.set_local(element, surface.background, background);
     if border.is_some() {
-        ui.set_local(element, ui.properties().border_brush, border);
-        ui.set_local(element, ui.properties().border_width, 1.0_f64);
+        ui.set_local(element, surface.border_brushes.top, border.clone());
+        ui.set_local(element, surface.border_brushes.right, border.clone());
+        ui.set_local(element, surface.border_brushes.bottom, border.clone());
+        ui.set_local(element, surface.border_brushes.left, border);
+        ui.set_local(element, surface.border_widths.top, 1.0_f64);
+        ui.set_local(element, surface.border_widths.right, 1.0_f64);
+        ui.set_local(element, surface.border_widths.bottom, 1.0_f64);
+        ui.set_local(element, surface.border_widths.left, 1.0_f64);
     }
-    ui.set_local(element, ui.properties().corner_radius, radius);
+    let radius = overstory::CornerRadius::circular(radius);
+    ui.set_local(element, surface.corner_radii.top_left, radius);
+    ui.set_local(element, surface.corner_radii.top_right, radius);
+    ui.set_local(element, surface.corner_radii.bottom_right, radius);
+    ui.set_local(element, surface.corner_radii.bottom_left, radius);
 }
 
 fn muted_text_brush(ui: &Ui) -> Brush {

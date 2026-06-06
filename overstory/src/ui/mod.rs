@@ -35,7 +35,7 @@ use understory_property::PropertyRegistry;
 
 use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
-use crate::channels::{COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
 use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
@@ -255,13 +255,18 @@ impl Ui {
         let mut registry = PropertyRegistry::new();
         let properties = BuiltInProperties::register(&mut registry);
         let mut timeline_properties = TimelinePropertyRegistry::new();
-        timeline_properties.register_solid_brush_color(properties.background);
-        timeline_properties.register_solid_brush_color(properties.border_brush);
+        timeline_properties.register_solid_brush_color(properties.surface.background);
+        timeline_properties.register_solid_brush_color(properties.surface.border_brushes.top);
+        timeline_properties.register_solid_brush_color(properties.surface.border_brushes.right);
+        timeline_properties.register_solid_brush_color(properties.surface.border_brushes.bottom);
+        timeline_properties.register_solid_brush_color(properties.surface.border_brushes.left);
         timeline_properties.register(properties.opacity);
-        timeline_properties.register(properties.border_width);
-        timeline_properties.register(properties.corner_radius);
+        timeline_properties.register(properties.surface.border_widths.top);
+        timeline_properties.register(properties.surface.border_widths.right);
+        timeline_properties.register(properties.surface.border_widths.bottom);
+        timeline_properties.register(properties.surface.border_widths.left);
         // Channel-to-channel cascade in the invalidation tracker:
-        // STYLE → TEMPLATE → LAYOUT → PAINT → COMPOSE. Once
+        // STYLE → TEMPLATE → LAYOUT → GEOMETRY → PAINT → COMPOSE. Once
         // registered, marking any upstream channel auto-marks every
         // downstream one for the same key, so call sites don't have
         // to enumerate every channel a change touches. Bindings live
@@ -274,8 +279,11 @@ impl Ui {
             .add_cascade(TEMPLATE, LAYOUT)
             .expect("TEMPLATE → LAYOUT cascade should be acyclic");
         invalidation
-            .add_cascade(LAYOUT, PAINT)
-            .expect("LAYOUT → PAINT cascade should be acyclic");
+            .add_cascade(LAYOUT, GEOMETRY)
+            .expect("LAYOUT → GEOMETRY cascade should be acyclic");
+        invalidation
+            .add_cascade(GEOMETRY, PAINT)
+            .expect("GEOMETRY → PAINT cascade should be acyclic");
         invalidation
             .add_cascade(PAINT, COMPOSE)
             .expect("PAINT → COMPOSE cascade should be acyclic");

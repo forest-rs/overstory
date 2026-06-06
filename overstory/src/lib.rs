@@ -236,8 +236,8 @@ pub use ui::{ChildUi, ControlState, Ui};
 pub use view::View;
 pub use widget::{
     AppendSpec, ContentSlotSpec, ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt,
-    ElementConfig, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, TYPE_GENERIC,
-    TextSpecExt, Widget,
+    ElementConfig, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, SurfaceStyleExt,
+    TYPE_GENERIC, TextSpecExt, Widget,
 };
 
 /// Common imports for authoring Overstory UI trees.
@@ -254,8 +254,8 @@ pub mod prelude {
         ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, Popup,
         ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollState,
         ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt,
-        Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
-        TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
+        SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration,
+        ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 
@@ -267,9 +267,10 @@ pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};
 pub use peniko::{Brush, Color, Fill, color::Rgba8};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
-    FontFamily, FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily, Language,
-    OverflowWrap, PathFill, PathPaintOrder, PathPrimitive, PathStroke, TextLineHeight,
-    TextWrapMode, WordBreak,
+    CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle, FontWeight,
+    FontWidth, GenericFamily, Language, OverflowWrap, PathFill, PathPaintOrder, PathPrimitive,
+    PathStroke, TextLineHeight, TextWrapMode, WordBreak,
 };
+pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};

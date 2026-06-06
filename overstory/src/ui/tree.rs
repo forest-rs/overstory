@@ -481,7 +481,7 @@ impl Ui {
             .and_then(|element| element.children().iter().rev().nth(1).copied());
         self.mirror_allocated_element(child, Some(parent));
         self.style_one_for_insert(child);
-        // LAYOUT cascades to PAINT and COMPOSE via the tracker's
+        // LAYOUT cascades to GEOMETRY, PAINT, and COMPOSE via the tracker's
         // channel cascade. `style_one`'s diff path only marks
         // channels on state transitions — first-time styling skips
         // the diff, so without this explicit mark a cascade-supplied

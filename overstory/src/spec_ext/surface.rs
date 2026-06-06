@@ -5,6 +5,8 @@
 
 use kurbo::Affine;
 use peniko::Brush;
+use understory_presentation::{CornerShape, CornerShapes, Corners, Edges};
+use understory_presentation_properties::CornerRadius;
 
 use crate::motion::TransitionRules;
 use crate::spec_ext::ElementSpec;
@@ -21,7 +23,7 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
     #[must_use]
     fn background(mut self, brush: impl Into<Option<Brush>>) -> Self {
         self.element_config_mut()
-            .set_built_in_local(BuiltInPropertyKey::Background, brush.into());
+            .set_built_in_local(BuiltInPropertyKey::SurfaceBackground, brush.into());
         self
     }
 
@@ -38,24 +40,126 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
     /// Pass `None` to explicitly author no border brush as a local value.
     #[must_use]
     fn border_brush(mut self, brush: impl Into<Option<Brush>>) -> Self {
-        self.element_config_mut()
-            .set_built_in_local(BuiltInPropertyKey::BorderBrush, brush.into());
+        let brush = brush.into();
+        let element = self.element_config_mut();
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopBrush, brush.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightBrush, brush.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomBrush, brush.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftBrush, brush);
+        self
+    }
+
+    /// Sets initial physical border brushes in top/right/bottom/left order.
+    ///
+    /// Pass `None` for any side that should not draw.
+    #[must_use]
+    fn border_brushes(
+        mut self,
+        top: impl Into<Option<Brush>>,
+        right: impl Into<Option<Brush>>,
+        bottom: impl Into<Option<Brush>>,
+        left: impl Into<Option<Brush>>,
+    ) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopBrush, top.into());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightBrush, right.into());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomBrush, bottom.into());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftBrush, left.into());
         self
     }
 
     /// Sets the initial border width in logical pixels.
     #[must_use]
     fn border_width(mut self, width: f64) -> Self {
-        self.element_config_mut()
-            .set_built_in_local(BuiltInPropertyKey::BorderWidth, width);
+        self = self.border_widths(Edges::all(width));
+        self
+    }
+
+    /// Sets initial physical border widths in top/right/bottom/left order.
+    #[must_use]
+    fn border_widths(mut self, widths: Edges<f64>) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopWidth, widths.top);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightWidth, widths.right);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomWidth, widths.bottom);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftWidth, widths.left);
         self
     }
 
     /// Sets the initial corner radius in logical pixels.
     #[must_use]
     fn corner_radius(mut self, radius: f64) -> Self {
-        self.element_config_mut()
-            .set_built_in_local(BuiltInPropertyKey::CornerRadius, radius);
+        self = self.corner_radii(Corners::all(CornerRadius::circular(radius)));
+        self
+    }
+
+    /// Sets initial property-level corner radii in top-left, top-right,
+    /// bottom-right, bottom-left order.
+    #[must_use]
+    fn corner_radii(mut self, radii: Corners<CornerRadius>) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerTopLeftRadius,
+            radii.top_left,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerTopRightRadius,
+            radii.top_right,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerBottomRightRadius,
+            radii.bottom_right,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerBottomLeftRadius,
+            radii.bottom_left,
+        );
+        self
+    }
+
+    /// Sets one initial corner shape for every corner.
+    #[must_use]
+    fn corner_shape(mut self, shape: CornerShape) -> Self {
+        self = self.corner_shapes(CornerShapes::all(shape));
+        self
+    }
+
+    /// Sets initial corner shapes in top-left, top-right, bottom-right,
+    /// bottom-left order.
+    #[must_use]
+    fn corner_shapes(mut self, shapes: CornerShapes) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerTopLeftShape,
+            shapes.top_left,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerTopRightShape,
+            shapes.top_right,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerBottomRightShape,
+            shapes.bottom_right,
+        );
+        element.set_built_in_local(
+            BuiltInPropertyKey::SurfaceCornerBottomLeftShape,
+            shapes.bottom_left,
+        );
+        self
+    }
+
+    /// Sets initial decoration padding widths in top/right/bottom/left order.
+    ///
+    /// This is the presentation-side padding used to derive content contours.
+    /// Layout padding remains separate until Overstory's box-model pass makes
+    /// both concerns resolve from one source of truth.
+    #[must_use]
+    fn decoration_padding(mut self, padding: Edges<f64>) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingTop, padding.top);
+        element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingRight, padding.right);
+        element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingBottom, padding.bottom);
+        element.set_built_in_local(BuiltInPropertyKey::SurfacePaddingLeft, padding.left);
         self
     }
 

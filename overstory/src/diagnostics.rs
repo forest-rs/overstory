@@ -9,7 +9,7 @@
 
 use core::time::Duration;
 
-use crate::channels::{BINDING, COMPOSE, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::channels::{BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::text::TextLayoutCacheStats;
 
 /// Count of invalidation-channel marks observed during a frame.
@@ -21,6 +21,8 @@ pub struct ChannelMarkStats {
     pub template: usize,
     /// Number of `LAYOUT` channel marks.
     pub layout: usize,
+    /// Number of `GEOMETRY` channel marks.
+    pub geometry: usize,
     /// Number of `PAINT` channel marks.
     pub paint: usize,
     /// Number of `COMPOSE` channel marks.
@@ -37,6 +39,8 @@ impl ChannelMarkStats {
             self.template += 1;
         } else if channel == LAYOUT {
             self.layout += 1;
+        } else if channel == GEOMETRY {
+            self.geometry += 1;
         } else if channel == PAINT {
             self.paint += 1;
         } else if channel == COMPOSE {
@@ -88,6 +92,8 @@ pub struct UiFrameStats {
     pub element_realize_changes: usize,
     /// Elements drained from the `PAINT` channel.
     pub painted_elements: usize,
+    /// Elements drained from the `GEOMETRY` channel.
+    pub geometry_elements: usize,
     /// Presentation nodes drained from the presentation dirty set.
     pub presentation_dirty_nodes: usize,
     /// Composition surfaces rebuilt from presentation primitives.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
-use crate::channels::{COMPOSE, LAYOUT, PAINT};
+use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
@@ -399,7 +399,7 @@ fn set_local_marks_paint_dirty() {
     let mut ui = Ui::new();
     let root = ui.root();
     let bounds = ui.properties().bounds;
-    let background = ui.properties().background;
+    let background = ui.properties().surface.background;
 
     let _ = ui
         .invalidation
@@ -422,11 +422,29 @@ fn set_local_marks_paint_dirty() {
 }
 
 #[test]
+fn geometry_channel_cascades_to_paint_and_drains_during_refresh() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.mark_channels(root, GEOMETRY.into());
+
+    assert!(ui.invalidation().is_invalidated(root, GEOMETRY));
+    assert!(ui.invalidation().is_invalidated(root, PAINT));
+    assert!(ui.invalidation().is_invalidated(root, COMPOSE));
+
+    ui.refresh_presentation_surfaces();
+
+    assert!(!ui.invalidation().is_invalidated(root, GEOMETRY));
+    assert!(!ui.invalidation().is_invalidated(root, PAINT));
+    assert_eq!(ui.frame_stats().geometry_elements, 1);
+}
+
+#[test]
 fn paint_drains_dirty_and_emits_output() {
     let mut ui = Ui::new();
     let root = ui.root();
     let layout_prop = ui.properties().layout;
-    let background = ui.properties().background;
+    let background = ui.properties().surface.background;
 
     ui.set_local(root, layout_prop, Layout::new().logical_size(10.0, 10.0));
     ui.set_local(
@@ -447,7 +465,7 @@ fn paint_drains_dirty_and_emits_output() {
 fn paint_skips_zero_area_elements() {
     let mut ui = Ui::new();
     let root = ui.root();
-    let background = ui.properties().background;
+    let background = ui.properties().surface.background;
 
     ui.set_local(
         root,
@@ -467,7 +485,7 @@ fn styled_background_resolves_through_cascade() {
     let mut ui = Ui::new();
     let root = ui.root();
     let layout_prop = ui.properties().layout;
-    let background = ui.properties().background;
+    let background = ui.properties().surface.background;
 
     // Build a cascade with one rule.
     let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
@@ -505,7 +523,7 @@ fn three_rule_cascade_picks_class_over_type() {
 
     let dark = Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff)));
     let blue = Some(Brush::Solid(Color::from_rgba8(0x6b, 0x9d, 0xff, 0xff)));
-    let bg_prop = ui.properties().background;
+    let bg_prop = ui.properties().surface.background;
 
     let generic = StyleBuilder::new().set(bg_prop, dark.clone()).build();
     let foreground = StyleBuilder::new().set(bg_prop, blue.clone()).build();
@@ -1293,7 +1311,7 @@ fn styled_transition_rule_controls_button_hover_duration() {
 
     let idle = Color::from_rgba8(0x10, 0x20, 0x30, 0xff);
     let hover = Color::from_rgba8(0x50, 0x60, 0x70, 0xff);
-    let background = ui.properties().background;
+    let background = ui.properties().surface.background;
     let transitions = ui.properties().transitions;
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
@@ -1367,7 +1385,11 @@ fn local_background_change_after_transition_paints_new_target() {
     ui.paint(&mut scene);
 
     let red = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
-    ui.set_local(button, ui.properties().background, Some(Brush::Solid(red)));
+    ui.set_local(
+        button,
+        ui.properties().surface.background,
+        Some(Brush::Solid(red)),
+    );
     ui.paint(&mut scene);
 
     assert_eq!(element_background_color(&ui, button), Some(red));
@@ -1593,7 +1615,7 @@ fn element_background_color(ui: &Ui, id: ElementId) -> Option<Color> {
 
 fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
     let element = ui.get(id)?;
-    match ui.resolve_value_for(element, ui.properties().border_brush) {
+    match ui.resolve_value_for(element, ui.properties().surface.border_brushes.top) {
         Some(Brush::Solid(color)) => Some(color),
         _ => None,
     }
@@ -1601,7 +1623,7 @@ fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
 
 fn element_border_width(ui: &Ui, id: ElementId) -> f64 {
     let element = ui.get(id).expect("element should exist");
-    ui.resolve_value_for(element, ui.properties().border_width)
+    ui.resolve_value_for(element, ui.properties().surface.border_widths.top)
 }
 
 fn assert_close(actual: f64, expected: f64) {
@@ -2265,7 +2287,7 @@ fn surface_template_parts_do_not_match_generic_type_selector() {
 
     let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
     let style = StyleBuilder::new()
-        .set(ui.properties().background, red)
+        .set(ui.properties().surface.background, red)
         .build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
@@ -2276,7 +2298,8 @@ fn surface_template_parts_do_not_match_generic_type_selector() {
         .build();
     ui.set_cascade(cascade);
 
-    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
+    let background =
+        ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().surface.background);
     assert_eq!(
         background, None,
         "surface-only template parts should not inherit TYPE_GENERIC as a fake type"
@@ -2302,7 +2325,7 @@ fn slider_template_parts_match_owner_local_part_selectors() {
         .expect("slider template should expose a thumb slot");
     let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
     let style = StyleBuilder::new()
-        .set(ui.properties().background, red.clone())
+        .set(ui.properties().surface.background, red.clone())
         .build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(
@@ -2316,7 +2339,8 @@ fn slider_template_parts_match_owner_local_part_selectors() {
         .build();
     ui.set_cascade(cascade);
 
-    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
+    let background =
+        ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().surface.background);
     assert_eq!(
         background, red,
         "owner-local part rule should match the nested slider track"
@@ -2511,9 +2535,12 @@ fn default_cascade_styles_template_parts_by_owner_part() {
         .keyed_part(PART_SLIDER_TICK, TemplateItemKey::new(0))
         .unwrap();
     let expected = Some(Brush::Solid(Color::from_rgba8(0x44, 0x44, 0x4a, 0xff)));
-    let background = ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().background);
-    let tick_background =
-        ui.resolve_value_for(ui.get(major_tick).unwrap(), ui.properties().background);
+    let background =
+        ui.resolve_value_for(ui.get(track).unwrap(), ui.properties().surface.background);
+    let tick_background = ui.resolve_value_for(
+        ui.get(major_tick).unwrap(),
+        ui.properties().surface.background,
+    );
 
     assert_eq!(background, expected);
     assert_eq!(
@@ -2531,7 +2558,8 @@ fn default_cascade_leaves_generic_panels_transparent() {
     ui.set_cascade(theme::default_cascade(ui.properties()));
 
     let panel = ui.append(ui.root(), Panel::new());
-    let background = ui.resolve_value_for(ui.get(panel).unwrap(), ui.properties().background);
+    let background =
+        ui.resolve_value_for(ui.get(panel).unwrap(), ui.properties().surface.background);
 
     assert_eq!(background, None);
 }
@@ -4005,7 +4033,7 @@ fn scene_composition_applies_effective_layer_opacity() {
     );
     ui.set_local(
         child,
-        ui.properties().background,
+        ui.properties().surface.background,
         Some(Brush::Solid(Color::from_rgba8(0x40, 0x80, 0xff, 0xff))),
     );
     ui.set_local(child, ui.properties().opacity, 0.5_f32);
@@ -4110,7 +4138,7 @@ fn paint_rebuilds_root_composition_surface() {
     ui.set_layout(root, Layout::flex().logical_size(40.0, 20.0));
     ui.set_local(
         root,
-        ui.properties().background,
+        ui.properties().surface.background,
         Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff))),
     );
     ui.compute_layout(Size::new(40.0, 20.0));
@@ -4148,7 +4176,7 @@ fn paint_rebuilds_child_composition_surfaces() {
     ui.set_layout(child, Layout::new().logical_size(20.0, 20.0));
     ui.set_local(
         child,
-        ui.properties().background,
+        ui.properties().surface.background,
         Some(Brush::Solid(Color::from_rgba8(0x00, 0xff, 0x00, 0xff))),
     );
     ui.compute_layout(Size::new(40.0, 40.0));
@@ -4171,7 +4199,7 @@ fn paint_rebuilds_child_composition_surfaces() {
 
     ui.set_local(
         child,
-        ui.properties().background,
+        ui.properties().surface.background,
         Some(Brush::Solid(Color::from_rgba8(0xff, 0xff, 0x00, 0xff))),
     );
     ui.paint(&mut output);
@@ -4713,7 +4741,7 @@ fn scroll_view_clip_applies_to_child_surfaces() {
     );
     ui.set_local(
         child,
-        ui.properties().background,
+        ui.properties().surface.background,
         Some(Brush::Solid(Color::from_rgba8(0x00, 0x00, 0xff, 0xff))),
     );
 
@@ -5078,6 +5106,7 @@ fn element_spec_ext_applies_initial_local_properties() {
     let root = ui.root();
     let background = Brush::from(Color::from_rgba8(0x22, 0x33, 0x44, 0xff));
     let foreground = Brush::from(Color::from_rgba8(0xee, 0xdd, 0xcc, 0xff));
+    let corner_radius = crate::CornerRadius::circular(6.0);
     let panel = ui.append(
         root,
         crate::Panel::new()
@@ -5091,7 +5120,7 @@ fn element_spec_ext_applies_initial_local_properties() {
     let element = ui.get(panel).unwrap();
 
     assert_eq!(
-        element.get_local_value(ui.properties().background),
+        element.get_local_value(ui.properties().surface.background),
         Some(&Some(background))
     );
     assert_eq!(
@@ -5099,12 +5128,20 @@ fn element_spec_ext_applies_initial_local_properties() {
         Some(&foreground)
     );
     assert_eq!(
-        element.get_local_value(ui.properties().border_width),
+        element.get_local_value(ui.properties().surface.border_widths.top),
         Some(&2.0)
     );
     assert_eq!(
-        element.get_local_value(ui.properties().corner_radius),
-        Some(&6.0)
+        element.get_local_value(ui.properties().surface.border_widths.right),
+        Some(&2.0)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.corner_radii.top_left),
+        Some(&corner_radius)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.corner_radii.bottom_right),
+        Some(&corner_radius)
     );
     assert_eq!(element.get_local_value(ui.properties().opacity), Some(&0.5));
     assert_eq!(

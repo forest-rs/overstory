@@ -195,118 +195,118 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_ROOT),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ROOT_BG)
+                .background_resource(properties, DEMO_ROOT_BG)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_NAV),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_NAV_BG)
-                .set_resource(properties.border_brush, DEMO_NAV_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 16.0_f64)
+                .background_resource(properties, DEMO_NAV_BG)
+                .border_brush_resource(properties, DEMO_NAV_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 16.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_STAGE),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_STAGE_BG)
-                .set_resource(properties.border_brush, DEMO_STAGE_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 18.0_f64)
+                .background_resource(properties, DEMO_STAGE_BG)
+                .border_brush_resource(properties, DEMO_STAGE_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 18.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_HEADER),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_HEADER_BG)
-                .set_resource(properties.border_brush, DEMO_HEADER_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 16.0_f64)
+                .background_resource(properties, DEMO_HEADER_BG)
+                .border_brush_resource(properties, DEMO_HEADER_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 16.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_CARD),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_CARD_BG)
-                .set_resource(properties.border_brush, DEMO_CARD_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 12.0_f64)
+                .background_resource(properties, DEMO_CARD_BG)
+                .border_brush_resource(properties, DEMO_CARD_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 12.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_NAV_MARKER),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set(properties.corner_radius, 2.0_f64)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .corner_radius(properties, 2.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_HEADER_ACCENT),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set(properties.corner_radius, 8.0_f64)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .corner_radius(properties, 8.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_NAV_ROW),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_NAV_BG)
-                .set_resource(properties.border_brush, DEMO_NAV_BG)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 8.0_f64)
+                .background_resource(properties, DEMO_NAV_BG)
+                .border_brush_resource(properties, DEMO_NAV_BG)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 8.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_NAV_SELECTED_BG)
-                .set_resource(properties.border_brush, DEMO_NAV_SELECTED_BG)
+                .background_resource(properties, DEMO_NAV_SELECTED_BG)
+                .border_brush_resource(properties, DEMO_NAV_SELECTED_BG)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_FOCUS_VISIBLE),
             StyleBuilder::new()
-                .set_resource(properties.border_brush, DEMO_FOCUS_BORDER)
+                .border_brush_resource(properties, DEMO_FOCUS_BORDER)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_SPLIT_SCENE),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_SPLIT_SCENE_BG)
-                .set_resource(properties.border_brush, DEMO_SPLIT_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 8.0_f64)
+                .background_resource(properties, DEMO_SPLIT_SCENE_BG)
+                .border_brush_resource(properties, DEMO_SPLIT_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 8.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_SPLIT_INSPECTOR),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_SPLIT_INSPECTOR_BG)
-                .set_resource(properties.border_brush, DEMO_SPLIT_BORDER)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 8.0_f64)
+                .background_resource(properties, DEMO_SPLIT_INSPECTOR_BG)
+                .border_brush_resource(properties, DEMO_SPLIT_BORDER)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 8.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_DEMO_MOTION_STAGE),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_MOTION_STAGE_BG)
-                .set_resource(properties.border_brush, DEMO_MOTION_STAGE_BG)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 14.0_f64)
+                .background_resource(properties, DEMO_MOTION_STAGE_BG)
+                .border_brush_resource(properties, DEMO_MOTION_STAGE_BG)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 14.0_f64)
                 .build(),
         )
         .push_rule(
@@ -368,8 +368,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             button_class_state_selector(CLASS_DEVTOOLS_BUTTON, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set_resource(properties.border_brush, DEMO_ACCENT_BG)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .border_brush_resource(properties, DEMO_ACCENT_BG)
                 .set_resource(properties.foreground, theme::ON_ACCENT_FG)
                 .build(),
         )
@@ -377,10 +377,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0x27, 0x3b, 0x6f, 0xff))
-                .set(properties.border_brush, opt_solid(0x90, 0xa7, 0xff, 0xff))
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 12.0_f64)
+                .background(properties, opt_solid(0x27, 0x3b, 0x6f, 0xff))
+                .border_brush(properties, opt_solid(0x90, 0xa7, 0xff, 0xff))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 12.0_f64)
                 .set(properties.layout_container, LayoutContainer::row())
                 .set(properties.layout_spacing, LayoutSpacing::padding_all(3.0))
                 .set(
@@ -395,10 +395,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0x80))
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 9.0_f64)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x80))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 9.0_f64)
                 .set(properties.layout_container, LayoutContainer::row())
                 .set(
                     properties.layout_spacing,
@@ -416,10 +416,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             untyped_class_selector(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set_resource(properties.border_brush, DEMO_ACCENT_BG)
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 12.0_f64)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .border_brush_resource(properties, DEMO_ACCENT_BG)
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 12.0_f64)
                 .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
                 .build(),
         )
@@ -427,10 +427,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_SPLIT_BORDER)
-                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0x40))
-                .set(properties.border_width, 1.0_f64)
-                .set(properties.corner_radius, 5.0_f64)
+                .background_resource(properties, DEMO_SPLIT_BORDER)
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x40))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 5.0_f64)
                 .set(
                     properties.layout_placement,
                     LayoutPlacement::absolute_at(0.0, 22.0),
@@ -442,10 +442,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
             StyleBuilder::new()
-                .set_resource(properties.background, DEMO_ACCENT_BG)
-                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0xd0))
-                .set(properties.border_width, 2.0_f64)
-                .set(properties.corner_radius, 11.0_f64)
+                .background_resource(properties, DEMO_ACCENT_BG)
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xd0))
+                .border_width(properties, 2.0_f64)
+                .corner_radius(properties, 11.0_f64)
                 .set(properties.layout_size, LayoutSize::logical(22.0, 22.0))
                 .build(),
         )
@@ -477,8 +477,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_selector(CLASS_OKLAB_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0xff, 0x2a, 0x78, 0xff))
-                .set(properties.corner_radius, 18.0_f64)
+                .background(properties, opt_solid(0xff, 0x2a, 0x78, 0xff))
+                .corner_radius(properties, 18.0_f64)
                 .set(
                     properties.transitions,
                     color_transition_rules(
@@ -494,15 +494,15 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_state_selector(CLASS_OKLAB_SWATCH, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0x26, 0xd9, 0x8e, 0xff))
+                .background(properties, opt_solid(0x26, 0xd9, 0x8e, 0xff))
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_SRGB_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0xff, 0x2a, 0x78, 0xff))
-                .set(properties.corner_radius, 18.0_f64)
+                .background(properties, opt_solid(0xff, 0x2a, 0x78, 0xff))
+                .corner_radius(properties, 18.0_f64)
                 .set(
                     properties.transitions,
                     color_transition_rules(
@@ -518,15 +518,15 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_state_selector(CLASS_SRGB_SWATCH, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0x26, 0xd9, 0x8e, 0xff))
+                .background(properties, opt_solid(0x26, 0xd9, 0x8e, 0xff))
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_OPACITY_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0x6d, 0xf2, 0x96, 0xff))
-                .set(properties.corner_radius, 18.0_f64)
+                .background(properties, opt_solid(0x6d, 0xf2, 0x96, 0xff))
+                .corner_radius(properties, 18.0_f64)
                 .set(properties.opacity, 1.0_f32)
                 .set(
                     properties.transitions,
@@ -548,10 +548,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_selector(CLASS_BORDER_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0x25, 0x29, 0x38, 0xff))
-                .set(properties.border_brush, opt_solid(0x79, 0x86, 0xff, 0xff))
-                .set(properties.border_width, 2.0_f64)
-                .set(properties.corner_radius, 18.0_f64)
+                .background(properties, opt_solid(0x25, 0x29, 0x38, 0xff))
+                .border_brush(properties, opt_solid(0x79, 0x86, 0xff, 0xff))
+                .border_width(properties, 2.0_f64)
+                .corner_radius(properties, 18.0_f64)
                 .set(properties.transitions, border_transition_rules(properties))
                 .build(),
         )
@@ -559,16 +559,16 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_state_selector(CLASS_BORDER_SWATCH, PSEUDO_FOCUS_VISIBLE),
             StyleBuilder::new()
-                .set(properties.border_brush, opt_solid(0xff, 0xff, 0xff, 0xff))
-                .set(properties.border_width, 12.0_f64)
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .border_width(properties, 12.0_f64)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(CLASS_MOVER_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0xff, 0x9f, 0x1c, 0xff))
-                .set(properties.corner_radius, 21.0_f64)
+                .background(properties, opt_solid(0xff, 0x9f, 0x1c, 0xff))
+                .corner_radius(properties, 21.0_f64)
                 .set(
                     properties.transitions,
                     scalar_transition_rules(
@@ -582,8 +582,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_selector(CLASS_RETARGET_SWATCH),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0xd8, 0xb4, 0xfe, 0xff))
-                .set(properties.corner_radius, 18.0_f64)
+                .background(properties, opt_solid(0xd8, 0xb4, 0xfe, 0xff))
+                .corner_radius(properties, 18.0_f64)
                 .set(
                     properties.transitions,
                     color_transition_rules(
@@ -599,7 +599,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
             StyleOrigin::Base,
             class_state_selector(CLASS_RETARGET_SWATCH, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .set(properties.background, opt_solid(0xf9, 0xf8, 0x71, 0xff))
+                .background(properties, opt_solid(0xf9, 0xf8, 0x71, 0xff))
                 .build(),
         )
         .build()
@@ -648,22 +648,29 @@ pub(super) fn color_transition_rules(
     interpolation: ColorInterpolation,
 ) -> TransitionRules {
     TransitionRules::single(TransitionRule::interaction(
-        TransitionTarget::property(properties.background.id()),
+        TransitionTarget::property(properties.surface.background.id()),
         TransitionSpec::timed(duration, timing).with_color_interpolation(interpolation),
     ))
 }
 
 pub(super) fn border_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
-    TransitionRules::new()
-        .with_rule(TransitionRule::interaction(
-            TransitionTarget::property(properties.border_brush.id()),
+    let brushes = properties.surface.border_brushes;
+    let widths = properties.surface.border_widths;
+    let mut rules = TransitionRules::new();
+    for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
+        rules.push(TransitionRule::interaction(
+            TransitionTarget::property(property.id()),
             TransitionSpec::timed(millis(720), EASE_OUT)
                 .with_color_interpolation(ColorInterpolation::OKLAB),
-        ))
-        .with_rule(TransitionRule::interaction(
-            TransitionTarget::property(properties.border_width.id()),
+        ));
+    }
+    for property in [widths.top, widths.right, widths.bottom, widths.left] {
+        rules.push(TransitionRule::interaction(
+            TransitionTarget::property(property.id()),
             TransitionSpec::timed(millis(520), EASE_IN_OUT),
-        ))
+        ));
+    }
+    rules
 }
 
 pub(super) fn scalar_transition_rules(

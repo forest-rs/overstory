@@ -8,6 +8,7 @@
 //! semantic state.
 
 use peniko::{Brush, Color};
+use understory_presentation::Edges;
 use understory_property::Property;
 use understory_style::PseudoClassId;
 
@@ -55,8 +56,8 @@ enum TransitionDecision {
 pub(in crate::ui) struct InteractionTransitionPlan {
     policy: MotionPolicy,
     background: Option<TrackedValue<Color>>,
-    border_brush: Option<TrackedValue<Color>>,
-    border_width: Option<TrackedValue<f64>>,
+    border_brushes: Option<Edges<TrackedValue<Color>>>,
+    border_widths: Option<Edges<TrackedValue<f64>>>,
     opacity: Option<TrackedValue<f32>>,
 }
 
@@ -68,20 +69,24 @@ impl InteractionTransitionPlan {
             policy: ui.motion_policy,
             background: interaction_pseudo_animates_background(pseudo).then(|| {
                 TrackedValue::new(
-                    TimelineTarget::Property(properties.background.id()),
-                    solid_optional_brush_color(ui, id, properties.background),
+                    TimelineTarget::Property(properties.surface.background.id()),
+                    solid_optional_brush_color(ui, id, properties.surface.background),
                 )
             }),
-            border_brush: interaction_pseudo_animates_border_brush(pseudo).then(|| {
-                TrackedValue::new(
-                    TimelineTarget::Property(properties.border_brush.id()),
-                    solid_optional_brush_color(ui, id, properties.border_brush),
+            border_brushes: interaction_pseudo_animates_border_brush(pseudo).then(|| {
+                Edges::new(
+                    tracked_brush(ui, id, properties.surface.border_brushes.top),
+                    tracked_brush(ui, id, properties.surface.border_brushes.right),
+                    tracked_brush(ui, id, properties.surface.border_brushes.bottom),
+                    tracked_brush(ui, id, properties.surface.border_brushes.left),
                 )
             }),
-            border_width: interaction_pseudo_animates_border_width(pseudo).then(|| {
-                TrackedValue::new(
-                    TimelineTarget::Property(properties.border_width.id()),
-                    border_width_target(ui, id),
+            border_widths: interaction_pseudo_animates_border_width(pseudo).then(|| {
+                Edges::new(
+                    tracked_width(ui, id, properties.surface.border_widths.top),
+                    tracked_width(ui, id, properties.surface.border_widths.right),
+                    tracked_width(ui, id, properties.surface.border_widths.bottom),
+                    tracked_width(ui, id, properties.surface.border_widths.left),
                 )
             }),
             opacity: (pseudo == PSEUDO_PRESSED).then(|| {
@@ -98,19 +103,19 @@ impl InteractionTransitionPlan {
         self.clear_samples(ui, id);
 
         let properties = ui.properties;
-        let background_after = solid_optional_brush_color(ui, id, properties.background);
-        let border_brush_after = solid_optional_brush_color(ui, id, properties.border_brush);
-        let border_width_after = border_width_target(ui, id);
+        let background_after = solid_optional_brush_color(ui, id, properties.surface.background);
+        let border_brush_after = border_brush_targets(ui, id);
+        let border_width_after = border_width_targets(ui, id);
         let opacity_after = opacity_target(ui, id);
 
         if let Some(tracked) = self.background {
             tracked.apply(ui, id, self.policy, background_after);
         }
-        if let Some(tracked) = self.border_brush {
-            tracked.apply(ui, id, self.policy, border_brush_after);
+        if let Some(tracked) = self.border_brushes {
+            apply_tracked_edges(ui, id, self.policy, tracked, border_brush_after);
         }
-        if let Some(tracked) = self.border_width {
-            tracked.apply(ui, id, self.policy, border_width_after);
+        if let Some(tracked) = self.border_widths {
+            apply_tracked_edges(ui, id, self.policy, tracked, border_width_after);
         }
         if let Some(tracked) = self.opacity {
             tracked.apply(ui, id, self.policy, opacity_after);
@@ -121,11 +126,11 @@ impl InteractionTransitionPlan {
         if let Some(tracked) = self.background {
             tracked.clear_sample(ui, id);
         }
-        if let Some(tracked) = self.border_brush {
-            tracked.clear_sample(ui, id);
+        if let Some(tracked) = self.border_brushes {
+            clear_tracked_edges(ui, id, tracked);
         }
-        if let Some(tracked) = self.border_width {
-            tracked.clear_sample(ui, id);
+        if let Some(tracked) = self.border_widths {
+            clear_tracked_edges(ui, id, tracked);
         }
         if let Some(tracked) = self.opacity {
             tracked.clear_sample(ui, id);
@@ -180,6 +185,45 @@ where
     }
 }
 
+fn tracked_brush(ui: &Ui, id: ElementId, property: Property<Option<Brush>>) -> TrackedValue<Color> {
+    TrackedValue::new(
+        TimelineTarget::Property(property.id()),
+        solid_optional_brush_color(ui, id, property),
+    )
+}
+
+fn tracked_width(ui: &Ui, id: ElementId, property: Property<f64>) -> TrackedValue<f64> {
+    TrackedValue::new(
+        TimelineTarget::Property(property.id()),
+        numeric_property_target(ui, id, property),
+    )
+}
+
+fn clear_tracked_edges<T>(ui: &mut Ui, id: ElementId, edges: Edges<TrackedValue<T>>)
+where
+    T: AnimatableValue,
+{
+    edges.top.clear_sample(ui, id);
+    edges.right.clear_sample(ui, id);
+    edges.bottom.clear_sample(ui, id);
+    edges.left.clear_sample(ui, id);
+}
+
+fn apply_tracked_edges<T>(
+    ui: &mut Ui,
+    id: ElementId,
+    policy: MotionPolicy,
+    tracked: Edges<TrackedValue<T>>,
+    after: Edges<Option<T>>,
+) where
+    T: AnimatableValue,
+{
+    tracked.top.apply(ui, id, policy, after.top);
+    tracked.right.apply(ui, id, policy, after.right);
+    tracked.bottom.apply(ui, id, policy, after.bottom);
+    tracked.left.apply(ui, id, policy, after.left);
+}
+
 fn solid_optional_brush_color(
     ui: &Ui,
     id: ElementId,
@@ -192,9 +236,29 @@ fn solid_optional_brush_color(
     }
 }
 
-fn border_width_target(ui: &Ui, id: ElementId) -> Option<f64> {
+fn numeric_property_target(ui: &Ui, id: ElementId, property: Property<f64>) -> Option<f64> {
     let element = ui.get(id)?;
-    Some(ui.resolve_value_for(element, ui.properties.border_width))
+    Some(ui.resolve_value_for(element, property))
+}
+
+fn border_brush_targets(ui: &Ui, id: ElementId) -> Edges<Option<Color>> {
+    let properties = ui.properties.surface.border_brushes;
+    Edges::new(
+        solid_optional_brush_color(ui, id, properties.top),
+        solid_optional_brush_color(ui, id, properties.right),
+        solid_optional_brush_color(ui, id, properties.bottom),
+        solid_optional_brush_color(ui, id, properties.left),
+    )
+}
+
+fn border_width_targets(ui: &Ui, id: ElementId) -> Edges<Option<f64>> {
+    let properties = ui.properties.surface.border_widths;
+    Edges::new(
+        numeric_property_target(ui, id, properties.top),
+        numeric_property_target(ui, id, properties.right),
+        numeric_property_target(ui, id, properties.bottom),
+        numeric_property_target(ui, id, properties.left),
+    )
 }
 
 fn opacity_target(ui: &Ui, id: ElementId) -> Option<f32> {

@@ -809,7 +809,11 @@ fn append_svg_grid_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color
                 .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
         ),
     );
-    ui.set_local(element, ui.properties().background, Some(color.into()));
+    ui.set_local(
+        element,
+        ui.properties().surface.background,
+        Some(color.into()),
+    );
     element
 }
 

@@ -1047,16 +1047,25 @@ fn style_surface(
     border_width: f64,
     radius: f64,
 ) {
+    let surface = ui.properties().surface;
     if let Some(background) = background {
-        ui.set_local(element, ui.properties().background, Some(background.into()));
+        ui.set_local(element, surface.background, Some(background.into()));
     }
-    ui.set_local(
-        element,
-        ui.properties().border_brush,
-        border.map(Brush::from),
-    );
-    ui.set_local(element, ui.properties().border_width, border_width);
-    ui.set_local(element, ui.properties().corner_radius, radius);
+    let border = border.map(Brush::from);
+    ui.set_local(element, surface.border_brushes.top, border.clone());
+    ui.set_local(element, surface.border_brushes.right, border.clone());
+    ui.set_local(element, surface.border_brushes.bottom, border.clone());
+    ui.set_local(element, surface.border_brushes.left, border);
+    ui.set_local(element, surface.border_widths.top, border_width);
+    ui.set_local(element, surface.border_widths.right, border_width);
+    ui.set_local(element, surface.border_widths.bottom, border_width);
+    ui.set_local(element, surface.border_widths.left, border_width);
+
+    let radius = overstory::CornerRadius::circular(radius);
+    ui.set_local(element, surface.corner_radii.top_left, radius);
+    ui.set_local(element, surface.corner_radii.top_right, radius);
+    ui.set_local(element, surface.corner_radii.bottom_right, radius);
+    ui.set_local(element, surface.corner_radii.bottom_left, radius);
 }
 
 fn projection_bounds(projection: &DemoProjection) -> Rect {

@@ -1,0 +1,134 @@
+use super::super::*;
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct BoxModelPage;
+
+impl View for BoxModelPage {
+    type Output = ();
+
+    fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
+        stage.with_child(
+            Panel::new().layout(Layout::row(18.0).fill_width()),
+            |row| {
+                row.demo_auto_card("CORNER CONTOURS", PAGE_CARD_WIDTH, |card| {
+                    card.add(
+                        body_text("Each specimen is an ordinary panel. Overstory resolves its surface longhands into presentation geometry before lowering."),
+                    );
+                    card.with_child(Panel::new().layout(Layout::row(12.0).wrap()), |samples| {
+                        add_corner_sample(samples, "Round", CornerShapeKind::Round);
+                        add_corner_sample(samples, "Squircle", CornerShapeKind::Squircle);
+                        add_corner_sample(samples, "Bevel", CornerShapeKind::Bevel);
+                        add_corner_sample(samples, "Scoop", CornerShapeKind::Scoop);
+                    });
+                });
+
+                row.demo_auto_card("BORDER SIDES", PAGE_CARD_WIDTH, |card| {
+                    card.add(body_text(
+                        "Physical sides can carry different widths and brushes. The lowerer now fills the border ring instead of stroking outside the box.",
+                    ));
+                    card.add(
+                        asymmetric_border_specimen()
+                            .layout(Layout::new().logical_size(PAGE_CONTROL_WIDTH, 104.0)),
+                    );
+                    card.with_child(Panel::row(8.0).layout(Layout::row(8.0).wrap()), |legend| {
+                        legend.add(border_pill("top 6", 112, 143, 255));
+                        legend.add(border_pill("right 12", 116, 214, 156));
+                        legend.add(border_pill("bottom 8", 190, 142, 255));
+                        legend.add(border_pill("left 3", 255, 205, 113));
+                    });
+                });
+            },
+        );
+
+        stage.with_child(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_auto_card("LAYOUT PADDING", PAGE_CARD_WIDTH, |card| {
+                    card.add(body_text(
+                        "Layout padding defines the content inset today. The next box-model pass should feed decoration padding from that same resolved value.",
+                    ));
+                    card.with_child(
+                        Panel::column(8.0)
+                            .background(solid(26, 31, 43, 255))
+                            .border_brush(opt_solid(126, 155, 255, 255))
+                            .border_width(2.0)
+                            .corner_radius(18.0)
+                            .layout(
+                                Layout::column(8.0)
+                                    .logical_size(PAGE_CONTROL_WIDTH, 132.0)
+                                    .padding_xy(24.0, 18.0),
+                            ),
+                        |box_content| {
+                            box_content.add(control_label("content box"));
+                            box_content.add(
+                                Text::new("This label sits inside LayoutSpacing::padding, showing the content box that decoration geometry should share.")
+                                    .class(CLASS_DEMO_BODY)
+                                    .wrap(),
+                            );
+                        },
+                    );
+                });
+            },
+        );
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CornerShapeKind {
+    Round,
+    Squircle,
+    Bevel,
+    Scoop,
+}
+
+fn add_corner_sample(parent: &mut ChildUi<'_>, label: &str, kind: CornerShapeKind) {
+    parent.with_child(
+        Panel::column(6.0).layout(Layout::column(6.0).logical_size(150.0, 118.0)),
+        |sample| {
+            sample.add(corner_specimen(kind).layout(Layout::new().logical_size(150.0, 82.0)));
+            sample.add(caption(label));
+        },
+    );
+}
+
+fn border_pill(label: &str, r: u8, g: u8, b: u8) -> Text {
+    Text::new(label)
+        .font_size(13.0)
+        .foreground(solid(r, g, b, 255))
+}
+
+fn corner_specimen(kind: CornerShapeKind) -> Panel {
+    Panel::new()
+        .background(solid(38, 46, 65, 255))
+        .border_brush(opt_solid(126, 155, 255, 255))
+        .border_width(3.0)
+        .decoration_padding(Edges::vertical_horizontal(12.0, 18.0))
+        .corner_radii(Corners::all(CornerRadius::new(28.0, 20.0)))
+        .corner_shape(kind.shape())
+}
+
+fn asymmetric_border_specimen() -> Panel {
+    Panel::new()
+        .background(solid(30, 39, 54, 255))
+        .border_brushes(
+            opt_solid(112, 143, 255, 255),
+            opt_solid(116, 214, 156, 255),
+            opt_solid(190, 142, 255, 255),
+            opt_solid(255, 205, 113, 255),
+        )
+        .border_widths(Edges::new(6.0, 12.0, 8.0, 3.0))
+        .decoration_padding(Edges::new(14.0, 22.0, 16.0, 12.0))
+        .corner_radius(0.0)
+        .corner_shape(CornerShape::Round)
+}
+
+impl CornerShapeKind {
+    fn shape(self) -> CornerShape {
+        match self {
+            Self::Round => CornerShape::Round,
+            Self::Squircle => CornerShape::squircle(),
+            Self::Bevel => CornerShape::Bevel,
+            Self::Scoop => CornerShape::scoop(),
+        }
+    }
+}
