@@ -20,10 +20,30 @@ impl View for SelectionPage {
                     list_card.add(
                         ListBox::new()
                             .items(renderer_queue_items())
-                            .size(PAGE_LIST_WIDTH, 178.0)
+                            .item_template(|row, item| {
+                                row.with_child(Panel::row(9.0).align_center(), |row| {
+                                    row.add(
+                                        Panel::new()
+                                            .background(Some(renderer_queue_stage_brush(
+                                                item.index(),
+                                            )))
+                                            .corner_radius(4.0)
+                                            .layout(Layout::new().logical_size(8.0, 8.0)),
+                                    );
+                                    row.with_child(Panel::new().layout(Layout::column(1.0).fill_width()), |text| {
+                                        text.add(Text::new(item.label()).class(CLASS_DEMO_BODY));
+                                        text.add(
+                                            Text::new(renderer_queue_meta(item.index()))
+                                                .class(CLASS_DEMO_CAPTION),
+                                        );
+                                    });
+                                });
+                            })
+                            .size(PAGE_LIST_WIDTH, 190.0)
+                            .item_extent(46.0)
                             .multiple_selection()
                             .selected_index(INITIAL_RENDERER_SELECTION)
-                            .scroll_offset_y(34.0)
+                            .scroll_offset_y(46.0)
                             .on_selection_changed(move |ui, event| {
                                 let label = selection_summary(&event);
                                 summary.set(ui, label);
@@ -50,14 +70,73 @@ impl View for SelectionPage {
                                 "Text shaping",
                                 "Input routing",
                             ])
+                            .item_template(|row, item| {
+                                row.with_child(Panel::row(9.0).align_center(), |row| {
+                                    row.add(
+                                        Panel::new()
+                                            .background(Some(inspector_target_brush(item.index())))
+                                            .corner_radius(5.0)
+                                            .layout(Layout::new().logical_size(10.0, 10.0)),
+                                    );
+                                    row.with_child(
+                                        Panel::new().layout(Layout::column(1.0).fill_width()),
+                                        |text| {
+                                            text.add(
+                                                Text::new(item.label()).class(CLASS_DEMO_BODY),
+                                            );
+                                            text.add(
+                                                Text::new(inspector_target_subtitle(item.index()))
+                                                    .class(CLASS_DEMO_CAPTION),
+                                            );
+                                        },
+                                    );
+                                });
+                            })
                             .selected_index(1)
                             .width(PAGE_CONTROL_WIDTH)
-                            .popup_height(124.0)
+                            .popup_height(176.0)
+                            .item_extent(44.0)
                             .tooltip("Popup-backed select using the ListBox path"),
                     )
                 });
             },
         );
+    }
+}
+
+fn renderer_queue_stage_brush(index: usize) -> Brush {
+    match index % 4 {
+        0 => solid(0x64, 0xb3, 0x7d, 0xff),
+        1 => solid(0x4f, 0x6f, 0xd6, 0xff),
+        2 => solid(0xd1, 0x8b, 0x47, 0xff),
+        _ => solid(0xb4, 0x86, 0xd8, 0xff),
+    }
+}
+
+fn renderer_queue_meta(index: usize) -> String {
+    let stage = (index % RENDERER_STAGES.len()) + 1;
+    let batch = (index / RENDERER_STAGES.len()) + 1;
+    format!(
+        "stage {stage:02} / {} - batch {batch:03}",
+        RENDERER_STAGES.len()
+    )
+}
+
+fn inspector_target_brush(index: usize) -> Brush {
+    match index {
+        0 => solid(0x64, 0xb3, 0x7d, 0xff),
+        1 => solid(0x6d, 0x8f, 0xff, 0xff),
+        2 => solid(0xd1, 0x8b, 0x47, 0xff),
+        _ => solid(0xb4, 0x86, 0xd8, 0xff),
+    }
+}
+
+fn inspector_target_subtitle(index: usize) -> &'static str {
+    match index {
+        0 => "Virtual rows, selection, and scroll state",
+        1 => "Layer tree, surfaces, and compositor handoff",
+        2 => "Font features, cache keys, and wrap inputs",
+        _ => "Routed pointer, key, and focus events",
     }
 }
 
