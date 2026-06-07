@@ -87,21 +87,6 @@ impl Ui {
         self.set_presentation_target(element, target, offset, cause);
     }
 
-    /// Requests that the next layer-offset target change for `element`
-    /// use the element's style-authored layer-offset transition rule.
-    ///
-    /// This is useful for app-authored motion where layout snaps to its
-    /// target position while composition presents the element moving from
-    /// the previous target to the new one. Returns `false` when `element`
-    /// is stale or its resolved transition rules do not include
-    /// [`crate::motion::TransitionTarget::LayerOffset`].
-    pub fn request_layer_offset_transition(&mut self, element: ElementId) -> bool {
-        self.request_styled_presentation_transition(
-            element,
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-        )
-    }
-
     pub(crate) fn clear_presentation_target(&mut self, element: ElementId, target: TimelineTarget) {
         let key = TimelineTrackKey::new(element, target);
         let had_runtime_state = self.timeline.clear_target(key);

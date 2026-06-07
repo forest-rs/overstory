@@ -16,7 +16,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
     last_enabled_index, option_label, selected_enabled_index, wrapping_next_enabled_index,
@@ -25,18 +25,21 @@ use crate::controls::choice::{
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
+use crate::layouts::{Layout, LayoutContainer, LayoutPlacement, LayoutSize, LayoutSpacing};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
+use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
-use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
+use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
 /// Selector identity for `SegmentedControl`.
 pub const TYPE_SEGMENTED_CONTROL: TypeTag = TypeTag(26);
 /// Selector identity for realized `SegmentedControl` items.
 pub const TYPE_SEGMENTED_ITEM: TypeTag = TypeTag(27);
+/// Owner-local part identity for the moving selected-segment indicator.
+pub const PART_SEGMENTED_SELECTION_INDICATOR: PartTag = PartTag(2);
 /// Owner-local part identity for a segment's visible label.
 pub const PART_SEGMENTED_ITEM_LABEL: PartTag = PartTag(1);
 /// Semantic slot for a segment's visible label.
@@ -208,6 +211,7 @@ impl AppendSpec for SegmentedControl {
             parent,
             Box::new(SegmentedControlWidget {
                 options: self.options.clone(),
+                indicator: None,
                 segments: Vec::new(),
                 selected_index,
                 selection_changed: SegmentedSelectionChangedSlot::new(self.on_selection_changed),
@@ -215,6 +219,7 @@ impl AppendSpec for SegmentedControl {
         );
         self.element.apply_to(ui, id);
 
+        let indicator = append_segmented_indicator(ui, id);
         let mut segments = Vec::with_capacity(self.options.len());
         for (index, option) in self.options.into_iter().enumerate() {
             let segment = append_segmented_item(ui, id, index, option, enabled);
@@ -225,6 +230,7 @@ impl AppendSpec for SegmentedControl {
             ui.set_local(id, ui.properties().selected_index, Some(selected));
         }
         with_segmented_control_mut(ui, id, |widget, _ui| {
+            widget.indicator = Some(indicator);
             widget.segments = segments;
         });
         id
@@ -239,6 +245,7 @@ impl ElementSpec for SegmentedControl {
 
 pub(crate) struct SegmentedControlWidget {
     options: Vec<ChoiceOption>,
+    indicator: Option<ElementId>,
     segments: Vec<ElementId>,
     selected_index: Option<usize>,
     selection_changed: SegmentedSelectionChangedSlot,
@@ -248,6 +255,7 @@ impl core::fmt::Debug for SegmentedControlWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SegmentedControlWidget")
             .field("options_len", &self.options.len())
+            .field("indicator", &self.indicator)
             .field("segments", &self.segments)
             .field("selected_index", &self.selected_index)
             .finish_non_exhaustive()
@@ -308,6 +316,13 @@ impl Widget for SegmentedControlWidget {
             event.mark_handled();
         }
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let segmented = ctx.id();
+        let changed = self.sync_indicator_layout(ctx.ui_mut(), segmented);
+        self.sync_indicator_offset_target(ctx.ui_mut(), segmented);
+        ArrangeResult::from_layout_changed(changed)
+    }
 }
 
 impl SegmentedControlWidget {
@@ -333,6 +348,12 @@ impl SegmentedControlWidget {
             return false;
         };
         let index = selection.index;
+        if let Some(indicator) = self.indicator {
+            ui.request_styled_presentation_transition(
+                indicator,
+                TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            );
+        }
         if let Some(previous) = self.selected_index {
             set_segmented_item_selected(ui, self.segments[previous], false);
         }
@@ -341,6 +362,9 @@ impl SegmentedControlWidget {
         let selected_segment = index.map(|index| self.segments[index]);
         if let Some(selected_segment) = selected_segment {
             set_segmented_item_selected(ui, selected_segment, true);
+        }
+        if let Some(indicator) = self.indicator {
+            let _ = sync_segmented_indicator_layout(ui, segmented, indicator, selected_segment);
         }
         self.selection_changed.dispatch(
             ui,
@@ -352,6 +376,25 @@ impl SegmentedControlWidget {
             },
         );
         true
+    }
+
+    fn sync_indicator_layout(&self, ui: &mut Ui, segmented: ElementId) -> bool {
+        let Some(indicator) = self.indicator else {
+            return false;
+        };
+        sync_segmented_indicator_layout(ui, segmented, indicator, self.selected_segment())
+    }
+
+    fn sync_indicator_offset_target(&self, ui: &mut Ui, segmented: ElementId) {
+        let Some(indicator) = self.indicator else {
+            return;
+        };
+        sync_segmented_indicator_offset_target(ui, segmented, indicator);
+    }
+
+    fn selected_segment(&self) -> Option<ElementId> {
+        self.selected_index
+            .and_then(|index| self.segments.get(index).copied())
     }
 }
 
@@ -431,6 +474,18 @@ fn segmented_item_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_SEGMENTED_ITEM_LABEL)])
 }
 
+fn append_segmented_indicator(ui: &mut Ui, segmented: ElementId) -> ElementId {
+    let indicator = ui.insert_template_child(
+        segmented,
+        segmented,
+        Some(PART_SEGMENTED_SELECTION_INDICATOR),
+        Some(Box::new(SurfacePartWidget)),
+    );
+    ui.set_layout_placement(indicator, LayoutPlacement::absolute_at(0.0, 0.0));
+    ui.set_layout_size(indicator, LayoutSize::logical(0.0, 0.0));
+    indicator
+}
+
 fn append_segmented_item(
     ui: &mut Ui,
     segmented: ElementId,
@@ -448,6 +503,70 @@ fn append_segmented_item(
             .enabled(enabled),
     );
     id
+}
+
+fn sync_segmented_indicator_layout(
+    ui: &mut Ui,
+    segmented: ElementId,
+    indicator: ElementId,
+    selected_segment: Option<ElementId>,
+) -> bool {
+    let Some(segmented_bounds) = ui.get(segmented).map(|_| ui.effective_bounds(segmented)) else {
+        return false;
+    };
+    let desired = selected_segment
+        .and_then(|segment| ui.get(segment).map(|_| ui.effective_bounds(segment)))
+        .unwrap_or_else(|| {
+            kurbo::Rect::from_origin_size(segmented_bounds.origin(), kurbo::Size::ZERO)
+        });
+    let current = ui.effective_bounds(indicator);
+    if rect_close(current, desired) {
+        return false;
+    }
+
+    let left = layout_f32(desired.x0 - segmented_bounds.x0);
+    let top = layout_f32(desired.y0 - segmented_bounds.y0);
+    ui.set_layout_placement(indicator, LayoutPlacement::absolute_at(left, top));
+    ui.set_layout_size(
+        indicator,
+        LayoutSize::logical(layout_f32(desired.width()), layout_f32(desired.height())),
+    );
+    true
+}
+
+fn sync_segmented_indicator_offset_target(ui: &mut Ui, segmented: ElementId, indicator: ElementId) {
+    let segmented_bounds = ui.effective_bounds(segmented);
+    let indicator_bounds = ui.effective_bounds(indicator);
+    let target = kurbo::Vec2::new(
+        indicator_bounds.x0 - segmented_bounds.x0,
+        indicator_bounds.y0 - segmented_bounds.y0,
+    );
+    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
+    let cause = if ui.has_pending_presentation_transition(indicator, property) {
+        ChangeCause::Interaction
+    } else {
+        ChangeCause::Other
+    };
+    ui.set_presentation_target(indicator, property, target, cause);
+}
+
+fn rect_close(a: kurbo::Rect, b: kurbo::Rect) -> bool {
+    scalar_close(a.x0, b.x0)
+        && scalar_close(a.y0, b.y0)
+        && scalar_close(a.x1, b.x1)
+        && scalar_close(a.y1, b.y1)
+}
+
+fn scalar_close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= f64::EPSILON
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "layout dimensions are finite logical pixels and Taffy takes f32"
+)]
+fn layout_f32(value: f64) -> f32 {
+    value.clamp(0.0, f64::from(f32::MAX)) as f32
 }
 
 fn set_segmented_item_selected(ui: &mut Ui, segment: ElementId, selected: bool) {
@@ -629,6 +748,32 @@ mod tests {
     }
 
     #[test]
+    fn segmented_control_selection_indicator_tracks_selected_item() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(320.0, 80.0));
+        let segmented = ui.append(root, SegmentedControl::new().items(ITEMS).selected_index(0));
+        let first = segmented_item(&ui, segmented, 0).unwrap();
+        let second = segmented_item(&ui, segmented, 1).unwrap();
+
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        let indicator = segmented_indicator(&ui, segmented).unwrap();
+        let indicator_element = ui.get(indicator).unwrap();
+        assert_eq!(indicator_element.templated_parent(), Some(segmented));
+        assert_eq!(
+            indicator_element.part_tag(),
+            Some(PART_SEGMENTED_SELECTION_INDICATOR)
+        );
+        assert_rect_close(ui.effective_bounds(indicator), ui.effective_bounds(first));
+
+        ui.synthesize_click(second, ui.effective_bounds(second).center());
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        assert_rect_close(ui.effective_bounds(indicator), ui.effective_bounds(second));
+    }
+
+    #[test]
     fn segmented_accessibility_uses_radio_group_roles() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -652,5 +797,18 @@ mod tests {
             .find(|(id, _)| *id == node_id)
             .map(|(_, node)| node)
             .expect("node should be emitted")
+    }
+
+    fn segmented_indicator(ui: &Ui, segmented: ElementId) -> Option<ElementId> {
+        segmented_control_widget(ui, segmented)?
+            .indicator
+            .filter(|indicator| ui.get(*indicator).is_some())
+    }
+
+    fn assert_rect_close(actual: kurbo::Rect, expected: kurbo::Rect) {
+        assert!(
+            rect_close(actual, expected),
+            "expected rect {expected:?}, got {actual:?}"
+        );
     }
 }

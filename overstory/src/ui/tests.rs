@@ -4346,7 +4346,6 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
     assert_close(start_x, 10.0);
 
     ui.set_now(0);
-    assert!(ui.request_layer_offset_transition(mover));
     ui.set_layout(
         mover,
         Layout::new()

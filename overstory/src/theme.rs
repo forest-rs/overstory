@@ -91,7 +91,8 @@ use crate::controls::scroll::{
     PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR, default_scroll_bar_template,
 };
 use crate::controls::segmented::{
-    TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM, default_segmented_item_template,
+    PART_SEGMENTED_SELECTION_INDICATOR, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
+    default_segmented_item_template,
 };
 use crate::controls::select::{
     PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT, default_select_template,
@@ -891,6 +892,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_brush_resource(properties, FOCUS_RING_BORDER)
         .border_width(properties, 2.0_f64)
         .build();
+    let segmented_indicator_idle = StyleBuilder::new()
+        .background_resource(properties, ACCENT_BG)
+        .corner_radius(properties, 7.0_f64)
+        .set(
+            properties.transitions,
+            layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
+        )
+        .build();
     let segmented_item_idle = StyleBuilder::new()
         .set(
             properties.control_template,
@@ -911,7 +920,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .background_resource(properties, CONTROL_HOVER_BG)
         .build();
     let segmented_item_selected = StyleBuilder::new()
-        .background_resource(properties, ACCENT_BG)
+        .background(properties, None::<Brush>)
         .set_resource(properties.foreground, ON_ACCENT_FG)
         .build();
     let segmented_item_disabled = StyleBuilder::new()
@@ -1459,6 +1468,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::state(TYPE_SEGMENTED_CONTROL, PSEUDO_FOCUS_VISIBLE),
             segmented_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(selectors::template_part(
+                TYPE_SEGMENTED_CONTROL,
+                PART_SEGMENTED_SELECTION_INDICATOR,
+            )),
+            segmented_indicator_idle,
         )
         .push_rule(
             StyleOrigin::Base,

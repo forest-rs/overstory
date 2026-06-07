@@ -114,8 +114,15 @@ impl Ui {
     /// Sets an element's layout placement contribution.
     ///
     /// This controls flow-vs-absolute positioning independently from the
-    /// element's sizing, padding, and child layout.
+    /// element's sizing, padding, and child layout. If the element has a
+    /// style-authored [`crate::motion::TransitionTarget::LayerOffset`] rule,
+    /// changing placement also requests a composition-sampled placement
+    /// transition for the next layout pass.
     pub fn set_layout_placement(&mut self, id: ElementId, placement: impl Into<LayoutPlacement>) {
+        self.request_styled_presentation_transition(
+            id,
+            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+        );
         let placement_prop = self.properties.layout_placement;
         self.set_local(id, placement_prop, placement.into());
     }

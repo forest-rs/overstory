@@ -155,7 +155,6 @@ fn schedule_movement(ui: &mut Ui, target: ElementId, interval: TimerDuration) {
     ui.on_timer(target, move |ui, _event| {
         let next = !active.get();
         active.set(next);
-        let _ = ui.request_layer_offset_transition(target);
         ui.set_layout(target, mover_layout(next));
     });
 }

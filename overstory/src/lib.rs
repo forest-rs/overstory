@@ -168,8 +168,8 @@ pub use controls::scroll::{
     set_scroll_offset_y, set_scroll_view_offset_y,
 };
 pub use controls::segmented::{
-    PART_SEGMENTED_ITEM_LABEL, SLOT_SEGMENTED_ITEM_LABEL, SegmentedControl,
-    SegmentedSelectionChangedEvent, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
+    PART_SEGMENTED_ITEM_LABEL, PART_SEGMENTED_SELECTION_INDICATOR, SLOT_SEGMENTED_ITEM_LABEL,
+    SegmentedControl, SegmentedSelectionChangedEvent, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
     clear_segmented_selection, segmented_item, selected_segmented_index, selected_segmented_item,
     set_segmented_index,
 };
