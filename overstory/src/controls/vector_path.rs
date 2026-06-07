@@ -22,12 +22,13 @@ use understory_box_tree::NodeId;
 use understory_presentation::{
     PathFill, PathPaintOrder, PathPrimitive, PathStroke, PresentationStore,
 };
-use understory_style::{ClassId, TypeTag};
+use understory_style::TypeTag;
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::PresentContext;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
+use crate::style_class::StyleClass;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -92,9 +93,9 @@ impl VectorPath {
         self
     }
 
-    /// Attaches a class id to the resulting element.
+    /// Attaches a style class to the resulting element.
     #[must_use]
-    pub fn class(mut self, class: ClassId) -> Self {
+    pub fn class(mut self, class: impl Into<StyleClass>) -> Self {
         self.element.add_class(class);
         self
     }

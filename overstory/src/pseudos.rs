@@ -7,8 +7,9 @@
 //! elements (the cursor is over me; I'm pressed; I'm focused; …). Style
 //! rules can require them via `SelectorStep::with_pseudo`.
 //!
-//! Built-in ids are reserved in the range `0..=31`; application code should
-//! pick values above that for its own pseudoclasses.
+//! Application code should resolve its own pseudoclasses through
+//! `Ui::style_vocabulary_mut().pseudo_class_id(...)` instead of picking raw
+//! numeric ids.
 //!
 //! Roadmap:
 //! - Keep pseudoclasses for dynamic state that affects selector matching:
@@ -18,8 +19,8 @@
 //!   visual subpart should become a pseudoclass.
 //! - Add states only with a clear owner responsible for keeping the state in
 //!   sync with semantic properties.
-//! - Reserve enough id space for Overstory while leaving applications and
-//!   downstream control libraries room for their own states.
+//! - Keep Overstory's built-in ids stable while application and downstream
+//!   control states resolve through the shared style vocabulary.
 
 use understory_style::PseudoClassId;
 

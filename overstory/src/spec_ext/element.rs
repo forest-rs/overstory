@@ -4,9 +4,9 @@
 //! Core element authoring extension traits.
 
 use understory_property::Property;
-use understory_style::ClassId;
 
 use crate::layouts::Layout;
+use crate::style_class::StyleClass;
 use crate::ui::ControlState;
 use crate::widget::{AppendSpec, ElementConfig};
 
@@ -46,15 +46,22 @@ pub trait ElementSpecExt: ElementSpec + Sized {
     }
 
     /// Adds a style class to the resulting element.
+    ///
+    /// Pass an existing `ClassId` when one has already been resolved, or pass a
+    /// class name such as `.primary` to have the owning `Ui` vocabulary resolve
+    /// it when the spec is appended.
     #[must_use]
-    fn class(mut self, class: ClassId) -> Self {
+    fn class(mut self, class: impl Into<StyleClass>) -> Self {
         self.element_config_mut().add_class(class);
         self
     }
 
     /// Adds several style classes to the resulting element.
     #[must_use]
-    fn classes(mut self, classes: impl IntoIterator<Item = ClassId>) -> Self {
+    fn classes<C>(mut self, classes: impl IntoIterator<Item = C>) -> Self
+    where
+        C: Into<StyleClass>,
+    {
         for class in classes {
             self.element_config_mut().add_class(class);
         }

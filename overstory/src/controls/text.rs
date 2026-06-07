@@ -26,12 +26,13 @@ use peniko::Brush;
 use understory_box_tree::NodeId;
 use understory_presentation::{PresentationStore, TextContent, TextStyle, TextWrapMode};
 use understory_property::Property;
-use understory_style::{ClassId, TypeTag};
+use understory_style::TypeTag;
 
 use crate::AccessibilityContext;
 use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext};
 use crate::element::{Element, ElementId};
 use crate::properties::BuiltInProperties;
+use crate::style_class::StyleClass;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -102,13 +103,13 @@ impl Text {
         self.wrap_mode(TextWrapMode::Wrap)
     }
 
-    /// Attaches a class id to the resulting text element.
+    /// Attaches a style class to the resulting text element.
     ///
     /// Style rules keyed on this class can provide foreground, font size,
     /// wrapping policy, or future text style properties without writing local
     /// values into each label.
     #[must_use]
-    pub fn class(mut self, class: ClassId) -> Self {
+    pub fn class(mut self, class: impl Into<StyleClass>) -> Self {
         self.element.add_class(class);
         self
     }

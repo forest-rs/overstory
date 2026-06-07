@@ -23,11 +23,12 @@
 //!   letting `Panel` become a catch-all widget.
 
 use alloc::boxed::Box;
-use understory_style::{ClassId, TypeTag};
+use understory_style::TypeTag;
 
 use crate::element::{Element, ElementId};
 use crate::layouts::{self, Layout};
 use crate::spec_ext::SurfaceSpecExt;
+use crate::style_class::StyleClass;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TYPE_GENERIC, Widget};
 
@@ -105,10 +106,11 @@ impl Panel {
         self
     }
 
-    /// Attaches a class id to the resulting element. Style rules
-    /// keyed on this class will match.
+    /// Attaches a style class to the resulting element.
+    ///
+    /// Pass an existing class id or an author-facing class name.
     #[must_use]
-    pub fn class(mut self, class: ClassId) -> Self {
+    pub fn class(mut self, class: impl Into<StyleClass>) -> Self {
         self.element.add_class(class);
         self
     }

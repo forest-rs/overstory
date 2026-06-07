@@ -216,7 +216,16 @@ mod tests {
         stage
     }
 
-    fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+    fn find_by_class(
+        ui: &Ui,
+        element: ElementId,
+        class: impl Into<overstory::StyleClass>,
+    ) -> Option<ElementId> {
+        let class = class.into().registered_id(ui.style_vocabulary())?;
+        find_by_class_id(ui, element, class)
+    }
+
+    fn find_by_class_id(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
         let current = ui.get(element)?;
         if current.classes().contains(&class) {
             return Some(element);
@@ -224,6 +233,6 @@ mod tests {
         current
             .children()
             .iter()
-            .find_map(|child| find_by_class(ui, *child, class))
+            .find_map(|child| find_by_class_id(ui, *child, class))
     }
 }

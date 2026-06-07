@@ -253,7 +253,7 @@ impl DemoShellState {
 /// each page owns only its local controls and timers.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
-    register_demo_style_debug_names(&mut ui);
+    let classes = ui.style_tokens::<DemoStyleTokens>();
     let shell = Rc::new(DemoShellState::new());
     ui.set_theme(shell.theme_mode().theme());
     let root = ui.root();
@@ -307,6 +307,6 @@ fn build_ui() -> Ui {
     wire_devtools_button(&mut ui, nav_chrome.devtools_button());
     pages::show_demo_page(&mut ui, stage, DemoPage::Overview);
 
-    ui.set_cascade(demo_cascade(ui.properties()));
+    ui.set_cascade(demo_cascade(ui.properties(), classes));
     ui
 }

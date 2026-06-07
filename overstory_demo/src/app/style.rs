@@ -24,103 +24,125 @@ pub(super) const DEMO_MUTED_FG: ResourceKey = ResourceKey::new(1_017);
 pub(super) const DEMO_TITLE_FG: ResourceKey = ResourceKey::new(1_018);
 pub(super) const DEMO_FOCUS_BORDER: ResourceKey = ResourceKey::new(1_019);
 
-pub(super) const CLASS_DEMO_ROOT: ClassId = ClassId(1);
-pub(super) const CLASS_DEMO_NAV: ClassId = ClassId(2);
-pub(super) const CLASS_DEMO_NAV_MARKER: ClassId = ClassId(3);
-pub(super) const CLASS_DEMO_STAGE: ClassId = ClassId(4);
-pub(super) const CLASS_DEMO_HEADER: ClassId = ClassId(5);
-pub(super) const CLASS_DEMO_HEADER_ACCENT: ClassId = ClassId(6);
-pub(super) const CLASS_DEMO_CARD: ClassId = ClassId(7);
-pub(super) const CLASS_DEMO_NAV_ROW: ClassId = ClassId(8);
-pub(super) const CLASS_DEMO_NAV_LABEL: ClassId = ClassId(9);
-pub(super) const CLASS_DEMO_HEADING: ClassId = ClassId(10);
-pub(super) const CLASS_DEMO_PAGE_HEADING: ClassId = ClassId(11);
-pub(super) const CLASS_DEMO_CAPTION: ClassId = ClassId(12);
-pub(super) const CLASS_DEMO_CARD_TITLE: ClassId = ClassId(13);
-pub(super) const CLASS_DEMO_CONTROL_LABEL: ClassId = ClassId(14);
-pub(super) const CLASS_DEMO_NUMBER: ClassId = ClassId(15);
-pub(super) const CLASS_DEMO_LARGE_NUMBER: ClassId = ClassId(16);
-pub(super) const CLASS_DEMO_BODY: ClassId = ClassId(17);
-pub(super) const CLASS_DEMO_SPLIT_SCENE: ClassId = ClassId(18);
-pub(super) const CLASS_DEMO_SPLIT_INSPECTOR: ClassId = ClassId(19);
-pub(super) const CLASS_DEMO_MOTION_STAGE: ClassId = ClassId(20);
-pub(super) const CLASS_SVG_GRID_LINE: ClassId = ClassId(21);
-pub(super) const CLASS_SVG_INFO_CARD: ClassId = ClassId(22);
-pub(super) const CLASS_SVG_TIGER_CARD: ClassId = ClassId(23);
-pub(super) const CLASS_SVG_INSPECTOR_CARD: ClassId = ClassId(24);
-pub(super) const CLASS_DEVTOOLS_INSPECTOR_CARD: ClassId = ClassId(25);
-pub(super) const CLASS_DEVTOOLS_STATUS: ClassId = ClassId(26);
-pub(super) const CLASS_DEVTOOLS_BUTTON: ClassId = ClassId(27);
-pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_OUTER: ClassId = ClassId(28);
-pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_INNER: ClassId = ClassId(29);
-pub(super) const CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX: ClassId = ClassId(30);
-pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_TRACK: ClassId = ClassId(31);
-pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_THUMB: ClassId = ClassId(32);
-pub(super) const CLASS_DEMO_TRANSCRIPT_VIEWPORT: ClassId = ClassId(33);
-pub(super) const CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT: ClassId = ClassId(34);
-pub(super) const CLASS_DEVTOOLS_EVENT_LOG: ClassId = ClassId(35);
-pub(super) const CLASS_OKLAB_SWATCH: ClassId = ClassId(100);
-pub(super) const CLASS_OPACITY_SWATCH: ClassId = ClassId(101);
-pub(super) const CLASS_BORDER_SWATCH: ClassId = ClassId(102);
-pub(super) const CLASS_RETARGET_SWATCH: ClassId = ClassId(103);
-pub(super) const CLASS_MOVER_SWATCH: ClassId = ClassId(104);
-pub(super) const CLASS_SRGB_SWATCH: ClassId = ClassId(105);
+pub(super) const CLASS_DEMO_ROOT: &str = ".demo-root";
+pub(super) const CLASS_DEMO_NAV: &str = ".demo-nav";
+pub(super) const CLASS_DEMO_NAV_MARKER: &str = ".demo-nav-marker";
+pub(super) const CLASS_DEMO_STAGE: &str = ".demo-stage";
+pub(super) const CLASS_DEMO_HEADER: &str = ".demo-header";
+pub(super) const CLASS_DEMO_HEADER_ACCENT: &str = ".demo-header-accent";
+pub(super) const CLASS_DEMO_CARD: &str = ".demo-card";
+pub(super) const CLASS_DEMO_NAV_ROW: &str = ".demo-nav-row";
+pub(super) const CLASS_DEMO_NAV_LABEL: &str = ".demo-nav-label";
+pub(super) const CLASS_DEMO_HEADING: &str = ".demo-heading";
+pub(super) const CLASS_DEMO_PAGE_HEADING: &str = ".demo-page-heading";
+pub(super) const CLASS_DEMO_CAPTION: &str = ".demo-caption";
+pub(super) const CLASS_DEMO_CARD_TITLE: &str = ".demo-card-title";
+pub(super) const CLASS_DEMO_CONTROL_LABEL: &str = ".demo-control-label";
+pub(super) const CLASS_DEMO_NUMBER: &str = ".demo-number";
+pub(super) const CLASS_DEMO_LARGE_NUMBER: &str = ".demo-large-number";
+pub(super) const CLASS_DEMO_BODY: &str = ".demo-body";
+pub(super) const CLASS_DEMO_SPLIT_SCENE: &str = ".demo-split-scene";
+pub(super) const CLASS_DEMO_SPLIT_INSPECTOR: &str = ".demo-split-inspector";
+pub(super) const CLASS_DEMO_MOTION_STAGE: &str = ".demo-motion-stage";
+pub(super) const CLASS_SVG_GRID_LINE: &str = ".svg-grid-line";
+pub(super) const CLASS_SVG_INFO_CARD: &str = ".svg-info-card";
+pub(super) const CLASS_SVG_TIGER_CARD: &str = ".svg-tiger-card";
+pub(super) const CLASS_SVG_INSPECTOR_CARD: &str = ".svg-inspector-card";
+pub(super) const CLASS_DEVTOOLS_INSPECTOR_CARD: &str = ".devtools-inspector-card";
+pub(super) const CLASS_DEVTOOLS_STATUS: &str = ".devtools-status";
+pub(super) const CLASS_DEVTOOLS_BUTTON: &str = ".devtools-button";
+pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_OUTER: &str = ".demo-template-button-outer";
+pub(super) const CLASS_DEMO_TEMPLATE_BUTTON_INNER: &str = ".demo-template-button-inner";
+pub(super) const CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX: &str = ".demo-template-check-box-box";
+pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_TRACK: &str = ".demo-template-slider-track";
+pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_THUMB: &str = ".demo-template-slider-thumb";
+pub(super) const CLASS_DEMO_TRANSCRIPT_VIEWPORT: &str = ".demo-transcript-viewport";
+pub(super) const CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT: &str = ".demo-transcript-composer-input";
+pub(super) const CLASS_DEVTOOLS_EVENT_LOG: &str = ".devtools-event-log";
+pub(super) const CLASS_OKLAB_SWATCH: &str = ".oklab-swatch";
+pub(super) const CLASS_OPACITY_SWATCH: &str = ".opacity-swatch";
+pub(super) const CLASS_BORDER_SWATCH: &str = ".border-swatch";
+pub(super) const CLASS_RETARGET_SWATCH: &str = ".retarget-swatch";
+pub(super) const CLASS_MOVER_SWATCH: &str = ".mover-swatch";
+pub(super) const CLASS_SRGB_SWATCH: &str = ".srgb-swatch";
 
-pub(super) fn register_demo_style_debug_names(ui: &mut Ui) {
-    ui.set_class_debug_name(CLASS_DEMO_ROOT, ".demo-root");
-    ui.set_class_debug_name(CLASS_DEMO_NAV, ".demo-nav");
-    ui.set_class_debug_name(CLASS_DEMO_NAV_MARKER, ".demo-nav-marker");
-    ui.set_class_debug_name(CLASS_DEMO_STAGE, ".demo-stage");
-    ui.set_class_debug_name(CLASS_DEMO_HEADER, ".demo-header");
-    ui.set_class_debug_name(CLASS_DEMO_HEADER_ACCENT, ".demo-header-accent");
-    ui.set_class_debug_name(CLASS_DEMO_CARD, ".demo-card");
-    ui.set_class_debug_name(CLASS_DEMO_NAV_ROW, ".demo-nav-row");
-    ui.set_class_debug_name(CLASS_DEMO_NAV_LABEL, ".demo-nav-label");
-    ui.set_class_debug_name(CLASS_DEMO_HEADING, ".demo-heading");
-    ui.set_class_debug_name(CLASS_DEMO_PAGE_HEADING, ".demo-page-heading");
-    ui.set_class_debug_name(CLASS_DEMO_CAPTION, ".demo-caption");
-    ui.set_class_debug_name(CLASS_DEMO_CARD_TITLE, ".demo-card-title");
-    ui.set_class_debug_name(CLASS_DEMO_CONTROL_LABEL, ".demo-control-label");
-    ui.set_class_debug_name(CLASS_DEMO_NUMBER, ".demo-number");
-    ui.set_class_debug_name(CLASS_DEMO_LARGE_NUMBER, ".demo-large-number");
-    ui.set_class_debug_name(CLASS_DEMO_BODY, ".demo-body");
-    ui.set_class_debug_name(CLASS_DEMO_SPLIT_SCENE, ".demo-split-scene");
-    ui.set_class_debug_name(CLASS_DEMO_SPLIT_INSPECTOR, ".demo-split-inspector");
-    ui.set_class_debug_name(CLASS_DEMO_MOTION_STAGE, ".demo-motion-stage");
-    ui.set_class_debug_name(CLASS_SVG_GRID_LINE, ".svg-grid-line");
-    ui.set_class_debug_name(CLASS_SVG_INFO_CARD, ".svg-info-card");
-    ui.set_class_debug_name(CLASS_SVG_TIGER_CARD, ".svg-tiger-card");
-    ui.set_class_debug_name(CLASS_SVG_INSPECTOR_CARD, ".svg-inspector-card");
-    ui.set_class_debug_name(CLASS_DEVTOOLS_INSPECTOR_CARD, ".devtools-inspector-card");
-    ui.set_class_debug_name(CLASS_DEVTOOLS_STATUS, ".devtools-status");
-    ui.set_class_debug_name(CLASS_DEVTOOLS_BUTTON, ".devtools-button");
-    ui.set_class_debug_name(CLASS_DEVTOOLS_EVENT_LOG, ".devtools-event-log");
-    ui.set_class_debug_name(
-        CLASS_DEMO_TEMPLATE_BUTTON_OUTER,
-        ".demo-template-button-outer",
-    );
-    ui.set_class_debug_name(
-        CLASS_DEMO_TEMPLATE_BUTTON_INNER,
-        ".demo-template-button-inner",
-    );
-    ui.set_class_debug_name(
-        CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX,
-        ".demo-template-check-box-box",
-    );
-    ui.set_class_debug_name(
-        CLASS_DEMO_TEMPLATE_SLIDER_TRACK,
-        ".demo-template-slider-track",
-    );
-    ui.set_class_debug_name(
-        CLASS_DEMO_TEMPLATE_SLIDER_THUMB,
-        ".demo-template-slider-thumb",
-    );
-    ui.set_class_debug_name(CLASS_OKLAB_SWATCH, ".oklab-swatch");
-    ui.set_class_debug_name(CLASS_OPACITY_SWATCH, ".opacity-swatch");
-    ui.set_class_debug_name(CLASS_BORDER_SWATCH, ".border-swatch");
-    ui.set_class_debug_name(CLASS_RETARGET_SWATCH, ".retarget-swatch");
-    ui.set_class_debug_name(CLASS_MOVER_SWATCH, ".mover-swatch");
-    ui.set_class_debug_name(CLASS_SRGB_SWATCH, ".srgb-swatch");
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DemoClasses {
+    pub(super) demo_root: ClassId,
+    pub(super) demo_nav: ClassId,
+    pub(super) demo_nav_marker: ClassId,
+    pub(super) demo_stage: ClassId,
+    pub(super) demo_header: ClassId,
+    pub(super) demo_header_accent: ClassId,
+    pub(super) demo_card: ClassId,
+    pub(super) demo_nav_row: ClassId,
+    pub(super) demo_nav_label: ClassId,
+    pub(super) demo_heading: ClassId,
+    pub(super) demo_page_heading: ClassId,
+    pub(super) demo_caption: ClassId,
+    pub(super) demo_card_title: ClassId,
+    pub(super) demo_control_label: ClassId,
+    pub(super) demo_number: ClassId,
+    pub(super) demo_large_number: ClassId,
+    pub(super) demo_body: ClassId,
+    pub(super) demo_split_scene: ClassId,
+    pub(super) demo_split_inspector: ClassId,
+    pub(super) demo_motion_stage: ClassId,
+    pub(super) devtools_button: ClassId,
+    pub(super) demo_template_button_outer: ClassId,
+    pub(super) demo_template_button_inner: ClassId,
+    pub(super) demo_template_check_box_box: ClassId,
+    pub(super) demo_template_slider_track: ClassId,
+    pub(super) demo_template_slider_thumb: ClassId,
+    pub(super) oklab_swatch: ClassId,
+    pub(super) opacity_swatch: ClassId,
+    pub(super) border_swatch: ClassId,
+    pub(super) retarget_swatch: ClassId,
+    pub(super) mover_swatch: ClassId,
+    pub(super) srgb_swatch: ClassId,
+}
+
+pub(super) struct DemoStyleTokens;
+
+impl overstory::StyleTokenSet for DemoStyleTokens {
+    type Resolved = DemoClasses;
+
+    fn resolve(vocabulary: &mut overstory::StyleVocabulary) -> Self::Resolved {
+        DemoClasses {
+            demo_root: vocabulary.class_id(CLASS_DEMO_ROOT),
+            demo_nav: vocabulary.class_id(CLASS_DEMO_NAV),
+            demo_nav_marker: vocabulary.class_id(CLASS_DEMO_NAV_MARKER),
+            demo_stage: vocabulary.class_id(CLASS_DEMO_STAGE),
+            demo_header: vocabulary.class_id(CLASS_DEMO_HEADER),
+            demo_header_accent: vocabulary.class_id(CLASS_DEMO_HEADER_ACCENT),
+            demo_card: vocabulary.class_id(CLASS_DEMO_CARD),
+            demo_nav_row: vocabulary.class_id(CLASS_DEMO_NAV_ROW),
+            demo_nav_label: vocabulary.class_id(CLASS_DEMO_NAV_LABEL),
+            demo_heading: vocabulary.class_id(CLASS_DEMO_HEADING),
+            demo_page_heading: vocabulary.class_id(CLASS_DEMO_PAGE_HEADING),
+            demo_caption: vocabulary.class_id(CLASS_DEMO_CAPTION),
+            demo_card_title: vocabulary.class_id(CLASS_DEMO_CARD_TITLE),
+            demo_control_label: vocabulary.class_id(CLASS_DEMO_CONTROL_LABEL),
+            demo_number: vocabulary.class_id(CLASS_DEMO_NUMBER),
+            demo_large_number: vocabulary.class_id(CLASS_DEMO_LARGE_NUMBER),
+            demo_body: vocabulary.class_id(CLASS_DEMO_BODY),
+            demo_split_scene: vocabulary.class_id(CLASS_DEMO_SPLIT_SCENE),
+            demo_split_inspector: vocabulary.class_id(CLASS_DEMO_SPLIT_INSPECTOR),
+            demo_motion_stage: vocabulary.class_id(CLASS_DEMO_MOTION_STAGE),
+            devtools_button: vocabulary.class_id(CLASS_DEVTOOLS_BUTTON),
+            demo_template_button_outer: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
+            demo_template_button_inner: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
+            demo_template_check_box_box: vocabulary.class_id(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
+            demo_template_slider_track: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
+            demo_template_slider_thumb: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+            oklab_swatch: vocabulary.class_id(CLASS_OKLAB_SWATCH),
+            opacity_swatch: vocabulary.class_id(CLASS_OPACITY_SWATCH),
+            border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
+            retarget_swatch: vocabulary.class_id(CLASS_RETARGET_SWATCH),
+            mover_swatch: vocabulary.class_id(CLASS_MOVER_SWATCH),
+            srgb_swatch: vocabulary.class_id(CLASS_SRGB_SWATCH),
+        }
+    }
 }
 
 pub(super) const EASE_OUT: TimingFunction = TimingFunction::cubic_bezier(0.16, 1.0, 0.3, 1.0);
@@ -189,18 +211,18 @@ impl DemoThemeMode {
         }
     }
 }
-pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
+pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses) -> StyleCascade {
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_ROOT),
+            class_selector(classes.demo_root),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ROOT_BG)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_NAV),
+            class_selector(classes.demo_nav),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_NAV_BG)
                 .border_brush_resource(properties, DEMO_NAV_BORDER)
@@ -210,7 +232,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_STAGE),
+            class_selector(classes.demo_stage),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_STAGE_BG)
                 .border_brush_resource(properties, DEMO_STAGE_BORDER)
@@ -220,7 +242,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_HEADER),
+            class_selector(classes.demo_header),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_HEADER_BG)
                 .border_brush_resource(properties, DEMO_HEADER_BORDER)
@@ -230,7 +252,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_CARD),
+            class_selector(classes.demo_card),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_CARD_BG)
                 .border_brush_resource(properties, DEMO_CARD_BORDER)
@@ -240,7 +262,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_NAV_MARKER),
+            class_selector(classes.demo_nav_marker),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .corner_radius(properties, 2.0_f64)
@@ -248,7 +270,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_HEADER_ACCENT),
+            class_selector(classes.demo_header_accent),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .corner_radius(properties, 8.0_f64)
@@ -256,7 +278,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_NAV_ROW),
+            class_selector(classes.demo_nav_row),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_NAV_BG)
                 .border_brush_resource(properties, DEMO_NAV_BG)
@@ -266,7 +288,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_SELECTED),
+            class_state_selector(classes.demo_nav_row, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_NAV_SELECTED_BG)
                 .border_brush_resource(properties, DEMO_NAV_SELECTED_BG)
@@ -274,14 +296,14 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_DEMO_NAV_ROW, PSEUDO_FOCUS_VISIBLE),
+            class_state_selector(classes.demo_nav_row, PSEUDO_FOCUS_VISIBLE),
             StyleBuilder::new()
                 .border_brush_resource(properties, DEMO_FOCUS_BORDER)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_SPLIT_SCENE),
+            class_selector(classes.demo_split_scene),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_SPLIT_SCENE_BG)
                 .border_brush_resource(properties, DEMO_SPLIT_BORDER)
@@ -291,7 +313,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_SPLIT_INSPECTOR),
+            class_selector(classes.demo_split_inspector),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_SPLIT_INSPECTOR_BG)
                 .border_brush_resource(properties, DEMO_SPLIT_BORDER)
@@ -301,7 +323,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_DEMO_MOTION_STAGE),
+            class_selector(classes.demo_motion_stage),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_MOTION_STAGE_BG)
                 .border_brush_resource(properties, DEMO_MOTION_STAGE_BG)
@@ -311,7 +333,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_HEADING),
+            text_class_selector(classes.demo_heading),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 26.0_f64)
@@ -319,7 +341,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_PAGE_HEADING),
+            text_class_selector(classes.demo_page_heading),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 22.0_f64)
@@ -327,7 +349,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_CAPTION),
+            text_class_selector(classes.demo_caption),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_MUTED_FG)
                 .set(properties.font_size, 13.0_f64)
@@ -335,7 +357,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_CARD_TITLE),
+            text_class_selector(classes.demo_card_title),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TITLE_FG)
                 .set(properties.font_size, 12.0_f64)
@@ -343,7 +365,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_CONTROL_LABEL),
+            text_class_selector(classes.demo_control_label),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 15.0_f64)
@@ -351,7 +373,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_NAV_LABEL),
+            text_class_selector(classes.demo_nav_label),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 15.0_f64)
@@ -359,14 +381,14 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            selected_nav_label_selector(),
+            selected_nav_label_selector(classes),
             StyleBuilder::new()
                 .set_resource(properties.foreground, theme::ON_ACCENT_FG)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            button_class_state_selector(CLASS_DEVTOOLS_BUTTON, PSEUDO_SELECTED),
+            button_class_state_selector(classes.devtools_button, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .border_brush_resource(properties, DEMO_ACCENT_BG)
@@ -375,7 +397,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
+            untyped_class_selector(classes.demo_template_button_outer),
             StyleBuilder::new()
                 .background(properties, opt_solid(0x27, 0x3b, 0x6f, 0xff))
                 .border_brush(properties, opt_solid(0x90, 0xa7, 0xff, 0xff))
@@ -393,7 +415,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            untyped_class_selector(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
+            untyped_class_selector(classes.demo_template_button_inner),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x80))
@@ -411,7 +433,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            untyped_class_selector(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
+            untyped_class_selector(classes.demo_template_check_box_box),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .border_brush_resource(properties, DEMO_ACCENT_BG)
@@ -422,7 +444,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
+            untyped_class_selector(classes.demo_template_slider_track),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_SPLIT_BORDER)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x40))
@@ -437,7 +459,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            untyped_class_selector(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+            untyped_class_selector(classes.demo_template_slider_thumb),
             StyleBuilder::new()
                 .background_resource(properties, DEMO_ACCENT_BG)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xd0))
@@ -448,7 +470,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_NUMBER),
+            text_class_selector(classes.demo_number),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 22.0_f64)
@@ -456,7 +478,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_LARGE_NUMBER),
+            text_class_selector(classes.demo_large_number),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_TEXT_FG)
                 .set(properties.font_size, 34.0_f64)
@@ -464,7 +486,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            text_class_selector(CLASS_DEMO_BODY),
+            text_class_selector(classes.demo_body),
             StyleBuilder::new()
                 .set_resource(properties.foreground, DEMO_BODY_FG)
                 .set(properties.font_size, 14.0_f64)
@@ -472,7 +494,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_OKLAB_SWATCH),
+            class_selector(classes.oklab_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xff, 0x2a, 0x78, 0xff))
                 .corner_radius(properties, 18.0_f64)
@@ -489,14 +511,14 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_OKLAB_SWATCH, PSEUDO_SELECTED),
+            class_state_selector(classes.oklab_swatch, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background(properties, opt_solid(0x26, 0xd9, 0x8e, 0xff))
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_SRGB_SWATCH),
+            class_selector(classes.srgb_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xff, 0x2a, 0x78, 0xff))
                 .corner_radius(properties, 18.0_f64)
@@ -513,14 +535,14 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_SRGB_SWATCH, PSEUDO_SELECTED),
+            class_state_selector(classes.srgb_swatch, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background(properties, opt_solid(0x26, 0xd9, 0x8e, 0xff))
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_OPACITY_SWATCH),
+            class_selector(classes.opacity_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0x6d, 0xf2, 0x96, 0xff))
                 .corner_radius(properties, 18.0_f64)
@@ -536,14 +558,14 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_OPACITY_SWATCH, PSEUDO_PRESSED),
+            class_state_selector(classes.opacity_swatch, PSEUDO_PRESSED),
             StyleBuilder::new()
                 .set(properties.opacity, 0.16_f32)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_BORDER_SWATCH),
+            class_selector(classes.border_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0x25, 0x29, 0x38, 0xff))
                 .border_brush(properties, opt_solid(0x79, 0x86, 0xff, 0xff))
@@ -554,7 +576,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_BORDER_SWATCH, PSEUDO_FOCUS_VISIBLE),
+            class_state_selector(classes.border_swatch, PSEUDO_FOCUS_VISIBLE),
             StyleBuilder::new()
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xff))
                 .border_width(properties, 12.0_f64)
@@ -562,7 +584,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_MOVER_SWATCH),
+            class_selector(classes.mover_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xff, 0x9f, 0x1c, 0xff))
                 .corner_radius(properties, 21.0_f64)
@@ -577,7 +599,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_selector(CLASS_RETARGET_SWATCH),
+            class_selector(classes.retarget_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xd8, 0xb4, 0xfe, 0xff))
                 .corner_radius(properties, 18.0_f64)
@@ -594,7 +616,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties) -> StyleCascade {
         )
         .push_rule(
             StyleOrigin::Base,
-            class_state_selector(CLASS_RETARGET_SWATCH, PSEUDO_SELECTED),
+            class_state_selector(classes.retarget_swatch, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xf9, 0xf8, 0x71, 0xff))
                 .build(),
@@ -629,12 +651,12 @@ pub(super) fn class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Sel
     )
 }
 
-pub(super) fn selected_nav_label_selector() -> Selector {
+pub(super) fn selected_nav_label_selector(classes: DemoClasses) -> Selector {
     Selector::from([
         SelectorStep::type_tag(TYPE_GENERIC)
-            .with_class(CLASS_DEMO_NAV_ROW)
+            .with_class(classes.demo_nav_row)
             .with_pseudo(PSEUDO_SELECTED),
-        SelectorStep::type_tag(TYPE_TEXT).with_class(CLASS_DEMO_NAV_LABEL),
+        SelectorStep::type_tag(TYPE_TEXT).with_class(classes.demo_nav_label),
     ])
 }
 

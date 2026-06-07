@@ -44,9 +44,12 @@ pub mod state {
     pub use crate::spec_ext::ControlStateSpecExt;
 }
 
-/// Style-builder helpers.
+/// Style token and style-builder helpers.
 pub mod style {
     pub use crate::spec_ext::SurfaceStyleExt;
+    pub use crate::{
+        ClassId, PartTag, PseudoClassId, StyleClass, StyleTokenSet, StyleVocabulary, TypeTag,
+    };
 }
 
 /// Surface, paint, and composition property helpers.

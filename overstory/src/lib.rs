@@ -86,6 +86,7 @@ pub mod pseudos;
 mod scroll_runtime;
 pub mod selectors;
 mod spec_ext;
+mod style_class;
 mod style_runtime;
 mod template;
 #[cfg(test)]
@@ -223,6 +224,7 @@ pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use scroll_runtime::ScrollState;
+pub use style_class::StyleClass;
 pub use template::{
     ControlTemplate, Template, TemplateChild, TemplateContext, TemplateContract,
     TemplateDiagnostic, TemplateExpansionReport, TemplateId, TemplateInstance, TemplateItemKey,
@@ -248,14 +250,16 @@ pub use widget::{
 pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
-        BindingSpecExt, Button, CheckBox, ChildUi, Color, ContentSlotSpec, ControlStateSpecExt,
-        ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
-        ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander,
-        ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, Popup,
-        ProgressBar, RadioButton, RadioGroup, RangeSpecExt, ScrollArea, ScrollBar, ScrollState,
-        ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter, SurfaceSpecExt,
+        BindingSpecExt, Button, CheckBox, ChildUi, ClassId, Color, ContentSlotSpec,
+        ControlStateSpecExt, ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt,
+        CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt,
+        Expander, ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel,
+        PartTag, Popup, ProgressBar, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt,
+        ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
+        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
         SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration,
-        ToggleSwitch, Tooltip, TooltipSpecExt, Ui, ValueBinding, VectorPath, View, Viewport,
+        ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View,
+        Viewport,
     };
 }
 
@@ -273,4 +277,7 @@ pub use understory_presentation::{
 };
 pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;
+pub use understory_style::{
+    ClassId, PartTag, PseudoClassId, StyleTokenSet, StyleVocabulary, TypeTag,
+};
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};

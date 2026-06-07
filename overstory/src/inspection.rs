@@ -13,7 +13,7 @@ use core::fmt;
 
 use kurbo::{Rect, Size};
 use peniko::color::Rgba8;
-use understory_style::{ClassId, PartTag, PseudoClassId, TypeTag};
+use understory_style::{ClassId, PartTag, PseudoClassId, StyleVocabulary, TypeTag};
 
 use crate::composition::{CompositionPolicy, SurfaceId};
 use crate::diagnostics::UiFrameStats;
@@ -33,43 +33,10 @@ pub struct UiInspectionSnapshot {
     pub storage: UiStorageInspectionSnapshot,
     /// Timeline runtime counters.
     pub timeline: TimelineInspectionSnapshot,
-    /// Debug names for style tokens known to this UI.
-    pub style_tokens: StyleTokenInspectionSnapshot,
+    /// Human-readable style vocabulary known to this UI.
+    pub style_vocabulary: StyleVocabulary,
     /// Frame counters captured at the same instant as the snapshot.
     pub frame: UiFrameStats,
-}
-
-/// Debug-name tables for style tokens known to one UI.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct StyleTokenInspectionSnapshot {
-    /// Named classes.
-    pub classes: Vec<StyleTokenInspectionName<ClassId>>,
-    /// Named pseudoclasses.
-    pub pseudos: Vec<StyleTokenInspectionName<PseudoClassId>>,
-    /// Named selector type tags.
-    pub type_tags: Vec<StyleTokenInspectionName<TypeTag>>,
-    /// Named owner-local template parts.
-    pub part_tags: Vec<PartTagInspectionName>,
-}
-
-/// One style token debug name.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct StyleTokenInspectionName<T> {
-    /// Token identifier.
-    pub id: T,
-    /// Human-readable debug name.
-    pub name: &'static str,
-}
-
-/// One owner-local template part debug name.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PartTagInspectionName {
-    /// Selector identity of the templated control that owns this part name.
-    pub owner_type_tag: TypeTag,
-    /// Owner-local part identifier.
-    pub part_tag: PartTag,
-    /// Human-readable debug name.
-    pub name: &'static str,
 }
 
 /// Batched inspectable changes produced by normal [`crate::Ui`] mutation.

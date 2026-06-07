@@ -50,7 +50,7 @@ use smallvec::SmallVec;
 use understory_box_tree::NodeId;
 use understory_presentation::PresentationStore;
 use understory_property::{ErasedValue, Property, PropertyId};
-use understory_style::{ClassId, TypeTag};
+use understory_style::TypeTag;
 
 use crate::accessibility::AccessibilityContext;
 use crate::behavior::{
@@ -69,6 +69,7 @@ pub use crate::spec_ext::{
     ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt, ElementSpec, ElementSpecExt,
     RangeSpecExt, SurfaceSpecExt, SurfaceStyleExt, TextSpecExt,
 };
+use crate::style_class::StyleClass;
 use crate::template::{TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
@@ -414,7 +415,7 @@ pub trait ContentSlotSpec: AppendSpec {
 #[derive(Clone, Debug, Default)]
 pub struct ElementConfig {
     layout: Option<Layout>,
-    classes: SmallVec<[ClassId; 1]>,
+    classes: SmallVec<[StyleClass; 1]>,
     control_state: Option<ControlState>,
     local_properties: SmallVec<[InitialPropertyWrite; 4]>,
 }
@@ -454,13 +455,13 @@ impl ElementConfig {
     }
 
     /// Adds a style class to the resulting element.
-    pub fn add_class(&mut self, class: ClassId) {
-        self.classes.push(class);
+    pub fn add_class(&mut self, class: impl Into<StyleClass>) {
+        self.classes.push(class.into());
     }
 
     /// Returns style classes applied to the resulting element.
     #[must_use]
-    pub fn classes(&self) -> &[ClassId] {
+    pub fn classes(&self) -> &[StyleClass] {
         &self.classes
     }
 
@@ -492,6 +493,7 @@ impl ElementConfig {
             ui.set_initial_local_erased(id, property, write.value);
         }
         for class in self.classes {
+            let class = class.resolve(ui.style_vocabulary_mut());
             ui.add_initial_class(id, class);
         }
         if let Some(state) = self.control_state {

@@ -10,8 +10,9 @@ use alloc::vec::Vec;
 use crate::controls::text::{ContentPresenterWidget, TextWidget};
 use crate::element::ElementId;
 use crate::layouts::Layout;
+use crate::style_class::StyleClass;
 use crate::widget::{SurfacePartWidget, Widget};
-use understory_style::{ClassId, PartTag};
+use understory_style::PartTag;
 
 use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
 
@@ -296,7 +297,7 @@ pub struct TemplateNode {
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
     layout: Option<Layout>,
-    classes: Vec<ClassId>,
+    classes: Vec<StyleClass>,
     children: Vec<Self>,
 }
 
@@ -400,19 +401,20 @@ impl TemplateNode {
     /// Adds one class to the generated element.
     #[must_use]
     #[inline]
-    pub fn with_class(mut self, class: ClassId) -> Self {
-        self.classes.push(class);
+    pub fn with_class(mut self, class: impl Into<StyleClass>) -> Self {
+        self.classes.push(class.into());
         self
     }
 
     /// Adds classes to the generated element.
     #[must_use]
     #[inline]
-    pub fn with_classes<I>(mut self, classes: I) -> Self
+    pub fn with_classes<I, C>(mut self, classes: I) -> Self
     where
-        I: IntoIterator<Item = ClassId>,
+        I: IntoIterator<Item = C>,
+        C: Into<StyleClass>,
     {
-        self.classes.extend(classes);
+        self.classes.extend(classes.into_iter().map(Into::into));
         self
     }
 
@@ -479,7 +481,7 @@ impl TemplateNode {
     /// Returns this node's classes.
     #[must_use]
     #[inline]
-    pub fn classes(&self) -> &[ClassId] {
+    pub fn classes(&self) -> &[StyleClass] {
         &self.classes
     }
 
@@ -511,8 +513,8 @@ fn instantiate_spec_node(
     if let Some(layout) = node.layout.clone() {
         cx.set_layout(id, layout);
     }
-    for class in node.classes() {
-        cx.add_class(id, *class);
+    for class in node.classes().iter().cloned() {
+        cx.add_class(id, class);
     }
     for child in node.children() {
         instantiate_spec_node(cx, id, child);

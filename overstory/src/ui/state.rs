@@ -16,13 +16,17 @@ use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEvent
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
+use crate::style_class::StyleClass;
 
 use super::transition_planner::InteractionTransitionPlan;
 use super::{ControlState, Ui};
 
 impl Ui {
     /// Adds `class` to `id` and re-styles the affected subtree.
-    pub fn add_class(&mut self, id: ElementId, class: understory_style::ClassId) {
+    ///
+    /// Passing a class name interns it through this UI's style vocabulary.
+    pub fn add_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
+        let class = class.into().resolve(self.style_vocabulary_mut());
         let changed = self
             .get_mut(id)
             .map(|el| el.add_class(class))
@@ -45,7 +49,13 @@ impl Ui {
     }
 
     /// Removes `class` from `id` and re-styles the affected subtree.
-    pub fn remove_class(&mut self, id: ElementId, class: understory_style::ClassId) {
+    ///
+    /// Passing an unknown class name is a no-op; removal does not intern new
+    /// names into the style vocabulary.
+    pub fn remove_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
+        let Some(class) = class.into().resolve_existing(self.style_vocabulary()) else {
+            return;
+        };
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_class(class))

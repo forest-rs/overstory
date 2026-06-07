@@ -10,8 +10,9 @@ use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scr
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
     ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
-    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, SurfaceSpecExt,
-    SurfaceStyleExt, TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
+    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, StyleTokenSet, StyleVocabulary,
+    SurfaceSpecExt, SurfaceStyleExt, TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt,
+    UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -22,8 +23,8 @@ use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
 use understory_property::{DependencyObject, DependencyObjectExt};
 use understory_style::{
-    ClassId, PartTag, PseudoClassId, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep,
-    StyleBuilder, StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
+    ClassId, PartTag, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep, StyleBuilder,
+    StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
 };
 
 use crate::motion::{
@@ -3273,7 +3274,7 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     const INNER_PART: PartTag = PartTag(0x11);
     const OUTER_SLOT: TemplateSlot = TemplateSlot::new("outer").with_part_tag(OUTER_PART);
     const OUTER_KEY: TemplateItemKey = TemplateItemKey::new(7);
-    const OUTER_CLASS: ClassId = ClassId(0x12);
+    const OUTER_CLASS: &str = ".template-outer";
     let outer_layout = Layout::new().absolute_at(3.0, 4.0).logical_size(20.0, 10.0);
     let template = ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_slot(
         OUTER_SLOT,
@@ -3319,7 +3320,11 @@ fn template_spec_builds_nested_parts_classes_and_keys() {
     assert_eq!(ui.get(inner).unwrap().parent(), Some(outer));
     assert_eq!(ui.get(outer).unwrap().templated_parent(), Some(owner));
     assert_eq!(ui.get(inner).unwrap().templated_parent(), Some(owner));
-    assert!(ui.get(outer).unwrap().classes().contains(&OUTER_CLASS));
+    let outer_class = ui
+        .style_vocabulary()
+        .class_id_by_name(OUTER_CLASS)
+        .expect("template class name should be interned during expansion");
+    assert!(ui.get(outer).unwrap().classes().contains(&outer_class));
     assert_eq!(ui.effective_layout(outer), outer_layout);
 }
 
@@ -5197,12 +5202,47 @@ fn add_class_restyles_subtree() {
 }
 
 #[test]
+fn add_and_remove_class_by_name_use_style_vocabulary() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.add_class(root, ".runtime-class");
+    let class = ui
+        .style_vocabulary()
+        .class_id_by_name(".runtime-class")
+        .expect("adding by name should intern the class");
+    assert!(ui.get(root).unwrap().classes().contains(&class));
+
+    ui.remove_class(root, ".runtime-class");
+    assert!(!ui.get(root).unwrap().classes().contains(&class));
+    ui.remove_class(root, ".not-registered");
+    assert_eq!(
+        ui.style_vocabulary().class_id_by_name(".not-registered"),
+        None,
+        "removing an unknown name should not intern it",
+    );
+}
+
+#[test]
 fn text_builder_attaches_classes() {
     let mut ui = Ui::new();
     let root = ui.root();
     let text = ui.append(root, crate::Text::new("Styled").class(ClassId(42)));
 
     assert!(ui.get(text).unwrap().classes().contains(&ClassId(42)));
+}
+
+#[test]
+fn text_builder_resolves_named_classes() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let text = ui.append(root, crate::Text::new("Styled").class(".named-label"));
+
+    let class = ui
+        .style_vocabulary()
+        .class_id_by_name(".named-label")
+        .expect("appending a named class should intern it");
+    assert!(ui.get(text).unwrap().classes().contains(&class));
 }
 
 #[test]
@@ -5352,50 +5392,62 @@ fn inspection_snapshot_reports_effective_property_summaries() {
 }
 
 #[test]
-fn inspection_snapshot_reports_style_token_debug_names() {
+fn inspection_snapshot_reports_style_vocabulary_names() {
     let mut ui = Ui::new();
-    let class = ClassId(0xCAFE);
-    let pseudo = PseudoClassId(0xBEEF);
-    let type_tag = understory_style::TypeTag(0xFEED);
-    let part_tag = PartTag(0xFACE);
-
-    ui.set_class_debug_name(class, ".named-class");
-    ui.set_pseudo_debug_name(pseudo, ":named-pseudo");
-    ui.set_type_tag_debug_name(type_tag, "NamedWidget");
-    ui.set_part_debug_name(type_tag, part_tag, "NamedWidget.Part");
+    let vocabulary = ui.style_vocabulary_mut();
+    let class = vocabulary.class_id(".named-class");
+    let pseudo = vocabulary.pseudo_class_id(":named-pseudo");
+    let type_tag = vocabulary.type_tag("NamedWidget");
+    let part_tag = vocabulary.part_tag(type_tag, "NamedWidget.Part");
 
     let snapshot = ui.inspection_snapshot();
 
-    assert!(
-        snapshot
-            .style_tokens
-            .classes
-            .iter()
-            .any(|name| name.id == class && name.name == ".named-class")
+    assert_eq!(
+        snapshot.style_vocabulary.class_name(class),
+        Some(".named-class")
     );
-    assert!(
-        snapshot
-            .style_tokens
-            .pseudos
-            .iter()
-            .any(|name| name.id == pseudo && name.name == ":named-pseudo")
+    assert_eq!(
+        snapshot.style_vocabulary.pseudo_name(pseudo),
+        Some(":named-pseudo")
     );
-    assert!(
-        snapshot
-            .style_tokens
-            .type_tags
-            .iter()
-            .any(|name| name.id == type_tag && name.name == "NamedWidget")
+    assert_eq!(
+        snapshot.style_vocabulary.type_name(type_tag),
+        Some("NamedWidget")
     );
-    assert!(
-        snapshot
-            .style_tokens
-            .part_tags
-            .iter()
-            .any(|name| name.owner_type_tag == type_tag
-                && name.part_tag == part_tag
-                && name.name == "NamedWidget.Part")
+    assert_eq!(
+        snapshot.style_vocabulary.part_name(type_tag, part_tag),
+        Some("NamedWidget.Part")
     );
+}
+
+#[test]
+fn ui_resolves_style_token_sets() {
+    struct TestTokens;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct TestClasses {
+        class: ClassId,
+    }
+
+    impl StyleTokenSet for TestTokens {
+        type Resolved = TestClasses;
+
+        fn resolve(vocabulary: &mut StyleVocabulary) -> Self::Resolved {
+            TestClasses {
+                class: vocabulary.class_id(".ui-token"),
+            }
+        }
+    }
+
+    let mut ui = Ui::new();
+
+    let tokens = ui.style_tokens::<TestTokens>();
+
+    assert_eq!(
+        ui.style_vocabulary().class_name(tokens.class),
+        Some(".ui-token")
+    );
+    assert_eq!(ui.style_tokens::<TestTokens>(), tokens);
 }
 
 #[test]

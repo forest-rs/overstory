@@ -14,11 +14,12 @@ use crate::layouts::{
     LayoutSpacing,
 };
 use crate::properties::BuiltInProperties;
+use crate::style_class::StyleClass;
 use crate::ui::Ui;
 use crate::widget::Widget;
 use understory_property::{DependencyObjectExt, Property};
 use understory_property_binding::{BindingError, BindingId, PropertyEndpoint};
-use understory_style::{ClassId, PartTag};
+use understory_style::PartTag;
 
 use super::{TemplateChild, TemplateId, TemplateInstance, TemplateItemKey, TemplateSlot};
 
@@ -173,7 +174,8 @@ impl<'a> TemplateContext<'a> {
     }
 
     /// Adds a class to a generated element.
-    pub fn add_class(&mut self, id: ElementId, class: ClassId) {
+    pub fn add_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
+        let class = class.into().resolve(self.ui.style_vocabulary_mut());
         self.ui.add_class(id, class);
     }
 

@@ -26,9 +26,8 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, PartTagInspectionName, StyleTokenInspectionName, SurfaceInspectionId,
-    TemplateContractInspection, TemplateSlotInspectionRow, UiInspectionChanges,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection, TemplateSlotInspectionRow,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
@@ -1187,16 +1186,20 @@ fn element_type_label(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -
     let Some(tag) = row.type_tag else {
         return String::from("Element");
     };
-    style_token_name(&snapshot.inspection.style_tokens.type_tags, tag).map_or_else(
-        || {
-            if row.has_widget_identity {
-                String::from("Widget")
-            } else {
-                String::from("Element")
-            }
-        },
-        String::from,
-    )
+    snapshot
+        .inspection
+        .style_vocabulary
+        .type_name(tag)
+        .map_or_else(
+            || {
+                if row.has_widget_identity {
+                    String::from("Widget")
+                } else {
+                    String::from("Element")
+                }
+            },
+            String::from,
+        )
 }
 
 #[cfg(not(feature = "spoor-session"))]
@@ -1512,9 +1515,12 @@ fn template_diagnostic_row(
             if let Some(part_tag) = slot.part_tag() {
                 row.push_child(PropertyGridRow::new(
                     "Style part",
-                    owner_part_tag_value(snapshot, owner, |candidate| {
-                        candidate.part_tag == part_tag
-                    }),
+                    owner_part_tag_value(owner.type_tag.and_then(|owner_type_tag| {
+                        snapshot
+                            .inspection
+                            .style_vocabulary
+                            .part_name(owner_type_tag, part_tag)
+                    })),
                 ));
             }
             push_duplicate_elements(snapshot, &mut row, first, duplicate);
@@ -1528,7 +1534,12 @@ fn template_diagnostic_row(
         } => {
             let mut row = PropertyGridRow::new(
                 "Duplicate style part",
-                owner_part_tag_value(snapshot, owner, |candidate| candidate.part_tag == part_tag),
+                owner_part_tag_value(owner.type_tag.and_then(|owner_type_tag| {
+                    snapshot
+                        .inspection
+                        .style_vocabulary
+                        .part_name(owner_type_tag, part_tag)
+                })),
             );
             row.push_child(PropertyGridRow::new("Key", optional_template_key(key)));
             push_duplicate_elements(snapshot, &mut row, first, duplicate);
@@ -1660,28 +1671,16 @@ fn contract_slot_part_tag_value(
     let Some(part_tag) = slot.part_tag else {
         return PropertyGridValue::empty();
     };
-    owner_part_tag_value(snapshot, owner, |candidate| candidate.part_tag == part_tag)
+    owner_part_tag_value(owner.type_tag.and_then(|owner_type_tag| {
+        snapshot
+            .inspection
+            .style_vocabulary
+            .part_name(owner_type_tag, part_tag)
+    }))
 }
 
-fn owner_part_tag_value(
-    snapshot: &DevtoolsSnapshot,
-    owner: &ElementInspectionRow,
-    matches_part: impl Fn(&PartTagInspectionName) -> bool,
-) -> PropertyGridValue {
-    let label = owner
-        .type_tag
-        .and_then(|owner_type_tag| {
-            snapshot
-                .inspection
-                .style_tokens
-                .part_tags
-                .iter()
-                .find(|candidate| {
-                    candidate.owner_type_tag == owner_type_tag && matches_part(candidate)
-                })
-                .map(|candidate| candidate.name)
-        })
-        .unwrap_or("Custom part");
+fn owner_part_tag_value(part_name: Option<&str>) -> PropertyGridValue {
+    let label = part_name.unwrap_or("Custom part");
     PropertyGridValue::token(label)
 }
 
@@ -1696,13 +1695,8 @@ fn template_part_display_label<'a>(
         .and_then(|owner| owner.type_tag)?;
     snapshot
         .inspection
-        .style_tokens
-        .part_tags
-        .iter()
-        .find(|candidate| {
-            candidate.owner_type_tag == owner_type_tag && candidate.part_tag == part_tag
-        })
-        .map(|candidate| candidate.name)
+        .style_vocabulary
+        .part_name(owner_type_tag, part_tag)
 }
 
 fn type_tag_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
@@ -1835,7 +1829,10 @@ fn number_summary(value: f64) -> String {
 fn class_list_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
     let mut classes = list_summary_row("Classes", row.classes.len());
     for class in &row.classes {
-        let label = style_token_name(&snapshot.inspection.style_tokens.classes, *class)
+        let label = snapshot
+            .inspection
+            .style_vocabulary
+            .class_name(*class)
             .unwrap_or("Custom class");
         classes.push_child(PropertyGridRow::new(label, PropertyGridValue::token(label)));
     }
@@ -1845,7 +1842,10 @@ fn class_list_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> Pr
 fn pseudo_list_row(snapshot: &DevtoolsSnapshot, row: &ElementInspectionRow) -> PropertyGridRow {
     let mut pseudos = list_summary_row("Pseudos", row.pseudos.len());
     for pseudo in &row.pseudos {
-        let label = style_token_name(&snapshot.inspection.style_tokens.pseudos, *pseudo)
+        let label = snapshot
+            .inspection
+            .style_vocabulary
+            .pseudo_name(*pseudo)
             .unwrap_or("Custom pseudo");
         pseudos.push_child(PropertyGridRow::new(label, PropertyGridValue::token(label)));
     }
@@ -1861,16 +1861,6 @@ fn list_summary_row(label: &str, len: usize) -> PropertyGridRow {
             PropertyGridValue::count(len)
         },
     )
-}
-
-fn style_token_name<T>(names: &[StyleTokenInspectionName<T>], id: T) -> Option<&'static str>
-where
-    T: Copy + Eq,
-{
-    names
-        .iter()
-        .find(|candidate| candidate.id == id)
-        .map(|candidate| candidate.name)
 }
 
 fn element_id_summary(id: ElementId) -> String {
@@ -2424,12 +2414,11 @@ mod tests {
     }
 
     #[test]
-    fn selected_element_property_grid_labels_style_tokens_by_name_or_id() {
+    fn selected_element_property_grid_labels_style_vocabulary_by_name_or_id() {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.append(root, Panel::new());
-        let custom_class = overstory::CLASS_SLIDER_MINOR_TICK;
-        ui.set_class_debug_name(custom_class, ".custom-row");
+        let custom_class = ui.style_vocabulary_mut().class_id(".custom-row");
         ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
         ui.add_class(child, custom_class);
         ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);

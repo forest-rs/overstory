@@ -1085,7 +1085,16 @@ mod tests {
         stage
     }
 
-    fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+    fn find_by_class(
+        ui: &Ui,
+        element: ElementId,
+        class: impl Into<overstory::StyleClass>,
+    ) -> Option<ElementId> {
+        let class = class.into().registered_id(ui.style_vocabulary())?;
+        find_by_class_id(ui, element, class)
+    }
+
+    fn find_by_class_id(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
         let current = ui.get(element)?;
         if current.classes().contains(&class) {
             return Some(element);
@@ -1093,7 +1102,7 @@ mod tests {
         current
             .children()
             .iter()
-            .find_map(|child| find_by_class(ui, *child, class))
+            .find_map(|child| find_by_class_id(ui, *child, class))
     }
 
     fn count_type(ui: &Ui, element: ElementId, type_tag: understory_style::TypeTag) -> usize {
@@ -1117,7 +1126,11 @@ mod tests {
 
     fn first_grid_line_thickness(ui: &Ui, element: ElementId) -> Option<f64> {
         let current = ui.get(element)?;
-        if current.classes().contains(&CLASS_SVG_GRID_LINE) {
+        let grid_line = ui
+            .style_vocabulary()
+            .class_id_by_name(CLASS_SVG_GRID_LINE)
+            .expect("SVG grid line class should be registered");
+        if current.classes().contains(&grid_line) {
             let bounds = ui.effective_bounds(element);
             return Some(bounds.width().min(bounds.height()));
         }

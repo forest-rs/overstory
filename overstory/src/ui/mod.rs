@@ -32,6 +32,7 @@ use core::cell::RefCell;
 
 use invalidation::{ChannelSet, InvalidationTracker};
 use understory_property::{PropertyId, PropertyRegistry};
+use understory_style::StyleVocabulary;
 
 use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
@@ -56,10 +57,8 @@ use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
 use crate::timeline_properties::TimelinePropertyRegistry;
 use crate::timeline_runtime::TimelineRuntime;
 use crate::timer_runtime::TimerRuntime;
-use crate::ui::debug_names::StyleTokenDebugNames;
 
 mod bindings;
-mod debug_names;
 mod events;
 mod inspection;
 mod layout;
@@ -69,6 +68,7 @@ mod popups;
 mod scroll;
 mod state;
 mod style;
+mod style_vocabulary;
 mod timeline;
 mod timers;
 mod tooltips;
@@ -135,8 +135,8 @@ pub struct Ui {
     frame_stats: UiFrameStats,
     /// Live inspection change accumulator drained by devtools/hosts.
     inspection_changes: InspectionChangeRuntime,
-    /// Human-readable debug names for style tokens.
-    style_debug_names: StyleTokenDebugNames,
+    /// Human-readable style vocabulary for selectors and inspectors.
+    style_vocabulary: StyleVocabulary,
     /// Last viewport size used during layout/paint.
     last_viewport: kurbo::Size,
 }
@@ -318,10 +318,10 @@ impl Ui {
             scrolling: ScrollRuntime::new(),
             frame_stats: UiFrameStats::default(),
             inspection_changes: InspectionChangeRuntime::default(),
-            style_debug_names: StyleTokenDebugNames::default(),
+            style_vocabulary: StyleVocabulary::new(),
             last_viewport: kurbo::Size::ZERO,
         };
-        me.register_builtin_style_debug_names();
+        me.register_builtin_style_vocabulary();
         me.mirror_allocated_element(root, None);
         me.style_one(root);
         me

@@ -48,6 +48,54 @@ fn gallery_shell_fills_window_content_and_nav_accent() {
 }
 
 #[test]
+fn gallery_registers_demo_style_token_names() {
+    let ui = build_ui();
+    let vocabulary = ui.style_vocabulary();
+
+    for class_name in [
+        CLASS_DEMO_ROOT,
+        CLASS_DEMO_CARD,
+        CLASS_DEMO_TEMPLATE_SLIDER_THUMB,
+    ] {
+        let class = vocabulary
+            .class_id_by_name(class_name)
+            .expect("demo style token set should register every owned class");
+        assert_eq!(vocabulary.class_name(class), Some(class_name));
+    }
+
+    let root_class = vocabulary
+        .class_id_by_name(CLASS_DEMO_ROOT)
+        .expect("demo root class should be registered");
+    assert!(
+        ui.get(ui.root())
+            .expect("root should exist")
+            .classes()
+            .contains(&root_class),
+        "element authoring should use the same registered class id",
+    );
+}
+
+#[test]
+fn gallery_devtools_snapshot_labels_demo_classes_by_name() {
+    let ui = build_ui();
+    let card =
+        find_by_class(&ui, ui.root(), CLASS_DEMO_CARD).expect("gallery should contain a demo card");
+
+    let snapshot = overstory_devtools::DevtoolsSnapshot::capture(&ui);
+    let row = snapshot
+        .element(card)
+        .expect("demo card should be inspectable");
+
+    assert!(
+        row.classes.iter().any(
+            |class| snapshot.inspection().style_vocabulary.class_name(*class)
+                == Some(CLASS_DEMO_CARD)
+        ),
+        "devtools snapshots should carry demo class names, not just raw ids",
+    );
+}
+
+#[test]
 fn gallery_nav_uses_shell_rows_instead_of_a_list_box() {
     let mut ui = build_ui();
     let nav_rows = nav_rows(&ui).to_vec();
@@ -738,7 +786,16 @@ fn find_by_type(
         .find_map(|child| find_by_type(ui, *child, type_tag))
 }
 
-fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
+fn find_by_class(
+    ui: &Ui,
+    element: ElementId,
+    class: impl Into<overstory::StyleClass>,
+) -> Option<ElementId> {
+    let class = class.into().registered_id(ui.style_vocabulary())?;
+    find_by_class_id(ui, element, class)
+}
+
+fn find_by_class_id(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementId> {
     let current = ui.get(element)?;
     if current.classes().contains(&class) {
         return Some(element);
@@ -746,7 +803,7 @@ fn find_by_class(ui: &Ui, element: ElementId, class: ClassId) -> Option<ElementI
     current
         .children()
         .iter()
-        .find_map(|child| find_by_class(ui, *child, class))
+        .find_map(|child| find_by_class_id(ui, *child, class))
 }
 
 fn text_content(ui: &Ui, element: ElementId) -> String {
