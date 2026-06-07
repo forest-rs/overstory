@@ -104,6 +104,7 @@ impl Ui {
         cause: ChangeCause,
     ) -> bool {
         let key = TimelineTrackKey::new(element, timeline_target);
+        let target = value.into_value();
         if let TimelineTarget::Property(property) = timeline_target
             && let Some(adapter) = self.timeline_properties.adapter(property)
         {
@@ -113,8 +114,12 @@ impl Ui {
                 "timeline sample kind must match the property adapter"
             );
         }
-        let needs_sample = self.timeline.set_target(key, value, self.now(), cause);
+        let needs_sample = self
+            .timeline
+            .set_target_value(key, target, self.now(), cause);
         self.sync_timeline_property_sample(key);
+        let presented = self.timeline.sample_value(key, target, self.now());
+        self.set_timeline_composition_sample(key, presented);
         if needs_sample {
             self.mark_timeline_target_channels(element, key.target());
         }

@@ -689,7 +689,7 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-    ui.set_layout_placement(thumb, LayoutPlacement::absolute_at(left, top));
+    ui.set_layout_placement_without_motion(thumb, LayoutPlacement::absolute_at(left, top));
 }
 
 fn set_value_from_position(
@@ -761,7 +761,7 @@ fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
     if ui.effective_layout_placement(thumb) == placement {
         return false;
     }
-    ui.set_layout_placement(thumb, placement);
+    ui.set_layout_placement_without_motion(thumb, placement);
     true
 }
 

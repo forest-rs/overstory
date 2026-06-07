@@ -115,6 +115,16 @@ impl Ui {
             id,
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
         );
+        self.set_layout_placement_without_motion(id, placement);
+    }
+
+    /// Sets an element's layout placement without requesting presentation
+    /// motion.
+    pub(crate) fn set_layout_placement_without_motion(
+        &mut self,
+        id: ElementId,
+        placement: impl Into<LayoutPlacement>,
+    ) {
         let placement_prop = self.properties.layout_placement;
         self.set_local(id, placement_prop, placement.into());
     }

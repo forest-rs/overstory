@@ -638,6 +638,7 @@ impl TimelineRuntime {
 
     /// Records the resolved target value for `key`, planning or retargeting
     /// its timeline track when policy allows.
+    #[cfg(test)]
     pub(crate) fn set_target<T: AnimatableValue>(
         &mut self,
         key: TimelineTrackKey,
@@ -645,11 +646,21 @@ impl TimelineRuntime {
         now: TimerInstant,
         cause: ChangeCause,
     ) -> bool {
-        let target = target.into_value();
+        self.set_target_value(key, target.into_value(), now, cause)
+    }
+
+    /// Records an erased resolved target value for `key`.
+    pub(crate) fn set_target_value(
+        &mut self,
+        key: TimelineTrackKey,
+        target: PresentationValue,
+        now: TimerInstant,
+        cause: ChangeCause,
+    ) -> bool {
         if let Some(kind) = key.target().expected_value_kind() {
             debug_assert_eq!(
                 kind,
-                T::KIND,
+                target.kind(),
                 "timeline target kind must match target metadata"
             );
         }
