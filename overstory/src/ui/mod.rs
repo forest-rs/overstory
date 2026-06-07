@@ -31,7 +31,7 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use invalidation::{ChannelSet, InvalidationTracker};
-use understory_property::PropertyRegistry;
+use understory_property::{PropertyId, PropertyRegistry};
 
 use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
@@ -392,6 +392,14 @@ impl Ui {
         self.record_element_tree_update(id);
     }
 
+    pub(crate) fn surface_aware_channels(
+        &self,
+        property: PropertyId,
+        channels: ChannelSet,
+    ) -> ChannelSet {
+        surface_aware_channels(self.properties, property, channels)
+    }
+
     /// Clears frame-pipeline counters before a host prepares a new frame.
     pub fn reset_frame_stats(&mut self) {
         let renderer_timings = self.frame_stats.renderer_timings;
@@ -485,6 +493,32 @@ impl Ui {
         self.sync_composition_values();
         self.composition.evaluate();
     }
+}
+
+pub(crate) fn surface_aware_channels(
+    properties: BuiltInProperties,
+    property: PropertyId,
+    channels: ChannelSet,
+) -> ChannelSet {
+    // Understory's surface bundle only knows paint-vs-geometry. Overstory
+    // additionally treats border and padding widths as layout inputs because
+    // they define the content inset used by Taffy.
+    if channels.is_empty() || !is_surface_layout_inset_property(properties, property) {
+        return channels;
+    }
+    channels | LAYOUT.into_set()
+}
+
+fn is_surface_layout_inset_property(properties: BuiltInProperties, property: PropertyId) -> bool {
+    let surface = properties.surface;
+    property == surface.border_widths.top.id()
+        || property == surface.border_widths.right.id()
+        || property == surface.border_widths.bottom.id()
+        || property == surface.border_widths.left.id()
+        || property == surface.padding_widths.top.id()
+        || property == surface.padding_widths.right.id()
+        || property == surface.padding_widths.bottom.id()
+        || property == surface.padding_widths.left.id()
 }
 
 #[cfg(feature = "system-fonts")]

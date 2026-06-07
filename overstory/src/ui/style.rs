@@ -139,7 +139,12 @@ impl Ui {
             self.style.remove(id);
             return;
         };
-        let channels = self.style.style_one(id, element, &self.registry);
+        let properties = self.properties;
+        let channels = self
+            .style
+            .style_one(id, element, &self.registry, |property, channels| {
+                super::surface_aware_channels(properties, property, channels)
+            });
         if let Some(channels) = channels {
             self.mark_channels(id, channels);
         }

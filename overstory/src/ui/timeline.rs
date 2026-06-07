@@ -241,7 +241,9 @@ impl Ui {
 
     fn mark_timeline_target_channels(&mut self, element: ElementId, target: TimelineTarget) {
         let channels = match target {
-            TimelineTarget::Property(property) => self.registry.affects_channels(property),
+            TimelineTarget::Property(property) => {
+                self.surface_aware_channels(property, self.registry.affects_channels(property))
+            }
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset) => COMPOSE.into_set(),
         };
         self.mark_channels(element, channels);

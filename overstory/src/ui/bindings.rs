@@ -35,6 +35,7 @@ impl Ui {
             };
             element.set_local_notifying(property, value, registry)
         };
+        let channels = self.surface_aware_channels(property.id(), channels);
         self.mark_channels(id, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
@@ -66,6 +67,7 @@ impl Ui {
                 Err(_) => return,
             }
         };
+        let channels = self.surface_aware_channels(property, channels);
         self.mark_channels(id, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
@@ -255,6 +257,7 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
                 if channels.is_empty() {
                     BindingWrite::unchanged()
                 } else {
+                    let channels = self.surface_aware_channels(prop_id, channels);
                     self.mark_channels(id, channels);
                     BindingWrite::changed(channels)
                 }

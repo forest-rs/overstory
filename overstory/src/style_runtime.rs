@@ -16,7 +16,7 @@
 
 use invalidation::ChannelSet;
 use smallvec::SmallVec;
-use understory_property::PropertyRegistry;
+use understory_property::{PropertyId, PropertyRegistry};
 use understory_style::{MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme};
 
 use crate::element::{Element, ElementId};
@@ -92,6 +92,7 @@ impl StyleRuntime {
         id: ElementId,
         element: &Element,
         registry: &PropertyRegistry,
+        surface_aware_channels: impl Fn(PropertyId, ChannelSet) -> ChannelSet,
     ) -> Option<ChannelSet> {
         // Anonymous containers fall back to `TYPE_GENERIC` for selector
         // matching. Widgets may opt out of a global type and rely only on an
@@ -122,7 +123,11 @@ impl StyleRuntime {
             let restyle = self
                 .cascade
                 .restyle_subject(registry, old, parent_state, &inputs);
-            return Some(restyle.changed_channels());
+            let mut channels = restyle.changed_channels();
+            for property in restyle.changed_properties().property_ids() {
+                channels = surface_aware_channels(*property, channels);
+            }
+            return Some(channels);
         }
         None
     }
