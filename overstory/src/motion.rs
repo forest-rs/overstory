@@ -254,8 +254,25 @@ impl Default for ColorInterpolation {
 pub enum TransitionTarget {
     /// A dependency property.
     Property(PropertyId),
-    /// Layer-local visual offset sampled during composition.
+    /// Layer-local placement offset sampled during composition.
+    ///
+    /// This is for targets whose real geometry has a layout-derived local
+    /// position, such as a slider thumb, toggle thumb, or selection indicator.
+    /// Layout resolves the target position, and composition can present motion
+    /// between old and new positions without relaying out siblings.
+    ///
+    /// Do not use this for transient feedback like shake, pulse, or denial
+    /// motion. Those effects should use [`Self::VisualTranslation`] so they
+    /// compose additively on top of the resolved layer placement and disappear
+    /// without changing the part's target geometry.
     LayerOffset,
+    /// Additive visual translation sampled during composition.
+    ///
+    /// Unlike [`Self::LayerOffset`], this is not layout's resolved local
+    /// position and should not become the target geometry for a real part. It is
+    /// a transient presentation nudge composed on top of layout, which makes it
+    /// suitable for feedback effects such as shake or press response.
+    VisualTranslation,
 }
 
 impl TransitionTarget {
@@ -265,10 +282,16 @@ impl TransitionTarget {
         Self::Property(property)
     }
 
-    /// Creates a target for layer-local composition offset.
+    /// Creates a target for layout-derived layer-local composition offset.
     #[must_use]
     pub const fn layer_offset() -> Self {
         Self::LayerOffset
+    }
+
+    /// Creates a target for additive transient visual translation.
+    #[must_use]
+    pub const fn visual_translation() -> Self {
+        Self::VisualTranslation
     }
 }
 

@@ -460,7 +460,7 @@ impl Ui {
             Vec2::new(rect.x0, rect.y0),
             rect.size(),
             local_clip,
-            self.effective_visual_transform(id),
+            self.presented_visual_transform(id),
         );
         let opacity = self.presented_layer_opacity(id);
         self.composition.set_opacity(id, opacity);

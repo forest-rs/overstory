@@ -14,6 +14,7 @@
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
+use kurbo::Vec2;
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
@@ -26,11 +27,14 @@ use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutPlacement, LayoutSize, LayoutSpacing};
+use crate::motion::millis;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
+use crate::timeline_runtime::{
+    ChangeCause, EffectClip, EffectKeyframe, PresentationValue, TimelineTarget, VisualOutput,
+};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
@@ -47,6 +51,7 @@ pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("segmented-label").with_part_tag(PART_SEGMENTED_ITEM_LABEL);
 
 const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
+const DENIED_SHAKE_STEP: u64 = millis(70);
 
 type SegmentedSelectionChangedHandler = EventHandler<SegmentedSelectionChangedEvent>;
 type SegmentedSelectionChangedSlot = CallbackSlot<SegmentedSelectionChangedEvent>;
@@ -392,6 +397,14 @@ impl SegmentedControlWidget {
         sync_segmented_indicator_offset_target(ui, segmented, indicator);
     }
 
+    fn start_denied_feedback(&mut self, ui: &mut Ui, segmented: ElementId) {
+        ui.start_visual_effect(
+            segmented,
+            VisualOutput::VisualTranslation,
+            denied_activation_feedback_clip(),
+        );
+    }
+
     fn selected_segment(&self) -> Option<ElementId> {
         self.selected_index
             .and_then(|index| self.segments.get(index).copied())
@@ -446,6 +459,19 @@ impl Widget for SegmentedItemWidget {
             let _ = ctx.set_pointer_focus(Some(segmented));
             event.mark_handled();
         }
+    }
+
+    fn handle_disabled_pointer_down(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        _disabled_target: ElementId,
+    ) {
+        let Some(segmented) = segmented_parent(ctx, ctx.id()) else {
+            return;
+        };
+        with_segmented_control_mut(ctx.ui_mut(), segmented, |widget, ui| {
+            widget.start_denied_feedback(ui, segmented);
+        });
     }
 
     fn handle_accessibility_action(
@@ -537,7 +563,7 @@ fn sync_segmented_indicator_layout(
 fn sync_segmented_indicator_offset_target(ui: &mut Ui, segmented: ElementId, indicator: ElementId) {
     let segmented_bounds = ui.effective_bounds(segmented);
     let indicator_bounds = ui.effective_bounds(indicator);
-    let target = kurbo::Vec2::new(
+    let target = Vec2::new(
         indicator_bounds.x0 - segmented_bounds.x0,
         indicator_bounds.y0 - segmented_bounds.y0,
     );
@@ -559,6 +585,28 @@ fn rect_close(a: kurbo::Rect, b: kurbo::Rect) -> bool {
 
 fn scalar_close(a: f64, b: f64) -> bool {
     (a - b).abs() <= f64::EPSILON
+}
+
+fn denied_activation_feedback_clip() -> EffectClip {
+    EffectClip::from_keyframes([
+        EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+        EffectKeyframe::new(
+            DENIED_SHAKE_STEP,
+            PresentationValue::Offset2d(Vec2::new(6.0, 0.0)),
+        ),
+        EffectKeyframe::new(
+            DENIED_SHAKE_STEP * 2,
+            PresentationValue::Offset2d(Vec2::new(-5.0, 0.0)),
+        ),
+        EffectKeyframe::new(
+            DENIED_SHAKE_STEP * 3,
+            PresentationValue::Offset2d(Vec2::new(3.0, 0.0)),
+        ),
+        EffectKeyframe::new(
+            DENIED_SHAKE_STEP * 4,
+            PresentationValue::Offset2d(Vec2::ZERO),
+        ),
+    ])
 }
 
 #[expect(
@@ -669,6 +717,8 @@ fn segmented_control_widget(ui: &Ui, segmented: ElementId) -> Option<&SegmentedC
 mod tests {
     use super::*;
     use crate::accessibility::accesskit_node_id;
+    use crate::motion::millis;
+    use crate::test_support::pointer_down;
     use accesskit::Role;
     use alloc::rc::Rc;
     use core::cell::Cell;
@@ -748,6 +798,59 @@ mod tests {
     }
 
     #[test]
+    fn disabled_segment_pointer_down_shakes_owner_without_selecting() {
+        let mut ui = Ui::new();
+        ui.set_theme(crate::theme::default_theme());
+        ui.set_cascade(crate::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(320.0, 80.0));
+        let segmented = ui.append(
+            root,
+            SegmentedControl::new()
+                .options([
+                    ChoiceOption::new("Preview"),
+                    ChoiceOption::new("Code").disabled(),
+                    ChoiceOption::new("Metrics"),
+                ])
+                .selected_index(0),
+        );
+        let disabled = segmented_item(&ui, segmented, 1).unwrap();
+        ui.compute_layout(Size::new(320.0, 80.0));
+        let start = presented_translation(&ui, segmented);
+
+        ui.set_now(0);
+        let _ = ui.dispatch_pointer_event(&pointer_down(ui.effective_bounds(disabled).center(), 0));
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        assert_eq!(selected_segmented_index(&ui, segmented), Some(0));
+        assert_scalar_close(presented_translation(&ui, segmented).x, start.x);
+
+        ui.set_now(millis(35));
+        ui.flush_composition();
+        assert!(presented_translation(&ui, segmented).x > start.x);
+
+        ui.set_now(millis(70));
+        ui.flush_composition();
+        ui.set_now(millis(120));
+        ui.flush_composition();
+        let left_sample = presented_translation(&ui, segmented).x;
+        assert!(
+            left_sample < start.x,
+            "expected left shake sample below {}, got {left_sample}",
+            start.x
+        );
+
+        ui.set_now(millis(140));
+        ui.flush_composition();
+        ui.set_now(millis(210));
+        ui.flush_composition();
+        ui.set_now(millis(280));
+        ui.flush_composition();
+        assert_scalar_close(presented_translation(&ui, segmented).x, start.x);
+        assert_scalar_close(presented_translation(&ui, segmented).y, start.y);
+    }
+
+    #[test]
     fn segmented_control_selection_indicator_tracks_selected_item() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -805,10 +908,25 @@ mod tests {
             .filter(|indicator| ui.get(*indicator).is_some())
     }
 
+    fn presented_translation(ui: &Ui, element: ElementId) -> Vec2 {
+        ui.presented_value(
+            element,
+            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+            Vec2::ZERO,
+        )
+    }
+
     fn assert_rect_close(actual: kurbo::Rect, expected: kurbo::Rect) {
         assert!(
             rect_close(actual, expected),
             "expected rect {expected:?}, got {actual:?}"
+        );
+    }
+
+    fn assert_scalar_close(actual: f64, expected: f64) {
+        assert!(
+            scalar_close(actual, expected),
+            "expected {expected}, got {actual}"
         );
     }
 }

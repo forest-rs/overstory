@@ -551,6 +551,17 @@ impl Ui {
         });
     }
 
+    fn dispatch_widget_disabled_pointer_down(
+        &mut self,
+        visual: ElementId,
+        disabled_target: ElementId,
+    ) {
+        self.with_widget_mut(visual, |widget, ui| {
+            let mut ctx = WidgetEventContext::new(visual, ui);
+            widget.handle_disabled_pointer_down(&mut ctx, disabled_target);
+        });
+    }
+
     pub(in crate::ui) fn dispatch_routed_pointer_event(
         &mut self,
         kind: RoutedEventKind,
@@ -1008,6 +1019,7 @@ impl Ui {
                 if let Some(target) = self.hit_test(pos) {
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
+                        self.dispatch_widget_disabled_pointer_down(visual, target);
                         self.events.cancel_click();
                         result.press_changed = self.set_press_target(None);
                         result.capture_changed = self.set_pointer_capture(None);

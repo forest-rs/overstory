@@ -5,10 +5,11 @@
 
 use alloc::vec::Vec;
 
-use kurbo::Affine;
+use kurbo::{Affine, Vec2};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
+use crate::timeline_runtime::{TimelineTarget, VisualOutput};
 
 use super::Ui;
 
@@ -39,10 +40,19 @@ impl Ui {
             if self.get(id).is_none() {
                 continue;
             }
-            let visual_transform = self.effective_visual_transform(id);
+            let visual_transform = self.presented_visual_transform(id);
             let opacity = self.presented_layer_opacity(id);
             self.composition.set_visual_transform(id, visual_transform);
             self.composition.set_opacity(id, opacity);
         }
+    }
+
+    pub(in crate::ui) fn presented_visual_transform(&self, id: ElementId) -> Affine {
+        let translation = self.presented_value(
+            id,
+            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+            Vec2::ZERO,
+        );
+        Affine::translate((translation.x, translation.y)) * self.effective_visual_transform(id)
     }
 }

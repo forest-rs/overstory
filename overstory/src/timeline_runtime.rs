@@ -31,7 +31,8 @@ use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
 use crate::motion::{
-    Animatable, ColorTransition, ResolvedTransitionSpec, Transition, TransitionTarget,
+    Animatable, ColorInterpolation, ColorTransition, Interpolate, ResolvedTransitionSpec,
+    TimingFunction, Transition, TransitionTarget,
 };
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
@@ -88,6 +89,9 @@ impl TimelineTarget {
         match self {
             Self::Property(property) => TransitionTarget::Property(property),
             Self::VisualOutput(VisualOutput::LayerOffset) => TransitionTarget::LayerOffset,
+            Self::VisualOutput(VisualOutput::VisualTranslation) => {
+                TransitionTarget::VisualTranslation
+            }
         }
     }
 
@@ -114,21 +118,28 @@ impl TimelineTarget {
 /// Pipeline output animated by the timeline but not represented as a property.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum VisualOutput {
-    /// Layer-local offset sampled by composition while layout keeps the
-    /// resolved target geometry.
+    /// Layout-derived layer placement sampled by composition while layout keeps
+    /// the resolved target geometry.
+    ///
+    /// Use this for moving real parts between layout positions. Transient
+    /// feedback should use [`Self::VisualTranslation`] so it does not rewrite
+    /// the part's target placement.
     LayerOffset,
+    /// Additive transient visual translation sampled by composition after
+    /// layout.
+    VisualTranslation,
 }
 
 impl VisualOutput {
     const fn value_kind(self) -> PresentationValueKind {
         match self {
-            Self::LayerOffset => PresentationValueKind::Offset2d,
+            Self::LayerOffset | Self::VisualTranslation => PresentationValueKind::Offset2d,
         }
     }
 
     const fn evaluation_domain(self) -> TimelineEvaluationDomain {
         match self {
-            Self::LayerOffset => TimelineEvaluationDomain::Composition,
+            Self::LayerOffset | Self::VisualTranslation => TimelineEvaluationDomain::Composition,
         }
     }
 }
@@ -166,6 +177,17 @@ pub(crate) enum PresentationValue {
     Color(Color),
     /// A two-dimensional logical offset.
     Offset2d(Vec2),
+}
+
+impl PresentationValue {
+    const fn kind(self) -> PresentationValueKind {
+        match self {
+            Self::Scalar32(_) => PresentationValueKind::Scalar32,
+            Self::Scalar64(_) => PresentationValueKind::Scalar64,
+            Self::Color(_) => PresentationValueKind::Color,
+            Self::Offset2d(_) => PresentationValueKind::Offset2d,
+        }
+    }
 }
 
 /// Value type that can be stored in erased timeline sample storage.
@@ -386,6 +408,111 @@ struct TimelineTrack {
     clip: MotionClip,
 }
 
+/// One keyframe in a finite presentation effect clip.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct EffectKeyframe {
+    offset: TimerDuration,
+    value: PresentationValue,
+}
+
+impl EffectKeyframe {
+    /// Creates a keyframe at `offset` relative to clip start.
+    #[must_use]
+    pub(crate) const fn new(offset: TimerDuration, value: PresentationValue) -> Self {
+        Self { offset, value }
+    }
+}
+
+/// Finite presentation effect clip applied to one visual output.
+///
+/// This is for semantic feedback where there is no lasting target value to
+/// retain, such as a short denied-action nudge. It deliberately lives beside
+/// normal target transitions rather than on individual widgets.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct EffectClip {
+    keyframes: Vec<EffectKeyframe>,
+    kind: PresentationValueKind,
+}
+
+impl EffectClip {
+    /// Builds a clip from keyframes.
+    ///
+    /// The first keyframe supplies the sample before its timestamp. All
+    /// keyframes must carry the same presentation value kind.
+    #[must_use]
+    pub(crate) fn from_keyframes(keyframes: impl IntoIterator<Item = EffectKeyframe>) -> Self {
+        let mut keyframes: Vec<_> = keyframes.into_iter().collect();
+        keyframes.sort_by_key(|keyframe| keyframe.offset);
+        assert!(
+            !keyframes.is_empty(),
+            "effect clips require at least one keyframe"
+        );
+        let kind = keyframes[0].value.kind();
+        debug_assert!(
+            keyframes
+                .iter()
+                .all(|keyframe| keyframe.value.kind() == kind),
+            "effect clip keyframes must use one value kind"
+        );
+        Self { keyframes, kind }
+    }
+
+    fn value_kind(&self) -> PresentationValueKind {
+        self.kind
+    }
+
+    fn sample(&self, elapsed: TimerDuration) -> PresentationValue {
+        let first = self.keyframes[0];
+        if elapsed <= first.offset {
+            return first.value;
+        }
+        for pair in self.keyframes.windows(2) {
+            let from = pair[0];
+            let to = pair[1];
+            if elapsed <= to.offset {
+                let span = to.offset.saturating_sub(from.offset);
+                let progress = if span == 0 {
+                    1.0
+                } else {
+                    (elapsed.saturating_sub(from.offset) as f32 / span as f32).clamp(0.0, 1.0)
+                };
+                return interpolate_presentation_value(from.value, to.value, progress);
+            }
+        }
+        self.keyframes
+            .last()
+            .map(|keyframe| keyframe.value)
+            .unwrap_or(first.value)
+    }
+
+    fn duration(&self) -> TimerDuration {
+        self.keyframes
+            .last()
+            .map(|keyframe| keyframe.offset)
+            .unwrap_or(0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EffectTrack {
+    started_at: TimerInstant,
+    clip: EffectClip,
+}
+
+impl EffectTrack {
+    fn sample(&self, now: TimerInstant) -> PresentationValue {
+        self.clip.sample(now.saturating_sub(self.started_at))
+    }
+
+    fn is_complete(&self, now: TimerInstant) -> bool {
+        now.saturating_sub(self.started_at) >= self.clip.duration()
+    }
+
+    fn end_time(&self) -> TimerInstant {
+        self.started_at.saturating_add(self.clip.duration())
+    }
+}
+
 /// Internal runtime for sampled timeline values.
 ///
 /// This is the degenerate form of a future global timeline: each active entry
@@ -395,6 +522,7 @@ struct TimelineTrack {
 pub(crate) struct TimelineRuntime {
     targets: HashMap<TimelineTrackKey, PresentationValue>,
     tracks: HashMap<TimelineTrackKey, TimelineTrack>,
+    effects: HashMap<TimelineTrackKey, EffectTrack>,
     pending: HashMap<TimelineTrackKey, ResolvedTransitionSpec>,
     cues: Vec<TimelineCue>,
     next_cue_id: u64,
@@ -432,7 +560,7 @@ impl TimelineRuntime {
         self.cues.len() != before
     }
 
-    /// Drains all cues due at or before `now`.
+    /// Drains all app-visible cues due at or before `now`.
     pub(crate) fn drain_cues(&mut self, now: TimerInstant) -> Vec<TimelineCue> {
         let mut due = Vec::new();
         let mut pending = Vec::new();
@@ -458,6 +586,35 @@ impl TimelineRuntime {
         self.pending.insert(key, spec);
     }
 
+    /// Applies a finite visual effect clip at `now`, replacing any existing
+    /// effect clip on the same key.
+    pub(crate) fn start_effect(
+        &mut self,
+        key: TimelineTrackKey,
+        clip: EffectClip,
+        now: TimerInstant,
+    ) {
+        if let Some(kind) = key.target().expected_value_kind() {
+            debug_assert_eq!(
+                kind,
+                clip.value_kind(),
+                "effect clip value kind must match target metadata"
+            );
+        }
+        debug_assert_ne!(
+            key.target().visual_domain(),
+            Some(TimelineEvaluationDomain::Layout),
+            "layout-domain effects need explicit layout-animation policy"
+        );
+        self.effects.insert(
+            key,
+            EffectTrack {
+                started_at: now,
+                clip,
+            },
+        );
+    }
+
     /// Returns whether a transition spec is waiting for `key`'s next target.
     #[must_use]
     pub(crate) fn has_pending_transition(&self, key: TimelineTrackKey) -> bool {
@@ -474,8 +631,9 @@ impl TimelineRuntime {
     pub(crate) fn clear_target(&mut self, key: TimelineTrackKey) -> bool {
         let had_target = self.targets.remove(&key).is_some();
         let had_track = self.tracks.remove(&key).is_some();
+        let had_effect = self.effects.remove(&key).is_some();
         let had_pending = self.pending.remove(&key).is_some();
-        had_target || had_track || had_pending
+        had_target || had_track || had_effect || had_pending
     }
 
     /// Records the resolved target value for `key`, planning or retargeting
@@ -558,6 +716,9 @@ impl TimelineRuntime {
         target: PresentationValue,
         now: TimerInstant,
     ) -> PresentationValue {
+        if let Some(effect) = self.effects.get(&key) {
+            return effect.sample(now);
+        }
         self.tracks
             .get(&key)
             .map_or(target, |track| track.clip.sample(now))
@@ -570,7 +731,10 @@ impl TimelineRuntime {
         key: TimelineTrackKey,
         now: TimerInstant,
     ) -> Option<PresentationValue> {
-        self.tracks.get(&key).map(|track| track.clip.sample(now))
+        self.effects
+            .get(&key)
+            .map(|effect| effect.sample(now))
+            .or_else(|| self.tracks.get(&key).map(|track| track.clip.sample(now)))
     }
 
     /// Advances active tracks, removing completed clips and returning affected
@@ -592,6 +756,21 @@ impl TimelineRuntime {
         for key in completed {
             self.tracks.remove(&key);
         }
+        let mut completed = Vec::new();
+        for (&key, effect) in &self.effects {
+            let complete = effect.is_complete(now);
+            samples.push(TimelineSample {
+                key,
+                value: effect.sample(now),
+                complete,
+            });
+            if complete {
+                completed.push(key);
+            }
+        }
+        for key in completed {
+            self.effects.remove(&key);
+        }
         samples
     }
 
@@ -599,7 +778,7 @@ impl TimelineRuntime {
     /// tracks.
     #[must_use]
     pub(crate) fn next_deadline(&self, now: TimerInstant) -> Option<TimerInstant> {
-        let track_deadline = if self.tracks.is_empty() {
+        let track_deadline = if self.tracks.is_empty() && self.effects.is_empty() {
             None
         } else {
             let next_frame = now.saturating_add(PRESENTATION_FRAME_INTERVAL);
@@ -607,6 +786,7 @@ impl TimelineRuntime {
                 .tracks
                 .values()
                 .map(|track| track.clip.end_time())
+                .chain(self.effects.values().map(EffectTrack::end_time))
                 .min();
             Some(next_end.map_or(next_frame, |end| next_frame.min(end).max(now)))
         };
@@ -642,6 +822,7 @@ impl TimelineRuntime {
     pub(crate) fn remove_element(&mut self, element: ElementId) {
         self.targets.retain(|key, _| key.element() != element);
         self.tracks.retain(|key, _| key.element() != element);
+        self.effects.retain(|key, _| key.element() != element);
         self.pending.retain(|key, _| key.element() != element);
         self.cues.retain(|cue| cue.target != Some(element));
     }
@@ -650,8 +831,46 @@ impl TimelineRuntime {
     #[cfg(test)]
     #[must_use]
     pub(crate) fn has_active_track(&self, key: TimelineTrackKey) -> bool {
-        self.tracks.contains_key(&key)
+        self.tracks.contains_key(&key) || self.effects.contains_key(&key)
     }
+}
+
+fn interpolate_presentation_value(
+    from: PresentationValue,
+    to: PresentationValue,
+    progress: f32,
+) -> PresentationValue {
+    match (from, to) {
+        (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
+            PresentationValue::Scalar32(from.interpolate(to, progress))
+        }
+        (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
+            PresentationValue::Scalar64(from.interpolate(to, progress))
+        }
+        (PresentationValue::Color(from), PresentationValue::Color(to)) => PresentationValue::Color(
+            ColorTransition::new(
+                from,
+                to,
+                0,
+                1_000_000,
+                TimingFunction::LINEAR,
+                ColorInterpolation::SRGB,
+            )
+            .sample(progress_timer_instant(progress)),
+        ),
+        (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
+            PresentationValue::Offset2d(from.interpolate(to, progress))
+        }
+        _ => to,
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "effect progress is clamped to 0..=1 before conversion to the fixed sample span"
+)]
+fn progress_timer_instant(progress: f32) -> TimerInstant {
+    (f64::from(progress.clamp(0.0, 1.0)) * 1_000_000.0).round() as TimerInstant
 }
 
 fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
@@ -706,6 +925,13 @@ mod tests {
         TimelineTrackKey::new(
             ElementId::new(7, 0),
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+        )
+    }
+
+    fn visual_translation_key() -> TimelineTrackKey {
+        TimelineTrackKey::new(
+            ElementId::new(7, 0),
+            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
         )
     }
 
@@ -899,17 +1125,52 @@ mod tests {
     }
 
     #[test]
+    fn effect_clip_samples_and_completes_without_retained_target() {
+        let key = visual_translation_key();
+        let mut runtime = TimelineRuntime::new();
+        runtime.start_effect(
+            key,
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                EffectKeyframe::new(100, PresentationValue::Offset2d(Vec2::new(10.0, 0.0))),
+                EffectKeyframe::new(200, PresentationValue::Offset2d(Vec2::ZERO)),
+            ]),
+            10,
+        );
+
+        assert_eq!(runtime.sample(key, Vec2::ZERO, 60), Vec2::new(5.0, 0.0));
+        assert_eq!(runtime.target_count(), 0);
+
+        let samples = runtime.advance(210);
+        assert_eq!(samples.len(), 1);
+        assert!(samples[0].is_complete());
+        assert_eq!(samples[0].value(), PresentationValue::Offset2d(Vec2::ZERO));
+        assert!(!runtime.has_active_track(key));
+    }
+
+    #[test]
     fn remove_element_drops_tracks_targets_and_pending_specs() {
         let key = scalar_key();
+        let effect_key = visual_translation_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
         runtime.request_transition(key, SPEC);
         runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
+        runtime.start_effect(
+            effect_key,
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                EffectKeyframe::new(100, PresentationValue::Offset2d(Vec2::new(10.0, 0.0))),
+            ]),
+            0,
+        );
 
         runtime.remove_element(key.element());
 
         assert!(!runtime.has_active_track(key));
+        assert!(!runtime.has_active_track(effect_key));
         assert_eq!(runtime.next_deadline(0), None);
         assert_eq!(runtime.sample(key, 25.0_f32, 50), 25.0);
+        assert_eq!(runtime.sample(effect_key, Vec2::ZERO, 50), Vec2::ZERO);
     }
 }

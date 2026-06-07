@@ -17,8 +17,8 @@ use crate::channels::COMPOSE;
 use crate::element::ElementId;
 use crate::motion::{ResolvedTransitionSpec, TransitionTrigger};
 use crate::timeline_runtime::{
-    AnimatableValue, ChangeCause, PresentationValue, TimelineCue, TimelineCueId, TimelineSample,
-    TimelineTarget, TimelineTrackKey, VisualOutput,
+    AnimatableValue, ChangeCause, EffectClip, PresentationValue, TimelineCue, TimelineCueId,
+    TimelineSample, TimelineTarget, TimelineTrackKey, VisualOutput,
 };
 
 use super::Ui;
@@ -157,6 +157,21 @@ impl Ui {
             .sample(TimelineTrackKey::new(element, property), target, self.now())
     }
 
+    pub(crate) fn start_visual_effect(
+        &mut self,
+        element: ElementId,
+        output: VisualOutput,
+        clip: EffectClip,
+    ) {
+        let key = TimelineTrackKey::new(element, TimelineTarget::VisualOutput(output));
+        self.timeline.start_effect(key, clip, self.now());
+        self.sync_timeline_property_sample(key);
+        if let Some(value) = self.timeline.active_sample_value(key, self.now()) {
+            self.set_timeline_composition_sample(key, value);
+        }
+        self.mark_timeline_target_channels(element, key.target());
+    }
+
     pub(in crate::ui) fn advance_timeline(&mut self, now: TimerInstant) {
         let samples = self.timeline.advance(now);
         for sample in samples {
@@ -210,17 +225,24 @@ impl Ui {
     }
 
     fn set_timeline_composition_sample(&mut self, key: TimelineTrackKey, value: PresentationValue) {
-        if let (
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-            PresentationValue::Offset2d(offset),
-        ) = (key.target(), value)
-        {
-            self.composition.set_layer_offset(key.element(), offset);
-        } else if let (TimelineTarget::Property(property), PresentationValue::Scalar32(opacity)) =
-            (key.target(), value)
-            && property == self.properties.opacity.id()
-        {
-            self.composition.set_opacity(key.element(), opacity);
+        match (key.target(), value) {
+            (
+                TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+                PresentationValue::Offset2d(offset),
+            ) => self.composition.set_layer_offset(key.element(), offset),
+            (
+                TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+                PresentationValue::Offset2d(_),
+            ) => self.composition.set_visual_transform(
+                key.element(),
+                self.presented_visual_transform(key.element()),
+            ),
+            (TimelineTarget::Property(property), PresentationValue::Scalar32(opacity))
+                if property == self.properties.opacity.id() =>
+            {
+                self.composition.set_opacity(key.element(), opacity);
+            }
+            _ => {}
         }
     }
 
@@ -229,7 +251,9 @@ impl Ui {
             TimelineTarget::Property(property) => {
                 self.surface_aware_channels(property, self.registry.affects_channels(property))
             }
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset) => COMPOSE.into_set(),
+            TimelineTarget::VisualOutput(
+                VisualOutput::LayerOffset | VisualOutput::VisualTranslation,
+            ) => COMPOSE.into_set(),
         };
         self.mark_channels(element, channels);
     }

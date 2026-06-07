@@ -319,6 +319,20 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ) {
     }
 
+    /// Handles a primary pointer press that was denied because the hit visual
+    /// target is disabled.
+    ///
+    /// This is intentionally not a routed event and it does not re-enable
+    /// disabled controls. Widgets use it only for local denial affordances,
+    /// such as a segmented control shaking when the user tries to choose a
+    /// disabled segment.
+    fn handle_disabled_pointer_down(
+        &mut self,
+        _ctx: &mut WidgetEventContext<'_>,
+        _disabled_target: ElementId,
+    ) {
+    }
+
     /// Handles an AccessKit action request targeting this widget's element.
     ///
     /// The default leaves actions to the generic accessibility dispatcher.
