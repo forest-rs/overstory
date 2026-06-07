@@ -906,6 +906,21 @@ pub fn refresh_session_view_from_mirror(
         return refresh_session_view(ui, elements, session);
     }
 
+    refresh_session_details_from_mirror(ui, elements, mirror, session)
+}
+
+/// Refreshes only the selected details pane from a patched `mirror`.
+///
+/// Live row changes such as hover state, selected-element properties, or
+/// bounds updates should not recreate the outline control. Use this when the
+/// projected tree is unchanged but the currently inspected row changed.
+#[cfg(feature = "spoor-session")]
+pub fn refresh_session_details_from_mirror(
+    ui: &mut Ui,
+    elements: DevtoolsViewElements,
+    mirror: &InspectionMirror,
+    session: DevtoolsSessionHandle,
+) -> DevtoolsViewElements {
     clear_children(ui, elements.details);
     let client = InspectionClient::new(session.clone());
     let actions = DetailActions::from_client(client, elements.outline);

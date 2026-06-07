@@ -54,8 +54,10 @@ impl DevtoolsRefresh {
 /// Source-side change categories observed during one devtools refresh.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DevtoolsRefreshChanges {
-    /// Retained element rows were inserted, removed, or updated.
+    /// The projected outline tree changed.
     pub tree: bool,
+    /// The details for the currently inspected element changed.
+    pub details: bool,
     /// Frame timing or renderer summary counters changed.
     pub frame: bool,
 }
@@ -174,6 +176,7 @@ impl LiveDevtools {
             selected,
             changes: DevtoolsRefreshChanges {
                 tree: true,
+                details: true,
                 frame: true,
             },
         })
@@ -185,13 +188,28 @@ impl LiveDevtools {
         target: &mut impl LiveDevtoolsTarget,
     ) -> Result<DevtoolsRefresh, SessionError> {
         let changes = target.drain_inspection_changes();
-        let refresh_changes = DevtoolsRefreshChanges {
-            tree: !changes.tree.is_empty(),
-            frame: changes.frame.is_some(),
-        };
+        let frame_changed = changes.frame.is_some();
+        let inspected_element = self
+            .session
+            .with(DevtoolsSession::selected_element)
+            .or_else(|| self.mirror.tree().root_element());
+        let details_changed = inspected_element.is_some_and(|element| {
+            changes
+                .tree
+                .removed
+                .iter()
+                .any(|removal| removal.id == element)
+                || changes.tree.upserted.iter().any(|row| row.id == element)
+        });
         let event = self
             .session
             .with_mut(|session| session.apply_inspection_changes(changes));
+        let tree_changed = matches!(event, Some(DevtoolsEvent::ElementTreePatched { .. }));
+        let refresh_changes = DevtoolsRefreshChanges {
+            tree: tree_changed,
+            details: details_changed,
+            frame: frame_changed,
+        };
         let stream_items = event
             .clone()
             .map_or_else(Vec::new, |event| self.client.stream_items_for_event(event));
@@ -411,6 +429,7 @@ mod tests {
             refresh.changes,
             DevtoolsRefreshChanges {
                 tree: false,
+                details: false,
                 frame: true,
             }
         );
@@ -463,7 +482,8 @@ mod tests {
         assert_eq!(
             refresh.changes,
             DevtoolsRefreshChanges {
-                tree: true,
+                tree: false,
+                details: true,
                 frame: false,
             }
         );
@@ -478,6 +498,42 @@ mod tests {
                 .mirror()
                 .selected_details()
                 .is_some_and(|details| details.row.state.hovered)
+        );
+    }
+
+    #[test]
+    fn live_devtools_refresh_ignores_unselected_row_detail_changes() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let selected = ui.append(root, Button::new("Selected"));
+        let other = ui.append(root, Button::new("Other"));
+        let mut devtools = LiveDevtools::capture_from_live(&mut ui, Some(selected))
+            .expect("devtools should attach");
+
+        ui.add_pseudo(other, PSEUDO_HOVER);
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("live state refresh should update mirror");
+
+        assert_eq!(
+            refresh.event,
+            Some(DevtoolsEvent::TargetChanged {
+                selected: Some(selected),
+            })
+        );
+        assert_eq!(
+            refresh.changes,
+            DevtoolsRefreshChanges {
+                tree: false,
+                details: false,
+                frame: false,
+            }
+        );
+        assert!(
+            devtools
+                .mirror()
+                .selected_details()
+                .is_some_and(|details| details.row.id == selected && !details.row.state.hovered)
         );
     }
 

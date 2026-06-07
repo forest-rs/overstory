@@ -5,7 +5,8 @@ use core::time::Duration;
 
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsTreePatchCounts, DevtoolsViewElements, LiveDevtools,
-    UiLiveInspectionTarget, append_session_view, refresh_session_view_from_mirror,
+    UiLiveInspectionTarget, append_session_view, refresh_session_details_from_mirror,
+    refresh_session_view_from_mirror,
 };
 use overstory_transcript::{
     AnnotationLevel, EntryBody, EntryKind, EntryTemplate, MessageRole, NewEntry, ProcessStream,
@@ -164,6 +165,17 @@ impl InProcessDevtoolsShell {
                     ui,
                     elements,
                     &previous_tree,
+                    devtools.mirror(),
+                    self.session.clone(),
+                )
+            };
+            self.view_elements.set(Some(refreshed));
+        } else if refresh.changes.details {
+            let refreshed = {
+                let devtools = self.devtools.borrow();
+                refresh_session_details_from_mirror(
+                    ui,
+                    elements,
                     devtools.mirror(),
                     self.session.clone(),
                 )
