@@ -16,8 +16,10 @@
 use alloc::rc::Rc;
 use core::cell::Cell;
 
+use invalidation::ChannelSet;
 use kurbo::{Size, Vec2};
 
+use crate::channels::ARRANGE;
 use crate::element::ElementId;
 use crate::element_side_map::ElementSideMap;
 
@@ -25,19 +27,33 @@ use crate::element_side_map::ElementSideMap;
 #[derive(Clone, Debug)]
 pub(crate) struct ScrollTarget {
     state: ScrollState,
+    offset_channels: ChannelSet,
 }
 
 impl ScrollTarget {
-    pub(crate) fn new(state: ScrollState) -> Self {
-        Self { state }
+    pub(crate) fn new(state: ScrollState, offset_channels: ChannelSet) -> Self {
+        Self {
+            state,
+            offset_channels,
+        }
     }
 
     pub(crate) fn state(&self) -> ScrollState {
         self.state.clone()
     }
 
+    pub(crate) fn offset_channels(&self) -> ChannelSet {
+        self.offset_channels
+    }
+
     pub(crate) fn offset_y(&self) -> f64 {
         self.state.offset_y()
+    }
+}
+
+impl Default for ScrollTarget {
+    fn default() -> Self {
+        Self::new(ScrollState::new(), ARRANGE.into())
     }
 }
 
@@ -46,12 +62,13 @@ impl ScrollTarget {
 /// A scrollable widget owns one `ScrollState` and registers it against its
 /// viewport element with [`Ui::register_scroll_target`](crate::Ui::register_scroll_target).
 /// Scroll bars, wheel handlers, accessibility actions, and virtualized controls
-/// then share one offset and one viewport/content extent instead of maintaining
-/// side tables keyed by element id.
+/// then share one offset and one viewport/content extent instead of
+/// maintaining side tables keyed by element id.
 ///
 /// The setters are intentionally low-level: they update the shared state only.
-/// Widgets that change the offset should also mark the viewport's layout channel
-/// dirty so child layout offsets and realized ranges are recomputed.
+/// Widgets that change the offset should also mark the target's registered
+/// offset-invalidation channels so ordinary viewports can reuse layout results
+/// while virtualized controls can rematerialize rows.
 #[derive(Clone)]
 pub struct ScrollState {
     inner: Rc<ScrollStateInner>,

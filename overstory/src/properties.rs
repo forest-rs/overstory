@@ -175,8 +175,8 @@ pub struct BuiltInProperties {
     pub overflow_wrap: Property<OverflowWrap>,
 
     /// Text line wrapping policy. Default [`TextWrapMode::NoWrap`].
-    /// Writes mark `LAYOUT`, which cascades through geometry and paint
-    /// because wrapping can change both measured size and final glyph
+    /// Writes mark `LAYOUT`, which cascades through arrange, geometry, and
+    /// paint because wrapping can change both measured size and final glyph
     /// placement.
     pub text_wrap_mode: Property<TextWrapMode>,
 
@@ -305,8 +305,8 @@ impl BuiltInProperties {
             content: registry.register(
                 "Content",
                 PropertyMetadataBuilder::new(String::new())
-                    // GEOMETRY/PAINT cascade from LAYOUT via the tracker's
-                    // channel cascade — no need to declare it
+                    // ARRANGE/GEOMETRY/PAINT cascade from LAYOUT via the
+                    // tracker's channel cascade — no need to declare them
                     // explicitly here.
                     .affects_channels(LAYOUT.into_set())
                     .build(),
@@ -314,8 +314,8 @@ impl BuiltInProperties {
             text: registry.register(
                 "Text",
                 PropertyMetadataBuilder::new(String::new())
-                    // GEOMETRY/PAINT cascade from LAYOUT via the tracker's
-                    // channel cascade — no need to declare it
+                    // ARRANGE/GEOMETRY/PAINT cascade from LAYOUT via the
+                    // tracker's channel cascade — no need to declare them
                     // explicitly here.
                     .affects_channels(LAYOUT.into_set())
                     .build(),

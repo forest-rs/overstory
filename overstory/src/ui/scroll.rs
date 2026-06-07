@@ -3,6 +3,7 @@
 
 //! Scroll target registration.
 
+use crate::channels::{ARRANGE, LAYOUT};
 use crate::element::ElementId;
 use crate::scroll_runtime::{ScrollState, ScrollTarget};
 
@@ -17,7 +18,12 @@ impl Ui {
     /// replaces the previous one.
     pub fn register_scroll_target(&mut self, target: ElementId, state: ScrollState) {
         self.scrolling
-            .register_target(target, ScrollTarget::new(state));
+            .register_target(target, ScrollTarget::new(state, ARRANGE.into()));
+    }
+
+    pub(crate) fn register_virtual_scroll_target(&mut self, target: ElementId, state: ScrollState) {
+        self.scrolling
+            .register_target(target, ScrollTarget::new(state, LAYOUT.into()));
     }
 
     pub(crate) fn scroll_target(&self, target: ElementId) -> Option<ScrollTarget> {

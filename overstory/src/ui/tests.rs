@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
-use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT};
+use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
 };
@@ -437,6 +437,34 @@ fn geometry_channel_cascades_to_paint_and_drains_during_refresh() {
     assert!(!ui.invalidation().is_invalidated(root, GEOMETRY));
     assert!(!ui.invalidation().is_invalidated(root, PAINT));
     assert_eq!(ui.frame_stats().geometry_elements, 1);
+}
+
+#[test]
+fn arrange_channel_cascades_to_geometry_without_layout() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.mark_channels(root, ARRANGE.into());
+
+    assert!(!ui.invalidation().is_invalidated(root, LAYOUT));
+    assert!(ui.invalidation().is_invalidated(root, ARRANGE));
+    assert!(ui.invalidation().is_invalidated(root, GEOMETRY));
+    assert!(ui.invalidation().is_invalidated(root, PAINT));
+    assert!(ui.invalidation().is_invalidated(root, COMPOSE));
+}
+
+#[test]
+fn layout_channel_cascades_to_arrange() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.mark_channels(root, LAYOUT.into());
+
+    assert!(ui.invalidation().is_invalidated(root, LAYOUT));
+    assert!(ui.invalidation().is_invalidated(root, ARRANGE));
+    assert!(ui.invalidation().is_invalidated(root, GEOMETRY));
+    assert!(ui.invalidation().is_invalidated(root, PAINT));
+    assert!(ui.invalidation().is_invalidated(root, COMPOSE));
 }
 
 #[test]

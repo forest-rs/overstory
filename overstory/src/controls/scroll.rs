@@ -24,7 +24,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
-use crate::channels::LAYOUT;
+use crate::channels::ARRANGE;
 use crate::controls::support::{
     ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
     action_scroll_unit, f32_from_logical, is_initial_drag_move,
@@ -1154,7 +1154,11 @@ fn set_scroll_offset(ui: &mut Ui, viewport: ElementId, state: &ScrollState, offs
     if !state.set_offset_raw(clamped) {
         return true;
     }
-    ui.mark_channels(viewport, LAYOUT.into());
+    let channels = ui
+        .scroll_target(viewport)
+        .map(|target| target.offset_channels())
+        .unwrap_or_else(|| ARRANGE.into());
+    ui.mark_channels(viewport, channels);
     true
 }
 
@@ -1370,6 +1374,37 @@ mod tests {
         let after = ui.effective_bounds(first);
         assert!((after.y0 - (before.y0 - 12.0)).abs() <= 0.01);
         assert_eq!(scroll_view_offset_y(&ui, scroll), Some(12.0));
+    }
+
+    #[test]
+    fn scroll_view_offset_reuses_layout_results() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 100.0));
+        let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+        let first = append_scroll_test_child(&mut ui, scroll);
+        for _ in 0..3 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 100.0));
+        let before = ui.effective_bounds(first);
+        ui.reset_frame_stats();
+
+        assert!(set_scroll_view_offset_y(&mut ui, scroll, 12.0));
+        assert!(!ui.invalidation().has_invalidated(crate::channels::LAYOUT));
+        assert!(ui.invalidation().has_invalidated(ARRANGE));
+
+        ui.compute_layout(Size::new(180.0, 100.0));
+        let stats = ui.frame_stats();
+        let after = ui.effective_bounds(first);
+
+        assert_eq!(stats.layout_passes, 0);
+        assert!(!stats.layout_requested);
+        assert_eq!(stats.channel_marks.layout, 0);
+        assert_eq!(stats.channel_marks.arrange, 1);
+        assert!(stats.bounds_written > 0);
+        assert!((after.y0 - (before.y0 - 12.0)).abs() <= 0.01);
     }
 
     #[test]

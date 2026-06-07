@@ -35,7 +35,7 @@ use understory_property::PropertyRegistry;
 
 use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
-use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::panel::PanelWidget;
 use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
@@ -266,7 +266,7 @@ impl Ui {
         timeline_properties.register(properties.surface.border_widths.bottom);
         timeline_properties.register(properties.surface.border_widths.left);
         // Channel-to-channel cascade in the invalidation tracker:
-        // STYLE → TEMPLATE → LAYOUT → GEOMETRY → PAINT → COMPOSE. Once
+        // STYLE → TEMPLATE → LAYOUT → ARRANGE → GEOMETRY → PAINT → COMPOSE. Once
         // registered, marking any upstream channel auto-marks every
         // downstream one for the same key, so call sites don't have
         // to enumerate every channel a change touches. Bindings live
@@ -279,8 +279,11 @@ impl Ui {
             .add_cascade(TEMPLATE, LAYOUT)
             .expect("TEMPLATE → LAYOUT cascade should be acyclic");
         invalidation
-            .add_cascade(LAYOUT, GEOMETRY)
-            .expect("LAYOUT → GEOMETRY cascade should be acyclic");
+            .add_cascade(LAYOUT, ARRANGE)
+            .expect("LAYOUT → ARRANGE cascade should be acyclic");
+        invalidation
+            .add_cascade(ARRANGE, GEOMETRY)
+            .expect("ARRANGE → GEOMETRY cascade should be acyclic");
         invalidation
             .add_cascade(GEOMETRY, PAINT)
             .expect("GEOMETRY → PAINT cascade should be acyclic");

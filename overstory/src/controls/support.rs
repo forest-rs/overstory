@@ -441,6 +441,9 @@ fn sync_fixed_virtual_scroll_target(
     scroll_state: &ScrollState,
 ) {
     let _ = scroll_state.set_offset_y_raw(virtualizer.scroll_offset());
+    // Fixed-extent virtual lists rematerialize rows when the offset changes,
+    // so they still need a real layout pass. Plain `ScrollView` targets use
+    // ARRANGE-only invalidation through their registered scroll target policy.
     ui.mark_channels(owner, LAYOUT.into());
 }
 

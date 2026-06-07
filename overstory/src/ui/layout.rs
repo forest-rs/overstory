@@ -10,7 +10,7 @@ use understory_box_tree::NodeId;
 use understory_presentation::Edges;
 
 use crate::behavior::{KnownDimensions, MeasureConstraints};
-use crate::channels::LAYOUT;
+use crate::channels::{ARRANGE, LAYOUT};
 use crate::element::{Element, ElementId};
 use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
@@ -189,9 +189,11 @@ impl Ui {
     /// Drains pending property bindings first so binding-driven writes
     /// participate in this frame's layout. Then flushes the LAYOUT
     /// channel: any element whose `Layout` has changed gets its engine style
-    /// pushed before layout is recomputed. `Bounds` writes use the standard
-    /// `set_local_notifying` path so GEOMETRY/PAINT cascade naturally for
-    /// elements whose box changed.
+    /// pushed before layout is recomputed. Arrange-only invalidations, such as
+    /// scroll offsets, reuse the previous layout results and only rewrite
+    /// world-space bounds, hit-test geometry, and composition geometry.
+    /// `Bounds` writes use the standard `set_local_notifying` path so
+    /// GEOMETRY/PAINT cascade naturally for elements whose box changed.
     pub fn compute_layout(&mut self, viewport: Size) {
         self.flush_bindings();
         if self.last_viewport != viewport {
@@ -205,6 +207,8 @@ impl Ui {
             if self.reposition_overlays(viewport) {
                 self.compute_layout_until_stable(viewport);
             }
+        } else if self.invalidation.has_invalidated(ARRANGE) {
+            self.write_arranged_bounds();
         }
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
@@ -316,10 +320,7 @@ impl Ui {
         }
         self.frame_stats.measured_widgets += measured_widgets;
 
-        // Walk the tree and write absolute logical bounds for every element.
-        // Physical pixels remain a host/backend projection so layout, hit
-        // testing, composition, and accessibility share one coordinate space.
-        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
+        self.write_arranged_bounds();
         let arranged = self.run_arrange_widgets();
         arranged || self.run_element_realization()
     }
@@ -368,6 +369,23 @@ impl Ui {
         for child in element.children() {
             self.collect_subtree_ids(*child, ids);
         }
+    }
+
+    fn write_arranged_bounds(&mut self) {
+        let dirty: Vec<ElementId> = self.invalidation.drain_sorted(ARRANGE).collect();
+        if dirty.is_empty() {
+            return;
+        }
+        // Walk the tree and write absolute logical bounds for every element.
+        // Physical pixels remain a host/backend projection so layout, hit
+        // testing, composition, and accessibility share one coordinate space.
+        //
+        // This currently rewrites from the root even for an arrange-only
+        // subtree change. That keeps scrollbars, scrolled content, overlays,
+        // hit testing, and composition in sync without re-entering Taffy; once
+        // the pipeline has subtree arrangement roots, this is the obvious
+        // place to narrow the walk.
+        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
     }
 
     fn write_bounds_recursive(

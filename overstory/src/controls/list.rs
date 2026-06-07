@@ -416,7 +416,7 @@ impl AppendSpec for ListBox {
         let (width, height) = self
             .size
             .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
-        ui.register_scroll_target(id, scroll_state);
+        ui.register_virtual_scroll_target(id, scroll_state);
         ui.set_layout(id, Layout::new().relative().logical_size(width, height));
         self.element.apply_to(ui, id);
         id

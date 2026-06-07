@@ -9,7 +9,7 @@
 
 use core::time::Duration;
 
-use crate::channels::{BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::text::TextLayoutCacheStats;
 
 /// Count of invalidation-channel marks observed during a frame.
@@ -21,6 +21,8 @@ pub struct ChannelMarkStats {
     pub template: usize,
     /// Number of `LAYOUT` channel marks.
     pub layout: usize,
+    /// Number of `ARRANGE` channel marks.
+    pub arrange: usize,
     /// Number of `GEOMETRY` channel marks.
     pub geometry: usize,
     /// Number of `PAINT` channel marks.
@@ -39,6 +41,8 @@ impl ChannelMarkStats {
             self.template += 1;
         } else if channel == LAYOUT {
             self.layout += 1;
+        } else if channel == ARRANGE {
+            self.arrange += 1;
         } else if channel == GEOMETRY {
             self.geometry += 1;
         } else if channel == PAINT {
