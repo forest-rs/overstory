@@ -222,16 +222,22 @@ impl DemoPage {
 
 #[derive(Debug)]
 struct DemoShellState {
+    resources: DemoResources,
     theme_mode: Cell<DemoThemeMode>,
     selected_page: Cell<DemoPage>,
 }
 
 impl DemoShellState {
-    fn new() -> Self {
+    fn new(resources: DemoResources) -> Self {
         Self {
+            resources,
             theme_mode: Cell::new(DemoThemeMode::Dark),
             selected_page: Cell::new(DemoPage::Overview),
         }
+    }
+
+    fn resources(&self) -> DemoResources {
+        self.resources
     }
 
     fn theme_mode(&self) -> DemoThemeMode {
@@ -253,9 +259,9 @@ impl DemoShellState {
 /// each page owns only its local controls and timers.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
-    let classes = ui.style_tokens::<DemoStyleTokens>();
-    let shell = Rc::new(DemoShellState::new());
-    ui.set_theme(shell.theme_mode().theme());
+    let tokens = ui.style_tokens::<DemoStyleTokens>();
+    let shell = Rc::new(DemoShellState::new(tokens.resources));
+    ui.set_theme(shell.theme_mode().theme(shell.resources()));
     let root = ui.root();
     ui.add_class(root, CLASS_DEMO_ROOT);
 
@@ -307,6 +313,6 @@ fn build_ui() -> Ui {
     wire_devtools_button(&mut ui, nav_chrome.devtools_button());
     pages::show_demo_page(&mut ui, stage, DemoPage::Overview);
 
-    ui.set_cascade(demo_cascade(ui.properties(), classes));
+    ui.set_cascade(demo_cascade(ui.properties(), tokens));
     ui
 }

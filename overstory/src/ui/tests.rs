@@ -5394,10 +5394,15 @@ fn inspection_snapshot_reports_effective_property_summaries() {
 #[test]
 fn inspection_snapshot_reports_style_vocabulary_names() {
     let mut ui = Ui::new();
+    assert_eq!(
+        ui.style_vocabulary().resource_name(crate::theme::ACCENT_BG),
+        Some("accent.bg")
+    );
     let vocabulary = ui.style_vocabulary_mut();
     let class = vocabulary.class_id(".named-class");
     let pseudo = vocabulary.pseudo_class_id(":named-pseudo");
     let type_tag = vocabulary.type_tag("NamedWidget");
+    let resource = vocabulary.resource_key("named.resource");
     let part_tag = vocabulary.part_tag(type_tag, "NamedWidget.Part");
 
     let snapshot = ui.inspection_snapshot();
@@ -5415,6 +5420,10 @@ fn inspection_snapshot_reports_style_vocabulary_names() {
         Some("NamedWidget")
     );
     assert_eq!(
+        snapshot.style_vocabulary.resource_name(resource),
+        Some("named.resource")
+    );
+    assert_eq!(
         snapshot.style_vocabulary.part_name(type_tag, part_tag),
         Some("NamedWidget.Part")
     );
@@ -5427,6 +5436,7 @@ fn ui_resolves_style_token_sets() {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct TestClasses {
         class: ClassId,
+        resource: ResourceKey,
     }
 
     impl StyleTokenSet for TestTokens {
@@ -5435,6 +5445,7 @@ fn ui_resolves_style_token_sets() {
         fn resolve(vocabulary: &mut StyleVocabulary) -> Self::Resolved {
             TestClasses {
                 class: vocabulary.class_id(".ui-token"),
+                resource: vocabulary.resource_key("ui.token.resource"),
             }
         }
     }
@@ -5446,6 +5457,10 @@ fn ui_resolves_style_token_sets() {
     assert_eq!(
         ui.style_vocabulary().class_name(tokens.class),
         Some(".ui-token")
+    );
+    assert_eq!(
+        ui.style_vocabulary().resource_name(tokens.resource),
+        Some("ui.token.resource")
     );
     assert_eq!(ui.style_tokens::<TestTokens>(), tokens);
 }

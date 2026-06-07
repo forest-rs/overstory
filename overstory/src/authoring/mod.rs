@@ -48,7 +48,8 @@ pub mod state {
 pub mod style {
     pub use crate::spec_ext::SurfaceStyleExt;
     pub use crate::{
-        ClassId, PartTag, PseudoClassId, StyleClass, StyleTokenSet, StyleVocabulary, TypeTag,
+        ClassId, PartTag, PseudoClassId, ResourceKey, StyleClass, StyleTokenSet, StyleVocabulary,
+        TypeTag,
     };
 }
 

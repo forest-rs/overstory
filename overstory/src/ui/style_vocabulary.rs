@@ -5,6 +5,7 @@ use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_EXPANDED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED,
     PSEUDO_HOVER, PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
 };
+use crate::theme;
 use crate::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_ACCORDION_SECTION_CONTENT,
     PART_ACCORDION_SECTION_DISCLOSURE, PART_ACCORDION_SECTION_HEADER, PART_ACCORDION_SECTION_LABEL,
@@ -47,6 +48,38 @@ impl StyleTokenSet for BuiltInStyleTokens {
 
         bindings.class(CLASS_SLIDER_MAJOR_TICK, ".slider-major-tick");
         bindings.class(CLASS_SLIDER_MINOR_TICK, ".slider-minor-tick");
+
+        bindings.resource(theme::SURFACE_BG, "surface.bg");
+        bindings.resource(theme::ACCENT_BG, "accent.bg");
+        bindings.resource(theme::ACCENT_HOVER_BG, "accent.hover.bg");
+        bindings.resource(theme::ACCENT_PRESSED_BG, "accent.pressed.bg");
+        bindings.resource(theme::SUCCESS_BG, "success.bg");
+        bindings.resource(theme::TRACK_BG, "track.bg");
+        bindings.resource(theme::THUMB_BG, "thumb.bg");
+        bindings.resource(theme::ON_ACCENT_FG, "on-accent.fg");
+        bindings.resource(theme::ON_SURFACE_MUTED_FG, "on-surface.muted.fg");
+        bindings.resource(theme::FOCUS_RING_BORDER, "focus-ring.border");
+        bindings.resource(theme::ON_SURFACE_FG, "on-surface.fg");
+        bindings.resource(theme::PANEL_BG, "panel.bg");
+        bindings.resource(theme::CONTROL_BG, "control.bg");
+        bindings.resource(theme::CONTROL_BORDER, "control.border");
+        bindings.resource(theme::CONTROL_HOVER_BORDER, "control.hover.border");
+        bindings.resource(theme::CONTROL_HOVER_BG, "control.hover.bg");
+        bindings.resource(theme::TEXT_CARET_BG, "text.caret.bg");
+        bindings.resource(theme::TEXT_SELECTION_BG, "text.selection.bg");
+        bindings.resource(theme::SLIDER_MAJOR_TICK_BG, "slider.major-tick.bg");
+        bindings.resource(theme::SLIDER_MINOR_TICK_BG, "slider.minor-tick.bg");
+        bindings.resource(theme::MOTION_FAST_DURATION, "motion.fast.duration");
+        bindings.resource(theme::MOTION_NORMAL_DURATION, "motion.normal.duration");
+        bindings.resource(
+            theme::MOTION_EMPHASIZED_DURATION,
+            "motion.emphasized.duration",
+        );
+        bindings.resource(theme::MOTION_STANDARD_EASING, "motion.standard.easing");
+        bindings.resource(
+            theme::MOTION_COLOR_INTERPOLATION,
+            "motion.color-interpolation",
+        );
 
         bindings.type_tag(TYPE_GENERIC, "Panel");
         bindings.type_tag(TYPE_TEXT, "Text");

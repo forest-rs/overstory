@@ -3,26 +3,26 @@
 
 use super::*;
 
-pub(super) const DEMO_ROOT_BG: ResourceKey = ResourceKey::new(1_000);
-pub(super) const DEMO_NAV_BG: ResourceKey = ResourceKey::new(1_001);
-pub(super) const DEMO_NAV_BORDER: ResourceKey = ResourceKey::new(1_002);
-pub(super) const DEMO_NAV_SELECTED_BG: ResourceKey = ResourceKey::new(1_003);
-pub(super) const DEMO_STAGE_BG: ResourceKey = ResourceKey::new(1_004);
-pub(super) const DEMO_STAGE_BORDER: ResourceKey = ResourceKey::new(1_005);
-pub(super) const DEMO_HEADER_BG: ResourceKey = ResourceKey::new(1_006);
-pub(super) const DEMO_HEADER_BORDER: ResourceKey = ResourceKey::new(1_007);
-pub(super) const DEMO_CARD_BG: ResourceKey = ResourceKey::new(1_008);
-pub(super) const DEMO_CARD_BORDER: ResourceKey = ResourceKey::new(1_009);
-pub(super) const DEMO_SPLIT_BORDER: ResourceKey = ResourceKey::new(1_010);
-pub(super) const DEMO_SPLIT_SCENE_BG: ResourceKey = ResourceKey::new(1_011);
-pub(super) const DEMO_SPLIT_INSPECTOR_BG: ResourceKey = ResourceKey::new(1_012);
-pub(super) const DEMO_MOTION_STAGE_BG: ResourceKey = ResourceKey::new(1_013);
-pub(super) const DEMO_ACCENT_BG: ResourceKey = ResourceKey::new(1_014);
-pub(super) const DEMO_TEXT_FG: ResourceKey = ResourceKey::new(1_015);
-pub(super) const DEMO_BODY_FG: ResourceKey = ResourceKey::new(1_016);
-pub(super) const DEMO_MUTED_FG: ResourceKey = ResourceKey::new(1_017);
-pub(super) const DEMO_TITLE_FG: ResourceKey = ResourceKey::new(1_018);
-pub(super) const DEMO_FOCUS_BORDER: ResourceKey = ResourceKey::new(1_019);
+pub(super) const RESOURCE_DEMO_ROOT_BG: &str = "demo.root.bg";
+pub(super) const RESOURCE_DEMO_NAV_BG: &str = "demo.nav.bg";
+pub(super) const RESOURCE_DEMO_NAV_BORDER: &str = "demo.nav.border";
+pub(super) const RESOURCE_DEMO_NAV_SELECTED_BG: &str = "demo.nav.selected.bg";
+pub(super) const RESOURCE_DEMO_STAGE_BG: &str = "demo.stage.bg";
+pub(super) const RESOURCE_DEMO_STAGE_BORDER: &str = "demo.stage.border";
+pub(super) const RESOURCE_DEMO_HEADER_BG: &str = "demo.header.bg";
+pub(super) const RESOURCE_DEMO_HEADER_BORDER: &str = "demo.header.border";
+pub(super) const RESOURCE_DEMO_CARD_BG: &str = "demo.card.bg";
+pub(super) const RESOURCE_DEMO_CARD_BORDER: &str = "demo.card.border";
+pub(super) const RESOURCE_DEMO_SPLIT_BORDER: &str = "demo.split.border";
+pub(super) const RESOURCE_DEMO_SPLIT_SCENE_BG: &str = "demo.split.scene.bg";
+pub(super) const RESOURCE_DEMO_SPLIT_INSPECTOR_BG: &str = "demo.split.inspector.bg";
+pub(super) const RESOURCE_DEMO_MOTION_STAGE_BG: &str = "demo.motion.stage.bg";
+pub(super) const RESOURCE_DEMO_ACCENT_BG: &str = "demo.accent.bg";
+pub(super) const RESOURCE_DEMO_TEXT_FG: &str = "demo.text.fg";
+pub(super) const RESOURCE_DEMO_BODY_FG: &str = "demo.body.fg";
+pub(super) const RESOURCE_DEMO_MUTED_FG: &str = "demo.muted.fg";
+pub(super) const RESOURCE_DEMO_TITLE_FG: &str = "demo.title.fg";
+pub(super) const RESOURCE_DEMO_FOCUS_BORDER: &str = "demo.focus.border";
 
 pub(super) const CLASS_DEMO_ROOT: &str = ".demo-root";
 pub(super) const CLASS_DEMO_NAV: &str = ".demo-nav";
@@ -67,6 +67,12 @@ pub(super) const CLASS_MOVER_SWATCH: &str = ".mover-swatch";
 pub(super) const CLASS_SRGB_SWATCH: &str = ".srgb-swatch";
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct DemoTokens {
+    pub(super) classes: DemoClasses,
+    pub(super) resources: DemoResources,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DemoClasses {
     pub(super) demo_root: ClassId,
     pub(super) demo_nav: ClassId,
@@ -102,45 +108,93 @@ pub(super) struct DemoClasses {
     pub(super) srgb_swatch: ClassId,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DemoResources {
+    pub(super) root_bg: ResourceKey,
+    pub(super) nav_bg: ResourceKey,
+    pub(super) nav_border: ResourceKey,
+    pub(super) nav_selected_bg: ResourceKey,
+    pub(super) stage_bg: ResourceKey,
+    pub(super) stage_border: ResourceKey,
+    pub(super) header_bg: ResourceKey,
+    pub(super) header_border: ResourceKey,
+    pub(super) card_bg: ResourceKey,
+    pub(super) card_border: ResourceKey,
+    pub(super) split_border: ResourceKey,
+    pub(super) split_scene_bg: ResourceKey,
+    pub(super) split_inspector_bg: ResourceKey,
+    pub(super) motion_stage_bg: ResourceKey,
+    pub(super) accent_bg: ResourceKey,
+    pub(super) text_fg: ResourceKey,
+    pub(super) body_fg: ResourceKey,
+    pub(super) muted_fg: ResourceKey,
+    pub(super) title_fg: ResourceKey,
+    pub(super) focus_border: ResourceKey,
+}
+
 pub(super) struct DemoStyleTokens;
 
 impl overstory::StyleTokenSet for DemoStyleTokens {
-    type Resolved = DemoClasses;
+    type Resolved = DemoTokens;
 
     fn resolve(vocabulary: &mut overstory::StyleVocabulary) -> Self::Resolved {
-        DemoClasses {
-            demo_root: vocabulary.class_id(CLASS_DEMO_ROOT),
-            demo_nav: vocabulary.class_id(CLASS_DEMO_NAV),
-            demo_nav_marker: vocabulary.class_id(CLASS_DEMO_NAV_MARKER),
-            demo_stage: vocabulary.class_id(CLASS_DEMO_STAGE),
-            demo_header: vocabulary.class_id(CLASS_DEMO_HEADER),
-            demo_header_accent: vocabulary.class_id(CLASS_DEMO_HEADER_ACCENT),
-            demo_card: vocabulary.class_id(CLASS_DEMO_CARD),
-            demo_nav_row: vocabulary.class_id(CLASS_DEMO_NAV_ROW),
-            demo_nav_label: vocabulary.class_id(CLASS_DEMO_NAV_LABEL),
-            demo_heading: vocabulary.class_id(CLASS_DEMO_HEADING),
-            demo_page_heading: vocabulary.class_id(CLASS_DEMO_PAGE_HEADING),
-            demo_caption: vocabulary.class_id(CLASS_DEMO_CAPTION),
-            demo_card_title: vocabulary.class_id(CLASS_DEMO_CARD_TITLE),
-            demo_control_label: vocabulary.class_id(CLASS_DEMO_CONTROL_LABEL),
-            demo_number: vocabulary.class_id(CLASS_DEMO_NUMBER),
-            demo_large_number: vocabulary.class_id(CLASS_DEMO_LARGE_NUMBER),
-            demo_body: vocabulary.class_id(CLASS_DEMO_BODY),
-            demo_split_scene: vocabulary.class_id(CLASS_DEMO_SPLIT_SCENE),
-            demo_split_inspector: vocabulary.class_id(CLASS_DEMO_SPLIT_INSPECTOR),
-            demo_motion_stage: vocabulary.class_id(CLASS_DEMO_MOTION_STAGE),
-            devtools_button: vocabulary.class_id(CLASS_DEVTOOLS_BUTTON),
-            demo_template_button_outer: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
-            demo_template_button_inner: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
-            demo_template_check_box_box: vocabulary.class_id(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
-            demo_template_slider_track: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
-            demo_template_slider_thumb: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
-            oklab_swatch: vocabulary.class_id(CLASS_OKLAB_SWATCH),
-            opacity_swatch: vocabulary.class_id(CLASS_OPACITY_SWATCH),
-            border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
-            retarget_swatch: vocabulary.class_id(CLASS_RETARGET_SWATCH),
-            mover_swatch: vocabulary.class_id(CLASS_MOVER_SWATCH),
-            srgb_swatch: vocabulary.class_id(CLASS_SRGB_SWATCH),
+        DemoTokens {
+            classes: DemoClasses {
+                demo_root: vocabulary.class_id(CLASS_DEMO_ROOT),
+                demo_nav: vocabulary.class_id(CLASS_DEMO_NAV),
+                demo_nav_marker: vocabulary.class_id(CLASS_DEMO_NAV_MARKER),
+                demo_stage: vocabulary.class_id(CLASS_DEMO_STAGE),
+                demo_header: vocabulary.class_id(CLASS_DEMO_HEADER),
+                demo_header_accent: vocabulary.class_id(CLASS_DEMO_HEADER_ACCENT),
+                demo_card: vocabulary.class_id(CLASS_DEMO_CARD),
+                demo_nav_row: vocabulary.class_id(CLASS_DEMO_NAV_ROW),
+                demo_nav_label: vocabulary.class_id(CLASS_DEMO_NAV_LABEL),
+                demo_heading: vocabulary.class_id(CLASS_DEMO_HEADING),
+                demo_page_heading: vocabulary.class_id(CLASS_DEMO_PAGE_HEADING),
+                demo_caption: vocabulary.class_id(CLASS_DEMO_CAPTION),
+                demo_card_title: vocabulary.class_id(CLASS_DEMO_CARD_TITLE),
+                demo_control_label: vocabulary.class_id(CLASS_DEMO_CONTROL_LABEL),
+                demo_number: vocabulary.class_id(CLASS_DEMO_NUMBER),
+                demo_large_number: vocabulary.class_id(CLASS_DEMO_LARGE_NUMBER),
+                demo_body: vocabulary.class_id(CLASS_DEMO_BODY),
+                demo_split_scene: vocabulary.class_id(CLASS_DEMO_SPLIT_SCENE),
+                demo_split_inspector: vocabulary.class_id(CLASS_DEMO_SPLIT_INSPECTOR),
+                demo_motion_stage: vocabulary.class_id(CLASS_DEMO_MOTION_STAGE),
+                devtools_button: vocabulary.class_id(CLASS_DEVTOOLS_BUTTON),
+                demo_template_button_outer: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_OUTER),
+                demo_template_button_inner: vocabulary.class_id(CLASS_DEMO_TEMPLATE_BUTTON_INNER),
+                demo_template_check_box_box: vocabulary.class_id(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
+                demo_template_slider_track: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
+                demo_template_slider_thumb: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+                oklab_swatch: vocabulary.class_id(CLASS_OKLAB_SWATCH),
+                opacity_swatch: vocabulary.class_id(CLASS_OPACITY_SWATCH),
+                border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
+                retarget_swatch: vocabulary.class_id(CLASS_RETARGET_SWATCH),
+                mover_swatch: vocabulary.class_id(CLASS_MOVER_SWATCH),
+                srgb_swatch: vocabulary.class_id(CLASS_SRGB_SWATCH),
+            },
+            resources: DemoResources {
+                root_bg: vocabulary.resource_key(RESOURCE_DEMO_ROOT_BG),
+                nav_bg: vocabulary.resource_key(RESOURCE_DEMO_NAV_BG),
+                nav_border: vocabulary.resource_key(RESOURCE_DEMO_NAV_BORDER),
+                nav_selected_bg: vocabulary.resource_key(RESOURCE_DEMO_NAV_SELECTED_BG),
+                stage_bg: vocabulary.resource_key(RESOURCE_DEMO_STAGE_BG),
+                stage_border: vocabulary.resource_key(RESOURCE_DEMO_STAGE_BORDER),
+                header_bg: vocabulary.resource_key(RESOURCE_DEMO_HEADER_BG),
+                header_border: vocabulary.resource_key(RESOURCE_DEMO_HEADER_BORDER),
+                card_bg: vocabulary.resource_key(RESOURCE_DEMO_CARD_BG),
+                card_border: vocabulary.resource_key(RESOURCE_DEMO_CARD_BORDER),
+                split_border: vocabulary.resource_key(RESOURCE_DEMO_SPLIT_BORDER),
+                split_scene_bg: vocabulary.resource_key(RESOURCE_DEMO_SPLIT_SCENE_BG),
+                split_inspector_bg: vocabulary.resource_key(RESOURCE_DEMO_SPLIT_INSPECTOR_BG),
+                motion_stage_bg: vocabulary.resource_key(RESOURCE_DEMO_MOTION_STAGE_BG),
+                accent_bg: vocabulary.resource_key(RESOURCE_DEMO_ACCENT_BG),
+                text_fg: vocabulary.resource_key(RESOURCE_DEMO_TEXT_FG),
+                body_fg: vocabulary.resource_key(RESOURCE_DEMO_BODY_FG),
+                muted_fg: vocabulary.resource_key(RESOURCE_DEMO_MUTED_FG),
+                title_fg: vocabulary.resource_key(RESOURCE_DEMO_TITLE_FG),
+                focus_border: vocabulary.resource_key(RESOURCE_DEMO_FOCUS_BORDER),
+            },
         }
     }
 }
@@ -162,70 +216,78 @@ impl DemoThemeMode {
         }
     }
 
-    pub(super) fn theme(self) -> understory_style::Theme {
+    pub(super) fn theme(self, resources: DemoResources) -> understory_style::Theme {
         match self {
             Self::Dark => theme::dark_theme_builder()
-                .set(DEMO_ROOT_BG, opt_solid(0x1e, 0x1e, 0x24, 0xff))
-                .set(DEMO_NAV_BG, opt_solid(0x22, 0x23, 0x2b, 0xff))
-                .set(DEMO_NAV_BORDER, opt_solid(0x3a, 0x3d, 0x4b, 0xff))
-                .set(DEMO_NAV_SELECTED_BG, opt_solid(0x4d, 0x6f, 0xdc, 0xff))
-                .set(DEMO_STAGE_BG, opt_solid(0x1b, 0x1c, 0x23, 0xff))
-                .set(DEMO_STAGE_BORDER, opt_solid(0x2f, 0x32, 0x3d, 0xff))
-                .set(DEMO_HEADER_BG, opt_solid(0x24, 0x25, 0x2e, 0xff))
-                .set(DEMO_HEADER_BORDER, opt_solid(0x3b, 0x3e, 0x4c, 0xff))
-                .set(DEMO_CARD_BG, opt_solid(0x27, 0x28, 0x31, 0xff))
-                .set(DEMO_CARD_BORDER, opt_solid(0x3b, 0x3d, 0x49, 0xff))
-                .set(DEMO_SPLIT_BORDER, opt_solid(0x48, 0x4c, 0x58, 0xff))
-                .set(DEMO_SPLIT_SCENE_BG, opt_solid(0x31, 0x35, 0x43, 0xff))
-                .set(DEMO_SPLIT_INSPECTOR_BG, opt_solid(0x2e, 0x3a, 0x35, 0xff))
-                .set(DEMO_MOTION_STAGE_BG, opt_solid(0x27, 0x28, 0x31, 0xff))
-                .set(DEMO_ACCENT_BG, opt_solid(0x59, 0x75, 0xe6, 0xff))
-                .set(DEMO_TEXT_FG, solid(0xf4, 0xf4, 0xf7, 0xff))
-                .set(DEMO_BODY_FG, solid(0xd8, 0xd9, 0xe2, 0xff))
-                .set(DEMO_MUTED_FG, solid(0xc8, 0xc8, 0xd2, 0xff))
-                .set(DEMO_TITLE_FG, solid(0x96, 0x9a, 0xa8, 0xff))
-                .set(DEMO_FOCUS_BORDER, opt_solid(0xee, 0xef, 0xf8, 0xff))
+                .set(resources.root_bg, opt_solid(0x1e, 0x1e, 0x24, 0xff))
+                .set(resources.nav_bg, opt_solid(0x22, 0x23, 0x2b, 0xff))
+                .set(resources.nav_border, opt_solid(0x3a, 0x3d, 0x4b, 0xff))
+                .set(resources.nav_selected_bg, opt_solid(0x4d, 0x6f, 0xdc, 0xff))
+                .set(resources.stage_bg, opt_solid(0x1b, 0x1c, 0x23, 0xff))
+                .set(resources.stage_border, opt_solid(0x2f, 0x32, 0x3d, 0xff))
+                .set(resources.header_bg, opt_solid(0x24, 0x25, 0x2e, 0xff))
+                .set(resources.header_border, opt_solid(0x3b, 0x3e, 0x4c, 0xff))
+                .set(resources.card_bg, opt_solid(0x27, 0x28, 0x31, 0xff))
+                .set(resources.card_border, opt_solid(0x3b, 0x3d, 0x49, 0xff))
+                .set(resources.split_border, opt_solid(0x48, 0x4c, 0x58, 0xff))
+                .set(resources.split_scene_bg, opt_solid(0x31, 0x35, 0x43, 0xff))
+                .set(
+                    resources.split_inspector_bg,
+                    opt_solid(0x2e, 0x3a, 0x35, 0xff),
+                )
+                .set(resources.motion_stage_bg, opt_solid(0x27, 0x28, 0x31, 0xff))
+                .set(resources.accent_bg, opt_solid(0x59, 0x75, 0xe6, 0xff))
+                .set(resources.text_fg, solid(0xf4, 0xf4, 0xf7, 0xff))
+                .set(resources.body_fg, solid(0xd8, 0xd9, 0xe2, 0xff))
+                .set(resources.muted_fg, solid(0xc8, 0xc8, 0xd2, 0xff))
+                .set(resources.title_fg, solid(0x96, 0x9a, 0xa8, 0xff))
+                .set(resources.focus_border, opt_solid(0xee, 0xef, 0xf8, 0xff))
                 .build(),
             Self::Light => theme::light_theme_builder()
-                .set(DEMO_ROOT_BG, opt_solid(0xf0, 0xf3, 0xf8, 0xff))
-                .set(DEMO_NAV_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
-                .set(DEMO_NAV_BORDER, opt_solid(0xd2, 0xd8, 0xe5, 0xff))
-                .set(DEMO_NAV_SELECTED_BG, opt_solid(0x2f, 0x62, 0xd6, 0xff))
-                .set(DEMO_STAGE_BG, opt_solid(0xf7, 0xf9, 0xfc, 0xff))
-                .set(DEMO_STAGE_BORDER, opt_solid(0xd8, 0xde, 0xea, 0xff))
-                .set(DEMO_HEADER_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
-                .set(DEMO_HEADER_BORDER, opt_solid(0xda, 0xe0, 0xeb, 0xff))
-                .set(DEMO_CARD_BG, opt_solid(0xff, 0xff, 0xff, 0xff))
-                .set(DEMO_CARD_BORDER, opt_solid(0xd8, 0xde, 0xea, 0xff))
-                .set(DEMO_SPLIT_BORDER, opt_solid(0xbf, 0xc7, 0xd5, 0xff))
-                .set(DEMO_SPLIT_SCENE_BG, opt_solid(0xec, 0xf1, 0xfb, 0xff))
-                .set(DEMO_SPLIT_INSPECTOR_BG, opt_solid(0xea, 0xf5, 0xef, 0xff))
-                .set(DEMO_MOTION_STAGE_BG, opt_solid(0xf2, 0xf4, 0xf8, 0xff))
-                .set(DEMO_ACCENT_BG, opt_solid(0x2f, 0x62, 0xd6, 0xff))
-                .set(DEMO_TEXT_FG, solid(0x16, 0x1a, 0x24, 0xff))
-                .set(DEMO_BODY_FG, solid(0x3a, 0x40, 0x4e, 0xff))
-                .set(DEMO_MUTED_FG, solid(0x61, 0x68, 0x78, 0xff))
-                .set(DEMO_TITLE_FG, solid(0x6a, 0x72, 0x83, 0xff))
-                .set(DEMO_FOCUS_BORDER, opt_solid(0x1e, 0x53, 0xc8, 0xff))
+                .set(resources.root_bg, opt_solid(0xf0, 0xf3, 0xf8, 0xff))
+                .set(resources.nav_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(resources.nav_border, opt_solid(0xd2, 0xd8, 0xe5, 0xff))
+                .set(resources.nav_selected_bg, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(resources.stage_bg, opt_solid(0xf7, 0xf9, 0xfc, 0xff))
+                .set(resources.stage_border, opt_solid(0xd8, 0xde, 0xea, 0xff))
+                .set(resources.header_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(resources.header_border, opt_solid(0xda, 0xe0, 0xeb, 0xff))
+                .set(resources.card_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
+                .set(resources.card_border, opt_solid(0xd8, 0xde, 0xea, 0xff))
+                .set(resources.split_border, opt_solid(0xbf, 0xc7, 0xd5, 0xff))
+                .set(resources.split_scene_bg, opt_solid(0xec, 0xf1, 0xfb, 0xff))
+                .set(
+                    resources.split_inspector_bg,
+                    opt_solid(0xea, 0xf5, 0xef, 0xff),
+                )
+                .set(resources.motion_stage_bg, opt_solid(0xf2, 0xf4, 0xf8, 0xff))
+                .set(resources.accent_bg, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(resources.text_fg, solid(0x16, 0x1a, 0x24, 0xff))
+                .set(resources.body_fg, solid(0x3a, 0x40, 0x4e, 0xff))
+                .set(resources.muted_fg, solid(0x61, 0x68, 0x78, 0xff))
+                .set(resources.title_fg, solid(0x6a, 0x72, 0x83, 0xff))
+                .set(resources.focus_border, opt_solid(0x1e, 0x53, 0xc8, 0xff))
                 .build(),
         }
     }
 }
-pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses) -> StyleCascade {
+pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -> StyleCascade {
+    let classes = tokens.classes;
+    let resources = tokens.resources;
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
             class_selector(classes.demo_root),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ROOT_BG)
+                .background_resource(properties, resources.root_bg)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(classes.demo_nav),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_NAV_BG)
-                .border_brush_resource(properties, DEMO_NAV_BORDER)
+                .background_resource(properties, resources.nav_bg)
+                .border_brush_resource(properties, resources.nav_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 16.0_f64)
                 .build(),
@@ -234,8 +296,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_stage),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_STAGE_BG)
-                .border_brush_resource(properties, DEMO_STAGE_BORDER)
+                .background_resource(properties, resources.stage_bg)
+                .border_brush_resource(properties, resources.stage_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 18.0_f64)
                 .build(),
@@ -244,8 +306,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_header),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_HEADER_BG)
-                .border_brush_resource(properties, DEMO_HEADER_BORDER)
+                .background_resource(properties, resources.header_bg)
+                .border_brush_resource(properties, resources.header_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 16.0_f64)
                 .build(),
@@ -254,8 +316,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_card),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_CARD_BG)
-                .border_brush_resource(properties, DEMO_CARD_BORDER)
+                .background_resource(properties, resources.card_bg)
+                .border_brush_resource(properties, resources.card_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 12.0_f64)
                 .build(),
@@ -264,7 +326,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_nav_marker),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
                 .corner_radius(properties, 2.0_f64)
                 .build(),
         )
@@ -272,7 +334,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_header_accent),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
                 .corner_radius(properties, 8.0_f64)
                 .build(),
         )
@@ -280,8 +342,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_nav_row),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_NAV_BG)
-                .border_brush_resource(properties, DEMO_NAV_BG)
+                .background_resource(properties, resources.nav_bg)
+                .border_brush_resource(properties, resources.nav_bg)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 8.0_f64)
                 .build(),
@@ -290,23 +352,23 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_state_selector(classes.demo_nav_row, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_NAV_SELECTED_BG)
-                .border_brush_resource(properties, DEMO_NAV_SELECTED_BG)
+                .background_resource(properties, resources.nav_selected_bg)
+                .border_brush_resource(properties, resources.nav_selected_bg)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_state_selector(classes.demo_nav_row, PSEUDO_FOCUS_VISIBLE),
             StyleBuilder::new()
-                .border_brush_resource(properties, DEMO_FOCUS_BORDER)
+                .border_brush_resource(properties, resources.focus_border)
                 .build(),
         )
         .push_rule(
             StyleOrigin::Base,
             class_selector(classes.demo_split_scene),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_SPLIT_SCENE_BG)
-                .border_brush_resource(properties, DEMO_SPLIT_BORDER)
+                .background_resource(properties, resources.split_scene_bg)
+                .border_brush_resource(properties, resources.split_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 8.0_f64)
                 .build(),
@@ -315,8 +377,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_split_inspector),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_SPLIT_INSPECTOR_BG)
-                .border_brush_resource(properties, DEMO_SPLIT_BORDER)
+                .background_resource(properties, resources.split_inspector_bg)
+                .border_brush_resource(properties, resources.split_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 8.0_f64)
                 .build(),
@@ -325,8 +387,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             class_selector(classes.demo_motion_stage),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_MOTION_STAGE_BG)
-                .border_brush_resource(properties, DEMO_MOTION_STAGE_BG)
+                .background_resource(properties, resources.motion_stage_bg)
+                .border_brush_resource(properties, resources.motion_stage_bg)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 14.0_f64)
                 .build(),
@@ -335,7 +397,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_heading),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 26.0_f64)
                 .build(),
         )
@@ -343,7 +405,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_page_heading),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 22.0_f64)
                 .build(),
         )
@@ -351,7 +413,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_caption),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_MUTED_FG)
+                .set_resource(properties.foreground, resources.muted_fg)
                 .set(properties.font_size, 13.0_f64)
                 .build(),
         )
@@ -359,7 +421,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_card_title),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TITLE_FG)
+                .set_resource(properties.foreground, resources.title_fg)
                 .set(properties.font_size, 12.0_f64)
                 .build(),
         )
@@ -367,7 +429,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_control_label),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 15.0_f64)
                 .build(),
         )
@@ -375,7 +437,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_nav_label),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 15.0_f64)
                 .build(),
         )
@@ -390,8 +452,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             button_class_state_selector(classes.devtools_button, PSEUDO_SELECTED),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
-                .border_brush_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
+                .border_brush_resource(properties, resources.accent_bg)
                 .set_resource(properties.foreground, theme::ON_ACCENT_FG)
                 .build(),
         )
@@ -417,7 +479,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             untyped_class_selector(classes.demo_template_button_inner),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x80))
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 9.0_f64)
@@ -435,8 +497,8 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             untyped_class_selector(classes.demo_template_check_box_box),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
-                .border_brush_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
+                .border_brush_resource(properties, resources.accent_bg)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 12.0_f64)
                 .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
@@ -446,7 +508,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             untyped_class_selector(classes.demo_template_slider_track),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_SPLIT_BORDER)
+                .background_resource(properties, resources.split_border)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0x40))
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 5.0_f64)
@@ -461,7 +523,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             untyped_class_selector(classes.demo_template_slider_thumb),
             StyleBuilder::new()
-                .background_resource(properties, DEMO_ACCENT_BG)
+                .background_resource(properties, resources.accent_bg)
                 .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xd0))
                 .border_width(properties, 2.0_f64)
                 .corner_radius(properties, 11.0_f64)
@@ -472,7 +534,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_number),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 22.0_f64)
                 .build(),
         )
@@ -480,7 +542,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_large_number),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_TEXT_FG)
+                .set_resource(properties.foreground, resources.text_fg)
                 .set(properties.font_size, 34.0_f64)
                 .build(),
         )
@@ -488,7 +550,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, classes: DemoClasses)
             StyleOrigin::Base,
             text_class_selector(classes.demo_body),
             StyleBuilder::new()
-                .set_resource(properties.foreground, DEMO_BODY_FG)
+                .set_resource(properties.foreground, resources.body_fg)
                 .set(properties.font_size, 14.0_f64)
                 .build(),
         )

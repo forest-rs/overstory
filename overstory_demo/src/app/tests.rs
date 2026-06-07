@@ -63,6 +63,17 @@ fn gallery_registers_demo_style_token_names() {
         assert_eq!(vocabulary.class_name(class), Some(class_name));
     }
 
+    for resource_name in [
+        RESOURCE_DEMO_ROOT_BG,
+        RESOURCE_DEMO_CARD_BG,
+        RESOURCE_DEMO_ACCENT_BG,
+    ] {
+        let resource = vocabulary
+            .resource_key_by_name(resource_name)
+            .expect("demo style token set should register every owned resource");
+        assert_eq!(vocabulary.resource_name(resource), Some(resource_name));
+    }
+
     let root_class = vocabulary
         .class_id_by_name(CLASS_DEMO_ROOT)
         .expect("demo root class should be registered");

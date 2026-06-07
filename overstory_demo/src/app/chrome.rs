@@ -161,7 +161,7 @@ pub(super) fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, shell: Rc<De
 }
 
 pub(super) fn switch_demo_theme(ui: &mut Ui, shell: &DemoShellState) {
-    ui.set_theme(shell.toggle_theme().theme());
+    ui.set_theme(shell.toggle_theme().theme(shell.resources()));
 }
 
 pub(super) fn activate_nav_page(

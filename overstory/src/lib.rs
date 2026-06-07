@@ -255,11 +255,11 @@ pub mod prelude {
         CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt,
         Expander, ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel,
         PartTag, Popup, ProgressBar, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt,
-        ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
-        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
-        SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration,
-        ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View,
-        Viewport,
+        ResourceKey, ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select,
+        Size, Slider, Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary,
+        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt,
+        TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding,
+        VectorPath, View, Viewport,
     };
 }
 
@@ -278,6 +278,6 @@ pub use understory_presentation::{
 pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;
 pub use understory_style::{
-    ClassId, PartTag, PseudoClassId, StyleTokenSet, StyleVocabulary, TypeTag,
+    ClassId, PartTag, PseudoClassId, ResourceKey, StyleTokenSet, StyleVocabulary, TypeTag,
 };
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
