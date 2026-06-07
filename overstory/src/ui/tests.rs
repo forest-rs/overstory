@@ -4010,6 +4010,71 @@ fn inspection_changes_track_existing_element_state_updates() {
 }
 
 #[test]
+fn inspection_changes_coalesce_existing_element_updates_until_drain() {
+    use crate::inspection::ElementPropertyInspectionValue;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, crate::Button::new("Inspect"));
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    ui.set_local(button, ui.properties().opacity, 0.25);
+    ui.set_local(button, ui.properties().opacity, 0.5);
+    ui.add_pseudo(button, PSEUDO_HOVER);
+
+    let changes = ui.drain_inspection_changes();
+    let button_rows: Vec<_> = changes
+        .tree
+        .upserted
+        .iter()
+        .filter(|row| row.id == button)
+        .collect();
+
+    assert_eq!(
+        button_rows.len(),
+        1,
+        "live inspection should materialize one final row per dirty element"
+    );
+    let button_row = button_rows[0];
+    assert!(button_row.state.hovered);
+    assert!(
+        button_row.properties.iter().any(|property| {
+            property.name == "Opacity"
+                && property.value == ElementPropertyInspectionValue::Number(0.5)
+        }),
+        "coalesced row should report the final property value"
+    );
+}
+
+#[test]
+fn inspection_changes_do_not_materialize_removed_dirty_elements() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let parent = ui.append(root, crate::Panel::new());
+    let child = ui.append(parent, crate::Panel::new());
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    ui.set_local(child, ui.properties().opacity, 0.25);
+    ui.remove(child);
+
+    let changes = ui.drain_inspection_changes();
+
+    assert!(
+        changes
+            .tree
+            .removed
+            .iter()
+            .any(|removal| removal.id == child && removal.parent == Some(parent))
+    );
+    assert!(
+        !changes.tree.upserted.iter().any(|row| row.id == child),
+        "removed dirty elements should not be materialized during drain"
+    );
+}
+
+#[test]
 fn inspection_snapshot_reports_timeline_counts() {
     let mut ui = Ui::new();
     let root = ui.root();

@@ -9,9 +9,9 @@ use crate::inspection::{
     CompositionChangeStats, CompositionInspectionSnapshot, CompositionLayerInspectionRow,
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
-    ElementPropertyInspectionValue, ElementStateInspection, LayerInspectionId, SurfaceInspectionId,
-    TemplateContractInspection, TimelineInspectionSnapshot, UiInspectionChanges,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
+    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection, TimelineInspectionSnapshot,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
@@ -47,7 +47,20 @@ impl Ui {
     pub fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
         let root = self.root();
         let frame = self.frame_stats();
-        self.inspection_changes.drain(root, frame)
+        let pending = self.inspection_changes.drain(frame);
+        let upserted = pending
+            .upserted
+            .into_iter()
+            .filter_map(|id| self.element_inspection_row(id))
+            .collect();
+        UiInspectionChanges {
+            tree: ElementTreeInspectionPatch {
+                root: Some(root),
+                removed: pending.removed,
+                upserted,
+            },
+            frame: pending.frame,
+        }
     }
 
     /// Starts recording live inspection changes.
@@ -92,8 +105,8 @@ impl Ui {
     }
 
     pub(in crate::ui) fn record_element_tree_upsert(&mut self, id: crate::ElementId) {
-        if let Some(row) = self.element_inspection_row(id) {
-            self.inspection_changes.record_tree_upsert(row);
+        if self.get(id).is_some() {
+            self.inspection_changes.record_tree_upsert(id);
         }
     }
 

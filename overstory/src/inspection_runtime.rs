@@ -9,11 +9,11 @@
 
 use alloc::vec::Vec;
 
+use hashbrown::HashSet;
+
 use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
-use crate::inspection::{
-    ElementInspectionRemoval, ElementInspectionRow, ElementTreeInspectionPatch, UiInspectionChanges,
-};
+use crate::inspection::ElementInspectionRemoval;
 
 #[derive(Debug, Default)]
 pub(crate) struct InspectionChangeRuntime {
@@ -38,11 +38,11 @@ impl InspectionChangeRuntime {
         self.recording_depth > 0
     }
 
-    pub(crate) fn record_tree_upsert(&mut self, row: ElementInspectionRow) {
+    pub(crate) fn record_tree_upsert(&mut self, id: ElementId) {
         if !self.is_recording() {
             return;
         }
-        self.tree.record_upsert(row);
+        self.tree.record_upsert(id);
     }
 
     pub(crate) fn record_tree_removal(&mut self, removal: ElementInspectionRemoval) {
@@ -59,9 +59,10 @@ impl InspectionChangeRuntime {
         self.frame_dirty = true;
     }
 
-    pub(crate) fn drain(&mut self, root: ElementId, frame: UiFrameStats) -> UiInspectionChanges {
-        let changes = UiInspectionChanges {
-            tree: self.tree.drain(root),
+    pub(crate) fn drain(&mut self, frame: UiFrameStats) -> PendingInspectionChanges {
+        let changes = PendingInspectionChanges {
+            removed: core::mem::take(&mut self.tree.removed),
+            upserted: self.tree.drain_upserts(),
             frame: self.frame_dirty.then_some(frame),
         };
         self.frame_dirty = false;
@@ -75,29 +76,33 @@ impl InspectionChangeRuntime {
 }
 
 #[derive(Debug, Default)]
+pub(crate) struct PendingInspectionChanges {
+    pub(crate) removed: Vec<ElementInspectionRemoval>,
+    pub(crate) upserted: Vec<ElementId>,
+    pub(crate) frame: Option<UiFrameStats>,
+}
+
+#[derive(Debug, Default)]
 struct ElementTreeChangeRuntime {
     removed: Vec<ElementInspectionRemoval>,
-    upserted: Vec<ElementInspectionRow>,
+    upserted: Vec<ElementId>,
+    upserted_set: HashSet<ElementId>,
 }
 
 impl ElementTreeChangeRuntime {
-    fn record_upsert(&mut self, row: ElementInspectionRow) {
-        if self.removed.iter().any(|removal| removal.id == row.id) {
+    fn record_upsert(&mut self, id: ElementId) {
+        if self.removed.iter().any(|removal| removal.id == id) {
             return;
         }
-        if let Some(existing) = self
-            .upserted
-            .iter_mut()
-            .find(|existing| existing.id == row.id)
-        {
-            *existing = row;
-        } else {
-            self.upserted.push(row);
+        if self.upserted_set.insert(id) {
+            self.upserted.push(id);
         }
     }
 
     fn record_removal(&mut self, removal: ElementInspectionRemoval) {
-        self.upserted.retain(|row| row.id != removal.id);
+        if self.upserted_set.remove(&removal.id) {
+            self.upserted.retain(|id| *id != removal.id);
+        }
         if !self
             .removed
             .iter()
@@ -107,16 +112,14 @@ impl ElementTreeChangeRuntime {
         }
     }
 
-    fn drain(&mut self, root: ElementId) -> ElementTreeInspectionPatch {
-        ElementTreeInspectionPatch {
-            root: Some(root),
-            removed: core::mem::take(&mut self.removed),
-            upserted: core::mem::take(&mut self.upserted),
-        }
+    fn drain_upserts(&mut self) -> Vec<ElementId> {
+        self.upserted_set.clear();
+        core::mem::take(&mut self.upserted)
     }
 
     fn clear(&mut self) {
         self.removed.clear();
         self.upserted.clear();
+        self.upserted_set.clear();
     }
 }
