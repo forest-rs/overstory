@@ -45,6 +45,13 @@ impl InspectionChangeRuntime {
         self.tree.record_upsert(id);
     }
 
+    pub(crate) fn record_tree_update(&mut self, id: ElementId) {
+        if !self.is_recording() {
+            return;
+        }
+        self.tree.record_update(id);
+    }
+
     pub(crate) fn record_tree_removal(&mut self, removal: ElementInspectionRemoval) {
         if !self.is_recording() {
             return;
@@ -63,6 +70,7 @@ impl InspectionChangeRuntime {
         let changes = PendingInspectionChanges {
             removed: core::mem::take(&mut self.tree.removed),
             upserted: self.tree.drain_upserts(),
+            updated: self.tree.drain_updates(),
             frame: self.frame_dirty.then_some(frame),
         };
         self.frame_dirty = false;
@@ -79,6 +87,7 @@ impl InspectionChangeRuntime {
 pub(crate) struct PendingInspectionChanges {
     pub(crate) removed: Vec<ElementInspectionRemoval>,
     pub(crate) upserted: Vec<ElementId>,
+    pub(crate) updated: Vec<ElementId>,
     pub(crate) frame: Option<UiFrameStats>,
 }
 
@@ -87,6 +96,8 @@ struct ElementTreeChangeRuntime {
     removed: Vec<ElementInspectionRemoval>,
     upserted: Vec<ElementId>,
     upserted_set: HashSet<ElementId>,
+    updated: Vec<ElementId>,
+    updated_set: HashSet<ElementId>,
 }
 
 impl ElementTreeChangeRuntime {
@@ -94,14 +105,29 @@ impl ElementTreeChangeRuntime {
         if self.removed.iter().any(|removal| removal.id == id) {
             return;
         }
+        if self.updated_set.remove(&id) {
+            self.updated.retain(|updated| *updated != id);
+        }
         if self.upserted_set.insert(id) {
             self.upserted.push(id);
+        }
+    }
+
+    fn record_update(&mut self, id: ElementId) {
+        if self.removed.iter().any(|removal| removal.id == id) || self.upserted_set.contains(&id) {
+            return;
+        }
+        if self.updated_set.insert(id) {
+            self.updated.push(id);
         }
     }
 
     fn record_removal(&mut self, removal: ElementInspectionRemoval) {
         if self.upserted_set.remove(&removal.id) {
             self.upserted.retain(|id| *id != removal.id);
+        }
+        if self.updated_set.remove(&removal.id) {
+            self.updated.retain(|id| *id != removal.id);
         }
         if !self
             .removed
@@ -117,9 +143,16 @@ impl ElementTreeChangeRuntime {
         core::mem::take(&mut self.upserted)
     }
 
+    fn drain_updates(&mut self) -> Vec<ElementId> {
+        self.updated_set.clear();
+        core::mem::take(&mut self.updated)
+    }
+
     fn clear(&mut self) {
         self.removed.clear();
         self.upserted.clear();
         self.upserted_set.clear();
+        self.updated.clear();
+        self.updated_set.clear();
     }
 }

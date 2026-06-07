@@ -3837,6 +3837,7 @@ fn inspection_changes_track_tree_insertions_and_removals() {
     let inserted = ui.drain_inspection_changes();
 
     assert!(inserted.tree.removed.is_empty());
+    assert!(inserted.tree.updated.is_empty());
     assert!(
         inserted
             .tree
@@ -3885,6 +3886,7 @@ fn inspection_changes_track_tree_insertions_and_removals() {
             .any(|row| row.id == root && !row.children.contains(&parent))
     );
     assert!(!removed.tree.upserted.iter().any(|row| row.id == parent));
+    assert!(!removed.tree.updated.iter().any(|row| row.id == parent));
 
     ui.end_live_inspection_recording();
     assert!(!ui.is_live_inspection_recording());
@@ -3955,12 +3957,13 @@ fn inspection_changes_track_existing_element_state_updates() {
 
     ui.add_pseudo(button, PSEUDO_HOVER);
     let hovered = ui.drain_inspection_changes();
+    assert!(hovered.tree.upserted.is_empty());
     let hovered_row = hovered
         .tree
-        .upserted
+        .updated
         .iter()
         .find(|row| row.id == button)
-        .expect("hover should upsert button row");
+        .expect("hover should update button row");
     assert!(hovered_row.state.hovered);
     assert!(hovered_row.pseudos.contains(&PSEUDO_HOVER));
 
@@ -3969,7 +3972,7 @@ fn inspection_changes_track_existing_element_state_updates() {
     assert!(
         unfocusable
             .tree
-            .upserted
+            .updated
             .iter()
             .any(|row| row.id == button && !row.state.focusable)
     );
@@ -3980,7 +3983,7 @@ fn inspection_changes_track_existing_element_state_updates() {
     assert!(
         focused
             .tree
-            .upserted
+            .updated
             .iter()
             .any(|row| { row.id == button && row.state.focused && row.state.focus_visible })
     );
@@ -3990,7 +3993,7 @@ fn inspection_changes_track_existing_element_state_updates() {
     assert!(
         captured
             .tree
-            .upserted
+            .updated
             .iter()
             .any(|row| row.id == button && row.state.pointer_captured)
     );
@@ -3998,14 +4001,14 @@ fn inspection_changes_track_existing_element_state_updates() {
     ui.set_local(button, ui.properties().opacity, 0.25);
     let property_update = ui.drain_inspection_changes();
     assert!(
-        property_update.tree.upserted.iter().any(|row| {
+        property_update.tree.updated.iter().any(|row| {
             row.id == button
                 && row.properties.iter().any(|property| {
                     property.name == "Opacity"
                         && property.value == ElementPropertyInspectionValue::Number(0.25)
                 })
         }),
-        "property writes should upsert rows for live inspectors"
+        "property writes should update rows for live inspectors"
     );
 }
 
@@ -4024,9 +4027,10 @@ fn inspection_changes_coalesce_existing_element_updates_until_drain() {
     ui.add_pseudo(button, PSEUDO_HOVER);
 
     let changes = ui.drain_inspection_changes();
+    assert!(changes.tree.upserted.is_empty());
     let button_rows: Vec<_> = changes
         .tree
-        .upserted
+        .updated
         .iter()
         .filter(|row| row.id == button)
         .collect();
@@ -4044,6 +4048,35 @@ fn inspection_changes_coalesce_existing_element_updates_until_drain() {
                 && property.value == ElementPropertyInspectionValue::Number(0.5)
         }),
         "coalesced row should report the final property value"
+    );
+}
+
+#[test]
+fn inspection_changes_keep_inserted_elements_in_upsert_lane() {
+    use crate::inspection::ElementPropertyInspectionValue;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    let child = ui.append(root, crate::Panel::new());
+    ui.set_local(child, ui.properties().opacity, 0.5);
+
+    let changes = ui.drain_inspection_changes();
+    assert!(
+        changes.tree.updated.is_empty(),
+        "new elements should not be duplicated as detail-only updates"
+    );
+    assert!(
+        changes.tree.upserted.iter().any(|row| {
+            row.id == child
+                && row.properties.iter().any(|property| {
+                    property.name == "Opacity"
+                        && property.value == ElementPropertyInspectionValue::Number(0.5)
+                })
+        }),
+        "upserted rows should be materialized with final pre-drain values"
     );
 }
 
@@ -4070,7 +4103,11 @@ fn inspection_changes_do_not_materialize_removed_dirty_elements() {
     );
     assert!(
         !changes.tree.upserted.iter().any(|row| row.id == child),
-        "removed dirty elements should not be materialized during drain"
+        "removed dirty elements should not be materialized as upserts during drain"
+    );
+    assert!(
+        !changes.tree.updated.iter().any(|row| row.id == child),
+        "removed dirty elements should not be materialized as updates during drain"
     );
 }
 

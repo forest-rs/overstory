@@ -29,7 +29,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -40,7 +40,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.style_one_for_insert(id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -52,7 +52,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -66,7 +66,7 @@ impl Ui {
         if changed {
             self.restyle_subtree(id);
             transition_plan.apply_after(self, id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -80,7 +80,7 @@ impl Ui {
         if changed {
             self.restyle_subtree(id);
             transition_plan.apply_after(self, id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -172,7 +172,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.style_one_for_insert(id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -183,7 +183,7 @@ impl Ui {
             .unwrap_or(false);
         if changed {
             self.style_one_for_insert(id);
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -234,7 +234,7 @@ impl Ui {
         }
         self.geometry.set_flags(primary, flags);
         if changed {
-            self.record_element_tree_upsert(id);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -337,10 +337,10 @@ impl Ui {
         }
         if changed {
             if let Some(previous) = previous {
-                self.record_element_tree_upsert(previous);
+                self.record_element_tree_update(previous);
             }
             if let Some(accepted) = accepted {
-                self.record_element_tree_upsert(accepted);
+                self.record_element_tree_update(accepted);
             }
             self.dispatch_focus_change(previous, accepted, focus_visible, reason);
             self.refresh_tooltip_from_focus();
@@ -524,10 +524,10 @@ impl Ui {
         }
         self.events.set_pointer_capture(new);
         if let Some(previous) = previous {
-            self.record_element_tree_upsert(previous);
+            self.record_element_tree_update(previous);
         }
         if let Some(new) = new {
-            self.record_element_tree_upsert(new);
+            self.record_element_tree_update(new);
         }
         true
     }

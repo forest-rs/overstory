@@ -389,7 +389,7 @@ impl Ui {
             self.frame_stats.channel_marks.record(channel);
             self.invalidation.mark(id, channel);
         }
-        self.record_element_tree_upsert(id);
+        self.record_element_tree_update(id);
     }
 
     /// Clears frame-pipeline counters before a host prepares a new frame.

@@ -53,11 +53,17 @@ impl Ui {
             .into_iter()
             .filter_map(|id| self.element_inspection_row(id))
             .collect();
+        let updated = pending
+            .updated
+            .into_iter()
+            .filter_map(|id| self.element_inspection_row(id))
+            .collect();
         UiInspectionChanges {
             tree: ElementTreeInspectionPatch {
                 root: Some(root),
                 removed: pending.removed,
                 upserted,
+                updated,
             },
             frame: pending.frame,
         }
@@ -107,6 +113,12 @@ impl Ui {
     pub(in crate::ui) fn record_element_tree_upsert(&mut self, id: crate::ElementId) {
         if self.get(id).is_some() {
             self.inspection_changes.record_tree_upsert(id);
+        }
+    }
+
+    pub(in crate::ui) fn record_element_tree_update(&mut self, id: crate::ElementId) {
+        if self.get(id).is_some() {
+            self.inspection_changes.record_tree_update(id);
         }
     }
 

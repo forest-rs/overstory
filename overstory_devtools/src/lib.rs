@@ -280,25 +280,38 @@ fn filter_inspection_changes(
         .upserted
         .into_iter()
         .filter(|row| target.element_is_included(row.id))
-        .map(|mut row| {
-            if row.id == target.root {
-                row.parent = None;
-            } else {
-                row.parent = row
-                    .parent
-                    .filter(|parent| target.element_is_included(*parent));
-            }
-            row.children
-                .retain(|child| target.element_is_included(*child));
-            sanitize_template_links(&mut row, |element| target.element_is_included(element));
-            row
-        })
+        .map(|row| filter_inspection_row(row, target))
+        .collect();
+    let updated = changes
+        .tree
+        .updated
+        .into_iter()
+        .filter(|row| target.element_is_included(row.id))
+        .map(|row| filter_inspection_row(row, target))
         .collect();
 
     changes.tree.root = Some(target.root);
     changes.tree.removed = removed;
     changes.tree.upserted = upserted;
+    changes.tree.updated = updated;
     changes
+}
+
+fn filter_inspection_row(
+    mut row: ElementInspectionRow,
+    target: &UiLiveInspectionTarget<'_>,
+) -> ElementInspectionRow {
+    if row.id == target.root {
+        row.parent = None;
+    } else {
+        row.parent = row
+            .parent
+            .filter(|parent| target.element_is_included(*parent));
+    }
+    row.children
+        .retain(|child| target.element_is_included(*child));
+    sanitize_template_links(&mut row, |element| target.element_is_included(element));
+    row
 }
 
 /// Owned devtools snapshot plus lightweight lookup tables.
@@ -363,7 +376,7 @@ impl DevtoolsSnapshot {
             .elements
             .retain(|row| removed_ids.binary_search(&row.id).is_err());
 
-        for row in patch.upserted {
+        for row in patch.upserted.into_iter().chain(patch.updated) {
             if let Some(existing) = self
                 .inspection
                 .elements
@@ -2068,6 +2081,24 @@ mod tests {
                 .upserted
                 .iter()
                 .any(|row| row.id == devtools || row.id == devtools_child)
+        );
+
+        ui.set_local(app_child, ui.properties().opacity, 0.5);
+        ui.set_local(devtools_child, ui.properties().opacity, 0.5);
+        let changes = {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
+            target.drain_inspection_changes()
+        };
+
+        assert!(changes.tree.removed.is_empty());
+        assert!(changes.tree.upserted.is_empty());
+        assert!(changes.tree.updated.iter().any(|row| row.id == app_child));
+        assert!(
+            !changes
+                .tree
+                .updated
+                .iter()
+                .any(|row| row.id == devtools_child)
         );
         {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);

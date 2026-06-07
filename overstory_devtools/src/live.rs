@@ -200,6 +200,7 @@ impl LiveDevtools {
                 .iter()
                 .any(|removal| removal.id == element)
                 || changes.tree.upserted.iter().any(|row| row.id == element)
+                || changes.tree.updated.iter().any(|row| row.id == element)
         });
         let event = self
             .session

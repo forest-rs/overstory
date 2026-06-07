@@ -155,9 +155,17 @@ impl DevtoolsSession {
             return None;
         }
 
-        let previous_tree = self.snapshot.inspection_element_tree();
+        let tree_topology_changed =
+            !changes.tree.removed.is_empty() || !changes.tree.upserted.is_empty();
+        let previous_tree = tree_topology_changed.then(|| self.snapshot.inspection_element_tree());
         self.snapshot.apply_inspection_changes(changes);
         self.normalize_selected_element();
+        let Some(previous_tree) = previous_tree else {
+            return Some(DevtoolsEvent::TargetChanged {
+                selected: self.selected_element,
+            });
+        };
+
         let current_tree = self.snapshot.inspection_element_tree();
         let tree_patch = previous_tree.patch_to(&current_tree);
         if tree_patch.removed.is_empty() && tree_patch.upserted.is_empty() {

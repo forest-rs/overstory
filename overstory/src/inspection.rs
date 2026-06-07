@@ -101,15 +101,24 @@ pub struct ElementTreeInspectionPatch {
     pub root: Option<ElementId>,
     /// Elements removed from the tree.
     pub removed: Vec<ElementInspectionRemoval>,
-    /// Added or updated element rows.
+    /// Added or structurally changed element rows.
+    ///
+    /// These rows can change a retained inspector's projected tree because the
+    /// element is new, moved, or has updated child links.
     pub upserted: Vec<ElementInspectionRow>,
+    /// Existing element rows whose inspectable details changed.
+    ///
+    /// These rows update the retained mirror but do not imply a topology
+    /// change. A devtools frontend may refresh a details pane without
+    /// rebuilding an outline/tree control.
+    pub updated: Vec<ElementInspectionRow>,
 }
 
 impl ElementTreeInspectionPatch {
     /// Returns whether this patch changes no element rows.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.removed.is_empty() && self.upserted.is_empty()
+        self.removed.is_empty() && self.upserted.is_empty() && self.updated.is_empty()
     }
 }
 
