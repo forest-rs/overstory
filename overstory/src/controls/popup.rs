@@ -27,9 +27,11 @@
 use alloc::boxed::Box;
 
 use kurbo::{Point, Vec2};
+use understory_presentation::Edges;
 use understory_style::TypeTag;
 
 use crate::composition::CompositionPolicy;
+use crate::controls::support::box_padding_xy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
@@ -44,8 +46,7 @@ pub const TYPE_POPUP: TypeTag = TypeTag(16);
 pub struct Popup {
     placement: Placement,
     offset: Vec2,
-    padding_x: f32,
-    padding_y: f32,
+    padding: Edges<f64>,
     dismiss_on_outside_pointer: bool,
     dismiss_on_escape: bool,
     restore_focus_on_close: bool,
@@ -59,8 +60,7 @@ impl Popup {
         Self {
             placement: Placement::Bottom,
             offset: Vec2::new(0.0, 6.0),
-            padding_x: 10.0,
-            padding_y: 8.0,
+            padding: box_padding_xy(10.0, 8.0),
             dismiss_on_outside_pointer: true,
             dismiss_on_escape: true,
             restore_focus_on_close: true,
@@ -85,8 +85,7 @@ impl Popup {
     /// Sets the popup's horizontal and vertical padding.
     #[must_use]
     pub fn padding(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.padding_x = horizontal;
-        self.padding_y = vertical;
+        self.padding = box_padding_xy(horizontal, vertical);
         self
     }
 
@@ -131,6 +130,10 @@ impl Popup {
         self.restore_focus_on_close
     }
 
+    pub(crate) fn padding_edges(&self) -> Edges<f64> {
+        self.padding
+    }
+
     pub(crate) fn layout_for(&self, origin: Point) -> Layout {
         #[expect(
             clippy::cast_possible_truncation,
@@ -142,9 +145,7 @@ impl Popup {
             reason = "popup coordinates fit the layout engine"
         )]
         let top = origin.y as f32;
-        Layout::column(0.0)
-            .absolute_at(left, top)
-            .padding_xy(self.padding_x, self.padding_y)
+        Layout::column(0.0).absolute_at(left, top)
     }
 }
 
@@ -195,6 +196,7 @@ pub(crate) fn append_overlay_popup(ui: &mut Ui, popup: &Popup, origin: Point) ->
 fn append_popup(ui: &mut Ui, parent: ElementId, popup: &Popup, origin: Point) -> ElementId {
     let id = ui.append_widget(parent, Box::new(PopupWidget));
     ui.set_layout(id, popup.layout_for(origin));
+    ui.set_box_padding(id, popup.padding_edges());
     popup.element.clone().apply_to(ui, id);
     id
 }

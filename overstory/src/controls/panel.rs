@@ -27,6 +27,7 @@ use understory_style::{ClassId, TypeTag};
 
 use crate::element::{Element, ElementId};
 use crate::layouts::{self, Layout};
+use crate::spec_ext::SurfaceSpecExt;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, TYPE_GENERIC, Widget};
 
@@ -65,21 +66,17 @@ impl Panel {
         self
     }
 
-    /// Adds uniform box padding to the panel. If no layout has been configured
-    /// yet, the panel becomes a flex container with the padding applied.
+    /// Adds uniform box padding to the panel.
     ///
-    /// The shorthand is resolved into the panel's canonical surface padding
-    /// properties when the panel is inserted.
+    /// If no layout has been configured yet, the panel becomes a flex
+    /// container. Padding itself is authored as canonical surface padding, not
+    /// as layout spacing.
     #[must_use]
     pub fn padding(mut self, value: f32) -> Self {
-        let layout = self
-            .element
-            .layout()
-            .cloned()
-            .unwrap_or_else(Layout::flex)
-            .padding_all(value);
-        self.element.set_layout(layout);
-        self
+        if self.element.layout().is_none() {
+            self.element.set_layout(Layout::flex());
+        }
+        SurfaceSpecExt::padding_all(self, f64::from(value))
     }
 
     /// Sets the cross-axis alignment to centered.

@@ -6,8 +6,9 @@
 //! The public API deliberately exposes a compact [`Layout`] builder instead of
 //! the full underlying layout engine. Add named methods here when Overstory
 //! needs to support a new layout concept; do not mirror every engine type.
-//! Padding is accepted here as authoring shorthand, but resolved box padding
-//! lives in the canonical `Surface.Padding*` properties so layout and box
+//! Padding is not a layout authoring concept: use
+//! [`SurfaceSpecExt::padding_all`](crate::SurfaceSpecExt::padding_all) or
+//! [`Ui::set_box_padding`](crate::Ui::set_box_padding) so layout and box
 //! decoration geometry share one source of truth.
 //!
 //! ```ignore
@@ -15,20 +16,17 @@
 //!
 //! ui.append(
 //!     parent,
-//!     Panel::new().layout(
-//!         Layout::row(24.0)
-//!             .align_center()
-//!             .justify_center()
-//!             .padding_all(12.0),
-//!     ),
+//!     Panel::new()
+//!         .padding_all(12.0)
+//!         .layout(Layout::row(24.0).align_center().justify_center()),
 //! );
 //! ```
 //!
 //! Roadmap:
 //! - Keep `Layout` as Overstory intent, with Taffy as an implementation detail
 //!   hidden behind conversion during layout. See ticket `ove-9tcf`.
-//! - Keep box padding canonical in `Surface.Padding*`; layout padding methods
-//!   are convenience shorthands for authors, specs, and templates.
+//! - Keep box padding canonical in `Surface.Padding*`; layout consumes the
+//!   resolved inset but does not expose padding as an authoring shorthand.
 //! - Add builder methods only for concepts the toolkit wants to support long
 //!   term: min/max constraints, margins, flex basis, grid, overflow, and
 //!   alignment should be deliberate API choices.

@@ -22,9 +22,11 @@ use alloc::boxed::Box;
 use alloc::string::String;
 
 use kurbo::{Point, Vec2};
+use understory_presentation::Edges;
 use understory_style::{PartTag, TypeTag};
 
 use crate::composition::CompositionPolicy;
+use crate::controls::support::box_padding_xy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
 use crate::overlay::Placement;
@@ -49,8 +51,7 @@ pub struct Tooltip {
     font_size: Option<f64>,
     placement: Placement,
     offset: Vec2,
-    padding_x: f32,
-    padding_y: f32,
+    padding: Edges<f64>,
     element: ElementConfig,
 }
 
@@ -63,8 +64,7 @@ impl Tooltip {
             font_size: None,
             placement: Placement::Bottom,
             offset: Vec2::new(0.0, 8.0),
-            padding_x: 10.0,
-            padding_y: 6.0,
+            padding: box_padding_xy(10.0, 6.0),
             element: ElementConfig::default(),
         }
     }
@@ -95,8 +95,7 @@ impl Tooltip {
     /// Sets the tooltip's horizontal and vertical padding.
     #[must_use]
     pub fn padding(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.padding_x = horizontal;
-        self.padding_y = vertical;
+        self.padding = box_padding_xy(horizontal, vertical);
         self
     }
 
@@ -114,6 +113,10 @@ impl Tooltip {
         self.offset
     }
 
+    pub(crate) fn padding_edges(&self) -> Edges<f64> {
+        self.padding
+    }
+
     pub(crate) fn layout_for(&self, origin: Point) -> Layout {
         #[expect(
             clippy::cast_possible_truncation,
@@ -125,10 +128,7 @@ impl Tooltip {
             reason = "tooltip coordinates fit the layout engine"
         )]
         let top = origin.y as f32;
-        Layout::row(0.0)
-            .align_center()
-            .absolute_at(left, top)
-            .padding_xy(self.padding_x, self.padding_y)
+        Layout::row(0.0).align_center().absolute_at(left, top)
     }
 }
 
@@ -260,6 +260,7 @@ fn append_tooltip(ui: &mut Ui, parent: ElementId, tooltip: &Tooltip, origin: Poi
         ui.set_local(id, properties.font_size, font_size);
     }
     ui.set_layout(id, tooltip.layout_for(origin));
+    ui.set_box_padding(id, tooltip.padding_edges());
     tooltip.element.clone().apply_to(ui, id);
     id
 }

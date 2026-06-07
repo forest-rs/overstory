@@ -78,8 +78,7 @@ impl View for MotionPage {
                         Panel::new().class(CLASS_DEMO_MOTION_STAGE).layout(
                             Layout::new()
                                 .relative()
-                                .logical_size(PAGE_CONTROL_WIDTH, 102.0)
-                                .padding_all(0.0),
+                                .logical_size(PAGE_CONTROL_WIDTH, 102.0),
                         ),
                         |motion_stage| {
                             motion_stage.add(

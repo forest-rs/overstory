@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 use overstory::Rgba8;
 use overstory::{
     Brush, Color, ElementId, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize,
-    OutlineNodeKey, Panel, Text, TooltipSpecExt, Ui, select_outline_key, theme,
+    OutlineNodeKey, Panel, SurfaceSpecExt, Text, TooltipSpecExt, Ui, select_outline_key, theme,
 };
 
 #[cfg(not(feature = "spoor-session"))]
@@ -535,12 +535,13 @@ fn append_property_grid_section(
     set_grid_surface(ui, section_id, control_bg(ui), control_border(ui), 6.0);
     let header = ui.append(
         section_id,
-        Panel::row(6.0).layout(
-            Layout::row(6.0)
-                .padding_xy(GRID_ROW_PADDING_X, 6.0)
-                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center))
-                .fill_width(),
-        ),
+        Panel::row(6.0)
+            .padding_xy(f64::from(GRID_ROW_PADDING_X), 6.0)
+            .layout(
+                Layout::row(6.0)
+                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center))
+                    .fill_width(),
+            ),
     );
     set_grid_surface(ui, header, control_hover_bg(ui), None, 5.0);
     append_grid_text(
@@ -576,15 +577,16 @@ fn append_property_grid_row(
 ) -> ElementId {
     let row_id = ui.append(
         parent,
-        Panel::row(8.0).layout(
-            Layout::row(8.0)
-                .padding_xy(
-                    GRID_ROW_PADDING_X + ((depth as f32) * GRID_ROW_INDENT),
-                    GRID_ROW_PADDING_Y,
-                )
-                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Start))
-                .fill_width(),
-        ),
+        Panel::row(8.0)
+            .padding_xy(
+                f64::from(GRID_ROW_PADDING_X + ((depth as f32) * GRID_ROW_INDENT)),
+                f64::from(GRID_ROW_PADDING_Y),
+            )
+            .layout(
+                Layout::row(8.0)
+                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Start))
+                    .fill_width(),
+            ),
     );
     if row.element_link().is_some() {
         set_grid_surface(ui, row_id, control_hover_bg(ui), None, 4.0);
@@ -746,8 +748,8 @@ fn append_grid_value(
 fn append_action_chip(ui: &mut Ui, parent: ElementId, content: impl Into<String>) -> ElementId {
     let chip = ui.append(
         parent,
-        Panel::row(0.0).layout(
-            Layout::row(0.0).padding_xy(7.0, 3.0).size(
+        Panel::row(0.0).padding_xy(7.0, 3.0).layout(
+            Layout::row(0.0).size(
                 LayoutSize::new()
                     .min_width(LayoutDimension::Logical(0.0))
                     .flex_grow(1.0)
@@ -776,7 +778,9 @@ fn append_chip(
 ) -> ElementId {
     let chip = ui.append(
         parent,
-        Panel::row(0.0).layout(Layout::row(0.0).padding_xy(6.0, 2.0)),
+        Panel::row(0.0)
+            .padding_xy(6.0, 2.0)
+            .layout(Layout::row(0.0)),
     );
     set_grid_surface(ui, chip, control_hover_bg(ui), control_border(ui), 4.0);
     append_grid_text(
@@ -820,7 +824,8 @@ fn append_origin_chip(ui: &mut Ui, parent: ElementId, origin: &PropertyGridOrigi
     let chip = ui.append(
         parent,
         Panel::row(0.0)
-            .layout(Layout::row(0.0).padding_xy(6.0, 2.0))
+            .padding_xy(6.0, 2.0)
+            .layout(Layout::row(0.0))
             .tooltip(origin.description()),
     );
     set_grid_surface(ui, chip, control_hover_bg(ui), control_border(ui), 4.0);

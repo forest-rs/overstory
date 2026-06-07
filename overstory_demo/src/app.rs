@@ -263,22 +263,24 @@ fn build_ui() -> Ui {
         root,
         layouts::row_with_gap(ROOT_GAP)
             .percent_size(1.0, 1.0)
-            .padding_all(ROOT_PADDING)
             .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
     );
+    ui.set_box_padding(root, Edges::all(f64::from(ROOT_PADDING)));
 
     let (nav_chrome, nav_rows, stage) = ui.with_children(root, |root| {
         let (nav_chrome, nav_rows) = root.with_child(
-            Panel::column(18.0).class(CLASS_DEMO_NAV).layout(
-                Layout::column(18.0)
-                    .size(
-                        LayoutSize::new()
-                            .width(LayoutDimension::Logical(NAV_WIDTH))
-                            .height(LayoutDimension::Percent(1.0)),
-                    )
-                    .padding_all(NAV_PADDING)
-                    .flex_shrink(0.0),
-            ),
+            Panel::column(18.0)
+                .class(CLASS_DEMO_NAV)
+                .layout(
+                    Layout::column(18.0)
+                        .size(
+                            LayoutSize::new()
+                                .width(LayoutDimension::Logical(NAV_WIDTH))
+                                .height(LayoutDimension::Percent(1.0)),
+                        )
+                        .flex_shrink(0.0),
+                )
+                .padding_all(f64::from(NAV_PADDING)),
             |nav| {
                 let nav_chrome = build_nav(nav);
                 let nav_rows = build_nav_rows(nav);

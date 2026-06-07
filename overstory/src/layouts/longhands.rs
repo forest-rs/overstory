@@ -615,15 +615,6 @@ impl LayoutEdges {
         self.left == 0.0 && self.right == 0.0 && self.top == 0.0 && self.bottom == 0.0
     }
 
-    pub(crate) fn to_surface_edges(self) -> Edges<f64> {
-        Edges::new(
-            f64::from(self.top),
-            f64::from(self.right),
-            f64::from(self.bottom),
-            f64::from(self.left),
-        )
-    }
-
     fn to_taffy_length_percentage(self) -> taffy::Rect<taffy::LengthPercentage> {
         taffy::Rect {
             left: taffy::LengthPercentage::length(self.left),
@@ -708,10 +699,9 @@ impl LayoutGap {
 
 /// Spacing contribution for an element.
 ///
-/// This covers margins, padding, and child gaps. Padding is an authoring
-/// shorthand contribution: when applied through `Ui`, element specs, or
-/// templates, it is redirected into the canonical `Surface.Padding*`
-/// properties so layout and surface decoration geometry agree.
+/// This covers margins and child gaps. Layout receives resolved box padding
+/// internally after the cascade has combined `Surface.Padding*` and border
+/// widths; app code should author padding through surface/box properties.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LayoutSpacing {
     margin: Option<LayoutEdges>,
@@ -742,18 +732,6 @@ impl LayoutSpacing {
         Self::new().margin(LayoutEdges::xy(horizontal, vertical))
     }
 
-    /// Creates a uniform box-padding contribution.
-    #[must_use]
-    pub const fn padding_all(value: f32) -> Self {
-        Self::new().padding(LayoutEdges::all(value))
-    }
-
-    /// Creates a horizontal/vertical box-padding contribution.
-    #[must_use]
-    pub const fn padding_xy(horizontal: f32, vertical: f32) -> Self {
-        Self::new().padding(LayoutEdges::xy(horizontal, vertical))
-    }
-
     /// Creates a uniform child-gap contribution.
     #[must_use]
     pub const fn gap(value: f32) -> Self {
@@ -767,9 +745,7 @@ impl LayoutSpacing {
         self
     }
 
-    /// Sets the box-padding contribution.
-    #[must_use]
-    pub const fn padding(mut self, padding: LayoutEdges) -> Self {
+    pub(crate) const fn padding(mut self, padding: LayoutEdges) -> Self {
         self.padding = Some(padding);
         self
     }
@@ -785,22 +761,10 @@ impl LayoutSpacing {
         self == &Self::default()
     }
 
-    pub(crate) fn without_padding(mut self) -> Self {
-        self.padding = None;
-        self
-    }
-
-    pub(crate) fn surface_padding_edges(&self) -> Option<Edges<f64>> {
-        self.padding.map(LayoutEdges::to_surface_edges)
-    }
-
     pub(crate) fn inspection_summary(&self) -> String {
         let mut parts = Vec::new();
         if let Some(margin) = self.margin {
             push_labeled_summary_part(&mut parts, "margin", margin.inspection_summary());
-        }
-        if let Some(padding) = self.padding {
-            push_labeled_summary_part(&mut parts, "padding", padding.inspection_summary());
         }
         if let Some(gap) = self.gap {
             push_labeled_summary_part(&mut parts, "gap", gap.inspection_summary());
@@ -812,9 +776,6 @@ impl LayoutSpacing {
         let mut fields = Vec::new();
         if let Some(margin) = self.margin {
             fields.push(("Margin", margin.inspection_summary()));
-        }
-        if let Some(padding) = self.padding {
-            fields.push(("Padding", padding.inspection_summary()));
         }
         if let Some(gap) = self.gap {
             fields.push(("Gap", gap.inspection_summary()));

@@ -177,31 +177,6 @@ impl Layout {
         self
     }
 
-    /// Sets equal box padding on all four sides.
-    ///
-    /// When applied through [`crate::Ui::set_layout`], an element spec, or a
-    /// template context, this shorthand writes the canonical
-    /// `Surface.Padding*` properties rather than storing padding only in the
-    /// layout property.
-    #[must_use]
-    pub fn padding_all(mut self, value: f32) -> Self {
-        self.spacing.merge_from(LayoutSpacing::padding_all(value));
-        self
-    }
-
-    /// Sets horizontal and vertical box padding.
-    ///
-    /// When applied through [`crate::Ui::set_layout`], an element spec, or a
-    /// template context, this shorthand writes the canonical
-    /// `Surface.Padding*` properties rather than storing padding only in the
-    /// layout property.
-    #[must_use]
-    pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.spacing
-            .merge_from(LayoutSpacing::padding_xy(horizontal, vertical));
-        self
-    }
-
     /// Centers children on the cross axis.
     #[must_use]
     pub fn align_center(mut self) -> Self {

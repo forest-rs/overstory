@@ -10,8 +10,8 @@ use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scr
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
     ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
-    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, SurfaceStyleExt, TYPE_GENERIC,
-    TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
+    Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, SurfaceSpecExt,
+    SurfaceStyleExt, TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -1101,12 +1101,8 @@ fn control_row_labels_keep_single_line_widths() {
     let mut ui = Ui::new();
     ui.set_theme(theme::default_theme());
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::column(14.0)
-            .logical_size(320.0, 350.0)
-            .padding_all(18.0),
-    );
+    ui.set_layout(root, Layout::column(14.0).logical_size(320.0, 350.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(18.0));
 
     let toggle_row = ui.append(root, crate::Panel::row(12.0).align_center());
     ui.append(toggle_row, ToggleSwitch::new().checked(true));
@@ -2751,10 +2747,8 @@ fn hit_test_picks_topmost_child() {
     // giving it 50..150 × 50..150.
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
-    );
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 200.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(50.0));
     let child = ui.insert_child(root);
     ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
     ui.compute_layout(Size::new(200.0, 200.0));
@@ -2918,10 +2912,8 @@ fn hover_path_marks_ancestor_pseudoclasses() {
     // over the child, and verifying both elements have :hover.
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::flex().logical_size(200.0, 200.0).padding_all(50.0),
-    );
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 200.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(50.0));
     let child = ui.insert_child(root);
     ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
     ui.compute_layout(Size::new(200.0, 200.0));
@@ -3552,10 +3544,8 @@ fn compute_layout_writes_bounds() {
     let child = ui.insert_child(root);
 
     // Root fills the viewport with 10px padding.
-    ui.set_layout(
-        root,
-        Layout::flex().percent_size(1.0, 1.0).padding_all(10.0),
-    );
+    ui.set_layout(root, Layout::flex().percent_size(1.0, 1.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(10.0));
     // Child fills the padded content.
     ui.set_layout(child, Layout::new().flex_grow(1.0).align_self_stretch());
 
@@ -3656,7 +3646,9 @@ fn layout_placement_does_not_replace_content_layout() {
     ui.set_layout(root, Layout::new().relative().logical_size(200.0, 100.0));
     let row = ui.append(
         root,
-        Panel::new().layout(Layout::row(0.0).padding_all(10.0).logical_size(80.0, 40.0)),
+        Panel::new()
+            .padding_all(10.0)
+            .layout(Layout::row(0.0).logical_size(80.0, 40.0)),
     );
     let child = ui.append(
         row,
@@ -3686,7 +3678,8 @@ fn set_layout_without_placement_keeps_styled_placement() {
         root,
         Panel::new()
             .class(FLOATING)
-            .layout(Layout::row(0.0).padding_all(10.0).logical_size(80.0, 40.0)),
+            .padding_all(10.0)
+            .layout(Layout::row(0.0).logical_size(80.0, 40.0)),
     );
     let child = ui.append(
         row,
@@ -3823,10 +3816,8 @@ fn layout_wrap_places_children_on_additional_lines() {
 fn composition_layers_track_layout_geometry() {
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::flex().logical_size(200.0, 100.0).padding_all(10.0),
-    );
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 100.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(10.0));
     let child = ui.insert_child(root);
     ui.set_layout(child, Layout::new().logical_size(30.0, 20.0));
 
@@ -4240,10 +4231,8 @@ fn inspection_snapshot_reports_timeline_counts() {
 fn visual_transform_updates_composition_without_changing_layout_bounds() {
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::flex().logical_size(200.0, 100.0).padding_all(10.0),
-    );
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 100.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(10.0));
     let child = ui.insert_child(root);
     ui.set_layout(child, Layout::new().logical_size(30.0, 20.0));
 
@@ -4520,19 +4509,11 @@ fn overlay_composition_policy_parents_layer_under_overlay_root() {
 
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::column(0.0)
-            .logical_size(100.0, 100.0)
-            .padding_all(10.0),
-    );
+    ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 100.0));
+    ui.set_box_padding(root, understory_presentation::Edges::all(10.0));
     let parent = ui.insert_child(root);
-    ui.set_layout(
-        parent,
-        Layout::column(0.0)
-            .logical_size(50.0, 50.0)
-            .padding_all(7.0),
-    );
+    ui.set_layout(parent, Layout::column(0.0).logical_size(50.0, 50.0));
+    ui.set_box_padding(parent, understory_presentation::Edges::all(7.0));
     let overlay = ui.append(parent, OverlayOnly);
     ui.set_layout(overlay, Layout::new().logical_size(10.0, 10.0));
 
@@ -4601,6 +4582,26 @@ fn tooltip_shows_as_overlay_for_hovered_target() {
     assert!(leave.changed());
     assert_eq!(ui.overlays.active_tooltip(), None);
     assert!(ui.get(active.element).is_none());
+}
+
+#[test]
+fn tooltip_padding_writes_surface_padding_not_layout_padding() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(target, Layout::new().logical_size(80.0, 30.0));
+    ui.set_tooltip(target, crate::Tooltip::new("Padded").padding(13.0, 7.0));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let _ = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
+    let active = ui
+        .overlays
+        .active_tooltip()
+        .expect("hovering a tooltip target should create an overlay tooltip");
+
+    assert_surface_padding(&ui, active.element, 7.0, 13.0, 7.0, 13.0);
+    assert_layout_spacing_has_no_padding(&ui, active.element);
 }
 
 #[test]
@@ -4847,6 +4848,34 @@ fn popup_opens_as_overlay_container_with_content() {
         ui.composition_layers().parent(popup_layer),
         Some(overlay_root)
     );
+}
+
+#[test]
+fn popup_padding_writes_surface_padding_not_layout_padding() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(260.0, 120.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(80.0, 28.0),
+    );
+    ui.compute_layout(Size::new(260.0, 120.0));
+
+    let popup = ui
+        .open_popup(
+            target,
+            crate::Popup::new().padding(17.0, 11.0),
+            |ui, popup| {
+                ui.append(popup, crate::Text::new("Popup content").font_size(12.0));
+            },
+        )
+        .expect("live target should open popup");
+
+    assert_surface_padding(&ui, popup, 11.0, 17.0, 11.0, 17.0);
+    assert_layout_spacing_has_no_padding(&ui, popup);
 }
 
 #[test]
@@ -5198,9 +5227,22 @@ fn element_spec_ext_applies_shared_settings() {
         Layout::new()
             .container(crate::LayoutContainer::row())
             .logical_size(80.0, 30.0)
-            .padding_xy(32.0, 18.0)
             .align_center()
             .justify_center()
+    );
+    assert_eq!(
+        ui.resolve_value_for(
+            ui.get(button).unwrap(),
+            ui.properties().surface.padding_widths.top
+        ),
+        18.0
+    );
+    assert_eq!(
+        ui.resolve_value_for(
+            ui.get(button).unwrap(),
+            ui.properties().surface.padding_widths.left
+        ),
+        32.0
     );
 }
 
@@ -5418,12 +5460,14 @@ fn element_spec_ext_applies_initial_local_properties() {
 }
 
 #[test]
-fn layout_padding_shorthand_writes_surface_padding() {
+fn surface_padding_shorthand_writes_surface_padding() {
     let mut ui = Ui::new();
     let root = ui.root();
     let panel = ui.append(
         root,
-        crate::Panel::new().layout(Layout::row(4.0).padding_xy(12.0, 8.0)),
+        crate::Panel::new()
+            .padding_xy(12.0, 8.0)
+            .layout(Layout::row(4.0)),
     );
     let element = ui.get(panel).unwrap();
 
@@ -5447,6 +5491,32 @@ fn layout_padding_shorthand_writes_surface_padding() {
         element.get_local_value(ui.properties().layout_spacing),
         Some(&crate::LayoutSpacing::gap(4.0))
     );
+}
+
+fn assert_surface_padding(
+    ui: &Ui,
+    element: ElementId,
+    top: f64,
+    right: f64,
+    bottom: f64,
+    left: f64,
+) {
+    let element = ui.get(element).expect("element should be live");
+    let padding = ui.properties().surface.padding_widths;
+    assert_eq!(element.get_local_value(padding.top), Some(&top));
+    assert_eq!(element.get_local_value(padding.right), Some(&right));
+    assert_eq!(element.get_local_value(padding.bottom), Some(&bottom));
+    assert_eq!(element.get_local_value(padding.left), Some(&left));
+}
+
+fn assert_layout_spacing_has_no_padding(ui: &Ui, element: ElementId) {
+    let element = ui.get(element).expect("element should be live");
+    if let Some(spacing) = element.get_local_value(ui.properties().layout_spacing) {
+        assert!(
+            !spacing.inspection_summary().contains("padding"),
+            "layout spacing should not carry box padding"
+        );
+    }
 }
 
 #[test]

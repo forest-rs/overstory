@@ -233,6 +233,7 @@ fn open_in_process_devtools(
         Panel::column(10.0)
             .class(CLASS_DEMO_CARD)
             .class(CLASS_DEVTOOLS_INSPECTOR_CARD)
+            .padding_all(12.0)
             .layout(
                 Layout::column(10.0)
                     .size(
@@ -240,7 +241,6 @@ fn open_in_process_devtools(
                             .width(LayoutDimension::Logical(DEVTOOLS_INSPECTOR_WIDTH))
                             .height(LayoutDimension::Percent(1.0)),
                     )
-                    .padding_all(12.0)
                     .flex_shrink(0.0),
             ),
     );
@@ -367,10 +367,10 @@ fn render_devtools_event_entry(
     let style = devtools_event_style(context.entry());
     row.with_child(
         Panel::row(8.0)
+            .padding_xy(7.0, 5.0)
             .layout(
                 Layout::row(8.0)
                     .fill_width()
-                    .padding_xy(7.0, 5.0)
                     .align_center()
                     .min_logical_size(0.0, 0.0),
             )
@@ -445,12 +445,8 @@ const fn event_style(
 fn append_devtools_event_chip(ui: &mut ChildUi<'_>, style: DevtoolsEventStyle) {
     ui.with_child(
         Panel::row(0.0)
-            .layout(
-                Layout::row(0.0)
-                    .logical_size(58.0, 18.0)
-                    .padding_xy(6.0, 0.0)
-                    .align_center(),
-            )
+            .padding_xy(6.0, 0.0)
+            .layout(Layout::row(0.0).logical_size(58.0, 18.0).align_center())
             .background(solid(style.accent.0, style.accent.1, style.accent.2, 0x33))
             .border_brush(solid(style.accent.0, style.accent.1, style.accent.2, 0xbb))
             .border_width(1.0)

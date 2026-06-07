@@ -73,17 +73,9 @@ impl Ui {
         self.set_local(id, self.properties.layout_size, size.into());
     }
 
-    /// Sets an element's padding and child-gap contribution.
+    /// Sets an element's margin and child-gap contribution.
     pub fn set_layout_spacing(&mut self, id: ElementId, spacing: impl Into<LayoutSpacing>) {
-        let spacing = spacing.into();
-        if let Some(padding) = spacing.surface_padding_edges() {
-            self.set_box_padding(id, padding);
-        }
-        self.set_local(
-            id,
-            self.properties.layout_spacing,
-            spacing.without_padding(),
-        );
+        self.set_local(id, self.properties.layout_spacing, spacing.into());
     }
 
     /// Sets the canonical box padding used by both layout and surface
@@ -171,6 +163,10 @@ impl Ui {
         let Some(element) = self.get(id) else {
             return Layout::default();
         };
+        self.effective_layout_for_element(element)
+    }
+
+    fn effective_layout_for_element(&self, element: &Element) -> Layout {
         let mut layout = self.resolve_value_for(element, self.properties.layout);
         layout.merge_container(self.resolve_value_for(element, self.properties.layout_container));
         layout.merge_size(self.resolve_value_for(element, self.properties.layout_size));
@@ -178,10 +174,16 @@ impl Ui {
         layout.merge_alignment(self.resolve_value_for(element, self.properties.layout_alignment));
         layout.merge_overflow(self.resolve_value_for(element, self.properties.layout_overflow));
         layout.merge_placement(self.resolve_value_for(element, self.properties.layout_placement));
+        layout
+    }
+
+    fn effective_layout_for_taffy(&self, id: ElementId) -> Option<Layout> {
+        let element = self.get(id)?;
+        let mut layout = self.effective_layout_for_element(element);
         if let Some(inset) = self.effective_box_layout_inset(element) {
             layout.merge_spacing(LayoutSpacing::new().padding(inset));
         }
-        layout
+        Some(layout)
     }
 
     /// Resolves the effective `LayoutPlacement` for `id` through the cascade.
@@ -245,7 +247,7 @@ impl Ui {
             .into_iter()
             .filter_map(|id| {
                 let taffy_node = self.layout.node_for(id)?;
-                let style = self.effective_layout(id).to_taffy();
+                let style = self.effective_layout_for_taffy(id)?.to_taffy();
                 Some((taffy_node, style))
             })
             .collect();

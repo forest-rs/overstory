@@ -84,15 +84,16 @@ impl DemoChildUiExt for ChildUi<'_> {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(
-            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
-                Layout::column(14.0)
-                    .size(
+            Panel::column(14.0)
+                .class(CLASS_DEMO_CARD)
+                .padding_all(18.0)
+                .layout(
+                    Layout::column(14.0).size(
                         LayoutSize::new()
                             .width(LayoutDimension::Logical(width))
                             .min_width(LayoutDimension::Logical(0.0)),
-                    )
-                    .padding_all(18.0),
-            ),
+                    ),
+                ),
             |card| {
                 card.add(card_title(title));
                 f(card)
@@ -108,11 +109,10 @@ impl DemoChildUiExt for ChildUi<'_> {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(
-            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
-                Layout::column(14.0)
-                    .logical_size(width, height)
-                    .padding_all(18.0),
-            ),
+            Panel::column(14.0)
+                .class(CLASS_DEMO_CARD)
+                .padding_all(18.0)
+                .layout(Layout::column(14.0).logical_size(width, height)),
             |card| {
                 card.add(card_title(title));
                 f(card)
@@ -128,15 +128,16 @@ impl DemoChildUiExt for ChildUi<'_> {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(
-            Panel::column(14.0).class(CLASS_DEMO_CARD).layout(
-                Layout::column(14.0)
-                    .size(
+            Panel::column(14.0)
+                .class(CLASS_DEMO_CARD)
+                .padding_all(18.0)
+                .layout(
+                    Layout::column(14.0).size(
                         LayoutSize::new()
                             .width(LayoutDimension::Logical(width))
                             .min_height(LayoutDimension::Logical(min_height)),
-                    )
-                    .padding_all(18.0),
-            ),
+                    ),
+                ),
             |card| {
                 card.add(card_title(title));
                 f(card)

@@ -8,6 +8,7 @@ use core::cell::{Cell, RefCell};
 use core::ops::Range;
 
 use kurbo::{Axis, Point, Rect, Size, Vec2};
+use understory_presentation::Edges;
 use understory_property::{DependencyObjectExt, Property};
 use understory_virtual_list::{FixedExtentModel, ScrollAlign, VirtualList};
 
@@ -133,6 +134,12 @@ pub(crate) fn read_local_or<T: Clone + 'static>(
 )]
 pub(crate) fn f32_from_logical(value: f64) -> f32 {
     value as f32
+}
+
+pub(crate) fn box_padding_xy(horizontal: f32, vertical: f32) -> Edges<f64> {
+    let horizontal = f64::from(horizontal.max(0.0));
+    let vertical = f64::from(vertical.max(0.0));
+    Edges::new(vertical, horizontal, vertical, horizontal)
 }
 
 pub(crate) fn is_initial_drag_move(press_position: Point, position: Point, delta: Vec2) -> bool {

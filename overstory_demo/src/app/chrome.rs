@@ -74,12 +74,14 @@ pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
 
 pub(super) fn append_nav_row(stack: &mut ChildUi<'_>, page: DemoPage, selected: bool) -> ElementId {
     let row = stack.add_with_children(
-        Panel::row(0.0).class(CLASS_DEMO_NAV_ROW).layout(
-            Layout::row(0.0)
-                .logical_size(NAV_CONTENT_WIDTH, 40.0)
-                .padding_xy(14.0, 0.0)
-                .align_center(),
-        ),
+        Panel::row(0.0)
+            .class(CLASS_DEMO_NAV_ROW)
+            .padding_xy(14.0, 0.0)
+            .layout(
+                Layout::row(0.0)
+                    .logical_size(NAV_CONTENT_WIDTH, 40.0)
+                    .align_center(),
+            ),
         |row| {
             row.add(Text::new(page.nav_label()).class(CLASS_DEMO_NAV_LABEL));
         },

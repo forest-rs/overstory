@@ -6,8 +6,8 @@
 use imaging::record::Scene;
 use kurbo::Size;
 use overstory::{
-    Button, Layout, ListBox, Panel, ProgressBar, Slider, Text, TextInput, TextLayoutCacheStats,
-    TextResources, ToggleSwitch, Ui, UiFrameStats, theme, toggle_checked,
+    Button, Edges, Layout, ListBox, Panel, ProgressBar, Slider, Text, TextInput,
+    TextLayoutCacheStats, TextResources, ToggleSwitch, Ui, UiFrameStats, theme, toggle_checked,
 };
 use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
 use overstory_host::{FrameDiagnostics, FrameTimings, FrameViewport, UiHost};
@@ -52,10 +52,9 @@ pub fn build_dashboard(rows: usize) -> Ui {
     let rows = u16::try_from(rows).expect("dashboard row count fits in u16");
     ui.set_layout(
         root,
-        Layout::column(8.0)
-            .padding_all(12.0)
-            .logical_size(VIEWPORT_WIDTH, (f32::from(rows) * 56.0) + 24.0),
+        Layout::column(8.0).logical_size(VIEWPORT_WIDTH, (f32::from(rows) * 56.0) + 24.0),
     );
+    ui.set_box_padding(root, Edges::all(12.0));
 
     for row in 0..usize::from(rows) {
         let row_panel = ui.append(root, Panel::row(8.0).align_center());
@@ -105,11 +104,9 @@ pub fn build_toggle_scene() -> (Ui, overstory::ElementId) {
     let root = ui.root();
     ui.set_layout(
         root,
-        Layout::row(12.0)
-            .padding_all(16.0)
-            .align_center()
-            .logical_size(320.0, 96.0),
+        Layout::row(12.0).align_center().logical_size(320.0, 96.0),
     );
+    ui.set_box_padding(root, Edges::all(16.0));
     let toggle = ui.append(root, ToggleSwitch::new());
     ui.append(root, Text::new("Live rendering").font_size(18.0));
     (ui, toggle)
@@ -122,10 +119,9 @@ pub fn build_repeated_text_labels(labels: usize) -> Ui {
     let labels = u16::try_from(labels).expect("label count fits in u16");
     ui.set_layout(
         root,
-        Layout::column(2.0)
-            .padding_all(8.0)
-            .logical_size(260.0, (f32::from(labels) * 20.0) + 16.0),
+        Layout::column(2.0).logical_size(260.0, (f32::from(labels) * 20.0) + 16.0),
     );
+    ui.set_box_padding(root, Edges::all(8.0));
 
     for _ in 0..usize::from(labels) {
         ui.append(root, Text::new("Shared label").font_size(14.0));

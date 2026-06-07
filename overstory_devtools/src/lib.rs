@@ -32,7 +32,8 @@ use overstory::inspection::{
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
-    ScrollArea, TemplateDiagnostic, TemplateItemKey, Text, Ui, scroll_area_viewport, theme,
+    ScrollArea, SurfaceSpecExt, TemplateDiagnostic, TemplateItemKey, Text, Ui,
+    scroll_area_viewport, theme,
 };
 #[cfg(feature = "spoor-session")]
 use overstory::{expanded_outline_keys, replace_outline_nodes};
@@ -857,7 +858,9 @@ pub fn append_session_view(
 ) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
-        Panel::row(INSPECTOR_GAP).layout(inspector_root_layout()),
+        Panel::row(INSPECTOR_GAP)
+            .padding_all(f64::from(INSPECTOR_PADDING))
+            .layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
@@ -1045,7 +1048,9 @@ pub fn append_session_view(
 ) -> DevtoolsViewElements {
     let root = ui.append(
         parent,
-        Panel::row(INSPECTOR_GAP).layout(inspector_root_layout()),
+        Panel::row(INSPECTOR_GAP)
+            .padding_all(f64::from(INSPECTOR_PADDING))
+            .layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
         ui.set_local(root, ui.properties().foreground, foreground.clone());
@@ -1144,7 +1149,6 @@ fn append_session_view_contents(
 
 fn inspector_root_layout() -> Layout {
     Layout::row(INSPECTOR_GAP)
-        .padding_all(INSPECTOR_PADDING)
         .fill_height()
         .flex_grow(1.0)
         .flex_shrink(1.0)

@@ -10,7 +10,7 @@ use core::cell::{Cell, RefCell};
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
     ClickEvent, CursorIcon, DragEvent, ElementId, Layout, Panel, Phase, PointerEventKind,
-    PointerRoutedEvent, ScrollEvent, Text, Tooltip, Ui, Viewport, theme,
+    PointerRoutedEvent, ScrollEvent, SurfaceSpecExt, Text, Tooltip, Ui, Viewport, theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -143,13 +143,7 @@ fn build_ui() -> Ui {
     let mut ui = Ui::new();
     ui.set_theme(theme::default_theme());
     let root = ui.root();
-    ui.set_layout(
-        root,
-        Layout::new()
-            .relative()
-            .percent_size(1.0, 1.0)
-            .padding_all(0.0),
-    );
+    ui.set_layout(root, Layout::new().relative().percent_size(1.0, 1.0));
     style_surface(
         &mut ui,
         root,
@@ -204,11 +198,10 @@ fn build_ui() -> Ui {
 
     let sidebar = ui.append(
         root,
-        Panel::column(14.0).layout(
+        Panel::column(14.0).padding_all(18.0).layout(
             Layout::column(14.0)
                 .absolute_at(1110.0, 128.0)
-                .logical_size(322.0, 640.0)
-                .padding_all(18.0),
+                .logical_size(322.0, 640.0),
         ),
     );
     style_surface(
@@ -708,11 +701,10 @@ fn append_graph_nodes(
         };
         let node_element = ui.append(
             parent,
-            Panel::column(8.0).layout(
+            Panel::column(8.0).padding_all(14.0).layout(
                 Layout::column(8.0)
                     .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
-                    .logical_size(f32_coord(rect.width()), f32_coord(rect.height()))
-                    .padding_all(14.0),
+                    .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
             ),
         );
         style_node(ui, node_element, meta.accent, selected);

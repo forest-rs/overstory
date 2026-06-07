@@ -59,8 +59,9 @@ impl View for TranscriptPage {
                     );
                     card.with_child(
                         Panel::row(12.0)
+                            .padding_all(12.0)
                             .layout(
-                                Layout::row(12.0).fill_width().padding_all(12.0).alignment(
+                                Layout::row(12.0).fill_width().alignment(
                                     LayoutAlignment::new().align_items(LayoutAlign::Center),
                                 ),
                             )
@@ -230,12 +231,8 @@ fn append_composer(
 ) {
     card.with_child(
         Panel::row(10.0)
-            .layout(
-                Layout::row(10.0)
-                    .fill_width()
-                    .padding_all(10.0)
-                    .align_center(),
-            )
+            .padding_all(10.0)
+            .layout(Layout::row(10.0).fill_width().align_center())
             .background(solid(0x1c, 0x20, 0x2a, 0xff))
             .border_brush(solid(0x3a, 0x41, 0x54, 0xff))
             .border_width(1.0)
@@ -370,14 +367,13 @@ fn render_message(
 
     row.with_child(
         Panel::column(8.0)
+            .padding_all(14.0)
             .layout(
-                Layout::column(8.0)
-                    .size(
-                        LayoutSize::new()
-                            .width(LayoutDimension::Logical(width))
-                            .min_width(LayoutDimension::Logical(0.0)),
-                    )
-                    .padding_all(14.0),
+                Layout::column(8.0).size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Logical(width))
+                        .min_width(LayoutDimension::Logical(0.0)),
+                ),
             )
             .background(solid(background.0, background.1, background.2, 0xff))
             .border_brush(accent_brush(accent, 0xaa))
@@ -412,12 +408,8 @@ fn render_tool_call(
 ) {
     row.with_child(
         Panel::column(10.0)
-            .layout(
-                Layout::column(10.0)
-                    .fill_width()
-                    .padding_all(14.0)
-                    .min_logical_size(0.0, 0.0),
-            )
+            .padding_all(14.0)
+            .layout(Layout::column(10.0).fill_width().min_logical_size(0.0, 0.0))
             .background(solid(0x1f, 0x21, 0x2c, 0xff))
             .border_brush(accent_brush(AGENT_PURPLE, 0xaa))
             .border_width(1.0)
@@ -449,7 +441,8 @@ fn render_tool_result(
 ) {
     row.with_child(
         Panel::column(8.0)
-            .layout(Layout::column(8.0).fill_width().padding_all(14.0))
+            .padding_all(14.0)
+            .layout(Layout::column(8.0).fill_width())
             .background(solid(0x1d, 0x2b, 0x25, 0xff))
             .border_brush(accent_brush(AGENT_GREEN, 0xbb))
             .border_width(1.0)
@@ -485,7 +478,8 @@ fn render_process_output(
     };
     row.with_child(
         Panel::column(6.0)
-            .layout(Layout::column(6.0).fill_width().padding_all(12.0))
+            .padding_all(12.0)
+            .layout(Layout::column(6.0).fill_width())
             .background(solid(0x10, 0x12, 0x18, 0xff))
             .border_brush(solid(0x38, 0x3d, 0x4c, 0xff))
             .border_width(1.0)
@@ -514,12 +508,8 @@ fn render_annotation(
     };
     row.with_child(
         Panel::row(10.0)
-            .layout(
-                Layout::row(10.0)
-                    .fill_width()
-                    .padding_all(12.0)
-                    .align_center(),
-            )
+            .padding_all(12.0)
+            .layout(Layout::row(10.0).fill_width().align_center())
             .background(solid(0x24, 0x25, 0x30, 0xff))
             .border_brush(accent_brush(accent, 0x88))
             .border_width(1.0)
@@ -544,12 +534,8 @@ fn render_state(
 ) {
     row.with_child(
         Panel::row(10.0)
-            .layout(
-                Layout::row(10.0)
-                    .fill_width()
-                    .padding_all(12.0)
-                    .align_center(),
-            )
+            .padding_all(12.0)
+            .layout(Layout::row(10.0).fill_width().align_center())
             .background(solid(0x1e, 0x25, 0x32, 0xff))
             .border_brush(accent_brush(AGENT_BLUE, 0x88))
             .border_width(1.0)
@@ -569,11 +555,8 @@ fn render_state(
 fn add_metric_tile(ui: &mut ChildUi<'_>, label: &str, value: &str, accent: (u8, u8, u8)) {
     ui.with_child(
         Panel::column(2.0)
-            .layout(
-                Layout::column(2.0)
-                    .logical_size(108.0, 54.0)
-                    .padding_all(8.0),
-            )
+            .padding_all(8.0)
+            .layout(Layout::column(2.0).logical_size(108.0, 54.0))
             .background(solid(0x18, 0x1c, 0x25, 0xff))
             .border_brush(accent_brush(accent, 0x80))
             .border_width(1.0)
@@ -596,12 +579,8 @@ fn add_metric_tile(ui: &mut ChildUi<'_>, label: &str, value: &str, accent: (u8, 
 fn add_status_pill(ui: &mut ChildUi<'_>, label: &str, accent: (u8, u8, u8)) {
     ui.with_child(
         Panel::new()
-            .layout(
-                Layout::row(0.0)
-                    .logical_size(112.0, 24.0)
-                    .padding_xy(10.0, 0.0)
-                    .align_center(),
-            )
+            .padding_xy(10.0, 0.0)
+            .layout(Layout::row(0.0).logical_size(112.0, 24.0).align_center())
             .background(accent_brush(accent, 0x33))
             .border_brush(accent_brush(accent, 0xbb))
             .border_width(1.0)

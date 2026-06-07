@@ -863,12 +863,9 @@ fn append_realized_transcript_row<P>(
 ) -> ElementId {
     let row = ui.append(
         viewport,
-        Panel::new().layout(
-            Layout::column(0.0)
-                .fill_width()
-                .padding_xy(2.0, 0.0)
-                .min_logical_size(0.0, 0.0),
-        ),
+        Panel::new()
+            .padding_xy(2.0, 0.0)
+            .layout(Layout::column(0.0).fill_width().min_logical_size(0.0, 0.0)),
     );
     ui.with_children(row, |row| {
         entry_template.render(row, TranscriptEntryContext::new(index, entry, children));
@@ -892,14 +889,13 @@ fn default_entry_template(row: &mut ChildUi<'_>, context: TranscriptEntryContext
     let (background, border) = default_row_colors(context.entry());
     row.with_child(
         Panel::column(6.0)
+            .padding_all(12.0)
             .layout(
-                Layout::column(6.0)
-                    .size(
-                        LayoutSize::new()
-                            .width(LayoutDimension::Percent(1.0))
-                            .min_width(LayoutDimension::Logical(0.0)),
-                    )
-                    .padding_all(12.0),
+                Layout::column(6.0).size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Percent(1.0))
+                        .min_width(LayoutDimension::Logical(0.0)),
+                ),
             )
             .background(background)
             .border_brush(border)

@@ -56,15 +56,16 @@ impl View for PageHeader {
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         let page = self.0;
         stage.with_child(
-            Panel::row(18.0).class(CLASS_DEMO_HEADER).layout(
-                Layout::row(18.0)
-                    .size(
+            Panel::row(18.0)
+                .class(CLASS_DEMO_HEADER)
+                .padding_all(18.0)
+                .layout(
+                    Layout::row(18.0).size(
                         LayoutSize::new()
                             .width(LayoutDimension::Percent(1.0))
                             .height(LayoutDimension::Logical(PAGE_HEADER_HEIGHT)),
-                    )
-                    .padding_all(18.0),
-            ),
+                    ),
+                ),
             |header| {
                 header.add(
                     Panel::new()

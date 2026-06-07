@@ -13,11 +13,13 @@ impl View for LayoutPage {
                 row.demo_card("RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0, |panes| {
                     panes.with_child(Panel::row(8.0).align_center(), |split_row| {
                         let left_pane = split_row.add_with_children(
-                            Panel::column(8.0).class(CLASS_DEMO_SPLIT_SCENE).layout(
-                                Layout::column(8.0)
-                                    .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
-                                    .padding_all(14.0),
-                            ),
+                            Panel::column(8.0)
+                                .class(CLASS_DEMO_SPLIT_SCENE)
+                                .padding_all(14.0)
+                                .layout(
+                                    Layout::column(8.0)
+                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT),
+                                ),
                             |left_pane| {
                                 left_pane.add(control_label("Scene"));
                                 if let Ok(svg) = SvgElementTree::from_bytes(
@@ -46,10 +48,10 @@ impl View for LayoutPage {
                         split_row.with_child(
                             Panel::column(8.0)
                                 .class(CLASS_DEMO_SPLIT_INSPECTOR)
+                                .padding_all(14.0)
                                 .layout(
                                     Layout::column(8.0)
-                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT)
-                                        .padding_all(14.0),
+                                        .logical_size(SPLIT_PANE_WIDTH, SPLIT_PANE_HEIGHT),
                                 )
                                 .reference(right_pane_ref),
                             |right_pane| {
