@@ -10,7 +10,7 @@ impl View for MotionPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("COLOR MOTION", PAGE_CARD_WIDTH, 326.0, |color| {
+                row.demo_card("COLOR MOTION", PAGE_CARD_WIDTH, 376.0, |color| {
                     let [oklab, srgb] = color.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
@@ -37,14 +37,21 @@ impl View for MotionPage {
                             motion_lane_label(labels, "sRGB");
                         },
                     );
+                    let foreground = foreground_specimen(color);
                     color.add(
-                        body_text("Both lanes share endpoints. The middle of the journey exposes the interpolation policy."),
+                        body_text("Both lanes share endpoints. The midpoint exposes the interpolation policy while text rides the same state rhythm."),
                     );
                     schedule_pair_toggle(
                         color.ui_mut(),
                         [oklab, srgb],
                         PSEUDO_SELECTED,
                         millis(5_200),
+                    );
+                    schedule_toggle(
+                        color.ui_mut(),
+                        foreground,
+                        PSEUDO_SELECTED,
+                        millis(2_600),
                     );
                 });
 
@@ -111,6 +118,21 @@ impl View for MotionPage {
             },
         );
     }
+}
+
+fn foreground_specimen(parent: &mut ChildUi<'_>) -> ElementId {
+    parent.with_child(
+        Panel::row(0.0).class(CLASS_DEMO_MOTION_STAGE).layout(
+            Layout::row(0.0)
+                .logical_size(PAGE_CONTROL_WIDTH, 48.0)
+                .alignment(
+                    LayoutAlignment::new()
+                        .align_items(LayoutAlign::Center)
+                        .justify_content(LayoutJustify::Center),
+                ),
+        ),
+        |stage| stage.add(Text::new("Foreground signal").class(CLASS_FOREGROUND_SWATCH)),
+    )
 }
 
 fn motion_lane_label(parent: &mut ChildUi<'_>, text: &str) -> ElementId {
@@ -201,6 +223,41 @@ mod tests {
         assert!(
             after.x0 > start.x0 + 100.0,
             "mover target should advance after its timer fires: {start:?} -> {after:?}",
+        );
+    }
+
+    #[test]
+    fn motion_page_foreground_timer_updates_text_state() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Motion);
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        let foreground = find_by_class(&ui, ui.root(), CLASS_FOREGROUND_SWATCH)
+            .expect("motion page should contain the foreground specimen");
+        assert!(
+            !ui.get(foreground)
+                .expect("foreground specimen should exist")
+                .pseudos()
+                .contains(&PSEUDO_SELECTED),
+            "foreground specimen should start idle",
+        );
+
+        ui.pump_timers(millis(2_600));
+        ui.compute_layout(Size::new(
+            f64::from(INITIAL_SIZE.0),
+            f64::from(INITIAL_SIZE.1),
+        ));
+
+        assert!(
+            ui.get(foreground)
+                .expect("foreground specimen should exist")
+                .pseudos()
+                .contains(&PSEUDO_SELECTED),
+            "foreground specimen timer should toggle selected state",
         );
     }
 

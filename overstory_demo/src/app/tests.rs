@@ -55,6 +55,7 @@ fn gallery_registers_demo_style_token_names() {
     for class_name in [
         CLASS_DEMO_ROOT,
         CLASS_DEMO_CARD,
+        CLASS_FOREGROUND_SWATCH,
         CLASS_DEMO_TEMPLATE_SLIDER_THUMB,
     ] {
         let class = vocabulary

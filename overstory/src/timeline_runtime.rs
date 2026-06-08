@@ -180,7 +180,7 @@ pub(crate) enum PresentationValue {
 }
 
 impl PresentationValue {
-    const fn kind(self) -> PresentationValueKind {
+    pub(crate) const fn kind(self) -> PresentationValueKind {
         match self {
             Self::Scalar32(_) => PresentationValueKind::Scalar32,
             Self::Scalar64(_) => PresentationValueKind::Scalar64,

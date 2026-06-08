@@ -59,6 +59,7 @@ pub(super) const CLASS_DEMO_TEMPLATE_SLIDER_THUMB: &str = ".demo-template-slider
 pub(super) const CLASS_DEMO_TRANSCRIPT_VIEWPORT: &str = ".demo-transcript-viewport";
 pub(super) const CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT: &str = ".demo-transcript-composer-input";
 pub(super) const CLASS_DEVTOOLS_EVENT_LOG: &str = ".devtools-event-log";
+pub(super) const CLASS_FOREGROUND_SWATCH: &str = ".foreground-swatch";
 pub(super) const CLASS_OKLAB_SWATCH: &str = ".oklab-swatch";
 pub(super) const CLASS_OPACITY_SWATCH: &str = ".opacity-swatch";
 pub(super) const CLASS_BORDER_SWATCH: &str = ".border-swatch";
@@ -100,6 +101,7 @@ pub(super) struct DemoClasses {
     pub(super) demo_template_check_box_box: ClassId,
     pub(super) demo_template_slider_track: ClassId,
     pub(super) demo_template_slider_thumb: ClassId,
+    pub(super) foreground_swatch: ClassId,
     pub(super) oklab_swatch: ClassId,
     pub(super) opacity_swatch: ClassId,
     pub(super) border_swatch: ClassId,
@@ -166,6 +168,7 @@ impl overstory::StyleTokenSet for DemoStyleTokens {
                 demo_template_check_box_box: vocabulary.class_id(CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX),
                 demo_template_slider_track: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
                 demo_template_slider_thumb: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
+                foreground_swatch: vocabulary.class_id(CLASS_FOREGROUND_SWATCH),
                 oklab_swatch: vocabulary.class_id(CLASS_OKLAB_SWATCH),
                 opacity_swatch: vocabulary.class_id(CLASS_OPACITY_SWATCH),
                 border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
@@ -556,6 +559,29 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
         )
         .push_rule(
             StyleOrigin::Base,
+            text_class_selector(classes.foreground_swatch),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, resources.muted_fg)
+                .set(properties.font_size, 22.0_f64)
+                .set(
+                    properties.transitions,
+                    scalar_transition_rules(
+                        TransitionTarget::property(properties.foreground.id()),
+                        TransitionSpec::timed(millis(820), EASE_OUT)
+                            .with_color_interpolation(ColorInterpolation::OKLAB),
+                    ),
+                )
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_state_selector(classes.foreground_swatch, PSEUDO_SELECTED),
+            StyleBuilder::new()
+                .set(properties.foreground, solid(0x2f, 0x62, 0xd6, 0xff))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
             class_selector(classes.oklab_swatch),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xff, 0x2a, 0x78, 0xff))
@@ -695,6 +721,14 @@ pub(super) fn untyped_class_selector(class: ClassId) -> Selector {
 
 pub(super) fn text_class_selector(class: ClassId) -> Selector {
     Selector::single(SelectorStep::type_tag(TYPE_TEXT).with_class(class))
+}
+
+pub(super) fn text_class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {
+    Selector::single(
+        SelectorStep::type_tag(TYPE_TEXT)
+            .with_class(class)
+            .with_pseudo(pseudo),
+    )
 }
 
 pub(super) fn button_class_state_selector(class: ClassId, pseudo: PseudoClassId) -> Selector {

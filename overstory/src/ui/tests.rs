@@ -5,6 +5,7 @@ use super::*;
 use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::pseudos::{
     PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+    PSEUDO_SELECTED,
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
@@ -1496,6 +1497,158 @@ fn styled_transition_rule_controls_button_hover_duration() {
 }
 
 #[test]
+fn transition_rules_drive_registered_foreground_property() {
+    const MOTION_TEXT: ClassId = ClassId(91);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(240.0, 80.0));
+
+    let idle = Color::from_rgba8(0xb0, 0xb8, 0xc8, 0xff);
+    let selected = Color::from_rgba8(0x56, 0xd3, 0xff, 0xff);
+    let foreground = ui.properties().foreground;
+    let transitions = ui.properties().transitions;
+    let selector =
+        SelectorBuilder::new(SelectorStep::type_tag(crate::TYPE_TEXT).with_class(MOTION_TEXT))
+            .build();
+    let selected_selector = SelectorBuilder::new(
+        SelectorStep::type_tag(crate::TYPE_TEXT)
+            .with_class(MOTION_TEXT)
+            .with_pseudo(PSEUDO_SELECTED),
+    )
+    .build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(idle))
+                    .set(
+                        transitions,
+                        TransitionRules::single(TransitionRule::interaction(
+                            TransitionTarget::property(foreground.id()),
+                            TransitionSpec::linear(millis(100))
+                                .with_color_interpolation(ColorInterpolation::SRGB),
+                        )),
+                    )
+                    .build(),
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                selected_selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(selected))
+                    .build(),
+            )
+            .build(),
+    );
+
+    let text = ui.append(
+        root,
+        crate::Text::new("Foreground").class(MOTION_TEXT).layout(
+            Layout::flex()
+                .logical_size(180.0, 32.0)
+                .alignment(crate::LayoutAlignment::new().align_items(crate::LayoutAlign::Center)),
+        ),
+    );
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, text), Some(idle));
+
+    ui.set_now(0);
+    ui.add_pseudo(text, PSEUDO_SELECTED);
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, text), Some(idle));
+
+    ui.set_now(millis(50));
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_eq!(
+        element_foreground_color(&ui, text),
+        Some(interpolate_srgb_color(idle, selected, 0.5))
+    );
+
+    ui.set_now(millis(100));
+    ui.compute_layout(Size::new(240.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, text), Some(selected));
+}
+
+#[test]
+fn interaction_transitions_track_descendant_effective_value_changes() {
+    const MOTION_ROW: ClassId = ClassId(92);
+    const MOTION_LABEL: ClassId = ClassId(93);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(260.0, 80.0));
+
+    let idle = Color::from_rgba8(0xd0, 0xd4, 0xdf, 0xff);
+    let selected = Color::from_rgba8(0x60, 0x7f, 0xff, 0xff);
+    let foreground = ui.properties().foreground;
+    let transitions = ui.properties().transitions;
+    let label_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(crate::TYPE_TEXT).with_class(MOTION_LABEL))
+            .build();
+    let selected_label_selector = understory_style::Selector::from([
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(MOTION_ROW)
+            .with_pseudo(PSEUDO_SELECTED),
+        SelectorStep::type_tag(crate::TYPE_TEXT).with_class(MOTION_LABEL),
+    ]);
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                label_selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(idle))
+                    .set(
+                        transitions,
+                        TransitionRules::single(TransitionRule::interaction(
+                            TransitionTarget::property(foreground.id()),
+                            TransitionSpec::linear(millis(100))
+                                .with_color_interpolation(ColorInterpolation::SRGB),
+                        )),
+                    )
+                    .build(),
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                selected_label_selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(selected))
+                    .build(),
+            )
+            .build(),
+    );
+
+    let row = ui.append(
+        root,
+        crate::Panel::new()
+            .class(MOTION_ROW)
+            .layout(Layout::flex().logical_size(220.0, 40.0)),
+    );
+    let label = ui.append(row, crate::Text::new("Descendant").class(MOTION_LABEL));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, label), Some(idle));
+
+    ui.set_now(0);
+    ui.add_pseudo(row, PSEUDO_SELECTED);
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, label), Some(idle));
+
+    ui.set_now(millis(50));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(
+        element_foreground_color(&ui, label),
+        Some(interpolate_srgb_color(idle, selected, 0.5))
+    );
+
+    ui.set_now(millis(100));
+    ui.compute_layout(Size::new(260.0, 80.0));
+    assert_eq!(element_foreground_color(&ui, label), Some(selected));
+}
+
+#[test]
 fn local_background_change_after_transition_paints_new_target() {
     use crate::{Button, theme};
 
@@ -1750,6 +1903,14 @@ fn element_border_color(ui: &Ui, id: ElementId) -> Option<Color> {
     let element = ui.get(id)?;
     match ui.resolve_value_for(element, ui.properties().surface.border_brushes.top) {
         Some(Brush::Solid(color)) => Some(color),
+        _ => None,
+    }
+}
+
+fn element_foreground_color(ui: &Ui, id: ElementId) -> Option<Color> {
+    let element = ui.get(id)?;
+    match ui.resolve_value_for(element, ui.properties().foreground) {
+        Brush::Solid(color) => Some(color),
         _ => None,
     }
 }

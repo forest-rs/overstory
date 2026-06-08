@@ -68,7 +68,7 @@ impl Ui {
 
     /// Adds `pseudo` to `id` and re-styles the affected subtree.
     pub fn add_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
-        let transition_plan = InteractionTransitionPlan::capture(self, id, pseudo);
+        let transition_plan = InteractionTransitionPlan::capture(self, id);
         let changed = self
             .get_mut(id)
             .map(|el| el.add_pseudo(pseudo))
@@ -82,7 +82,7 @@ impl Ui {
 
     /// Removes `pseudo` from `id` and re-styles the affected subtree.
     pub fn remove_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
-        let transition_plan = InteractionTransitionPlan::capture(self, id, pseudo);
+        let transition_plan = InteractionTransitionPlan::capture(self, id);
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_pseudo(pseudo))

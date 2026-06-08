@@ -103,14 +103,23 @@ impl Ui {
         value: T,
         cause: ChangeCause,
     ) -> bool {
+        self.set_presentation_target_value(element, timeline_target, value.into_value(), cause)
+    }
+
+    pub(crate) fn set_presentation_target_value(
+        &mut self,
+        element: ElementId,
+        timeline_target: TimelineTarget,
+        target: PresentationValue,
+        cause: ChangeCause,
+    ) -> bool {
         let key = TimelineTrackKey::new(element, timeline_target);
-        let target = value.into_value();
         if let TimelineTarget::Property(property) = timeline_target
             && let Some(adapter) = self.timeline_properties.adapter(property)
         {
             debug_assert_eq!(
                 adapter.kind(),
-                T::KIND,
+                target.kind(),
                 "timeline sample kind must match the property adapter"
             );
         }
@@ -126,7 +135,7 @@ impl Ui {
         needs_sample
     }
 
-    fn transition_spec_for(
+    pub(in crate::ui) fn transition_spec_for(
         &self,
         element: ElementId,
         target: TimelineTarget,

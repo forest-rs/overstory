@@ -260,6 +260,7 @@ impl Ui {
         timeline_properties.register_solid_brush_color(properties.surface.border_brushes.right);
         timeline_properties.register_solid_brush_color(properties.surface.border_brushes.bottom);
         timeline_properties.register_solid_brush_color(properties.surface.border_brushes.left);
+        timeline_properties.register_brush_color(properties.foreground);
         timeline_properties.register(properties.opacity);
         timeline_properties.register(properties.surface.border_widths.top);
         timeline_properties.register(properties.surface.border_widths.right);
