@@ -33,7 +33,6 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateContext, TemplateContract, TemplateItemKey, TemplateSlot};
-use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -386,7 +385,6 @@ impl Widget for SliderWidget {
         if sync_slider_thumb_layout(ctx.ui_mut(), slider) {
             return ArrangeResult::LAYOUT_CHANGED;
         }
-        let _ = sync_slider_thumb_offset_target(ctx.ui_mut(), slider);
         ArrangeResult::UNCHANGED
     }
 
@@ -681,15 +679,13 @@ fn set_value(ui: &mut Ui, slider: ElementId, thumb: ElementId, value: f64, motio
     let clamped = range.clamp(value);
     let value_prop = ui.properties().value;
     ui.set_local(slider, value_prop, clamped);
-    if motion == ThumbMotion::Animate {
-        ui.request_styled_presentation_transition(
-            thumb,
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-        );
-    }
     let left = thumb_left_for_value(clamped, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
-    ui.set_layout_placement_without_motion(thumb, LayoutPlacement::absolute_at(left, top));
+    let placement = LayoutPlacement::absolute_at(left, top);
+    match motion {
+        ThumbMotion::Animate => ui.set_layout_placement(thumb, placement),
+        ThumbMotion::Snap => ui.set_layout_placement_without_motion(thumb, placement),
+    }
 }
 
 fn set_value_from_position(
@@ -720,25 +716,6 @@ fn set_value_from_center_position(
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let value = ScalarRange::new(min, max).value_at_fraction(t);
     set_value(ui, slider, thumb, value, motion);
-}
-
-fn sync_slider_thumb_offset_target(ui: &mut Ui, slider: ElementId) -> bool {
-    let Some(thumb) = ui.slot(slider, SLOT_SLIDER_THUMB) else {
-        return false;
-    };
-    let slider_bounds = ui.effective_bounds(slider);
-    let thumb_bounds = ui.effective_bounds(thumb);
-    let target = kurbo::Vec2::new(
-        thumb_bounds.x0 - slider_bounds.x0,
-        thumb_bounds.y0 - slider_bounds.y0,
-    );
-    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
-    let cause = if ui.has_pending_presentation_transition(thumb, property) {
-        ChangeCause::Interaction
-    } else {
-        ChangeCause::Other
-    };
-    ui.set_presentation_target(thumb, property, target, cause)
 }
 
 fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {

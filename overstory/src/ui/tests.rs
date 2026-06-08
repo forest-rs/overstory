@@ -34,6 +34,7 @@ use crate::motion::{
 };
 
 mod events;
+mod layout_motion;
 
 #[test]
 fn new_ui_has_root() {
@@ -4454,70 +4455,6 @@ fn scene_composition_applies_effective_layer_opacity() {
         (output.group(*group).composite.alpha - 0.5).abs() <= f32::EPSILON
     });
     assert!(has_half_opacity_group);
-}
-
-#[test]
-fn generic_layer_offset_transition_tracks_layout_target_changes() {
-    use crate::Panel;
-
-    const MOVING: ClassId = ClassId(90);
-
-    let mut ui = Ui::new();
-    let transitions = ui.properties().transitions;
-    let cascade = StyleCascadeBuilder::new()
-        .push_rule(
-            StyleOrigin::Base,
-            SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(MOVING)).build(),
-            StyleBuilder::new()
-                .set(
-                    transitions,
-                    TransitionRules::single(TransitionRule::interaction(
-                        TransitionTarget::layer_offset(),
-                        TransitionSpec::linear(millis(100)),
-                    )),
-                )
-                .build(),
-        )
-        .build();
-    ui.set_cascade(cascade);
-
-    let root = ui.root();
-    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
-    let stage = ui.append(
-        root,
-        Panel::new().layout(Layout::flex().relative().logical_size(180.0, 60.0)),
-    );
-    let mover = ui.append(
-        stage,
-        Panel::new().class(MOVING).layout(
-            Layout::new()
-                .absolute_at(10.0, 20.0)
-                .logical_size(24.0, 24.0),
-        ),
-    );
-
-    ui.compute_layout(Size::new(200.0, 80.0));
-    let start_x = layer_x(&ui, mover);
-    assert_close(start_x, 10.0);
-
-    ui.set_now(0);
-    ui.set_layout(
-        mover,
-        Layout::new()
-            .absolute_at(130.0, 20.0)
-            .logical_size(24.0, 24.0),
-    );
-    ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(ui.effective_bounds(mover).x0, 130.0);
-    assert_close(layer_x(&ui, mover), 10.0);
-
-    ui.set_now(millis(50));
-    ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(layer_x(&ui, mover), 70.0);
-
-    ui.set_now(millis(100));
-    ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(layer_x(&ui, mover), 130.0);
 }
 
 #[test]

@@ -22,7 +22,7 @@ use alloc::boxed::Box;
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
+use crate::behavior::WidgetEventContext;
 use crate::controls::support::{
     CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, dispatch_checked_changed,
 };
@@ -32,7 +32,6 @@ use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::timeline_runtime::{ChangeCause, TimelineTarget, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -243,12 +242,6 @@ impl Widget for ToggleWidget {
             event.mark_handled();
         }
     }
-
-    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
-        let toggle = ctx.id();
-        let _ = sync_thumb_offset_target(ctx.ui_mut(), toggle);
-        ArrangeResult::UNCHANGED
-    }
 }
 
 static TOGGLE_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(toggle_template_spec);
@@ -288,31 +281,6 @@ fn set_toggle_checked(ui: &mut Ui, toggle: ElementId, checked: bool) {
     } else {
         ui.remove_pseudo(toggle, PSEUDO_CHECKED);
     }
-    if let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) {
-        ui.request_styled_presentation_transition(
-            thumb,
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-        );
-    }
-}
-
-fn sync_thumb_offset_target(ui: &mut Ui, toggle: ElementId) -> bool {
-    let Some(thumb) = ui.slot(toggle, SLOT_TOGGLE_THUMB) else {
-        return false;
-    };
-    let toggle_bounds = ui.effective_bounds(toggle);
-    let thumb_bounds = ui.effective_bounds(thumb);
-    let target = kurbo::Vec2::new(
-        thumb_bounds.x0 - toggle_bounds.x0,
-        thumb_bounds.y0 - toggle_bounds.y0,
-    );
-    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
-    let cause = if ui.has_pending_presentation_transition(thumb, property) {
-        ChangeCause::Interaction
-    } else {
-        ChangeCause::Other
-    };
-    ui.set_presentation_target(thumb, property, target, cause)
 }
 
 #[cfg(test)]

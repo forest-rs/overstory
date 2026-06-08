@@ -115,16 +115,22 @@ impl Ui {
             id,
             TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
         );
-        self.set_layout_placement_without_motion(id, placement);
+        self.set_layout_placement_raw(id, placement);
     }
 
     /// Sets an element's layout placement without requesting presentation
-    /// motion.
+    /// motion, cancelling any active layer-offset transition for the element.
     pub(crate) fn set_layout_placement_without_motion(
         &mut self,
         id: ElementId,
         placement: impl Into<LayoutPlacement>,
     ) {
+        self.clear_presentation_target(id, TimelineTarget::VisualOutput(VisualOutput::LayerOffset));
+        self.mark_channels(id, ARRANGE.into());
+        self.set_layout_placement_raw(id, placement);
+    }
+
+    fn set_layout_placement_raw(&mut self, id: ElementId, placement: impl Into<LayoutPlacement>) {
         let placement_prop = self.properties.layout_placement;
         self.set_local(id, placement_prop, placement.into());
     }

@@ -32,9 +32,7 @@ use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::timeline_runtime::{
-    ChangeCause, EffectClip, EffectKeyframe, PresentationValue, TimelineTarget, VisualOutput,
-};
+use crate::timeline_runtime::{EffectClip, EffectKeyframe, PresentationValue, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
@@ -325,7 +323,6 @@ impl Widget for SegmentedControlWidget {
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let segmented = ctx.id();
         let changed = self.sync_indicator_layout(ctx.ui_mut(), segmented);
-        self.sync_indicator_offset_target(ctx.ui_mut(), segmented);
         ArrangeResult::from_layout_changed(changed)
     }
 }
@@ -353,12 +350,6 @@ impl SegmentedControlWidget {
             return false;
         };
         let index = selection.index;
-        if let Some(indicator) = self.indicator {
-            ui.request_styled_presentation_transition(
-                indicator,
-                TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
-            );
-        }
         if let Some(previous) = self.selected_index {
             set_segmented_item_selected(ui, self.segments[previous], false);
         }
@@ -388,13 +379,6 @@ impl SegmentedControlWidget {
             return false;
         };
         sync_segmented_indicator_layout(ui, segmented, indicator, self.selected_segment())
-    }
-
-    fn sync_indicator_offset_target(&self, ui: &mut Ui, segmented: ElementId) {
-        let Some(indicator) = self.indicator else {
-            return;
-        };
-        sync_segmented_indicator_offset_target(ui, segmented, indicator);
     }
 
     fn start_denied_feedback(&mut self, ui: &mut Ui, segmented: ElementId) {
@@ -560,22 +544,6 @@ fn sync_segmented_indicator_layout(
     true
 }
 
-fn sync_segmented_indicator_offset_target(ui: &mut Ui, segmented: ElementId, indicator: ElementId) {
-    let segmented_bounds = ui.effective_bounds(segmented);
-    let indicator_bounds = ui.effective_bounds(indicator);
-    let target = Vec2::new(
-        indicator_bounds.x0 - segmented_bounds.x0,
-        indicator_bounds.y0 - segmented_bounds.y0,
-    );
-    let property = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
-    let cause = if ui.has_pending_presentation_transition(indicator, property) {
-        ChangeCause::Interaction
-    } else {
-        ChangeCause::Other
-    };
-    ui.set_presentation_target(indicator, property, target, cause);
-}
-
 fn rect_close(a: kurbo::Rect, b: kurbo::Rect) -> bool {
     scalar_close(a.x0, b.x0)
         && scalar_close(a.y0, b.y0)
@@ -719,6 +687,7 @@ mod tests {
     use crate::accessibility::accesskit_node_id;
     use crate::motion::millis;
     use crate::test_support::pointer_down;
+    use crate::timeline_runtime::TimelineTarget;
     use accesskit::Role;
     use alloc::rc::Rc;
     use core::cell::Cell;
