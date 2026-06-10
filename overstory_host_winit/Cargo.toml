@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 accesskit_winit.workspace = true
+frameclock.workspace = true
 imaging_vello.workspace = true
 imaging_wgpu.workspace = true
 overstory = { features = ["std"], workspace = true }

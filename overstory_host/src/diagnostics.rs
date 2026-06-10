@@ -5,6 +5,7 @@
 
 use core::time::Duration;
 
+use frameclock::FrameTimingSummary;
 use overstory::UiFrameStats;
 
 /// Wall-clock timings for one host frame preparation.
@@ -38,4 +39,7 @@ pub struct FrameDiagnostics {
     pub surface_cache_len: usize,
     /// Whether the scaled output scene is empty.
     pub output_empty: bool,
+    /// Frameclock scheduling and pacing facts for the most recently submitted
+    /// frame.
+    pub frame_timing: Option<FrameTimingSummary>,
 }

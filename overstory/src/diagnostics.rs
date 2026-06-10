@@ -11,6 +11,7 @@ use core::time::Duration;
 
 use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::text::TextLayoutCacheStats;
+use frameclock::FrameTimingSummary;
 
 /// Count of invalidation-channel marks observed during a frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -70,6 +71,14 @@ pub struct UiFrameStats {
     /// These timings are zero until a platform host records renderer work.
     /// They are CPU-side submission timings, not GPU completion timestamps.
     pub renderer_timings: UiRendererTimings,
+    /// Host-supplied frame scheduling facts for the most recently submitted
+    /// frame.
+    ///
+    /// These facts come from `frameclock`: demand, frame-start time,
+    /// sample-time, commit deadline, presentation feedback, and scheduler
+    /// adaptation state. Core Overstory stores the summary so devtools can read
+    /// it from the same frame snapshot as other UI counters.
+    pub frame_timing: Option<FrameTimingSummary>,
     /// Live element count observed when the snapshot is read.
     pub elements: usize,
     /// Invalidation-channel marks observed since the last reset.

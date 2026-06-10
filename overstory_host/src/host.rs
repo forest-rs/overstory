@@ -6,6 +6,11 @@
 use core::{fmt, time::Duration};
 
 use accesskit::{ActionRequest, TreeUpdate};
+use frameclock::{
+    ActiveFrame, DisplayTiming, Duration as FrameDuration, FrameBeginResult, FrameDemand,
+    FrameDriver, FrameOpportunity, FrameSubmission, FrameTick, FrameTimingSummary, HostTime,
+    OutputId, PresentHints, PresentationObservation, SchedulerConfig,
+};
 use hashbrown::{HashMap, HashSet};
 use imaging::record::Scene;
 use overstory::{CursorIcon, SurfaceId, TimerInstant, Ui, UiFrameTimings, UiRendererTimings};
@@ -15,6 +20,111 @@ use web_time::Instant;
 
 use crate::{FrameDiagnostics, FrameTimings, FrameViewport, HostDispatchResult};
 
+const DEFAULT_FRAME_INTERVAL: FrameDuration = FrameDuration(16_666_667);
+
+/// Timing facts used by [`UiHost`] to ask `frameclock` for one frame plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostFrameTiming {
+    /// Host time at which the frame opportunity is being evaluated.
+    pub now: HostTime,
+    /// Predicted time when pixels will be presented, if the platform exposes
+    /// one.
+    pub predicted_present: Option<HostTime>,
+    /// Display refresh interval in host-time ticks, if known.
+    pub refresh_interval: Option<u64>,
+    /// Actual presentation time of the previous frame, if the platform reports
+    /// it on this tick.
+    pub prev_actual_present: Option<HostTime>,
+    /// Backend submission constraints paired with this opportunity.
+    pub hints: PresentHints,
+    /// Display timing constraints for the target output.
+    pub display_timing: DisplayTiming,
+}
+
+impl HostFrameTiming {
+    /// Creates pacing-only timing facts for hosts that do not expose predicted
+    /// presentation timestamps.
+    #[must_use]
+    pub fn pacing_only(now: HostTime) -> Self {
+        Self {
+            now,
+            predicted_present: None,
+            refresh_interval: Some(DEFAULT_FRAME_INTERVAL.ticks()),
+            prev_actual_present: None,
+            hints: PresentHints::pacing_only(now + DEFAULT_FRAME_INTERVAL),
+            display_timing: DisplayTiming::fixed(DEFAULT_FRAME_INTERVAL),
+        }
+    }
+
+    /// Sets the actual presentation time of the previous submitted frame.
+    ///
+    /// Use this for platforms that report actual presentation one tick later.
+    /// `frameclock` resolves any deferred submission summary before deciding
+    /// what to do with the current frame opportunity.
+    #[must_use]
+    pub const fn with_previous_actual_present(mut self, actual_present: HostTime) -> Self {
+        self.prev_actual_present = Some(actual_present);
+        self
+    }
+}
+
+/// Host-side submission facts for a prepared frame.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostFrameSubmission {
+    /// CPU-side backend renderer timings for the submitted frame.
+    pub renderer_timings: UiRendererTimings,
+    /// Host time when the backend submitted or committed the frame.
+    ///
+    /// When omitted, [`UiHost`] samples its monotonic clock while recording the
+    /// submission.
+    pub submitted_at: Option<HostTime>,
+    /// Presentation evidence available for the submitted frame.
+    pub presentation: PresentationObservation,
+}
+
+impl HostFrameSubmission {
+    /// Creates submission facts with renderer timings and no platform
+    /// presentation timestamp.
+    #[must_use]
+    pub const fn new(renderer_timings: UiRendererTimings) -> Self {
+        Self {
+            renderer_timings,
+            submitted_at: None,
+            presentation: PresentationObservation::Unavailable,
+        }
+    }
+
+    /// Sets the host time when the frame was submitted or committed.
+    #[must_use]
+    pub const fn with_submitted_at(mut self, submitted_at: HostTime) -> Self {
+        self.submitted_at = Some(submitted_at);
+        self
+    }
+
+    /// Sets the actual presentation time reported by the platform.
+    ///
+    /// The timestamp must use the same host-time base as [`HostFrameTiming`].
+    #[must_use]
+    pub const fn with_actual_present(mut self, actual_present: HostTime) -> Self {
+        self.presentation = PresentationObservation::Actual(actual_present);
+        self
+    }
+
+    /// Marks this submission as waiting for actual-present feedback on a later
+    /// frame tick.
+    #[must_use]
+    pub const fn with_deferred_present_feedback(mut self) -> Self {
+        self.presentation = PresentationObservation::Deferred;
+        self
+    }
+}
+
+impl Default for HostFrameSubmission {
+    fn default() -> Self {
+        Self::new(UiRendererTimings::default())
+    }
+}
+
 /// Drives one [`Ui`] instance between platform events and rendering.
 pub struct UiHost {
     ui: Ui,
@@ -22,6 +132,11 @@ pub struct UiHost {
     scaled_scene: Scene,
     surface_scenes: HashMap<SurfaceId, Scene>,
     start_instant: Instant,
+    frame_driver: FrameDriver,
+    frame_output: OutputId,
+    next_frame_index: u64,
+    active_frame: Option<ActiveFrame>,
+    last_frame_timing: Option<FrameTimingSummary>,
     cursor_icon: CursorIcon,
     last_frame_diagnostics: FrameDiagnostics,
 }
@@ -30,6 +145,8 @@ impl fmt::Debug for UiHost {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UiHost")
             .field("start_instant", &self.start_instant)
+            .field("next_frame_index", &self.next_frame_index)
+            .field("frame_driver", &self.frame_driver)
             .field("cursor_icon", &self.cursor_icon)
             .finish_non_exhaustive()
     }
@@ -45,6 +162,15 @@ impl UiHost {
             scaled_scene: Scene::new(),
             surface_scenes: HashMap::new(),
             start_instant: Instant::now(),
+            frame_driver: {
+                let mut config = SchedulerConfig::pacing_only();
+                config.initial_depth = 1;
+                FrameDriver::new(config)
+            },
+            frame_output: OutputId(0),
+            next_frame_index: 0,
+            active_frame: None,
+            last_frame_timing: None,
             cursor_icon: CursorIcon::Default,
             last_frame_diagnostics: FrameDiagnostics::default(),
         }
@@ -74,33 +200,81 @@ impl UiHost {
         u64::try_from(self.start_instant.elapsed().as_nanos()).unwrap_or(u64::MAX)
     }
 
+    /// Returns the host's current monotonic time in `frameclock` units.
+    #[must_use]
+    pub fn frame_now(&self) -> HostTime {
+        HostTime(self.now())
+    }
+
     /// Pumps all timers that are due at the current host time.
-    pub fn pump_timers_now(&mut self) {
-        self.pump_timers(self.now());
+    ///
+    /// Returns `true` when a UI timer, timeline cue, or active presentation
+    /// track was due. Due UI wakeups are treated as animation demand because
+    /// they require another sampled frame.
+    pub fn pump_timers_now(&mut self) -> bool {
+        self.pump_timers(self.now())
     }
 
     /// Pumps all timers that are due at `now`.
-    pub fn pump_timers(&mut self, now: TimerInstant) {
+    ///
+    /// Returns `true` when a UI timer, timeline cue, or active presentation
+    /// track was due.
+    pub fn pump_timers(&mut self, now: TimerInstant) -> bool {
+        let due = self
+            .ui
+            .next_wakeup_deadline()
+            .is_some_and(|deadline| deadline <= now);
         self.ui.pump_timers(now);
+        if due {
+            self.request_frame(FrameDemand::ANIMATION);
+        }
+        due
     }
 
     /// Returns the next absolute host instant when pending UI work should wake,
     /// if any.
     #[must_use]
     pub fn next_wakeup(&self) -> Option<Instant> {
-        self.ui
-            .next_wakeup_deadline()
+        self.next_wakeup_deadline()
             .map(|deadline| self.instant_for_deadline(deadline))
     }
 
     /// Returns the duration until the next pending UI wakeup, if any.
     #[must_use]
     pub fn duration_until_next_wakeup(&self) -> Option<Duration> {
-        self.ui.next_wakeup_deadline().map(|deadline| {
+        self.next_wakeup_deadline().map(|deadline| {
             let elapsed = self.start_instant.elapsed().as_nanos();
             let until = u128::from(deadline).saturating_sub(elapsed);
             Duration::from_nanos(u64::try_from(until).unwrap_or(u64::MAX))
         })
+    }
+
+    /// Adds app-visible frame demand.
+    ///
+    /// Platform hosts call this when input, resize, animation, timers, or
+    /// delayed UI work requires another frame. A scheduled frame-start wake
+    /// should not call this; it only wakes the loop so an already planned frame
+    /// can run.
+    pub fn request_frame(&mut self, demand: FrameDemand) {
+        self.frame_driver.request(demand);
+    }
+
+    /// Returns pending frame demand that has not yet been planned.
+    #[must_use]
+    pub fn pending_frame_demand(&self) -> FrameDemand {
+        self.frame_driver.pending_demand()
+    }
+
+    /// Returns the start time for the queued frame, if one is waiting.
+    #[must_use]
+    pub fn pending_frame_start(&self) -> Option<HostTime> {
+        self.frame_driver.next_frame_start()
+    }
+
+    /// Returns the latest submitted frameclock timing summary.
+    #[must_use]
+    pub fn last_frame_timing_summary(&self) -> Option<FrameTimingSummary> {
+        self.last_frame_timing
     }
 
     /// Dispatches a normalized pointer event into the UI.
@@ -154,7 +328,8 @@ impl UiHost {
     /// independent from device pixel density.
     pub fn prepare_frame(&mut self, viewport: FrameViewport) -> &Scene {
         self.ui.reset_frame_stats();
-        self.prepare_frame_inner(viewport)
+        self.discard_active_frame();
+        self.prepare_frame_inner(viewport, self.now())
     }
 
     /// Lays out and paints without clearing existing UI frame counters first.
@@ -163,14 +338,47 @@ impl UiHost {
     /// mutating input, then want the prepared-frame diagnostics to include that
     /// input's invalidation marks.
     pub fn prepare_frame_preserving_stats(&mut self, viewport: FrameViewport) -> &Scene {
-        self.prepare_frame_inner(viewport)
+        self.discard_active_frame();
+        self.prepare_frame_inner(viewport, self.now())
     }
 
-    fn prepare_frame_inner(&mut self, viewport: FrameViewport) -> &Scene {
+    /// Prepares the next requested frame when `frameclock` says it is due.
+    ///
+    /// Returns `None` when there is no pending demand, when a planned frame is
+    /// waiting for its scheduler-selected frame start, or when `frameclock`
+    /// reports an expired plan that must be replanned. Platform hosts should
+    /// then arm [`Self::next_wakeup`] and avoid rendering.
+    pub fn prepare_requested_frame(
+        &mut self,
+        viewport: FrameViewport,
+        timing: HostFrameTiming,
+    ) -> Option<&Scene> {
+        let planned = self.take_ready_frame(timing)?;
+        let sample_time = planned.sample_time().ticks();
+        self.active_frame = Some(planned);
+        self.ui.reset_frame_stats();
+        Some(self.prepare_frame_inner(viewport, sample_time))
+    }
+
+    /// Discards the currently prepared frame without feeding presentation
+    /// feedback into the scheduler.
+    ///
+    /// Platform hosts call this when rendering cannot submit the prepared frame,
+    /// for example because the surface was lost or occluded after UI
+    /// preparation.
+    pub fn discard_prepared_frame(&mut self) {
+        self.discard_active_frame();
+    }
+
+    fn prepare_frame_inner(
+        &mut self,
+        viewport: FrameViewport,
+        sample_time: TimerInstant,
+    ) -> &Scene {
         let total_start = Instant::now();
 
         let phase_start = Instant::now();
-        self.ui.set_now(self.now());
+        self.ui.set_now(sample_time);
         let set_now = phase_start.elapsed();
 
         let phase_start = Instant::now();
@@ -220,6 +428,7 @@ impl UiHost {
             ui: self.ui.frame_stats(),
             surface_cache_len: self.surface_scenes.len(),
             output_empty,
+            frame_timing: self.last_frame_timing,
         };
         if use_scaled_scene {
             &self.scaled_scene
@@ -234,14 +443,30 @@ impl UiHost {
         self.last_frame_diagnostics
     }
 
-    /// Records backend renderer timings for the most recently submitted frame.
+    /// Records backend submission facts for the most recently submitted frame.
     ///
     /// Windowing/rendering hosts call this after they submit the prepared scene
-    /// to their backend so core inspection snapshots can report renderer work
-    /// separately from Overstory's scene preparation pipeline.
-    pub fn record_renderer_timings(&mut self, timings: UiRendererTimings) {
-        self.ui.set_renderer_timings(timings);
+    /// to their backend so core inspection snapshots can report renderer work,
+    /// presentation feedback, and frameclock scheduling facts separately from
+    /// Overstory's scene preparation pipeline.
+    pub fn record_frame_submission(&mut self, submission: HostFrameSubmission) {
+        self.ui.set_renderer_timings(submission.renderer_timings);
+        if let Some(active) = self.active_frame.take() {
+            let submitted_at = submission.submitted_at.unwrap_or_else(|| self.frame_now());
+            let submit = self.frame_driver.submit_frame(
+                active,
+                FrameSubmission {
+                    submitted_at,
+                    presentation: submission.presentation,
+                },
+            );
+            if let Some(summary) = submit.summary {
+                self.record_frame_timing_summary(summary);
+            }
+            self.next_frame_index = self.next_frame_index.wrapping_add(1);
+        }
         self.last_frame_diagnostics.ui = self.ui.frame_stats();
+        self.last_frame_diagnostics.frame_timing = self.last_frame_timing;
     }
 
     fn sync_surface_scenes(&mut self) {
@@ -260,6 +485,67 @@ impl UiHost {
 
     fn instant_for_deadline(&self, deadline: TimerInstant) -> Instant {
         self.start_instant + Duration::from_nanos(deadline)
+    }
+
+    fn next_wakeup_deadline(&self) -> Option<TimerInstant> {
+        min_deadline(
+            self.ui.next_wakeup_deadline(),
+            self.frame_driver.next_frame_start().map(HostTime::ticks),
+        )
+    }
+
+    fn take_ready_frame(&mut self, timing: HostFrameTiming) -> Option<ActiveFrame> {
+        let tick = FrameTick {
+            now: timing.now,
+            predicted_present: timing.predicted_present,
+            refresh_interval: timing.refresh_interval,
+            frame_index: self.next_frame_index,
+            output: self.frame_output,
+            prev_actual_present: timing.prev_actual_present,
+        };
+        let begin = self.frame_driver.begin_frame(FrameOpportunity::new(
+            tick,
+            timing.hints,
+            timing.display_timing,
+        ));
+        if let Some(summary) = begin.resolved_feedback {
+            self.record_frame_timing_summary(summary);
+        }
+        match begin.result {
+            FrameBeginResult::Ready(frame) => Some(frame),
+            FrameBeginResult::Expired(summary) => {
+                let demand = summary.demand;
+                self.record_frame_timing_summary(summary);
+                self.next_frame_index = self.next_frame_index.wrapping_add(1);
+                self.frame_driver.request(demand);
+                None
+            }
+            FrameBeginResult::Idle | FrameBeginResult::WaitUntil(_) => None,
+        }
+    }
+
+    fn discard_active_frame(&mut self) {
+        if let Some(active) = self.active_frame.take() {
+            let summary = self.frame_driver.discard_frame(active);
+            self.record_frame_timing_summary(summary);
+            self.next_frame_index = self.next_frame_index.wrapping_add(1);
+        }
+    }
+
+    fn record_frame_timing_summary(&mut self, summary: FrameTimingSummary) {
+        self.last_frame_timing = Some(summary);
+        self.ui.set_frame_timing_summary(self.last_frame_timing);
+        self.last_frame_diagnostics.ui = self.ui.frame_stats();
+        self.last_frame_diagnostics.frame_timing = self.last_frame_timing;
+    }
+}
+
+fn min_deadline(a: Option<TimerInstant>, b: Option<TimerInstant>) -> Option<TimerInstant> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
     }
 }
 
@@ -281,6 +567,7 @@ mod tests {
     use accesskit::{Action, ActionRequest, Affine, NodeId, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
+    use frameclock::diagnostics::{FrameDropReason, FrameTimingBasis};
     use kurbo::Size;
     use overstory::{Button, ElementId};
 
@@ -334,20 +621,205 @@ mod tests {
     }
 
     #[test]
-    fn renderer_timings_are_recorded_in_ui_diagnostics() {
+    fn frame_submission_records_renderer_timings_in_ui_diagnostics() {
         let mut host = UiHost::new(Ui::new());
-        let timings = UiRendererTimings {
-            scene_to_texture: Duration::from_millis(1),
-            surface_acquire: Duration::from_millis(2),
-            blit: Duration::from_millis(3),
-            present: Duration::from_millis(4),
-            total: Duration::from_millis(10),
-        };
+        let timings = renderer_timings();
 
-        host.record_renderer_timings(timings);
+        host.record_frame_submission(HostFrameSubmission::new(timings));
 
         assert_eq!(host.last_frame_diagnostics().ui.renderer_timings, timings);
         assert_eq!(host.ui().frame_stats().renderer_timings, timings);
+    }
+
+    #[test]
+    fn requested_input_frame_submits_frameclock_summary() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::INPUT);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_some()
+        );
+        assert_eq!(host.last_frame_timing_summary(), None);
+
+        host.record_frame_submission(
+            HostFrameSubmission::new(renderer_timings()).with_submitted_at(HostTime(1)),
+        );
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("submitted frame should publish a timing summary");
+        assert_eq!(summary.frame_index, 0);
+        assert_eq!(summary.demand, FrameDemand::INPUT);
+        assert_eq!(summary.submitted_at, Some(HostTime(1)));
+        assert_eq!(summary.actual_present, None);
+        assert_eq!(host.last_frame_diagnostics().frame_timing, Some(summary));
+        assert_eq!(host.ui().frame_stats().frame_timing, Some(summary));
+    }
+
+    #[test]
+    fn discarded_requested_frame_publishes_drop_timing_summary() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::INPUT);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_some()
+        );
+        host.discard_prepared_frame();
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("discarded frame should publish drop timing");
+        assert_eq!(summary.frame_index, 0);
+        assert_eq!(summary.demand, FrameDemand::INPUT);
+        assert_eq!(summary.submitted_at, None);
+        assert_eq!(summary.actual_present, None);
+        assert_eq!(summary.drop_reason, Some(FrameDropReason::Discarded));
+        assert_eq!(host.last_frame_diagnostics().frame_timing, Some(summary));
+        assert_eq!(host.ui().frame_stats().frame_timing, Some(summary));
+    }
+
+    #[test]
+    fn retained_pending_demand_survives_submitted_frame() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::ANIMATION);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_none()
+        );
+        let frame_start = host
+            .pending_frame_start()
+            .expect("animation should queue a future frame start");
+
+        host.request_frame(FrameDemand::BACKGROUND);
+        assert_eq!(host.pending_frame_demand(), FrameDemand::BACKGROUND);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(frame_start)
+            )
+            .is_some()
+        );
+
+        host.record_frame_submission(
+            HostFrameSubmission::new(renderer_timings())
+                .with_submitted_at(frame_start + FrameDuration(1)),
+        );
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("submitted animation frame should publish timing");
+        assert_eq!(summary.demand, FrameDemand::ANIMATION);
+        assert_eq!(host.pending_frame_demand(), FrameDemand::BACKGROUND);
+    }
+
+    #[test]
+    fn expired_queued_frame_records_drop_and_requeues_demand() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::ANIMATION);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_none()
+        );
+        assert!(
+            host.pending_frame_start().is_some(),
+            "animation demand should queue a planned frame"
+        );
+
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(1_000_000_000))
+            )
+            .is_none()
+        );
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("expired frame should publish drop timing");
+        assert_eq!(summary.demand, FrameDemand::ANIMATION);
+        assert_eq!(summary.drop_reason, Some(FrameDropReason::MissedDeadline));
+        assert_eq!(host.pending_frame_demand(), FrameDemand::ANIMATION);
+        assert_eq!(host.last_frame_diagnostics().frame_timing, Some(summary));
+        assert_eq!(host.ui().frame_stats().frame_timing, Some(summary));
+    }
+
+    #[test]
+    fn frame_submission_can_record_actual_present_feedback() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::INPUT);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_some()
+        );
+        host.record_frame_submission(
+            HostFrameSubmission::new(renderer_timings())
+                .with_submitted_at(HostTime(1))
+                .with_actual_present(HostTime(2)),
+        );
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("submitted frame should publish timing");
+        assert_eq!(summary.submitted_at, Some(HostTime(1)));
+        assert_eq!(summary.actual_present, Some(HostTime(2)));
+        assert_eq!(summary.timing_basis, FrameTimingBasis::ActualPresent);
+    }
+
+    #[test]
+    fn deferred_present_feedback_resolves_on_next_frame_tick() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.request_frame(FrameDemand::INPUT);
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(0))
+            )
+            .is_some()
+        );
+        host.record_frame_submission(
+            HostFrameSubmission::new(renderer_timings())
+                .with_submitted_at(HostTime(1))
+                .with_deferred_present_feedback(),
+        );
+        assert_eq!(host.last_frame_timing_summary(), None);
+
+        assert!(
+            host.prepare_requested_frame(
+                test_viewport(),
+                HostFrameTiming::pacing_only(HostTime(3)).with_previous_actual_present(HostTime(2))
+            )
+            .is_none()
+        );
+
+        let summary = host
+            .last_frame_timing_summary()
+            .expect("next tick should resolve deferred presentation feedback");
+        assert_eq!(summary.submitted_at, Some(HostTime(1)));
+        assert_eq!(summary.actual_present, Some(HostTime(2)));
+        assert_eq!(summary.timing_basis, FrameTimingBasis::ActualPresent);
+        assert_eq!(host.last_frame_diagnostics().frame_timing, Some(summary));
+        assert_eq!(host.ui().frame_stats().frame_timing, Some(summary));
     }
 
     #[test]
@@ -407,5 +879,19 @@ mod tests {
 
     fn node_id(element: ElementId) -> NodeId {
         NodeId((u64::from(element.generation()) << 32) | u64::from(element.slot()))
+    }
+
+    fn test_viewport() -> FrameViewport {
+        FrameViewport::from_logical_size(Size::new(100.0, 50.0), 1.0)
+    }
+
+    fn renderer_timings() -> UiRendererTimings {
+        UiRendererTimings {
+            scene_to_texture: Duration::from_millis(1),
+            surface_acquire: Duration::from_millis(2),
+            blit: Duration::from_millis(3),
+            present: Duration::from_millis(4),
+            total: Duration::from_millis(10),
+        }
     }
 }

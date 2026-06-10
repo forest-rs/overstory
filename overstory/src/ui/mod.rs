@@ -404,8 +404,10 @@ impl Ui {
     /// Clears frame-pipeline counters before a host prepares a new frame.
     pub fn reset_frame_stats(&mut self) {
         let renderer_timings = self.frame_stats.renderer_timings;
+        let frame_timing = self.frame_stats.frame_timing;
         self.frame_stats = UiFrameStats {
             renderer_timings,
+            frame_timing,
             ..UiFrameStats::default()
         };
     }
@@ -428,6 +430,17 @@ impl Ui {
     /// `prepare_frame` has returned the scene to render.
     pub fn set_renderer_timings(&mut self, timings: UiRendererTimings) {
         self.frame_stats.renderer_timings = timings;
+        self.inspection_changes.record_frame();
+    }
+
+    /// Records host-supplied frame scheduling and presentation facts for the
+    /// most recently submitted frame.
+    ///
+    /// Hosts call this after resolving `frameclock` feedback so inspection
+    /// snapshots can explain why a frame was scheduled, when it sampled UI
+    /// state, and how the scheduler adapted afterward.
+    pub fn set_frame_timing_summary(&mut self, timing: Option<frameclock::FrameTimingSummary>) {
+        self.frame_stats.frame_timing = timing;
         self.inspection_changes.record_frame();
     }
 

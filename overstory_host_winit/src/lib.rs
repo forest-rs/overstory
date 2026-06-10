@@ -15,10 +15,11 @@ use core::error::Error;
 use accesskit_winit::{
     Adapter as AccessKitAdapter, Event as AccessKitEvent, WindowEvent as AccessKitWindowEvent,
 };
+use frameclock::FrameDemand;
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use overstory::{Ui, UiRendererTimings};
-use overstory_host::{FrameViewport, UiHost};
+use overstory_host::{FrameViewport, HostFrameSubmission, HostFrameTiming, UiHost};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use web_time::Instant;
 use winit::application::ApplicationHandler;
@@ -181,8 +182,8 @@ where
             build_ui,
             self.accesskit_proxy.clone(),
         ) {
-            Ok(state) => {
-                state.window.request_redraw();
+            Ok(mut state) => {
+                state.request_frame(FrameDemand::ANIMATION);
                 self.state = Some(state);
             }
             Err(err) => {
@@ -198,7 +199,9 @@ where
         };
 
         state.accesskit.process_event(&state.window, &event);
-        state.host.pump_timers_now();
+        if state.host.pump_timers_now() {
+            state.window.request_redraw();
+        }
 
         if let Some(translation) = state
             .event_reducer
@@ -207,13 +210,13 @@ where
             match translation {
                 WindowEventTranslation::Pointer(pointer) => {
                     if state.host.dispatch_pointer_event(&pointer).needs_redraw {
-                        state.window.request_redraw();
+                        state.request_frame(FrameDemand::CONTINUOUS_INPUT);
                     }
                     state.sync_cursor();
                 }
                 WindowEventTranslation::Keyboard(key) => {
                     if state.host.dispatch_key(&key).needs_redraw {
-                        state.window.request_redraw();
+                        state.request_frame(FrameDemand::INPUT);
                     }
                 }
             }
@@ -223,10 +226,10 @@ where
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new_size) => {
                 state.resize(new_size);
-                state.window.request_redraw();
+                state.request_frame(FrameDemand::CONTINUOUS_INPUT);
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                state.window.request_redraw();
+                state.request_frame(FrameDemand::CONTINUOUS_INPUT);
             }
             WindowEvent::RedrawRequested => {
                 if let Err(err) = state.render() {
@@ -252,12 +255,21 @@ where
         state.arm_next_wakeup(event_loop);
     }
 
-    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
         if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. })
             && let Some(state) = self.state.as_mut()
         {
-            state.host.pump_timers_now();
-            state.window.request_redraw();
+            let timer_due = state.host.pump_timers_now();
+            let frame_due = state
+                .host
+                .pending_frame_start()
+                .is_some_and(|frame_start| frame_start <= state.host.frame_now());
+            if timer_due || frame_due {
+                state.window.request_redraw();
+                event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+            } else {
+                state.arm_next_wakeup(event_loop);
+            }
         }
     }
 }
@@ -276,6 +288,11 @@ struct WindowState {
 }
 
 impl WindowState {
+    fn request_frame(&mut self, demand: FrameDemand) {
+        self.host.request_frame(demand);
+        self.window.request_redraw();
+    }
+
     fn resize(&mut self, size: PhysicalSize<u32>) {
         self.surface_config.width = size.width.max(1);
         self.surface_config.height = size.height.max(1);
@@ -307,7 +324,7 @@ impl WindowState {
             }
             AccessKitWindowEvent::ActionRequested(request) => {
                 if self.host.handle_accesskit_action(&request).needs_redraw {
-                    self.window.request_redraw();
+                    self.request_frame(FrameDemand::INPUT);
                 }
                 self.sync_accessibility();
                 self.sync_cursor();
@@ -335,7 +352,13 @@ impl WindowState {
         self.blit.ensure_offscreen(&self.device, width, height);
 
         let viewport = FrameViewport::from_physical_size(width, height, self.window.scale_factor());
-        let mut scaled_scene = self.host.prepare_frame(viewport);
+        let timing = HostFrameTiming::pacing_only(self.host.frame_now());
+        let Some(mut scaled_scene) = self.host.prepare_requested_frame(viewport, timing) else {
+            if !self.host.pending_frame_demand().is_empty() {
+                self.window.request_redraw();
+            }
+            return Ok(());
+        };
 
         let offscreen_view = self
             .blit
@@ -343,8 +366,13 @@ impl WindowState {
             .expect("offscreen target should exist after ensure_offscreen");
         let target = TextureViewTarget::new(offscreen_view, width, height);
         let phase_start = Instant::now();
-        self.renderer
-            .render_source_into_texture(&mut scaled_scene, target)?;
+        if let Err(err) = self
+            .renderer
+            .render_source_into_texture(&mut scaled_scene, target)
+        {
+            self.host.discard_prepared_frame();
+            return Err(err.into());
+        }
         let scene_to_texture = phase_start.elapsed();
         self.sync_accessibility();
 
@@ -354,12 +382,15 @@ impl WindowState {
             | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.device, &self.surface_config);
+                self.host.discard_prepared_frame();
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                self.host.discard_prepared_frame();
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Validation => {
+                self.host.discard_prepared_frame();
                 return Err(Box::new(SurfaceValidationError));
             }
         };
@@ -373,13 +404,17 @@ impl WindowState {
         let phase_start = Instant::now();
         output.present();
         let present = phase_start.elapsed();
-        self.host.record_renderer_timings(UiRendererTimings {
-            scene_to_texture,
-            surface_acquire,
-            blit,
-            present,
-            total: scene_to_texture + surface_acquire + blit + present,
-        });
+        self.host
+            .record_frame_submission(HostFrameSubmission::new(UiRendererTimings {
+                scene_to_texture,
+                surface_acquire,
+                blit,
+                present,
+                total: scene_to_texture + surface_acquire + blit + present,
+            }));
+        if !self.host.pending_frame_demand().is_empty() {
+            self.window.request_redraw();
+        }
         Ok(())
     }
 }

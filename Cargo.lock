@@ -1040,6 +1040,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
+name = "frameclock"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/subduction.git?rev=a631e022966f57634c58c5daa3483b73b05786c7#a631e022966f57634c58c5daa3483b73b05786c7"
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2119,6 +2124,7 @@ version = "0.0.1"
 dependencies = [
  "accesskit",
  "cursor-icon",
+ "frameclock",
  "hashbrown 0.17.1",
  "imaging",
  "invalidation",
@@ -2176,6 +2182,7 @@ name = "overstory_host"
 version = "0.0.1"
 dependencies = [
  "accesskit",
+ "frameclock",
  "hashbrown 0.17.1",
  "imaging",
  "kurbo",
@@ -2189,6 +2196,7 @@ name = "overstory_host_winit"
 version = "0.0.1"
 dependencies = [
  "accesskit_winit",
+ "frameclock",
  "imaging_vello",
  "imaging_wgpu",
  "overstory",
@@ -3039,9 +3047,10 @@ dependencies = [
 [[package]]
 name = "subduction_core"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=fd26c7acb332ff0668a040010093f0c3318233c0#fd26c7acb332ff0668a040010093f0c3318233c0"
+source = "git+https://github.com/forest-rs/subduction.git?rev=a631e022966f57634c58c5daa3483b73b05786c7#a631e022966f57634c58c5daa3483b73b05786c7"
 dependencies = [
  "color",
+ "frameclock",
  "invalidation",
  "kurbo",
 ]
