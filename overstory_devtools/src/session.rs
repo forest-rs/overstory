@@ -34,7 +34,7 @@ use crate::{
 /// This type owns Overstory-specific snapshot and selection state; it
 /// explicitly does not own host event loops, rendering, network transport, or
 /// Spoor's generic telemetry vocabulary.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DevtoolsSession {
     snapshot: DevtoolsSnapshot,
     selected_element: Option<ElementId>,
@@ -351,7 +351,7 @@ impl DevtoolsSession {
 }
 
 #[cfg(feature = "spoor-session")]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 struct HandledInspectionPayload {
     response: InspectionResponse,
     event: Option<DevtoolsEvent>,

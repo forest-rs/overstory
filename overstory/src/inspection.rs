@@ -21,7 +21,7 @@ use crate::element::ElementId;
 use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
 
 /// Owned snapshot of the inspectable state of one [`crate::Ui`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct UiInspectionSnapshot {
     /// Root element id for the retained element tree.
     pub root: ElementId,
@@ -44,7 +44,7 @@ pub struct UiInspectionSnapshot {
 /// Snapshots are still the baseline and resync format. Change batches are the
 /// steady-state feed for live devtools and inspectors that want to update a
 /// retained mirror without recapturing the full tree every frame.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct UiInspectionChanges {
     /// Retained-element tree changes.
     pub tree: ElementTreeInspectionPatch,

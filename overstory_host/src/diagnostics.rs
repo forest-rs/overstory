@@ -28,7 +28,7 @@ pub struct FrameTimings {
 }
 
 /// Diagnostics captured for one host frame preparation.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct FrameDiagnostics {
     /// Host-side wall-clock timings by stage.
     pub timings: FrameTimings,

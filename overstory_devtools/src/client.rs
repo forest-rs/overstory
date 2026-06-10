@@ -195,7 +195,7 @@ impl InspectionClient {
 /// A mirror is deliberately smaller than [`DevtoolsSnapshot`]: it stores the
 /// projected element tree, current selection, and lazy details for the element
 /// currently shown by the inspector.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct InspectionMirror {
     tree: InspectionElementTree,
     selected: Option<ElementId>,

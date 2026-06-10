@@ -69,7 +69,7 @@ pub type LiveInspectionStreamItem = SessionStreamItem<InspectionStreamItem>;
 /// The response completes the request. Stream items carry any deltas emitted by
 /// the request, such as selection changes that should refresh subscribed
 /// mirrors.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct InspectionDispatch {
     /// Response to the dispatched request.
     pub response: LiveInspectionResponse,
@@ -121,7 +121,7 @@ pub enum InspectionRequest {
 }
 
 /// Response payloads produced by the Overstory inspector domain.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum InspectionResponse {
     /// Full owned snapshot response.
     Snapshot(Box<DevtoolsSnapshot>),
@@ -146,7 +146,7 @@ pub enum InspectionResponse {
 }
 
 /// Compact subsystem summaries for diagnostics panels.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct InspectionSummaries {
     /// Composition layer, surface, and change counters.
     pub composition: CompositionInspectionSnapshot,
@@ -600,7 +600,7 @@ mod tests {
     };
     use crate::DevtoolsSnapshot;
     use overstory::{Panel, Ui};
-    use spoor_session::{SessionRequestId, SessionStreamId};
+    use spoor_session::{SessionRequestId, SessionResult, SessionStreamId};
 
     #[test]
     fn inspection_method_uses_overstory_domain() {
@@ -650,7 +650,13 @@ mod tests {
 
         let dispatch = InspectionDispatch::new(response.clone(), alloc::vec![item.clone()]);
 
-        assert_eq!(dispatch.response, response);
+        assert_eq!(dispatch.response.request_id, response.request_id);
+        let SessionResult::Ok(InspectionResponse::Selection { selected }) =
+            dispatch.response.result
+        else {
+            panic!("dispatch should carry the selection response");
+        };
+        assert_eq!(selected, None);
         assert_eq!(dispatch.stream_items, alloc::vec![item]);
     }
 
@@ -715,12 +721,14 @@ mod tests {
         assert_eq!(start.stream_id, stream_id);
         assert_eq!(start.method.domain, INSPECTION_DOMAIN);
         assert_eq!(start.method.name, "updates");
-        assert_eq!(
-            start.payload,
-            InspectionResponse::Subscribed {
-                stream_id,
-                subscription,
-            }
-        );
+        let InspectionResponse::Subscribed {
+            stream_id: payload_stream_id,
+            subscription: payload_subscription,
+        } = start.payload
+        else {
+            panic!("stream start should carry the subscribed response");
+        };
+        assert_eq!(payload_stream_id, stream_id);
+        assert_eq!(payload_subscription, subscription);
     }
 }

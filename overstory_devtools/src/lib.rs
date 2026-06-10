@@ -315,7 +315,7 @@ fn filter_inspection_row(
 }
 
 /// Owned devtools snapshot plus lightweight lookup tables.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DevtoolsSnapshot {
     inspection: UiInspectionSnapshot,
     element_index: Vec<(ElementId, usize)>,
