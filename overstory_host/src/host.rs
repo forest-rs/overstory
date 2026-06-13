@@ -125,6 +125,27 @@ impl Default for HostFrameSubmission {
     }
 }
 
+/// Prepared scene and scheduling demand for one host frame.
+#[derive(Clone, Copy, Debug)]
+pub struct PreparedFrame<'a> {
+    scene: &'a Scene,
+    demand: FrameDemand,
+}
+
+impl<'a> PreparedFrame<'a> {
+    /// Returns the prepared scene to render.
+    #[must_use]
+    pub const fn scene(self) -> &'a Scene {
+        self.scene
+    }
+
+    /// Returns the demand that selected this frame.
+    #[must_use]
+    pub const fn demand(self) -> FrameDemand {
+        self.demand
+    }
+}
+
 /// Drives one [`Ui`] instance between platform events and rendering.
 pub struct UiHost {
     ui: Ui,
@@ -279,7 +300,7 @@ impl UiHost {
 
     /// Dispatches a normalized pointer event into the UI.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> HostDispatchResult {
-        self.ui.dispatch_pointer_event(event).into()
+        HostDispatchResult::from_pointer_event(event, self.ui.dispatch_pointer_event(event))
     }
 
     /// Dispatches a normalized keyboard event into the UI.
@@ -317,19 +338,24 @@ impl UiHost {
             handled,
             focus_changed,
             needs_redraw: handled || focus_changed,
+            frame_demand: if handled || focus_changed {
+                FrameDemand::INPUT
+            } else {
+                FrameDemand::NONE
+            },
         }
     }
 
-    /// Lays out and paints the hosted UI for `viewport`, then returns a scene
-    /// scaled for its physical render target.
+    /// Lays out and paints the hosted UI for `viewport`, then returns a
+    /// prepared scene scaled for its physical render target.
     ///
     /// The UI tree is laid out and composed in logical coordinates. Scaling is
     /// applied once at the host boundary so core Overstory geometry remains
     /// independent from device pixel density.
-    pub fn prepare_frame(&mut self, viewport: FrameViewport) -> &Scene {
+    pub fn prepare_frame(&mut self, viewport: FrameViewport) -> PreparedFrame<'_> {
         self.ui.reset_frame_stats();
         self.discard_active_frame();
-        self.prepare_frame_inner(viewport, self.now())
+        self.prepare_frame_inner(viewport, self.now(), FrameDemand::NONE)
     }
 
     /// Lays out and paints without clearing existing UI frame counters first.
@@ -337,9 +363,9 @@ impl UiHost {
     /// Use this for latency probes that reset counters before dispatching or
     /// mutating input, then want the prepared-frame diagnostics to include that
     /// input's invalidation marks.
-    pub fn prepare_frame_preserving_stats(&mut self, viewport: FrameViewport) -> &Scene {
+    pub fn prepare_frame_preserving_stats(&mut self, viewport: FrameViewport) -> PreparedFrame<'_> {
         self.discard_active_frame();
-        self.prepare_frame_inner(viewport, self.now())
+        self.prepare_frame_inner(viewport, self.now(), FrameDemand::NONE)
     }
 
     /// Prepares the next requested frame when `frameclock` says it is due.
@@ -352,12 +378,13 @@ impl UiHost {
         &mut self,
         viewport: FrameViewport,
         timing: HostFrameTiming,
-    ) -> Option<&Scene> {
+    ) -> Option<PreparedFrame<'_>> {
         let planned = self.take_ready_frame(timing)?;
+        let demand = planned.plan().demand;
         let sample_time = planned.sample_time().ticks();
         self.active_frame = Some(planned);
         self.ui.reset_frame_stats();
-        Some(self.prepare_frame_inner(viewport, sample_time))
+        Some(self.prepare_frame_inner(viewport, sample_time, demand))
     }
 
     /// Discards the currently prepared frame without feeding presentation
@@ -374,7 +401,8 @@ impl UiHost {
         &mut self,
         viewport: FrameViewport,
         sample_time: TimerInstant,
-    ) -> &Scene {
+        prepared_demand: FrameDemand,
+    ) -> PreparedFrame<'_> {
         let total_start = Instant::now();
 
         let phase_start = Instant::now();
@@ -422,6 +450,7 @@ impl UiHost {
             total: total_start.elapsed(),
         };
         self.ui.set_frame_timings(ui_frame_timings(timings));
+        self.ui.set_prepared_frame_demand(prepared_demand);
 
         self.last_frame_diagnostics = FrameDiagnostics {
             timings,
@@ -430,14 +459,18 @@ impl UiHost {
             output_empty,
             frame_timing: self.last_frame_timing,
         };
-        if use_scaled_scene {
+        let scene = if use_scaled_scene {
             &self.scaled_scene
         } else {
             &self.scene
+        };
+        PreparedFrame {
+            scene,
+            demand: prepared_demand,
         }
     }
 
-    /// Returns diagnostics from the most recent [`Self::prepare_frame`] call.
+    /// Returns diagnostics from the most recent frame preparation call.
     #[must_use]
     pub fn last_frame_diagnostics(&self) -> FrameDiagnostics {
         self.last_frame_diagnostics
@@ -587,7 +620,7 @@ mod tests {
             1.0,
         ));
 
-        assert!(!frame.is_empty());
+        assert!(!frame.scene().is_empty());
         assert!(!host.surface_scenes.is_empty());
     }
 
@@ -618,6 +651,7 @@ mod tests {
         assert!(diagnostics.ui.layout_passes >= 1);
         assert!(diagnostics.ui.painted_elements >= 1);
         assert!(!diagnostics.output_empty);
+        assert_eq!(diagnostics.ui.prepared_demand, FrameDemand::NONE);
     }
 
     #[test]
@@ -636,13 +670,15 @@ mod tests {
         let mut host = UiHost::new(Ui::new());
 
         host.request_frame(FrameDemand::INPUT);
-        assert!(
-            host.prepare_requested_frame(
-                test_viewport(),
-                HostFrameTiming::pacing_only(HostTime(0))
-            )
-            .is_some()
+        let prepared = host
+            .prepare_requested_frame(test_viewport(), HostFrameTiming::pacing_only(HostTime(0)))
+            .expect("input demand should produce an immediate prepared frame");
+        assert_eq!(prepared.demand(), FrameDemand::INPUT);
+        assert_eq!(
+            host.last_frame_diagnostics().ui.prepared_demand,
+            FrameDemand::INPUT
         );
+        assert_eq!(host.ui().frame_stats().prepared_demand, FrameDemand::INPUT);
         assert_eq!(host.last_frame_timing_summary(), None);
 
         host.record_frame_submission(
@@ -704,13 +740,10 @@ mod tests {
 
         host.request_frame(FrameDemand::BACKGROUND);
         assert_eq!(host.pending_frame_demand(), FrameDemand::BACKGROUND);
-        assert!(
-            host.prepare_requested_frame(
-                test_viewport(),
-                HostFrameTiming::pacing_only(frame_start)
-            )
-            .is_some()
-        );
+        let prepared = host
+            .prepare_requested_frame(test_viewport(), HostFrameTiming::pacing_only(frame_start))
+            .expect("queued animation should produce a prepared frame at frame start");
+        assert_eq!(prepared.demand(), FrameDemand::ANIMATION);
 
         host.record_frame_submission(
             HostFrameSubmission::new(renderer_timings())

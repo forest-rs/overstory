@@ -209,14 +209,16 @@ where
         {
             match translation {
                 WindowEventTranslation::Pointer(pointer) => {
-                    if state.host.dispatch_pointer_event(&pointer).needs_redraw {
-                        state.request_frame(FrameDemand::CONTINUOUS_INPUT);
+                    let result = state.host.dispatch_pointer_event(&pointer);
+                    if result.needs_redraw {
+                        state.request_frame(result.frame_demand);
                     }
                     state.sync_cursor();
                 }
                 WindowEventTranslation::Keyboard(key) => {
-                    if state.host.dispatch_key(&key).needs_redraw {
-                        state.request_frame(FrameDemand::INPUT);
+                    let result = state.host.dispatch_key(&key);
+                    if result.needs_redraw {
+                        state.request_frame(result.frame_demand);
                     }
                 }
             }
@@ -353,12 +355,18 @@ impl WindowState {
 
         let viewport = FrameViewport::from_physical_size(width, height, self.window.scale_factor());
         let timing = HostFrameTiming::pacing_only(self.host.frame_now());
-        let Some(mut scaled_scene) = self.host.prepare_requested_frame(viewport, timing) else {
+        let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
             if !self.host.pending_frame_demand().is_empty() {
                 self.window.request_redraw();
             }
             return Ok(());
         };
+        let demand = prepared.demand();
+        debug_assert!(
+            !demand.is_empty(),
+            "requested frames should carry non-empty planned demand"
+        );
+        let mut scaled_scene = prepared.scene();
 
         let offscreen_view = self
             .blit

@@ -469,6 +469,16 @@ impl Ui {
         self.inspection_changes.record_frame();
     }
 
+    /// Records the demand that selected the currently prepared frame.
+    ///
+    /// Hosts call this while preparing a retained `frameclock` frame so
+    /// diagnostics can distinguish input, continuous input, animation, and
+    /// background work for the frame whose UI counters are being reported.
+    pub fn set_prepared_frame_demand(&mut self, demand: frameclock::FrameDemand) {
+        self.frame_stats.prepared_demand = demand;
+        self.inspection_changes.record_frame();
+    }
+
     /// Returns a snapshot of the current frame-pipeline counters.
     #[must_use]
     pub fn frame_stats(&self) -> UiFrameStats {

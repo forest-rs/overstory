@@ -11,7 +11,7 @@ use core::time::Duration;
 
 use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::text::TextLayoutCacheStats;
-use frameclock::FrameTimingSummary;
+use frameclock::{FrameDemand, FrameTimingSummary};
 
 /// Count of invalidation-channel marks observed during a frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -79,6 +79,12 @@ pub struct UiFrameStats {
     /// adaptation state. Core Overstory stores the summary so devtools can read
     /// it from the same frame snapshot as other UI counters.
     pub frame_timing: Option<FrameTimingSummary>,
+    /// Demand that selected the currently prepared frame.
+    ///
+    /// This is filled by host crates when a frame is prepared through
+    /// `frameclock`. It is `FrameDemand::NONE` for ad hoc preparation paths
+    /// that are not backed by a retained frame plan.
+    pub prepared_demand: FrameDemand,
     /// Live element count observed when the snapshot is read.
     pub elements: usize,
     /// Invalidation-channel marks observed since the last reset.

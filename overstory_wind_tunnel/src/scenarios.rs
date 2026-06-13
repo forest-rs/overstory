@@ -239,7 +239,10 @@ pub fn prepare_dashboard_frames(rows: usize, frames: usize) -> FrameRunSummary {
     let mut summary = FrameRunSummary::default();
     for _ in 0..frames {
         let input_start = Instant::now();
-        let output_empty = host.prepare_frame(default_frame_viewport()).is_empty();
+        let output_empty = host
+            .prepare_frame(default_frame_viewport())
+            .scene()
+            .is_empty();
         let input_to_frame = input_start.elapsed();
         summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
     }
@@ -251,7 +254,10 @@ pub fn scroll_virtual_list_frames(items: usize, frames: usize) -> FrameRunSummar
     let (ui, listbox) = build_virtual_list(items);
     let mut host = UiHost::new(ui);
     let mut summary = FrameRunSummary::default();
-    let _ = host.prepare_frame(default_frame_viewport()).is_empty();
+    let _ = host
+        .prepare_frame(default_frame_viewport())
+        .scene()
+        .is_empty();
     for step in 0..frames {
         host.ui_mut().reset_frame_stats();
         let input_start = Instant::now();
@@ -259,6 +265,7 @@ pub fn scroll_virtual_list_frames(items: usize, frames: usize) -> FrameRunSummar
         let _ = set_list_scroll_offset_y(host.ui_mut(), listbox, offset);
         let output_empty = host
             .prepare_frame_preserving_stats(default_frame_viewport())
+            .scene()
             .is_empty();
         let input_to_frame = input_start.elapsed();
         summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
@@ -273,12 +280,15 @@ pub fn toggle_retarget_frames(frames: usize) -> FrameRunSummary {
     let mut host = UiHost::new(ui);
     let mut summary = FrameRunSummary::default();
     let viewport = FrameViewport::from_logical_size(Size::new(320.0, 96.0), 1.0);
-    let _ = host.prepare_frame(viewport).is_empty();
+    let _ = host.prepare_frame(viewport).scene().is_empty();
     for _ in 0..frames {
         host.ui_mut().reset_frame_stats();
         let input_start = Instant::now();
         toggle_checked(host.ui_mut(), toggle);
-        let output_empty = host.prepare_frame_preserving_stats(viewport).is_empty();
+        let output_empty = host
+            .prepare_frame_preserving_stats(viewport)
+            .scene()
+            .is_empty();
         let input_to_frame = input_start.elapsed();
         summary.push(host.last_frame_diagnostics(), input_to_frame, output_empty);
     }

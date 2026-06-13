@@ -318,7 +318,7 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
         "timer refresh should update the auto-capture status: {refreshed_status}",
     );
     assert!(
-        refreshed_status.contains("Frame - prepare")
+        refreshed_status.contains("Frame - demand")
             && refreshed_status.contains("layout")
             && refreshed_status.contains("surface refresh")
             && refreshed_status.contains("backend"),

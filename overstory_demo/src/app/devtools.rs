@@ -3,6 +3,7 @@
 
 use core::time::Duration;
 
+use frameclock::{FrameDemand, demand::FrameDemandClass};
 use overstory_devtools::{
     DevtoolsSessionHandle, DevtoolsTreePatchCounts, DevtoolsViewElements, LiveDevtools,
     UiLiveInspectionTarget, append_session_view, refresh_session_details_from_mirror,
@@ -480,10 +481,11 @@ fn format_live_stream_status(
         |counts| format!("tree patch: +{} / -{}", counts.upserted, counts.removed),
     );
     format!(
-        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}.\nFrame - prepare {}, layout {}, surface refresh {}, compose {}, backend {}.\nElement realization - visited {}, changes {}, geometry {}, painted {}, surface updates {}",
+        "Live stream - elements: {}, refreshes: {}, stream items: {}, {tree_patch}.\nFrame - demand {}, prepare {}, layout {}, surface refresh {}, compose {}, backend {}.\nElement realization - visited {}, changes {}, geometry {}, painted {}, surface updates {}",
         devtools.mirror().tree().nodes.len(),
         refresh_count,
         stream_item_count,
+        frame_demand_summary(frame.prepared_demand),
         duration_summary(timings.total),
         duration_summary(timings.layout),
         duration_summary(timings.surface_refresh),
@@ -495,6 +497,16 @@ fn format_live_stream_status(
         frame.painted_elements,
         frame.composition_surface_updates,
     )
+}
+
+fn frame_demand_summary(demand: FrameDemand) -> &'static str {
+    match demand.dominant_class() {
+        FrameDemandClass::Input => "input",
+        FrameDemandClass::ContinuousInput => "continuous input",
+        FrameDemandClass::Animation => "animation",
+        FrameDemandClass::Background => "background",
+        FrameDemandClass::None => "none",
+    }
 }
 
 fn optional_duration_summary(duration: Duration) -> String {

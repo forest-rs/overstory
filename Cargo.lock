@@ -1042,7 +1042,7 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 [[package]]
 name = "frameclock"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=a631e022966f57634c58c5daa3483b73b05786c7#a631e022966f57634c58c5daa3483b73b05786c7"
+source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
 
 [[package]]
 name = "futures-core"
@@ -2155,6 +2155,7 @@ dependencies = [
 name = "overstory_demo"
 version = "0.0.1"
 dependencies = [
+ "frameclock",
  "kurbo",
  "overstory",
  "overstory_devtools",
@@ -3047,7 +3048,7 @@ dependencies = [
 [[package]]
 name = "subduction_core"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=a631e022966f57634c58c5daa3483b73b05786c7#a631e022966f57634c58c5daa3483b73b05786c7"
+source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
 dependencies = [
  "color",
  "frameclock",

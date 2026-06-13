@@ -18,6 +18,7 @@ use crate::{
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::time::Duration;
+use frameclock::FrameDemand;
 use imaging::record::{Command, Scene};
 use kurbo::{Affine, Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
@@ -4442,6 +4443,18 @@ fn renderer_timings_survive_frame_counter_reset() {
 
     assert_eq!(ui.frame_stats().renderer_timings, timings);
     assert_eq!(ui.frame_stats().layout_passes, 0);
+}
+
+#[test]
+fn prepared_frame_demand_resets_with_frame_counters() {
+    let mut ui = Ui::new();
+
+    ui.set_prepared_frame_demand(FrameDemand::ANIMATION);
+    assert_eq!(ui.frame_stats().prepared_demand, FrameDemand::ANIMATION);
+
+    ui.reset_frame_stats();
+
+    assert_eq!(ui.frame_stats().prepared_demand, FrameDemand::NONE);
 }
 
 #[test]

@@ -41,8 +41,8 @@ kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
 peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
 smallvec = { default-features = false, version = "1.13.2" }
 spoor_session = { default-features = false, git = "https://github.com/forest-rs/spoor.git", rev = "42a84421d9fb1251b21d92882f402a90d42ca6f0" }
-frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "a631e022966f57634c58c5daa3483b73b05786c7" }
-subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "a631e022966f57634c58c5daa3483b73b05786c7" }
+frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
+subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 
 # Understory primitives.
 understory_axis = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "e805fbdbec868efe49c78ff1366bbb8a14fe512f" }

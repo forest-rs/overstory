@@ -30,5 +30,5 @@ mod viewport;
 
 pub use diagnostics::{FrameDiagnostics, FrameTimings};
 pub use dispatch::HostDispatchResult;
-pub use host::{HostFrameSubmission, HostFrameTiming, UiHost};
+pub use host::{HostFrameSubmission, HostFrameTiming, PreparedFrame, UiHost};
 pub use viewport::{FrameViewport, PhysicalSize};
