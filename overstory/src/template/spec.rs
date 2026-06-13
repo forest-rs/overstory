@@ -12,9 +12,12 @@ use crate::element::ElementId;
 use crate::layouts::Layout;
 use crate::style_class::StyleClass;
 use crate::widget::{SurfacePartWidget, Widget};
+use understory_property::Property;
 use understory_style::PartTag;
 
-use super::{Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot};
+use super::{
+    OwnerPropertyRead, Template, TemplateChild, TemplateContext, TemplateItemKey, TemplateSlot,
+};
 
 /// Stable identity for a [`ControlTemplate`] value.
 ///
@@ -296,6 +299,7 @@ pub struct TemplateNode {
     slot: Option<TemplateSlot>,
     part: Option<PartTag>,
     key: Option<TemplateItemKey>,
+    owner_property_dependencies: Vec<OwnerPropertyRead>,
     layout: Option<Layout>,
     classes: Vec<StyleClass>,
     children: Vec<Self>,
@@ -311,6 +315,7 @@ impl TemplateNode {
             slot: None,
             part: None,
             key: None,
+            owner_property_dependencies: Vec::new(),
             layout: None,
             classes: Vec::new(),
             children: Vec::new(),
@@ -360,7 +365,7 @@ impl TemplateNode {
     #[must_use]
     #[inline]
     pub fn content_presenter(slot: TemplateSlot) -> Self {
-        Self::for_slot(slot, TemplateWidgetFactory::content_presenter())
+        Self::for_slot(slot, TemplateWidgetFactory::content_presenter()).reads_owner_content()
     }
 
     /// Creates a text node for a template-owned semantic slot.
@@ -395,6 +400,34 @@ impl TemplateNode {
     #[inline]
     pub const fn with_key(mut self, key: TemplateItemKey) -> Self {
         self.key = Some(key);
+        self
+    }
+
+    /// Declares that this generated node reads an owner property.
+    ///
+    /// When `property` changes on the template owner, Overstory invalidates
+    /// this generated element with the same invalidation channels. Use this
+    /// for template nodes that read owner state directly during measure,
+    /// presentation, or layout instead of receiving a copied template binding.
+    #[must_use]
+    pub fn reads_owner_property<T>(mut self, property: Property<T>) -> Self
+    where
+        T: 'static,
+    {
+        self.owner_property_dependencies
+            .push(OwnerPropertyRead::Property(property.id()));
+        self
+    }
+
+    /// Declares that this generated node reads the owner's `Content`.
+    ///
+    /// The content-presenter constructor uses this automatically. Keeping the
+    /// dependency symbolic lets default template specs be created before a
+    /// concrete built-in property registry exists.
+    #[must_use]
+    pub fn reads_owner_content(mut self) -> Self {
+        self.owner_property_dependencies
+            .push(OwnerPropertyRead::Content);
         self
     }
 
@@ -507,6 +540,12 @@ fn instantiate_spec_node(
     }
     if let Some(key) = node.key {
         child = child.with_key(key);
+    }
+    for dependency in node.owner_property_dependencies.iter().copied() {
+        child = match dependency {
+            OwnerPropertyRead::Content => child.reads_owner_content(),
+            OwnerPropertyRead::Property(property) => child.reads_owner_property_id(property),
+        };
     }
     let id = cx.insert_under(parent, child);
 

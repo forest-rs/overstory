@@ -70,14 +70,23 @@ impl<'a> TemplateContext<'a> {
 
     /// Inserts a generated child under an existing template-generated parent.
     pub fn insert_under(&mut self, parent: ElementId, child: TemplateChild) -> ElementId {
-        let part_tag = child
-            .part_tag
-            .or_else(|| child.slot.and_then(TemplateSlot::part_tag));
+        let TemplateChild {
+            widget,
+            slot,
+            part_tag,
+            key,
+            owner_property_dependencies,
+        } = child;
+        let part_tag = part_tag.or_else(|| slot.and_then(TemplateSlot::part_tag));
         let id = self
             .ui
-            .insert_template_child(self.owner, parent, part_tag, Some(child.widget));
-        if child.slot.is_some() || part_tag.is_some() {
-            self.instance.push_part(child.slot, part_tag, child.key, id);
+            .insert_template_child(self.owner, parent, part_tag, Some(widget));
+        if slot.is_some() || part_tag.is_some() {
+            self.instance.push_part(slot, part_tag, key, id);
+        }
+        for dependency in owner_property_dependencies {
+            self.instance
+                .push_owner_property_dependent(dependency.property_id(self.properties()), id);
         }
         id
     }

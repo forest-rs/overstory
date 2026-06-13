@@ -3,6 +3,8 @@
 
 //! Property writes and dependency-property binding integration.
 
+use alloc::vec::Vec;
+use invalidation::ChannelSet;
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, LocalValueSource, Property, PropertyId,
 };
@@ -37,6 +39,7 @@ impl Ui {
         };
         let channels = self.surface_aware_channels(property.id(), channels);
         self.mark_channels(id, channels);
+        self.mark_template_owner_property_dependents(id, property.id(), channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
         if property.id() == self.properties.control_template.id() {
@@ -69,8 +72,32 @@ impl Ui {
         };
         let channels = self.surface_aware_channels(property, channels);
         self.mark_channels(id, channels);
+        self.mark_template_owner_property_dependents(id, property, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
+    }
+
+    /// Marks template-generated elements that depend on an owner property.
+    ///
+    /// Template expansion owns the meaning of these edges. The property write
+    /// path only applies the invalidation channels to registered generated
+    /// dependents for this owner/property pair.
+    fn mark_template_owner_property_dependents(
+        &mut self,
+        owner: ElementId,
+        property: PropertyId,
+        channels: ChannelSet,
+    ) {
+        if channels.is_empty() {
+            return;
+        }
+        let dependents = self
+            .templates
+            .owner_property_dependents(owner, property)
+            .collect::<Vec<_>>();
+        for dependent in dependents {
+            self.mark_channels(dependent, channels);
+        }
     }
 
     /// Creates a local state value owned by this `Ui`.
@@ -259,12 +286,13 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
                 } else {
                     let channels = self.surface_aware_channels(prop_id, channels);
                     self.mark_channels(id, channels);
+                    self.mark_template_owner_property_dependents(id, prop_id, channels);
                     BindingWrite::changed(channels)
                 }
             }
             BindingOwner::LocalState(id) => {
                 if self.binding_sources.set_local_erased(id, value) {
-                    BindingWrite::changed(invalidation::ChannelSet::default())
+                    BindingWrite::changed(ChannelSet::default())
                 } else {
                     BindingWrite::unchanged()
                 }

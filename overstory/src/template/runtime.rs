@@ -15,6 +15,7 @@
 
 use crate::element::ElementId;
 use crate::element_side_map::ElementSideMap;
+use understory_property::PropertyId;
 use understory_style::PartTag;
 
 use super::{TemplateInstance, TemplateSlot};
@@ -75,6 +76,22 @@ impl TemplateRuntime {
             .get(owner)
             .into_iter()
             .flat_map(move |instance| instance.slots(slot))
+    }
+
+    /// Returns generated parts that depend on `property` of `owner`.
+    ///
+    /// Template expansion registers these edges for generated elements that
+    /// derive measure, presentation, or layout from owner properties without
+    /// copying those values into local template part state.
+    pub(crate) fn owner_property_dependents(
+        &self,
+        owner: ElementId,
+        property: PropertyId,
+    ) -> impl Iterator<Item = ElementId> + '_ {
+        self.instances
+            .get(owner)
+            .into_iter()
+            .flat_map(move |instance| instance.owner_property_dependents(property))
     }
 
     pub(crate) fn remove_element(&mut self, id: ElementId) {

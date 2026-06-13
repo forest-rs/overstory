@@ -88,6 +88,7 @@ pub(crate) mod runtime;
 mod spec;
 mod validation;
 
+pub(crate) use child::OwnerPropertyRead;
 pub use child::TemplateChild;
 pub use context::TemplateContext;
 pub use contract::{TemplateContract, TemplateSlotContract, TemplateSlotImportance};

@@ -6,6 +6,7 @@
 use alloc::vec::Vec;
 
 use crate::element::ElementId;
+use understory_property::PropertyId;
 use understory_property_binding::BindingId;
 use understory_style::PartTag;
 
@@ -21,8 +22,22 @@ pub struct TemplateInstance {
     owner: ElementId,
     template_id: TemplateId,
     parts: Vec<TemplatePart>,
+    owner_property_dependents: Vec<TemplateOwnerPropertyDependent>,
     bindings: Vec<BindingId>,
     diagnostics: Vec<TemplateDiagnostic>,
+}
+
+/// One generated element that depends on a property of the template owner.
+///
+/// The owner is implicit in the surrounding [`TemplateInstance`]. This records
+/// only the property being observed and the generated element that must be
+/// invalidated when that owner property changes.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct TemplateOwnerPropertyDependent {
+    /// Owner property read by the generated element.
+    property: PropertyId,
+    /// Generated element whose measure/presentation/layout depends on it.
+    element: ElementId,
 }
 
 impl TemplateInstance {
@@ -31,6 +46,7 @@ impl TemplateInstance {
             owner,
             template_id,
             parts: Vec::new(),
+            owner_property_dependents: Vec::new(),
             bindings: Vec::new(),
             diagnostics: Vec::new(),
         }
@@ -113,6 +129,22 @@ impl TemplateInstance {
             .map(|part| part.element)
     }
 
+    /// Returns generated elements that depend on the owner's `property`.
+    ///
+    /// The owner is the instance owner. These edges are declared by the
+    /// template during expansion and let the property write path invalidate
+    /// derived template parts without knowing why the part depends on the
+    /// owner property.
+    pub(crate) fn owner_property_dependents(
+        &self,
+        property: PropertyId,
+    ) -> impl Iterator<Item = ElementId> + '_ {
+        self.owner_property_dependents
+            .iter()
+            .filter(move |dependency| dependency.property == property)
+            .map(|dependency| dependency.element)
+    }
+
     /// Returns binding ids created while expanding the template.
     #[must_use]
     #[inline]
@@ -129,6 +161,8 @@ impl TemplateInstance {
 
     pub(crate) fn remove_element(&mut self, element: ElementId) {
         self.parts.retain(|part| part.element != element);
+        self.owner_property_dependents
+            .retain(|dependency| dependency.element != element);
         self.diagnostics
             .retain(|diagnostic| !diagnostic.references(element));
     }
@@ -174,6 +208,16 @@ impl TemplateInstance {
             key,
             element,
         });
+    }
+
+    /// Records that `element` depends on `property` of this instance's owner.
+    pub(super) fn push_owner_property_dependent(
+        &mut self,
+        property: PropertyId,
+        element: ElementId,
+    ) {
+        self.owner_property_dependents
+            .push(TemplateOwnerPropertyDependent { property, element });
     }
 
     pub(super) fn push_binding(&mut self, id: BindingId) {
