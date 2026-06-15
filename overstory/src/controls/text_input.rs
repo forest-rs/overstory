@@ -29,7 +29,7 @@ use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
-use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
+use crate::pseudos::PSEUDO_PLACEHOLDER_SHOWN;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -1089,14 +1089,9 @@ fn text_top(font_size: f32) -> f32 {
     (TEXT_INPUT_HEIGHT - font_size * 1.35) * 0.5
 }
 
-/// Sets `IsReadOnly` on `input` and keeps the `:read-only` pseudoclass in sync.
+/// Sets whether `input` is read-only.
 pub fn set_text_input_read_only(ui: &mut Ui, input: ElementId, read_only: bool) {
     ui.set_local(input, ui.properties().is_read_only, read_only);
-    if read_only {
-        ui.add_pseudo(input, PSEUDO_READ_ONLY);
-    } else {
-        ui.remove_pseudo(input, PSEUDO_READ_ONLY);
-    }
 }
 
 /// Returns the current editable text for a text input.
@@ -1140,6 +1135,7 @@ mod tests {
 
     use super::*;
     use crate::accessibility::accesskit_node_id;
+    use crate::pseudos::PSEUDO_READ_ONLY;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
     use accesskit::{
         Action, ActionData, ActionRequest, Node, NodeId, Role, TextPosition, TextSelection, TreeId,
@@ -1341,6 +1337,38 @@ mod tests {
         );
         assert!(
             ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_READ_ONLY))
+                .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn direct_is_read_only_write_updates_pseudo_and_behavior() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(root, TextInput::new().text("locked"));
+        ui.set_focus(Some(input));
+
+        ui.set_local(input, ui.properties().is_read_only, true);
+
+        assert!(
+            ui.get(input)
+                .map(|el| el.pseudos().contains(&PSEUDO_READ_ONLY))
+                .unwrap_or(false)
+        );
+        let key = KeyboardEvent::key_down(Key::Character(String::from("x")), Code::KeyX);
+        assert!(ui.dispatch_key(&key).handled);
+        assert_eq!(
+            ui.get(input)
+                .and_then(|el| el.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("locked")
+        );
+
+        ui.set_local(input, ui.properties().is_read_only, false);
+
+        assert!(
+            !ui.get(input)
                 .map(|el| el.pseudos().contains(&PSEUDO_READ_ONLY))
                 .unwrap_or(false)
         );

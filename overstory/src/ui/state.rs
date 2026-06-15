@@ -17,7 +17,7 @@ use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
-    PSEUDO_PRESSED,
+    PSEUDO_PRESSED, PSEUDO_READ_ONLY,
 };
 use crate::style_class::StyleClass;
 
@@ -283,6 +283,12 @@ impl Ui {
                 .map(|element| self.resolve_value_for(element, self.properties.is_checked))
                 .unwrap_or(false);
             self.set_pseudo_state(id, PSEUDO_CHECKED, checked);
+        } else if property == self.properties.is_read_only.id() {
+            let read_only = self
+                .get(id)
+                .map(|element| self.resolve_value_for(element, self.properties.is_read_only))
+                .unwrap_or(false);
+            self.set_pseudo_state(id, PSEUDO_READ_ONLY, read_only);
         } else if property == self.properties.is_enabled.id() {
             self.sync_enabled_projection(id, self.is_enabled(id));
         }

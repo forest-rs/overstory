@@ -459,9 +459,8 @@ impl BuiltInProperties {
             is_checked: registry.register(
                 "IsChecked",
                 PropertyMetadataBuilder::new(false)
-                    // No direct paint impact — state lives in the
-                    // pseudoclass. The control's click handler is
-                    // responsible for keeping `:checked` in sync.
+                    // `Ui` projects this into `:checked`; selector state
+                    // drives style invalidation.
                     .build(),
             ),
             is_expanded: registry.register(
@@ -475,13 +474,18 @@ impl BuiltInProperties {
             is_enabled: registry.register(
                 "IsEnabled",
                 PropertyMetadataBuilder::new(true)
-                    // No direct visual impact. `Ui::set_enabled`
-                    // updates `:disabled`, and the selector state
+                    // `Ui` projects this into `:disabled`, focusability,
+                    // focus/capture cleanup, and selector state, which
                     // drives style invalidation.
                     .build(),
             ),
-            is_read_only: registry
-                .register("IsReadOnly", PropertyMetadataBuilder::new(false).build()),
+            is_read_only: registry.register(
+                "IsReadOnly",
+                PropertyMetadataBuilder::new(false)
+                    // `Ui` projects this into `:read-only`; text input behavior
+                    // and accessibility read the resolved property value.
+                    .build(),
+            ),
             selected_index: registry.register(
                 "SelectedIndex",
                 PropertyMetadataBuilder::new(None::<usize>)
