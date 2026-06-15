@@ -8,7 +8,7 @@ use peniko::Brush;
 use understory_presentation::{CornerShape, CornerShapes, Corners, Edges};
 use understory_presentation_properties::CornerRadius;
 
-use crate::motion::TransitionRules;
+use crate::motion::{EffectRules, TransitionRules};
 use crate::spec_ext::ElementSpec;
 use crate::widget::BuiltInPropertyKey;
 
@@ -202,6 +202,14 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
     fn transitions(mut self, transitions: TransitionRules) -> Self {
         self.element_config_mut()
             .set_built_in_local(BuiltInPropertyKey::Transitions, transitions);
+        self
+    }
+
+    /// Sets initial style-authored one-shot effect rules.
+    #[must_use]
+    fn effects(mut self, effects: EffectRules) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::Effects, effects);
         self
     }
 }

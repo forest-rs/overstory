@@ -9,7 +9,7 @@ use kurbo::{Affine, Vec2};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
-use crate::timeline_runtime::{TimelineTarget, VisualOutput};
+use crate::motion::{PresentationSlot, PresentationTarget};
 
 use super::Ui;
 
@@ -50,7 +50,7 @@ impl Ui {
     pub(in crate::ui) fn presented_visual_transform(&self, id: ElementId) -> Affine {
         let translation = self.presented_value(
             id,
-            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+            PresentationTarget::Slot(PresentationSlot::VisualTranslation),
             Vec2::ZERO,
         );
         Affine::translate((translation.x, translation.y)) * self.effective_visual_transform(id)

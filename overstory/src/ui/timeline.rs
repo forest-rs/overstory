@@ -15,10 +15,12 @@ use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
-use crate::motion::{ResolvedTransitionSpec, TransitionTrigger};
+use crate::motion::{
+    EffectClip, EffectTriggerId, PresentationSlot, PresentationTarget, PresentationValue,
+    ResolvedTransitionSpec, TransitionTrigger,
+};
 use crate::timeline_runtime::{
-    AnimatableValue, ChangeCause, EffectClip, PresentationValue, TimelineCue, TimelineCueId,
-    TimelineSample, TimelineTarget, TimelineTrackKey, VisualOutput,
+    AnimatableValue, ChangeCause, TimelineCue, TimelineCueId, TimelineSample, TimelineTrackKey,
 };
 
 use super::Ui;
@@ -28,7 +30,7 @@ impl Ui {
     pub(crate) fn request_presentation_transition(
         &mut self,
         element: ElementId,
-        target: TimelineTarget,
+        target: PresentationTarget,
         spec: ResolvedTransitionSpec,
     ) {
         self.timeline
@@ -38,7 +40,7 @@ impl Ui {
     pub(crate) fn request_styled_presentation_transition(
         &mut self,
         element: ElementId,
-        target: TimelineTarget,
+        target: PresentationTarget,
     ) -> bool {
         let Some(spec) = self.transition_spec_for(element, target, ChangeCause::Interaction) else {
             return false;
@@ -50,7 +52,7 @@ impl Ui {
     pub(crate) fn has_pending_presentation_transition(
         &self,
         element: ElementId,
-        target: TimelineTarget,
+        target: PresentationTarget,
     ) -> bool {
         self.timeline
             .has_pending_transition(TimelineTrackKey::new(element, target))
@@ -59,7 +61,7 @@ impl Ui {
     pub(in crate::ui) fn has_presentation_target(
         &self,
         element: ElementId,
-        target: TimelineTarget,
+        target: PresentationTarget,
     ) -> bool {
         self.timeline
             .has_target(TimelineTrackKey::new(element, target))
@@ -70,7 +72,7 @@ impl Ui {
         element: ElementId,
         offset: Vec2,
     ) {
-        let target = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
+        let target = PresentationTarget::Slot(PresentationSlot::LayerOffset);
         let has_pending = self.has_pending_presentation_transition(element, target);
         let should_track = has_pending
             || self.has_presentation_target(element, target)
@@ -88,7 +90,11 @@ impl Ui {
         self.set_presentation_target(element, target, offset, cause);
     }
 
-    pub(crate) fn clear_presentation_target(&mut self, element: ElementId, target: TimelineTarget) {
+    pub(crate) fn clear_presentation_target(
+        &mut self,
+        element: ElementId,
+        target: PresentationTarget,
+    ) {
         let key = TimelineTrackKey::new(element, target);
         let had_runtime_state = self.timeline.clear_target(key);
         self.clear_timeline_property_sample(key);
@@ -100,7 +106,7 @@ impl Ui {
     pub(crate) fn set_presentation_target<T: AnimatableValue>(
         &mut self,
         element: ElementId,
-        timeline_target: TimelineTarget,
+        timeline_target: PresentationTarget,
         value: T,
         cause: ChangeCause,
     ) -> bool {
@@ -110,12 +116,12 @@ impl Ui {
     pub(crate) fn set_presentation_target_value(
         &mut self,
         element: ElementId,
-        timeline_target: TimelineTarget,
+        timeline_target: PresentationTarget,
         target: PresentationValue,
         cause: ChangeCause,
     ) -> bool {
         let key = TimelineTrackKey::new(element, timeline_target);
-        if let TimelineTarget::Property(property) = timeline_target
+        if let PresentationTarget::Property(property) = timeline_target
             && let Some(adapter) = self.timeline_properties.adapter(property)
         {
             debug_assert_eq!(
@@ -139,7 +145,7 @@ impl Ui {
     pub(in crate::ui) fn transition_spec_for(
         &self,
         element: ElementId,
-        target: TimelineTarget,
+        target: PresentationTarget,
         cause: ChangeCause,
     ) -> Option<ResolvedTransitionSpec> {
         let trigger = match cause {
@@ -148,7 +154,7 @@ impl Ui {
         };
         let element = self.get(element)?;
         self.resolve_value_for(element, self.properties.transitions)
-            .rule_for(target.transition_target(), trigger)
+            .rule_for(target, trigger)
             .map(|rule| rule.spec().resolve(self.theme()))
     }
 
@@ -158,33 +164,69 @@ impl Ui {
             .get(element)
             .map(|el| self.resolve_value_for(el, property))
             .unwrap_or(1.0);
-        let key = TimelineTrackKey::new(element, TimelineTarget::Property(property.id()));
+        let key = TimelineTrackKey::new(element, PresentationTarget::Property(property.id()));
         self.timeline.sample(key, target, self.now())
     }
 
     pub(crate) fn presented_value<T: AnimatableValue>(
         &self,
         element: ElementId,
-        property: TimelineTarget,
+        property: PresentationTarget,
         target: T,
     ) -> T {
         self.timeline
             .sample(TimelineTrackKey::new(element, property), target, self.now())
     }
 
-    pub(crate) fn start_visual_effect(
+    /// Triggers target-local style-authored one-shot effects for `element`.
+    ///
+    /// Controls call this for semantic interaction outcomes such as rejected
+    /// activation. The caller chooses the target element; the target's
+    /// resolved `Effects` property decides whether anything visual happens and
+    /// which presentation targets receive clips.
+    pub fn trigger_effect(&mut self, element: ElementId, trigger: EffectTriggerId) -> bool {
+        let Some(element_ref) = self.get(element) else {
+            return false;
+        };
+        let rules: Vec<_> = self
+            .resolve_value_for(element_ref, self.properties.effects)
+            .rules_for(trigger)
+            .cloned()
+            .collect();
+        let mut started = false;
+        for rule in rules {
+            started |= self.start_presentation_effect(element, rule.target(), rule.clip().clone());
+        }
+        started
+    }
+
+    fn start_presentation_effect(
         &mut self,
         element: ElementId,
-        output: VisualOutput,
+        target: PresentationTarget,
         clip: EffectClip,
-    ) {
-        let key = TimelineTrackKey::new(element, TimelineTarget::VisualOutput(output));
+    ) -> bool {
+        if let PresentationTarget::Property(property) = target {
+            let Some(adapter) = self.timeline_properties.adapter(property) else {
+                return false;
+            };
+            if adapter.kind() != clip.value_kind() {
+                debug_assert_eq!(
+                    adapter.kind(),
+                    clip.value_kind(),
+                    "effect clip kind must match the property adapter"
+                );
+                return false;
+            }
+        }
+        let key = TimelineTrackKey::new(element, target);
         self.timeline.start_effect(key, clip, self.now());
         self.sync_timeline_property_sample(key);
         if let Some(value) = self.timeline.active_sample_value(key, self.now()) {
             self.set_timeline_composition_sample(key, value);
         }
         self.mark_timeline_target_channels(element, key.target());
+        true
     }
 
     pub(in crate::ui) fn advance_timeline(&mut self, now: TimerInstant) {
@@ -214,7 +256,7 @@ impl Ui {
     }
 
     fn set_timeline_property_sample(&mut self, key: TimelineTrackKey, value: PresentationValue) {
-        let TimelineTarget::Property(property) = key.target() else {
+        let PresentationTarget::Property(property) = key.target() else {
             return;
         };
         let Some(adapter) = self.timeline_properties.adapter(property) else {
@@ -227,7 +269,7 @@ impl Ui {
     }
 
     pub(in crate::ui) fn clear_timeline_property_sample(&mut self, key: TimelineTrackKey) {
-        let TimelineTarget::Property(property) = key.target() else {
+        let PresentationTarget::Property(property) = key.target() else {
             return;
         };
         let Some(adapter) = self.timeline_properties.adapter(property) else {
@@ -242,17 +284,17 @@ impl Ui {
     fn set_timeline_composition_sample(&mut self, key: TimelineTrackKey, value: PresentationValue) {
         match (key.target(), value) {
             (
-                TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+                PresentationTarget::Slot(PresentationSlot::LayerOffset),
                 PresentationValue::Offset2d(offset),
             ) => self.composition.set_layer_offset(key.element(), offset),
             (
-                TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+                PresentationTarget::Slot(PresentationSlot::VisualTranslation),
                 PresentationValue::Offset2d(_),
             ) => self.composition.set_visual_transform(
                 key.element(),
                 self.presented_visual_transform(key.element()),
             ),
-            (TimelineTarget::Property(property), PresentationValue::Scalar32(opacity))
+            (PresentationTarget::Property(property), PresentationValue::Scalar32(opacity))
                 if property == self.properties.opacity.id() =>
             {
                 self.composition.set_opacity(key.element(), opacity);
@@ -261,9 +303,9 @@ impl Ui {
         }
     }
 
-    fn mark_timeline_target_channels(&mut self, element: ElementId, target: TimelineTarget) {
+    fn mark_timeline_target_channels(&mut self, element: ElementId, target: PresentationTarget) {
         match target {
-            TimelineTarget::Property(property) => {
+            PresentationTarget::Property(property) => {
                 // Timeline property samples are effective-value writes at the
                 // animation layer. Invalidation still follows the property
                 // contract: inherited properties affect descendants, and
@@ -276,8 +318,8 @@ impl Ui {
                     state_projection: StateProjectionPolicy::DoNotProjectState,
                 });
             }
-            TimelineTarget::VisualOutput(
-                VisualOutput::LayerOffset | VisualOutput::VisualTranslation,
+            PresentationTarget::Slot(
+                PresentationSlot::LayerOffset | PresentationSlot::VisualTranslation,
             ) => self.mark_channels(element, COMPOSE.into_set()),
         }
     }

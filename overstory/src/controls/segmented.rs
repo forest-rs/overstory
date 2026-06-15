@@ -14,7 +14,6 @@
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-use kurbo::Vec2;
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
@@ -28,12 +27,11 @@ use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutPlacement, LayoutSize, LayoutSpacing};
-use crate::motion::millis;
+use crate::motion::EffectTriggerId;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::timeline_runtime::{EffectClip, EffectKeyframe, PresentationValue, VisualOutput};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, SurfacePartWidget, Widget};
 
@@ -50,7 +48,9 @@ pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("segmented-label").with_part_tag(PART_SEGMENTED_ITEM_LABEL);
 
 const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
-const DENIED_SHAKE_STEP: u64 = millis(70);
+
+/// Semantic effect trigger emitted when activation is rejected.
+pub const EFFECT_SEGMENTED_ACTIVATION_DENIED: EffectTriggerId = EffectTriggerId::new(26_001);
 
 type SegmentedSelectionChangedHandler = EventHandler<SegmentedSelectionChangedEvent>;
 type SegmentedSelectionChangedSlot = CallbackSlot<SegmentedSelectionChangedEvent>;
@@ -389,14 +389,6 @@ impl SegmentedControlWidget {
         sync_segmented_indicator_layout(ui, segmented, indicator, self.selected_segment())
     }
 
-    fn start_denied_feedback(&mut self, ui: &mut Ui, segmented: ElementId) {
-        ui.start_visual_effect(
-            segmented,
-            VisualOutput::VisualTranslation,
-            denied_activation_feedback_clip(),
-        );
-    }
-
     fn selected_segment(&self) -> Option<ElementId> {
         self.selected_index
             .and_then(|index| self.segments.get(index).copied())
@@ -461,9 +453,8 @@ impl Widget for SegmentedItemWidget {
         let Some(segmented) = segmented_parent(ctx, ctx.id()) else {
             return;
         };
-        with_segmented_control_mut(ctx.ui_mut(), segmented, |widget, ui| {
-            widget.start_denied_feedback(ui, segmented);
-        });
+        ctx.ui_mut()
+            .trigger_effect(segmented, EFFECT_SEGMENTED_ACTIVATION_DENIED);
     }
 
     fn handle_accessibility_action(
@@ -561,28 +552,6 @@ fn rect_close(a: kurbo::Rect, b: kurbo::Rect) -> bool {
 
 fn scalar_close(a: f64, b: f64) -> bool {
     (a - b).abs() <= f64::EPSILON
-}
-
-fn denied_activation_feedback_clip() -> EffectClip {
-    EffectClip::from_keyframes([
-        EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
-        EffectKeyframe::new(
-            DENIED_SHAKE_STEP,
-            PresentationValue::Offset2d(Vec2::new(6.0, 0.0)),
-        ),
-        EffectKeyframe::new(
-            DENIED_SHAKE_STEP * 2,
-            PresentationValue::Offset2d(Vec2::new(-5.0, 0.0)),
-        ),
-        EffectKeyframe::new(
-            DENIED_SHAKE_STEP * 3,
-            PresentationValue::Offset2d(Vec2::new(3.0, 0.0)),
-        ),
-        EffectKeyframe::new(
-            DENIED_SHAKE_STEP * 4,
-            PresentationValue::Offset2d(Vec2::ZERO),
-        ),
-    ])
 }
 
 #[expect(
@@ -702,13 +671,12 @@ fn segmented_control_widget(ui: &Ui, segmented: ElementId) -> Option<&SegmentedC
 mod tests {
     use super::*;
     use crate::accessibility::accesskit_node_id;
-    use crate::motion::millis;
+    use crate::motion::{PresentationSlot, PresentationTarget, millis};
     use crate::test_support::pointer_down;
-    use crate::timeline_runtime::TimelineTarget;
     use accesskit::Role;
     use alloc::rc::Rc;
     use core::cell::Cell;
-    use kurbo::{Point, Size};
+    use kurbo::{Point, Size, Vec2};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     const ITEMS: [&str; 3] = ["Preview", "Code", "Metrics"];
@@ -937,7 +905,7 @@ mod tests {
     fn presented_translation(ui: &Ui, element: ElementId) -> Vec2 {
         ui.presented_value(
             element,
-            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+            PresentationTarget::Slot(PresentationSlot::VisualTranslation),
             Vec2::ZERO,
         )
     }

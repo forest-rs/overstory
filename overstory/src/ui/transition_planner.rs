@@ -13,8 +13,10 @@ use alloc::vec::Vec;
 
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
-use crate::motion::ResolvedTransitionSpec;
-use crate::timeline_runtime::{ChangeCause, PresentationValue, TimelineTarget, VisualOutput};
+use crate::motion::{
+    PresentationSlot, PresentationTarget, PresentationValue, ResolvedTransitionSpec,
+};
+use crate::timeline_runtime::ChangeCause;
 
 use super::{Ui, collect_preorder};
 
@@ -74,7 +76,7 @@ impl InteractionTransitionPlan {
                 let Some(adapter) = ui.timeline_properties.adapter(*property) else {
                     continue;
                 };
-                let target = TimelineTarget::Property(*property);
+                let target = PresentationTarget::Property(*property);
                 tracked.push(TrackedValue {
                     element,
                     target,
@@ -82,7 +84,7 @@ impl InteractionTransitionPlan {
                     before_spec: ui.transition_spec_for(element, target, ChangeCause::Interaction),
                 });
             }
-            let target = TimelineTarget::VisualOutput(VisualOutput::LayerOffset);
+            let target = PresentationTarget::Slot(PresentationSlot::LayerOffset);
             layout_outputs.push(TrackedLayoutOutput {
                 element,
                 target,
@@ -112,7 +114,7 @@ impl InteractionTransitionPlan {
 #[derive(Clone, Copy, Debug)]
 struct TrackedLayoutOutput {
     element: ElementId,
-    target: TimelineTarget,
+    target: PresentationTarget,
     before_spec: Option<ResolvedTransitionSpec>,
 }
 
@@ -148,7 +150,7 @@ fn has_arrange_invalidated_ancestor(ui: &Ui, root: ElementId, mut element: Eleme
 #[derive(Clone, Copy, Debug)]
 struct TrackedValue {
     element: ElementId,
-    target: TimelineTarget,
+    target: PresentationTarget,
     before: Option<PresentationValue>,
     before_spec: Option<ResolvedTransitionSpec>,
 }
@@ -204,7 +206,7 @@ impl TrackedValue {
     }
 
     fn target_value(self, ui: &Ui) -> Option<PresentationValue> {
-        let TimelineTarget::Property(property) = self.target else {
+        let PresentationTarget::Property(property) = self.target else {
             return None;
         };
         ui.timeline_properties

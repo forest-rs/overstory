@@ -33,7 +33,7 @@ use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
     LayoutSpacing,
 };
-use crate::motion::TransitionRules;
+use crate::motion::{EffectRules, TransitionRules};
 use crate::template::ControlTemplate;
 
 /// Handles to the dependency properties Overstory registers in every
@@ -193,6 +193,10 @@ pub struct BuiltInProperties {
     /// Style-authored transition rules for dependency-property and visual
     /// output targets. Default empty, which snaps target changes.
     pub transitions: Property<TransitionRules>,
+
+    /// Style-authored one-shot effect rules for semantic control events.
+    /// Default empty, which ignores effect triggers.
+    pub effects: Property<EffectRules>,
 
     /// Boolean toggled state for two-state controls (`ToggleSwitch`,
     /// `CheckBox`, …). Default `false`. `Ui` projects writes into the
@@ -454,6 +458,10 @@ impl BuiltInProperties {
             transitions: registry.register(
                 "Transitions",
                 PropertyMetadataBuilder::new(TransitionRules::new()).build(),
+            ),
+            effects: registry.register(
+                "Effects",
+                PropertyMetadataBuilder::new(EffectRules::new()).build(),
             ),
             is_checked: registry.register(
                 "IsChecked",

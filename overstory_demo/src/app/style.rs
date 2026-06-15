@@ -566,7 +566,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .set(
                     properties.transitions,
                     scalar_transition_rules(
-                        TransitionTarget::property(properties.foreground.id()),
+                        PresentationTarget::property(properties.foreground.id()),
                         TransitionSpec::timed(millis(820), EASE_OUT)
                             .with_color_interpolation(ColorInterpolation::OKLAB),
                     ),
@@ -638,7 +638,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .set(
                     properties.transitions,
                     scalar_transition_rules(
-                        TransitionTarget::property(properties.opacity.id()),
+                        PresentationTarget::property(properties.opacity.id()),
                         TransitionSpec::timed(millis(780), EASE_IN_OUT),
                     ),
                 )
@@ -679,7 +679,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .set(
                     properties.transitions,
                     scalar_transition_rules(
-                        TransitionTarget::layer_offset(),
+                        PresentationTarget::layer_offset(),
                         TransitionSpec::timed(millis(920), EASE_IN_OUT),
                     ),
                 )
@@ -763,7 +763,7 @@ pub(super) fn color_transition_rules(
     interpolation: ColorInterpolation,
 ) -> TransitionRules {
     TransitionRules::single(TransitionRule::interaction(
-        TransitionTarget::property(properties.surface.background.id()),
+        PresentationTarget::property(properties.surface.background.id()),
         TransitionSpec::timed(duration, timing).with_color_interpolation(interpolation),
     ))
 }
@@ -774,14 +774,14 @@ pub(super) fn border_transition_rules(properties: &BuiltInProperties) -> Transit
     let mut rules = TransitionRules::new();
     for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
         rules.push(TransitionRule::interaction(
-            TransitionTarget::property(property.id()),
+            PresentationTarget::property(property.id()),
             TransitionSpec::timed(millis(720), EASE_OUT)
                 .with_color_interpolation(ColorInterpolation::OKLAB),
         ));
     }
     for property in [widths.top, widths.right, widths.bottom, widths.left] {
         rules.push(TransitionRule::interaction(
-            TransitionTarget::property(property.id()),
+            PresentationTarget::property(property.id()),
             TransitionSpec::timed(millis(520), EASE_IN_OUT),
         ));
     }
@@ -789,7 +789,7 @@ pub(super) fn border_transition_rules(properties: &BuiltInProperties) -> Transit
 }
 
 pub(super) fn scalar_transition_rules(
-    target: TransitionTarget,
+    target: PresentationTarget,
     spec: TransitionSpec,
 ) -> TransitionRules {
     TransitionRules::single(TransitionRule::interaction(target, spec))

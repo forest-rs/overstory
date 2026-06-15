@@ -26,13 +26,16 @@ use alloc::vec::Vec;
 use hashbrown::HashMap;
 use kurbo::Vec2;
 use peniko::Color;
+#[cfg(test)]
 use understory_property::PropertyId;
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
+#[cfg(test)]
+use crate::motion::EffectKeyframe;
 use crate::motion::{
-    Animatable, ColorInterpolation, ColorTransition, Interpolate, ResolvedTransitionSpec,
-    TimingFunction, Transition, TransitionTarget,
+    Animatable, ColorTransition, EffectClip, PresentationSlot, PresentationTarget,
+    PresentationValue, PresentationValueKind, ResolvedTransitionSpec, Transition,
 };
 
 /// Nominal frame interval hosts can use while timeline tracks are active.
@@ -71,92 +74,6 @@ pub struct TimelineCue {
     pub due_at: TimerInstant,
 }
 
-/// Destination whose sampled value may differ from its target value.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum TimelineTarget {
-    /// Dependency property whose animation value participates in normal
-    /// property resolution.
-    Property(PropertyId),
-    /// Pipeline-derived visual output that is not an authored dependency
-    /// property.
-    VisualOutput(VisualOutput),
-}
-
-impl TimelineTarget {
-    /// Returns the style-facing transition target for this runtime target.
-    #[must_use]
-    pub(crate) const fn transition_target(self) -> TransitionTarget {
-        match self {
-            Self::Property(property) => TransitionTarget::Property(property),
-            Self::VisualOutput(VisualOutput::LayerOffset) => TransitionTarget::LayerOffset,
-            Self::VisualOutput(VisualOutput::VisualTranslation) => {
-                TransitionTarget::VisualTranslation
-            }
-        }
-    }
-
-    /// Returns the expected value kind when this target knows it statically.
-    #[must_use]
-    pub(crate) const fn expected_value_kind(self) -> Option<PresentationValueKind> {
-        match self {
-            Self::Property(_) => None,
-            Self::VisualOutput(output) => Some(output.value_kind()),
-        }
-    }
-
-    /// Returns where this target is sampled when it is not a dependency
-    /// property.
-    #[must_use]
-    pub(crate) const fn visual_domain(self) -> Option<TimelineEvaluationDomain> {
-        match self {
-            Self::Property(_) => None,
-            Self::VisualOutput(output) => Some(output.evaluation_domain()),
-        }
-    }
-}
-
-/// Pipeline output animated by the timeline but not represented as a property.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum VisualOutput {
-    /// Layout-derived layer placement sampled by composition while layout keeps
-    /// the resolved target geometry.
-    ///
-    /// Use this for moving real parts between layout positions. Transient
-    /// feedback should use [`Self::VisualTranslation`] so it does not rewrite
-    /// the part's target placement.
-    LayerOffset,
-    /// Additive transient visual translation sampled by composition after
-    /// layout.
-    VisualTranslation,
-}
-
-impl VisualOutput {
-    const fn value_kind(self) -> PresentationValueKind {
-        match self {
-            Self::LayerOffset | Self::VisualTranslation => PresentationValueKind::Offset2d,
-        }
-    }
-
-    const fn evaluation_domain(self) -> TimelineEvaluationDomain {
-        match self {
-            Self::LayerOffset | Self::VisualTranslation => TimelineEvaluationDomain::Composition,
-        }
-    }
-}
-
-/// Storage/interpolation kind for a timeline target.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PresentationValueKind {
-    /// A single `f32` value.
-    Scalar32,
-    /// A single `f64` value.
-    Scalar64,
-    /// A straight-alpha sRGB color.
-    Color,
-    /// A two-dimensional logical offset.
-    Offset2d,
-}
-
 /// Frame-pipeline domain that samples the timeline value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TimelineEvaluationDomain {
@@ -164,30 +81,6 @@ pub(crate) enum TimelineEvaluationDomain {
     Layout,
     /// Sampled during layer composition.
     Composition,
-}
-
-/// Typed target or sampled value carried by a timeline track.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PresentationValue {
-    /// A scalar value.
-    Scalar32(f32),
-    /// A scalar value.
-    Scalar64(f64),
-    /// A straight-alpha sRGB color.
-    Color(Color),
-    /// A two-dimensional logical offset.
-    Offset2d(Vec2),
-}
-
-impl PresentationValue {
-    pub(crate) const fn kind(self) -> PresentationValueKind {
-        match self {
-            Self::Scalar32(_) => PresentationValueKind::Scalar32,
-            Self::Scalar64(_) => PresentationValueKind::Scalar64,
-            Self::Color(_) => PresentationValueKind::Color,
-            Self::Offset2d(_) => PresentationValueKind::Offset2d,
-        }
-    }
 }
 
 /// Value type that can be stored in erased timeline sample storage.
@@ -283,13 +176,13 @@ pub(crate) enum ChangeCause {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct TimelineTrackKey {
     element: ElementId,
-    target: TimelineTarget,
+    target: PresentationTarget,
 }
 
 impl TimelineTrackKey {
     /// Creates a timeline track key.
     #[must_use]
-    pub(crate) const fn new(element: ElementId, target: TimelineTarget) -> Self {
+    pub(crate) const fn new(element: ElementId, target: PresentationTarget) -> Self {
         Self { element, target }
     }
 
@@ -301,7 +194,7 @@ impl TimelineTrackKey {
 
     /// Returns the timeline target this track targets.
     #[must_use]
-    pub(crate) const fn target(self) -> TimelineTarget {
+    pub(crate) const fn target(self) -> PresentationTarget {
         self.target
     }
 }
@@ -408,91 +301,6 @@ struct TimelineTrack {
     clip: MotionClip,
 }
 
-/// One keyframe in a finite presentation effect clip.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EffectKeyframe {
-    offset: TimerDuration,
-    value: PresentationValue,
-}
-
-impl EffectKeyframe {
-    /// Creates a keyframe at `offset` relative to clip start.
-    #[must_use]
-    pub(crate) const fn new(offset: TimerDuration, value: PresentationValue) -> Self {
-        Self { offset, value }
-    }
-}
-
-/// Finite presentation effect clip applied to one visual output.
-///
-/// This is for semantic feedback where there is no lasting target value to
-/// retain, such as a short denied-action nudge. It deliberately lives beside
-/// normal target transitions rather than on individual widgets.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EffectClip {
-    keyframes: Vec<EffectKeyframe>,
-    kind: PresentationValueKind,
-}
-
-impl EffectClip {
-    /// Builds a clip from keyframes.
-    ///
-    /// The first keyframe supplies the sample before its timestamp. All
-    /// keyframes must carry the same presentation value kind.
-    #[must_use]
-    pub(crate) fn from_keyframes(keyframes: impl IntoIterator<Item = EffectKeyframe>) -> Self {
-        let mut keyframes: Vec<_> = keyframes.into_iter().collect();
-        keyframes.sort_by_key(|keyframe| keyframe.offset);
-        assert!(
-            !keyframes.is_empty(),
-            "effect clips require at least one keyframe"
-        );
-        let kind = keyframes[0].value.kind();
-        debug_assert!(
-            keyframes
-                .iter()
-                .all(|keyframe| keyframe.value.kind() == kind),
-            "effect clip keyframes must use one value kind"
-        );
-        Self { keyframes, kind }
-    }
-
-    fn value_kind(&self) -> PresentationValueKind {
-        self.kind
-    }
-
-    fn sample(&self, elapsed: TimerDuration) -> PresentationValue {
-        let first = self.keyframes[0];
-        if elapsed <= first.offset {
-            return first.value;
-        }
-        for pair in self.keyframes.windows(2) {
-            let from = pair[0];
-            let to = pair[1];
-            if elapsed <= to.offset {
-                let span = to.offset.saturating_sub(from.offset);
-                let progress = if span == 0 {
-                    1.0
-                } else {
-                    (elapsed.saturating_sub(from.offset) as f32 / span as f32).clamp(0.0, 1.0)
-                };
-                return interpolate_presentation_value(from.value, to.value, progress);
-            }
-        }
-        self.keyframes
-            .last()
-            .map(|keyframe| keyframe.value)
-            .unwrap_or(first.value)
-    }
-
-    fn duration(&self) -> TimerDuration {
-        self.keyframes
-            .last()
-            .map(|keyframe| keyframe.offset)
-            .unwrap_or(0)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct EffectTrack {
     started_at: TimerInstant,
@@ -594,7 +402,7 @@ impl TimelineRuntime {
         clip: EffectClip,
         now: TimerInstant,
     ) {
-        if let Some(kind) = key.target().expected_value_kind() {
+        if let Some(kind) = expected_value_kind(key.target()) {
             debug_assert_eq!(
                 kind,
                 clip.value_kind(),
@@ -602,7 +410,7 @@ impl TimelineRuntime {
             );
         }
         debug_assert_ne!(
-            key.target().visual_domain(),
+            evaluation_domain(key.target()),
             Some(TimelineEvaluationDomain::Layout),
             "layout-domain effects need explicit layout-animation policy"
         );
@@ -657,7 +465,7 @@ impl TimelineRuntime {
         now: TimerInstant,
         cause: ChangeCause,
     ) -> bool {
-        if let Some(kind) = key.target().expected_value_kind() {
+        if let Some(kind) = expected_value_kind(key.target()) {
             debug_assert_eq!(
                 kind,
                 target.kind(),
@@ -665,7 +473,7 @@ impl TimelineRuntime {
             );
         }
         debug_assert_ne!(
-            key.target().visual_domain(),
+            evaluation_domain(key.target()),
             Some(TimelineEvaluationDomain::Layout),
             "layout-domain animation must not be sampled by the generic target setter"
         );
@@ -846,42 +654,22 @@ impl TimelineRuntime {
     }
 }
 
-fn interpolate_presentation_value(
-    from: PresentationValue,
-    to: PresentationValue,
-    progress: f32,
-) -> PresentationValue {
-    match (from, to) {
-        (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
-            PresentationValue::Scalar32(from.interpolate(to, progress))
-        }
-        (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
-            PresentationValue::Scalar64(from.interpolate(to, progress))
-        }
-        (PresentationValue::Color(from), PresentationValue::Color(to)) => PresentationValue::Color(
-            ColorTransition::new(
-                from,
-                to,
-                0,
-                1_000_000,
-                TimingFunction::LINEAR,
-                ColorInterpolation::SRGB,
-            )
-            .sample(progress_timer_instant(progress)),
-        ),
-        (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
-            PresentationValue::Offset2d(from.interpolate(to, progress))
-        }
-        _ => to,
+const fn expected_value_kind(target: PresentationTarget) -> Option<PresentationValueKind> {
+    match target {
+        PresentationTarget::Property(_) => None,
+        PresentationTarget::Slot(
+            PresentationSlot::LayerOffset | PresentationSlot::VisualTranslation,
+        ) => Some(PresentationValueKind::Offset2d),
     }
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "effect progress is clamped to 0..=1 before conversion to the fixed sample span"
-)]
-fn progress_timer_instant(progress: f32) -> TimerInstant {
-    (f64::from(progress.clamp(0.0, 1.0)) * 1_000_000.0).round() as TimerInstant
+const fn evaluation_domain(target: PresentationTarget) -> Option<TimelineEvaluationDomain> {
+    match target {
+        PresentationTarget::Property(_) => None,
+        PresentationTarget::Slot(
+            PresentationSlot::LayerOffset | PresentationSlot::VisualTranslation,
+        ) => Some(TimelineEvaluationDomain::Composition),
+    }
 }
 
 fn same_value(a: PresentationValue, b: PresentationValue) -> bool {
@@ -921,28 +709,28 @@ mod tests {
     fn scalar_key() -> TimelineTrackKey {
         TimelineTrackKey::new(
             ElementId::new(7, 0),
-            TimelineTarget::Property(SCALAR_PROPERTY),
+            PresentationTarget::Property(SCALAR_PROPERTY),
         )
     }
 
     fn color_key() -> TimelineTrackKey {
         TimelineTrackKey::new(
             ElementId::new(7, 0),
-            TimelineTarget::Property(COLOR_PROPERTY),
+            PresentationTarget::Property(COLOR_PROPERTY),
         )
     }
 
     fn offset_key() -> TimelineTrackKey {
         TimelineTrackKey::new(
             ElementId::new(7, 0),
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            PresentationTarget::Slot(PresentationSlot::LayerOffset),
         )
     }
 
     fn visual_translation_key() -> TimelineTrackKey {
         TimelineTrackKey::new(
             ElementId::new(7, 0),
-            TimelineTarget::VisualOutput(VisualOutput::VisualTranslation),
+            PresentationTarget::Slot(PresentationSlot::VisualTranslation),
         )
     }
 

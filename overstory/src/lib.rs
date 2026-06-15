@@ -169,8 +169,9 @@ pub use controls::scroll::{
     set_scroll_offset_y, set_scroll_view_offset_y,
 };
 pub use controls::segmented::{
-    PART_SEGMENTED_ITEM_LABEL, PART_SEGMENTED_SELECTION_INDICATOR, SLOT_SEGMENTED_ITEM_LABEL,
-    SegmentedControl, SegmentedSelectionChangedEvent, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
+    EFFECT_SEGMENTED_ACTIVATION_DENIED, PART_SEGMENTED_ITEM_LABEL,
+    PART_SEGMENTED_SELECTION_INDICATOR, SLOT_SEGMENTED_ITEM_LABEL, SegmentedControl,
+    SegmentedSelectionChangedEvent, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
     clear_segmented_selection, segmented_item, selected_segmented_index, selected_segmented_item,
     set_segmented_index,
 };
@@ -252,14 +253,14 @@ pub mod prelude {
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
         BindingSpecExt, Button, CheckBox, ChildUi, ClassId, Color, ContentSlotSpec,
         ControlStateSpecExt, ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt,
-        CursorIcon, Divider, ElementId, ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt,
-        Expander, ExternalSource, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel,
-        PartTag, Popup, ProgressBar, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt,
-        ResourceKey, ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select,
-        Size, Slider, Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary,
-        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt,
-        TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding,
-        VectorPath, View, Viewport,
+        CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED, ElementId, ElementRef,
+        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
+        ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
+        PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey, ScrollArea, ScrollBar,
+        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter,
+        StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, Text,
+        TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
+        TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 

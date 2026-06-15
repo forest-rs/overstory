@@ -16,7 +16,7 @@ use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
     LayoutSize, LayoutSpacing,
 };
-use crate::timeline_runtime::{TimelineTarget, VisualOutput};
+use crate::motion::{PresentationSlot, PresentationTarget};
 
 use super::Ui;
 
@@ -107,13 +107,13 @@ impl Ui {
     ///
     /// This controls flow-vs-absolute positioning independently from the
     /// element's sizing, padding, and child layout. If the element has a
-    /// style-authored [`crate::motion::TransitionTarget::LayerOffset`] rule,
+    /// style-authored [`crate::motion::PresentationTarget::layer_offset`] rule,
     /// changing placement also requests a composition-sampled placement
     /// transition for the next layout pass.
     pub fn set_layout_placement(&mut self, id: ElementId, placement: impl Into<LayoutPlacement>) {
         self.request_styled_presentation_transition(
             id,
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            PresentationTarget::Slot(PresentationSlot::LayerOffset),
         );
         self.set_layout_placement_raw(id, placement);
     }
@@ -125,7 +125,7 @@ impl Ui {
         id: ElementId,
         placement: impl Into<LayoutPlacement>,
     ) {
-        self.clear_presentation_target(id, TimelineTarget::VisualOutput(VisualOutput::LayerOffset));
+        self.clear_presentation_target(id, PresentationTarget::Slot(PresentationSlot::LayerOffset));
         self.mark_channels(id, ARRANGE.into());
         self.set_layout_placement_raw(id, placement);
     }
@@ -496,7 +496,7 @@ impl Ui {
     fn presented_composition_offset(&self, id: ElementId, local_offset: Vec2) -> Vec2 {
         self.presented_value(
             id,
-            TimelineTarget::VisualOutput(VisualOutput::LayerOffset),
+            PresentationTarget::Slot(PresentationSlot::LayerOffset),
             local_offset,
         )
     }

@@ -19,7 +19,8 @@ use peniko::Brush;
 use understory_property::{DependencyObject, Property, PropertyId};
 
 use crate::element::{Element, ElementId};
-use crate::timeline_runtime::{AnimatableValue, PresentationValue, PresentationValueKind};
+use crate::motion::{PresentationValue, PresentationValueKind};
+use crate::timeline_runtime::AnimatableValue;
 use crate::ui::Ui;
 
 type ReadTarget = fn(&Ui, ElementId, PropertyId) -> Option<PresentationValue>;

@@ -29,8 +29,9 @@ use understory_style::{
 };
 
 use crate::motion::{
-    ColorInterpolation, Interpolate, TimingFunction, TransitionRule, TransitionRules,
-    TransitionSpec, TransitionTarget, millis,
+    ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules, EffectTriggerId,
+    Interpolate, PresentationSlot, PresentationTarget, PresentationValue, TimingFunction,
+    TransitionRule, TransitionRules, TransitionSpec, millis,
 };
 
 mod content_presenter;
@@ -1432,6 +1433,117 @@ fn button_hover_transitions_background_color() {
 }
 
 #[test]
+fn styled_effect_rule_triggers_visual_translation_slot() {
+    const EFFECTFUL: ClassId = ClassId(901);
+    const TRIGGER: EffectTriggerId = EffectTriggerId::new(901);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let effects = ui.properties().effects;
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(EFFECTFUL))
+                    .build(),
+                StyleBuilder::new()
+                    .set(
+                        effects,
+                        EffectRules::single(EffectRule::new(
+                            TRIGGER,
+                            PresentationTarget::visual_translation(),
+                            EffectClip::from_keyframes([
+                                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                                EffectKeyframe::new(
+                                    millis(50),
+                                    PresentationValue::Offset2d(Vec2::new(10.0, 0.0)),
+                                ),
+                                EffectKeyframe::new(
+                                    millis(100),
+                                    PresentationValue::Offset2d(Vec2::ZERO),
+                                ),
+                            ]),
+                        )),
+                    )
+                    .build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(root, crate::Panel::new().class(EFFECTFUL));
+
+    ui.set_now(0);
+    assert!(ui.trigger_effect(panel, TRIGGER));
+    assert!(ui.invalidation().is_invalidated(panel, COMPOSE));
+
+    ui.set_now(millis(50));
+    ui.flush_composition();
+    let translation = ui.presented_value(
+        panel,
+        PresentationTarget::slot(PresentationSlot::VisualTranslation),
+        Vec2::ZERO,
+    );
+    assert_close(translation.x, 10.0);
+
+    ui.set_now(millis(100));
+    ui.flush_composition();
+    let translation = ui.presented_value(
+        panel,
+        PresentationTarget::slot(PresentationSlot::VisualTranslation),
+        Vec2::ZERO,
+    );
+    assert_close(translation.x, 0.0);
+}
+
+#[test]
+fn styled_effect_rule_targets_property_animation_layer() {
+    const EFFECTFUL: ClassId = ClassId(902);
+    const TRIGGER: EffectTriggerId = EffectTriggerId::new(902);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let opacity = ui.properties().opacity;
+    let effects = ui.properties().effects;
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(EFFECTFUL))
+                    .build(),
+                StyleBuilder::new()
+                    .set(
+                        effects,
+                        EffectRules::single(EffectRule::new(
+                            TRIGGER,
+                            PresentationTarget::property(opacity.id()),
+                            EffectClip::from_keyframes([
+                                EffectKeyframe::new(0, PresentationValue::Scalar32(1.0)),
+                                EffectKeyframe::new(millis(50), PresentationValue::Scalar32(0.25)),
+                                EffectKeyframe::new(millis(100), PresentationValue::Scalar32(1.0)),
+                            ]),
+                        )),
+                    )
+                    .build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(root, crate::Panel::new().class(EFFECTFUL));
+
+    ui.set_now(0);
+    assert!(ui.trigger_effect(panel, TRIGGER));
+    assert!(ui.invalidation().is_invalidated(panel, COMPOSE));
+
+    ui.set_now(millis(50));
+    ui.flush_composition();
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(f64::from(ui.resolve_value_for(element, opacity)), 0.25);
+
+    ui.set_now(millis(100));
+    ui.flush_composition();
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(f64::from(ui.resolve_value_for(element, opacity)), 1.0);
+}
+
+#[test]
 fn styled_transition_rule_controls_button_hover_duration() {
     use crate::{Button, TYPE_BUTTON};
 
@@ -1459,7 +1571,7 @@ fn styled_transition_rule_controls_button_hover_duration() {
                 .set(
                     transitions,
                     TransitionRules::single(TransitionRule::interaction(
-                        TransitionTarget::property(background.id()),
+                        PresentationTarget::property(background.id()),
                         TransitionSpec::linear(millis(90))
                             .with_duration_resource(TEST_HOVER_DURATION)
                             .with_color_interpolation(ColorInterpolation::SRGB),
@@ -1530,7 +1642,7 @@ fn transition_rules_drive_registered_foreground_property() {
                     .set(
                         transitions,
                         TransitionRules::single(TransitionRule::interaction(
-                            TransitionTarget::property(foreground.id()),
+                            PresentationTarget::property(foreground.id()),
                             TransitionSpec::linear(millis(100))
                                 .with_color_interpolation(ColorInterpolation::SRGB),
                         )),
@@ -1607,7 +1719,7 @@ fn interaction_transitions_track_descendant_effective_value_changes() {
                     .set(
                         transitions,
                         TransitionRules::single(TransitionRule::interaction(
-                            TransitionTarget::property(foreground.id()),
+                            PresentationTarget::property(foreground.id()),
                             TransitionSpec::linear(millis(100))
                                 .with_color_interpolation(ColorInterpolation::SRGB),
                         )),
@@ -1681,7 +1793,7 @@ fn inherited_timeline_property_samples_invalidate_descendants() {
                     .set(
                         transitions,
                         TransitionRules::single(TransitionRule::interaction(
-                            TransitionTarget::property(foreground.id()),
+                            PresentationTarget::property(foreground.id()),
                             TransitionSpec::linear(millis(100))
                                 .with_color_interpolation(ColorInterpolation::SRGB),
                         )),

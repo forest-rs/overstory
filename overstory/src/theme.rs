@@ -50,6 +50,7 @@
 //! - Keep accessibility contrast and disabled/focus/selection states visible in
 //!   the default theme so examples expose styling gaps early.
 
+use kurbo::Vec2;
 use peniko::{Brush, Color};
 use understory_style::{
     ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade, StyleCascadeBuilder,
@@ -91,8 +92,8 @@ use crate::controls::scroll::{
     PART_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR, default_scroll_bar_template,
 };
 use crate::controls::segmented::{
-    PART_SEGMENTED_SELECTION_INDICATOR, TYPE_SEGMENTED_CONTROL, TYPE_SEGMENTED_ITEM,
-    default_segmented_item_template,
+    EFFECT_SEGMENTED_ACTIVATION_DENIED, PART_SEGMENTED_SELECTION_INDICATOR, TYPE_SEGMENTED_CONTROL,
+    TYPE_SEGMENTED_ITEM, default_segmented_item_template,
 };
 use crate::controls::select::{
     PART_SELECT_INDICATOR, PART_SELECT_LABEL, TYPE_SELECT, default_select_template,
@@ -113,8 +114,8 @@ use crate::layouts::{
     LayoutSpacing,
 };
 use crate::motion::{
-    ColorInterpolation, TimingFunction, TransitionRule, TransitionRules, TransitionSpec,
-    TransitionTarget, millis,
+    ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules, PresentationTarget,
+    PresentationValue, TimingFunction, TransitionRule, TransitionRules, TransitionSpec, millis,
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -239,6 +240,7 @@ pub const MOTION_COLOR_INTERPOLATION: ResourceKey = ResourceKey::new(24);
 const DEFAULT_MOTION_FAST_DURATION: TimerDuration = millis(70);
 const DEFAULT_MOTION_NORMAL_DURATION: TimerDuration = millis(90);
 const DEFAULT_MOTION_EMPHASIZED_DURATION: TimerDuration = millis(120);
+const DEFAULT_DENIED_SHAKE_STEP: TimerDuration = millis(70);
 const DEFAULT_MOTION_STANDARD_EASING: TimingFunction =
     TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
 
@@ -879,6 +881,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             properties.transitions,
             border_affordance_transition_rules(properties),
         )
+        .set(properties.effects, segmented_control_effect_rules())
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 9.0_f64)
         .set(properties.layout_container, LayoutContainer::row())
@@ -1568,7 +1571,7 @@ fn toggle_alignment(checked: bool) -> LayoutAlignment {
 
 fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
     surface_transition_rules(properties).with_rule(TransitionRule::interaction(
-        TransitionTarget::property(properties.opacity.id()),
+        PresentationTarget::property(properties.opacity.id()),
         scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
     ))
 }
@@ -1589,7 +1592,7 @@ fn border_affordance_transition_rules(properties: &BuiltInProperties) -> Transit
 
 fn background_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
     TransitionRules::single(color_transition_rule(
-        TransitionTarget::property(properties.surface.background.id()),
+        PresentationTarget::property(properties.surface.background.id()),
         DEFAULT_MOTION_NORMAL_DURATION,
         MOTION_NORMAL_DURATION,
     ))
@@ -1602,7 +1605,7 @@ fn with_border_brush_transition_rules(
     let brushes = properties.surface.border_brushes;
     for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
         rules.push(color_transition_rule(
-            TransitionTarget::property(property.id()),
+            PresentationTarget::property(property.id()),
             DEFAULT_MOTION_NORMAL_DURATION,
             MOTION_NORMAL_DURATION,
         ));
@@ -1617,7 +1620,7 @@ fn with_border_width_transition_rules(
     let widths = properties.surface.border_widths;
     for property in [widths.top, widths.right, widths.bottom, widths.left] {
         rules.push(TransitionRule::interaction(
-            TransitionTarget::property(property.id()),
+            PresentationTarget::property(property.id()),
             scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
         ));
     }
@@ -1625,7 +1628,7 @@ fn with_border_width_transition_rules(
 }
 
 fn color_transition_rule(
-    target: TransitionTarget,
+    target: PresentationTarget,
     duration: TimerDuration,
     duration_token: ResourceKey,
 ) -> TransitionRule {
@@ -1648,10 +1651,36 @@ fn layer_offset_transition_rules(
     duration_token: ResourceKey,
 ) -> TransitionRules {
     TransitionRules::single(TransitionRule::interaction(
-        TransitionTarget::layer_offset(),
+        PresentationTarget::layer_offset(),
         TransitionSpec::timed(duration, DEFAULT_MOTION_STANDARD_EASING)
             .with_duration_resource(duration_token)
             .with_easing_resource(MOTION_STANDARD_EASING),
+    ))
+}
+
+fn segmented_control_effect_rules() -> EffectRules {
+    EffectRules::single(EffectRule::new(
+        EFFECT_SEGMENTED_ACTIVATION_DENIED,
+        PresentationTarget::visual_translation(),
+        EffectClip::from_keyframes([
+            EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+            EffectKeyframe::new(
+                DEFAULT_DENIED_SHAKE_STEP,
+                PresentationValue::Offset2d(Vec2::new(6.0, 0.0)),
+            ),
+            EffectKeyframe::new(
+                DEFAULT_DENIED_SHAKE_STEP * 2,
+                PresentationValue::Offset2d(Vec2::new(-5.0, 0.0)),
+            ),
+            EffectKeyframe::new(
+                DEFAULT_DENIED_SHAKE_STEP * 3,
+                PresentationValue::Offset2d(Vec2::new(3.0, 0.0)),
+            ),
+            EffectKeyframe::new(
+                DEFAULT_DENIED_SHAKE_STEP * 4,
+                PresentationValue::Offset2d(Vec2::ZERO),
+            ),
+        ]),
     ))
 }
 

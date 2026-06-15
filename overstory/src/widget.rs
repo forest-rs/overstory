@@ -550,6 +550,7 @@ impl InitialPropertyTarget {
 pub(crate) enum BuiltInPropertyKey {
     Content,
     ControlTemplate,
+    Effects,
     FontFamily,
     FontFeatures,
     FontSize,
@@ -606,6 +607,7 @@ impl BuiltInPropertyKey {
         match self {
             Self::Content => properties.content.id(),
             Self::ControlTemplate => properties.control_template.id(),
+            Self::Effects => properties.effects.id(),
             Self::FontFamily => properties.font_family.id(),
             Self::FontFeatures => properties.font_features.id(),
             Self::FontSize => properties.font_size.id(),

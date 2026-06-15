@@ -249,11 +249,13 @@ impl Default for ColorInterpolation {
     }
 }
 
-/// Target whose value can transition when style or control state changes.
+/// Presentation-only output sampled by the motion runtime.
+///
+/// Slots are intentionally not dependency properties. They are for values
+/// produced or consumed by the presentation pipeline when there is no durable
+/// authored target value in the property system.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransitionTarget {
-    /// A dependency property.
-    Property(PropertyId),
+pub enum PresentationSlot {
     /// Layer-local placement offset sampled during composition.
     ///
     /// This is for targets whose real geometry has a layout-derived local
@@ -261,10 +263,10 @@ pub enum TransitionTarget {
     /// Layout resolves the target position, and composition can present motion
     /// between old and new positions without relaying out siblings.
     ///
-    /// Do not use this for transient feedback like shake, pulse, or denial
-    /// motion. Those effects should use [`Self::VisualTranslation`] so they
-    /// compose additively on top of the resolved layer placement and disappear
-    /// without changing the part's target geometry.
+    /// Do not use this for transient feedback like shake or denial motion.
+    /// Those effects should use [`Self::VisualTranslation`] so they compose
+    /// additively on top of resolved layer placement and disappear without
+    /// changing target geometry.
     LayerOffset,
     /// Additive visual translation sampled during composition.
     ///
@@ -275,23 +277,42 @@ pub enum TransitionTarget {
     VisualTranslation,
 }
 
-impl TransitionTarget {
+/// Destination whose sampled presentation value may differ from its target
+/// value for a period of time.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PresentationTarget {
+    /// Dependency property whose animation value participates in normal
+    /// property resolution, invalidation, inheritance, and template owner
+    /// dependency tracking.
+    Property(PropertyId),
+    /// Presentation-only slot that does not have an authoritative dependency
+    /// property value.
+    Slot(PresentationSlot),
+}
+
+impl PresentationTarget {
     /// Creates a target for dependency property `property`.
     #[must_use]
     pub const fn property(property: PropertyId) -> Self {
         Self::Property(property)
     }
 
+    /// Creates a target for a presentation-only `slot`.
+    #[must_use]
+    pub const fn slot(slot: PresentationSlot) -> Self {
+        Self::Slot(slot)
+    }
+
     /// Creates a target for layout-derived layer-local composition offset.
     #[must_use]
     pub const fn layer_offset() -> Self {
-        Self::LayerOffset
+        Self::Slot(PresentationSlot::LayerOffset)
     }
 
     /// Creates a target for additive transient visual translation.
     #[must_use]
     pub const fn visual_translation() -> Self {
-        Self::VisualTranslation
+        Self::Slot(PresentationSlot::VisualTranslation)
     }
 }
 
@@ -548,10 +569,273 @@ impl ResolvedTransitionSpec {
     }
 }
 
+/// Storage/interpolation kind for a sampled presentation value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PresentationValueKind {
+    /// A single `f32` value.
+    Scalar32,
+    /// A single `f64` value.
+    Scalar64,
+    /// A straight-alpha color.
+    Color,
+    /// A two-dimensional logical offset.
+    Offset2d,
+}
+
+/// Typed value carried by a presentation track or one-shot effect keyframe.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PresentationValue {
+    /// A single `f32` value.
+    Scalar32(f32),
+    /// A single `f64` value.
+    Scalar64(f64),
+    /// A straight-alpha color.
+    Color(Color),
+    /// A two-dimensional logical offset.
+    Offset2d(Vec2),
+}
+
+impl PresentationValue {
+    /// Returns the storage/interpolation kind for this value.
+    #[must_use]
+    pub const fn kind(self) -> PresentationValueKind {
+        match self {
+            Self::Scalar32(_) => PresentationValueKind::Scalar32,
+            Self::Scalar64(_) => PresentationValueKind::Scalar64,
+            Self::Color(_) => PresentationValueKind::Color,
+            Self::Offset2d(_) => PresentationValueKind::Offset2d,
+        }
+    }
+}
+
+/// Stable semantic trigger for a style-authored one-shot effect.
+///
+/// Controls emit effect triggers to report interaction outcomes. Style rules
+/// decide whether that trigger produces visual feedback and which presentation
+/// target receives it.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct EffectTriggerId(u32);
+
+impl EffectTriggerId {
+    /// Creates an effect trigger id from a stable numeric value.
+    #[must_use]
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    /// Returns this trigger id as a compact integer token.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+/// One keyframe in a finite presentation effect clip.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EffectKeyframe {
+    offset: TimerDuration,
+    value: PresentationValue,
+}
+
+impl EffectKeyframe {
+    /// Creates a keyframe at `offset` relative to clip start.
+    #[must_use]
+    pub const fn new(offset: TimerDuration, value: PresentationValue) -> Self {
+        Self { offset, value }
+    }
+
+    /// Returns the offset relative to clip start.
+    #[must_use]
+    pub const fn offset(self) -> TimerDuration {
+        self.offset
+    }
+
+    /// Returns the keyframe value.
+    #[must_use]
+    pub const fn value(self) -> PresentationValue {
+        self.value
+    }
+}
+
+/// Finite keyframed presentation effect.
+///
+/// Effects are for semantic feedback where there is no lasting target value to
+/// retain, such as a short denied-action nudge. They are authored as style data
+/// and sampled by the timeline runtime.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EffectClip {
+    keyframes: Vec<EffectKeyframe>,
+    kind: PresentationValueKind,
+}
+
+impl EffectClip {
+    /// Builds a clip from keyframes.
+    ///
+    /// The first keyframe supplies the sample before its timestamp. All
+    /// keyframes must carry the same presentation value kind.
+    #[must_use]
+    pub fn from_keyframes(keyframes: impl IntoIterator<Item = EffectKeyframe>) -> Self {
+        let mut keyframes: Vec<_> = keyframes.into_iter().collect();
+        keyframes.sort_by_key(|keyframe| keyframe.offset);
+        assert!(
+            !keyframes.is_empty(),
+            "effect clips require at least one keyframe"
+        );
+        let kind = keyframes[0].value.kind();
+        debug_assert!(
+            keyframes
+                .iter()
+                .all(|keyframe| keyframe.value.kind() == kind),
+            "effect clip keyframes must use one value kind"
+        );
+        Self { keyframes, kind }
+    }
+
+    /// Returns the keyframes in sorted order.
+    #[must_use]
+    pub fn keyframes(&self) -> &[EffectKeyframe] {
+        &self.keyframes
+    }
+
+    pub(crate) const fn value_kind(&self) -> PresentationValueKind {
+        self.kind
+    }
+
+    pub(crate) fn sample(&self, elapsed: TimerDuration) -> PresentationValue {
+        let first = self.keyframes[0];
+        if elapsed <= first.offset {
+            return first.value;
+        }
+        for pair in self.keyframes.windows(2) {
+            let from = pair[0];
+            let to = pair[1];
+            if elapsed <= to.offset {
+                let span = to.offset.saturating_sub(from.offset);
+                let progress = if span == 0 {
+                    1.0
+                } else {
+                    (elapsed.saturating_sub(from.offset) as f32 / span as f32).clamp(0.0, 1.0)
+                };
+                return interpolate_presentation_value(from.value, to.value, progress);
+            }
+        }
+        self.keyframes
+            .last()
+            .map(|keyframe| keyframe.value)
+            .unwrap_or(first.value)
+    }
+
+    pub(crate) fn duration(&self) -> TimerDuration {
+        self.keyframes
+            .last()
+            .map(|keyframe| keyframe.offset)
+            .unwrap_or(0)
+    }
+}
+
+/// One style-authored effect rule.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EffectRule {
+    trigger: EffectTriggerId,
+    target: PresentationTarget,
+    clip: EffectClip,
+}
+
+impl EffectRule {
+    /// Creates an effect rule for `trigger`, `target`, and `clip`.
+    #[must_use]
+    pub fn new(trigger: EffectTriggerId, target: PresentationTarget, clip: EffectClip) -> Self {
+        Self {
+            trigger,
+            target,
+            clip,
+        }
+    }
+
+    /// Returns the trigger this rule responds to.
+    #[must_use]
+    pub const fn trigger(&self) -> EffectTriggerId {
+        self.trigger
+    }
+
+    /// Returns the target this rule samples.
+    #[must_use]
+    pub const fn target(&self) -> PresentationTarget {
+        self.target
+    }
+
+    /// Returns the effect clip.
+    #[must_use]
+    pub const fn clip(&self) -> &EffectClip {
+        &self.clip
+    }
+}
+
+/// Target-local style value containing one-shot effect rules for one element.
+///
+/// The cascade can attach different rule lists to different elements with
+/// ordinary selectors. The trigger source is deliberately not modeled here:
+/// controls, routed event handlers, or future effect-cascade machinery choose
+/// which target element receives a trigger.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EffectRules {
+    rules: Vec<EffectRule>,
+}
+
+impl EffectRules {
+    /// Creates an empty effect rule list.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { rules: Vec::new() }
+    }
+
+    /// Creates an effect rule list containing `rule`.
+    #[must_use]
+    pub fn single(rule: EffectRule) -> Self {
+        Self { rules: vec![rule] }
+    }
+
+    /// Appends `rule` and returns the updated list.
+    #[must_use]
+    pub fn with_rule(mut self, rule: EffectRule) -> Self {
+        self.rules.push(rule);
+        self
+    }
+
+    /// Appends `rule`.
+    pub fn push(&mut self, rule: EffectRule) {
+        self.rules.push(rule);
+    }
+
+    /// Returns all effect rules in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = &EffectRule> {
+        self.rules.iter()
+    }
+
+    /// Returns rules that respond to `trigger`, preserving insertion order.
+    pub fn rules_for(&self, trigger: EffectTriggerId) -> impl Iterator<Item = &EffectRule> {
+        self.rules
+            .iter()
+            .filter(move |rule| rule.trigger == trigger)
+    }
+
+    /// Returns whether this rule list is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
+    }
+}
+
+impl From<EffectRule> for EffectRules {
+    fn from(rule: EffectRule) -> Self {
+        Self::single(rule)
+    }
+}
+
 /// One style-authored transition rule.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionRule {
-    target: TransitionTarget,
+    target: PresentationTarget,
     trigger: TransitionTrigger,
     spec: TransitionSpec,
 }
@@ -559,7 +843,7 @@ pub struct TransitionRule {
 impl TransitionRule {
     /// Creates an interaction-triggered transition rule for `target`.
     #[must_use]
-    pub const fn interaction(target: TransitionTarget, spec: TransitionSpec) -> Self {
+    pub const fn interaction(target: PresentationTarget, spec: TransitionSpec) -> Self {
         Self {
             target,
             trigger: TransitionTrigger::Interaction,
@@ -569,7 +853,7 @@ impl TransitionRule {
 
     /// Returns the target this rule transitions.
     #[must_use]
-    pub const fn target(self) -> TransitionTarget {
+    pub const fn target(self) -> PresentationTarget {
         self.target
     }
 
@@ -626,7 +910,7 @@ impl TransitionRules {
     #[must_use]
     pub fn rule_for(
         &self,
-        target: TransitionTarget,
+        target: PresentationTarget,
         trigger: TransitionTrigger,
     ) -> Option<TransitionRule> {
         self.rules
@@ -845,6 +1129,44 @@ impl PartialEq for ColorTransition {
             && self.timing == other.timing
             && self.interpolation == other.interpolation
     }
+}
+
+fn interpolate_presentation_value(
+    from: PresentationValue,
+    to: PresentationValue,
+    progress: f32,
+) -> PresentationValue {
+    match (from, to) {
+        (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
+            PresentationValue::Scalar32(from.interpolate(to, progress))
+        }
+        (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
+            PresentationValue::Scalar64(from.interpolate(to, progress))
+        }
+        (PresentationValue::Color(from), PresentationValue::Color(to)) => PresentationValue::Color(
+            ColorTransition::new(
+                from,
+                to,
+                0,
+                1_000_000,
+                TimingFunction::LINEAR,
+                ColorInterpolation::SRGB,
+            )
+            .sample(progress_timer_instant(progress)),
+        ),
+        (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
+            PresentationValue::Offset2d(from.interpolate(to, progress))
+        }
+        _ => to,
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "effect progress is clamped to 0..=1 before conversion to the fixed sample span"
+)]
+fn progress_timer_instant(progress: f32) -> TimerInstant {
+    (f64::from(progress.clamp(0.0, 1.0)) * 1_000_000.0).round() as TimerInstant
 }
 
 #[derive(Clone, Copy)]

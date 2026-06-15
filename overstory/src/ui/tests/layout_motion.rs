@@ -55,7 +55,7 @@ fn owner_state_layout_change_transitions_descendant_layer_offset() {
                     .set(
                         ui.properties().transitions,
                         TransitionRules::single(TransitionRule::interaction(
-                            TransitionTarget::layer_offset(),
+                            PresentationTarget::layer_offset(),
                             TransitionSpec::linear(millis(100)),
                         )),
                     )
@@ -128,7 +128,7 @@ fn paint_only_interaction_does_not_arm_layer_offset_transition() {
                     .set(
                         ui.properties().transitions,
                         TransitionRules::single(TransitionRule::interaction(
-                            TransitionTarget::layer_offset(),
+                            PresentationTarget::layer_offset(),
                             TransitionSpec::linear(millis(100)),
                         )),
                     )
@@ -176,7 +176,7 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
                 .set(
                     transitions,
                     TransitionRules::single(TransitionRule::interaction(
-                        TransitionTarget::layer_offset(),
+                        PresentationTarget::layer_offset(),
                         TransitionSpec::linear(millis(100)),
                     )),
                 )
@@ -240,7 +240,7 @@ fn snap_layout_placement_cancels_active_layer_offset_transition() {
                 .set(
                     transitions,
                     TransitionRules::single(TransitionRule::interaction(
-                        TransitionTarget::layer_offset(),
+                        PresentationTarget::layer_offset(),
                         TransitionSpec::linear(millis(100)),
                     )),
                 )
