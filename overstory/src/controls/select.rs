@@ -24,8 +24,8 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
-    last_enabled_index, next_enabled_index, option_label, previous_enabled_index,
-    selected_enabled_index,
+    last_enabled_index, next_enabled_index, normalized_selection_target, option_label,
+    previous_enabled_index, selected_enabled_index,
 };
 use crate::controls::list::{
     ListBox, ListItemContext, ListSelectionChangedEvent, SharedListItemTemplate,
@@ -503,11 +503,15 @@ impl SelectWidget {
     }
 
     fn set_selected_index(&mut self, ui: &mut Ui, select: ElementId, index: Option<usize>) -> bool {
-        if !ui.is_enabled(select) {
-            return false;
-        }
         let current = self.selected_index;
-        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+        let target = normalized_selection_target(&self.options, index, current);
+        if target == current {
+            if index != current {
+                ui.set_local(select, ui.properties().selected_index, current);
+            }
+            return false;
+        };
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, target)
             .and_then(|selection| selection.changed_from(current))
         else {
             return false;
@@ -588,8 +592,8 @@ fn select_template_spec() -> TemplateSpec {
 
 /// Selects `index` in `select`, replacing any previous selected item.
 ///
-/// Returns `false` if `select` is stale, disabled, not a `Select`, or if the
-/// index is outside the item data.
+/// Returns `false` if `select` is stale, not a `Select`, already has that
+/// selection, or if `index` is not a selectable item.
 pub fn set_select_index(ui: &mut Ui, select: ElementId, index: usize) -> bool {
     with_select_widget_mut(ui, select, |widget, ui| {
         widget.set_selected_index(ui, select, Some(index))
@@ -599,8 +603,8 @@ pub fn set_select_index(ui: &mut Ui, select: ElementId, index: usize) -> bool {
 
 /// Clears the current selection for `select`.
 ///
-/// Returns `false` if `select` is stale, disabled, not a `Select`, or already
-/// has no selected item.
+/// Returns `false` if `select` is stale, not a `Select`, or already has no
+/// selected item.
 pub fn clear_select_selection(ui: &mut Ui, select: ElementId) -> bool {
     with_select_widget_mut(ui, select, |widget, ui| {
         widget.set_selected_index(ui, select, None)
@@ -742,6 +746,31 @@ mod tests {
                 .and_then(|element| element.get_local_value(ui.properties().content))
                 .map(String::as_str),
             Some("Ready")
+        );
+    }
+
+    #[test]
+    fn invalid_direct_selected_index_write_repairs_property() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        compute_layout(&mut ui);
+
+        ui.set_local(select, ui.properties().selected_index, Some(99));
+        compute_layout(&mut ui);
+
+        assert_eq!(selected_select_index(&ui, select), Some(0));
+        assert_eq!(
+            ui.get(select)
+                .and_then(|element| element.get_local_value(ui.properties().selected_index))
+                .copied(),
+            Some(Some(0))
+        );
+        assert_eq!(
+            ui.get(select)
+                .and_then(|element| element.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("Draft")
         );
     }
 

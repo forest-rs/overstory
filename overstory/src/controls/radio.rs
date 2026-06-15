@@ -25,8 +25,9 @@ use understory_style::{PartTag, TypeTag};
 use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
-    ChoiceOption, ResolvedChoiceSelection, collect_options, last_enabled_index, option_label,
-    selected_enabled_index, wrapping_next_enabled_index, wrapping_previous_enabled_index,
+    ChoiceOption, ResolvedChoiceSelection, collect_options, last_enabled_index,
+    normalized_selection_target, option_label, selected_enabled_index, wrapping_next_enabled_index,
+    wrapping_previous_enabled_index,
 };
 use crate::controls::support::{
     CallbackSlot, CheckedChangedEvent, CheckedChangedHandler, CheckedChangedSlot, EventHandler,
@@ -559,11 +560,15 @@ impl RadioGroupWidget {
     }
 
     fn set_selected_index(&mut self, ui: &mut Ui, group: ElementId, index: Option<usize>) -> bool {
-        if !ui.is_enabled(group) {
-            return false;
-        }
         let current = self.selected_index;
-        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+        let target = normalized_selection_target(&self.options, index, current);
+        if target == current {
+            if index != current {
+                ui.set_local(group, ui.properties().selected_index, current);
+            }
+            return false;
+        };
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, target)
             .and_then(|selection| selection.changed_from(current))
         else {
             return false;
@@ -647,16 +652,16 @@ pub fn radio_button_checked(ui: &Ui, radio: ElementId) -> bool {
 
 /// Selects `index` in `group`, replacing any previous selected item.
 ///
-/// Returns `false` if `group` is stale, disabled, not a `RadioGroup`, already
-/// has that selection, or if `index` is outside the item data.
+/// Returns `false` if `group` is stale, not a `RadioGroup`, already has that
+/// selection, or if `index` is not a selectable item.
 pub fn set_radio_group_selected_index(ui: &mut Ui, group: ElementId, index: usize) -> bool {
     set_radio_group_selected_index_internal(ui, group, Some(index))
 }
 
 /// Clears the selected item in `group`.
 ///
-/// Returns `false` if `group` is stale, disabled, not a `RadioGroup`, or if it
-/// already has no selected item.
+/// Returns `false` if `group` is stale, not a `RadioGroup`, or if it already
+/// has no selected item.
 pub fn clear_radio_group_selection(ui: &mut Ui, group: ElementId) -> bool {
     set_radio_group_selected_index_internal(ui, group, None)
 }
@@ -790,6 +795,29 @@ mod tests {
         assert_eq!(selected_radio_group_index(&ui, group), Some(2));
         assert!(!radio_button_checked(&ui, radios[0]));
         assert!(radio_button_checked(&ui, radios[2]));
+    }
+
+    #[test]
+    fn invalid_direct_selected_index_write_repairs_radio_property() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let group = ui.append(root, RadioGroup::new().items(ITEMS).selected_index(0));
+        let radios = radio_group_widget(&ui, group).unwrap().radios.clone();
+        ui.compute_layout(Size::new(320.0, 160.0));
+
+        ui.set_local(group, ui.properties().selected_index, Some(99));
+        ui.compute_layout(Size::new(320.0, 160.0));
+
+        assert_eq!(selected_radio_group_index(&ui, group), Some(0));
+        assert_eq!(
+            ui.get(group)
+                .and_then(|element| element.get_local_value(ui.properties().selected_index))
+                .copied(),
+            Some(Some(0))
+        );
+        assert!(radio_button_checked(&ui, radios[0]));
+        assert!(!radio_button_checked(&ui, radios[1]));
+        assert!(!radio_button_checked(&ui, radios[2]));
     }
 
     #[test]

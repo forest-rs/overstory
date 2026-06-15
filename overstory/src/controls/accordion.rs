@@ -560,6 +560,9 @@ fn apply_accordion_policy(
             if has_expanded_sibling(ui, accordion, section) {
                 current.set_expanded_direct(ui, Some(accordion), section, false, true)
             } else {
+                // The policy denied a requested collapse; repair the semantic
+                // property so direct writes and visual state converge again.
+                sync_accordion_section_state(ui, section, current.expanded);
                 false
             }
         }
@@ -674,6 +677,7 @@ mod tests {
     use alloc::rc::Rc;
     use core::cell::Cell;
     use kurbo::{Point, Size};
+    use understory_property::DependencyObjectExt;
 
     #[test]
     fn accordion_section_helper_scopes_children_to_content_slot() {
@@ -765,6 +769,35 @@ mod tests {
         assert!(set_accordion_section_expanded(&mut ui, second, true));
         assert_eq!(accordion_section_expanded(&ui, first), Some(false));
         assert_eq!(accordion_section_expanded(&ui, second), Some(true));
+    }
+
+    #[test]
+    fn single_required_direct_collapse_repairs_is_expanded_property() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let (_accordion, section) =
+            ui.children(root, Accordion::new().single_required(), |accordion| {
+                let (section, _) = accordion.section("One", |_| {});
+                section
+            });
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        ui.set_local(section, ui.properties().is_expanded, false);
+        ui.compute_layout(Size::new(240.0, 120.0));
+
+        assert_eq!(accordion_section_expanded(&ui, section), Some(true));
+        assert_eq!(
+            ui.get(section)
+                .and_then(|element| element.get_local_value(ui.properties().is_expanded))
+                .copied(),
+            Some(true)
+        );
+        assert!(
+            ui.get(section)
+                .unwrap()
+                .pseudos()
+                .contains(&PSEUDO_EXPANDED)
+        );
     }
 
     #[test]

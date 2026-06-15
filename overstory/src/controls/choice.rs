@@ -105,6 +105,18 @@ pub(crate) fn enabled_selection_target(
     }
 }
 
+/// Returns the effective selected index for a requested target.
+///
+/// Invalid targets preserve the current selection so direct property writes,
+/// bindings, and public setters all converge on one settled semantic value.
+pub(crate) fn normalized_selection_target(
+    options: &[ChoiceOption],
+    requested: Option<usize>,
+    current: Option<usize>,
+) -> Option<usize> {
+    enabled_selection_target(options, requested).unwrap_or(current)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResolvedChoiceSelection {
     pub(crate) index: Option<usize>,
@@ -270,5 +282,28 @@ mod tests {
                 .and_then(|selection| selection.changed_from(Some(2)))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn normalized_selection_target_preserves_current_for_invalid_requests() {
+        let options = collect_options([
+            ChoiceOption::new("A"),
+            ChoiceOption::new("B").disabled(),
+            ChoiceOption::new("C"),
+        ]);
+
+        assert_eq!(
+            normalized_selection_target(&options, Some(2), Some(0)),
+            Some(2)
+        );
+        assert_eq!(
+            normalized_selection_target(&options, Some(1), Some(0)),
+            Some(0)
+        );
+        assert_eq!(
+            normalized_selection_target(&options, Some(99), Some(0)),
+            Some(0)
+        );
+        assert_eq!(normalized_selection_target(&options, None, Some(0)), None);
     }
 }

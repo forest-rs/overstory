@@ -295,8 +295,8 @@ fn expander_template_spec() -> TemplateSpec {
 
 /// Sets whether `expander` is expanded.
 ///
-/// Returns `false` if `expander` is stale, disabled, not an [`Expander`], or
-/// already has the requested state.
+/// Returns `false` if `expander` is stale, not an [`Expander`], or already has
+/// the requested state.
 pub fn set_expander_expanded(ui: &mut Ui, expander: ElementId, expanded: bool) -> bool {
     with_expander_mut(ui, expander, |widget, ui| {
         widget.set_expanded(ui, expander, expanded)
@@ -306,7 +306,7 @@ pub fn set_expander_expanded(ui: &mut Ui, expander: ElementId, expanded: bool) -
 
 /// Toggles whether `expander` is expanded.
 ///
-/// Returns `false` if `expander` is stale, disabled, or not an [`Expander`].
+/// Returns `false` if `expander` is stale or not an [`Expander`].
 pub fn toggle_expander(ui: &mut Ui, expander: ElementId) -> bool {
     with_expander_mut(ui, expander, |widget, ui| {
         widget.set_expanded(ui, expander, !widget.expanded)

@@ -21,8 +21,8 @@ use understory_style::{PartTag, TypeTag};
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
-    last_enabled_index, option_label, selected_enabled_index, wrapping_next_enabled_index,
-    wrapping_previous_enabled_index,
+    last_enabled_index, normalized_selection_target, option_label, selected_enabled_index,
+    wrapping_next_enabled_index, wrapping_previous_enabled_index,
 };
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
@@ -344,11 +344,15 @@ impl SegmentedControlWidget {
         segmented: ElementId,
         index: Option<usize>,
     ) -> bool {
-        if !ui.is_enabled(segmented) {
-            return false;
-        }
         let current = self.selected_index;
-        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
+        let target = normalized_selection_target(&self.options, index, current);
+        if target == current {
+            if index != current {
+                ui.set_local(segmented, ui.properties().selected_index, current);
+            }
+            return false;
+        };
+        let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, target)
             .and_then(|selection| selection.changed_from(current))
         else {
             return false;
@@ -600,17 +604,16 @@ fn set_segmented_item_selected(ui: &mut Ui, segment: ElementId, selected: bool) 
 
 /// Selects `index` in `segmented`, replacing any previous selected item.
 ///
-/// Returns `false` if `segmented` is stale, disabled, not a
-/// [`SegmentedControl`], already has that selection, or if `index` is outside
-/// the option data.
+/// Returns `false` if `segmented` is stale, not a [`SegmentedControl`],
+/// already has that selection, or if `index` is not a selectable item.
 pub fn set_segmented_index(ui: &mut Ui, segmented: ElementId, index: usize) -> bool {
     set_segmented_index_internal(ui, segmented, Some(index))
 }
 
 /// Clears the selected item in `segmented`.
 ///
-/// Returns `false` if `segmented` is stale, disabled, not a
-/// [`SegmentedControl`], or if it already has no selected item.
+/// Returns `false` if `segmented` is stale, not a [`SegmentedControl`], or if
+/// it already has no selected item.
 pub fn clear_segmented_selection(ui: &mut Ui, segmented: ElementId) -> bool {
     set_segmented_index_internal(ui, segmented, None)
 }
@@ -743,6 +746,29 @@ mod tests {
         assert_eq!(selected_segmented_index(&ui, segmented), Some(2));
         assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
         assert!(ui.get(third).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+    }
+
+    #[test]
+    fn invalid_direct_selected_index_write_repairs_segmented_property() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let segmented = ui.append(root, SegmentedControl::new().items(ITEMS).selected_index(0));
+        let first = segmented_item(&ui, segmented, 0).unwrap();
+        let second = segmented_item(&ui, segmented, 1).unwrap();
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        ui.set_local(segmented, ui.properties().selected_index, Some(99));
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        assert_eq!(selected_segmented_index(&ui, segmented), Some(0));
+        assert_eq!(
+            ui.get(segmented)
+                .and_then(|element| element.get_local_value(ui.properties().selected_index))
+                .copied(),
+            Some(Some(0))
+        );
+        assert!(ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+        assert!(!ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
     }
 
     #[test]
