@@ -2338,6 +2338,54 @@ fn changing_control_template_replaces_parts_and_preserves_slot_content() {
 }
 
 #[test]
+fn binding_to_control_template_reexpands_template() {
+    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, Text};
+    use understory_property_binding::PropertyEndpoint;
+
+    const BOUND_FRAME: PartTag = PartTag(0x4A);
+    let bound_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            BOUND_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let template = ui.local_state(Some(bound_template));
+    let button = ui.append(root, Button::new("Button"));
+    let authored = ui
+        .slot_children(button, SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Retained child"))
+        })
+        .expect("default template should expose the content slot");
+
+    ui.bind(
+        template.endpoint(),
+        PropertyEndpoint::new(
+            BindingOwner::element(button),
+            ui.properties().control_template,
+        ),
+    )
+    .expect("control template binding registers");
+    ui.flush_bindings();
+
+    let frame = ui
+        .part(button, BOUND_FRAME)
+        .expect("bound template should create its frame");
+    let content = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("bound template should expose the content slot");
+
+    assert_eq!(ui.get(frame).unwrap().parent(), Some(button));
+    assert_eq!(ui.get(content).unwrap().parent(), Some(frame));
+    assert_eq!(ui.get(authored).unwrap().parent(), Some(content));
+    assert_eq!(
+        presented_element_text(&mut ui, authored).as_deref(),
+        Some("Retained child")
+    );
+}
+
+#[test]
 fn inspection_reports_optional_and_recommended_template_slots() {
     use crate::{
         SLOT_SLIDER_AXIS, SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL,

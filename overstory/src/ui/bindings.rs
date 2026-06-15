@@ -18,6 +18,19 @@ use crate::element::ElementId;
 
 use super::Ui;
 
+/// Controls whether a `ControlTemplate` write refreshes generated template parts immediately.
+///
+/// Initial element construction applies local configuration before the normal append/template
+/// expansion lifecycle runs. Runtime writes, including binding writes, have already passed that
+/// construction point and must refresh the expanded template in place.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateExpansion {
+    /// Refresh expanded template parts if the written property is `ControlTemplate`.
+    RetemplateNow,
+    /// Leave first expansion to the append/template construction lifecycle.
+    DeferInitialExpansion,
+}
+
 impl Ui {
     /// Writes a property value with notification.
     ///
@@ -30,55 +43,114 @@ impl Ui {
         property: Property<T>,
         value: T,
     ) {
-        let channels = {
-            let registry = &self.registry;
-            let Some(element) = self.elements.get_mut(id) else {
-                return;
-            };
-            element.set_local_notifying(property, value, registry)
+        let Some(_) = self.write_typed_local(id, property, value) else {
+            return;
         };
-        let channels = self.surface_aware_channels(property.id(), channels);
-        self.mark_channels(id, channels);
-        self.mark_inherited_property_descendants(id, property.id(), channels);
-        self.mark_template_owner_property_dependents(id, property.id(), channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
-        self.sync_state_property_projection(id, property.id());
-        if property.id() == self.properties.control_template.id() {
-            self.retemplate_if_needed(id);
-        }
     }
 
+    /// Writes a typed local value and applies normal element write consequences.
+    ///
+    /// Typed writes keep the property store's typed equality check, so unchanged values can
+    /// avoid broader invalidation. The shared finish step below still owns all semantic side
+    /// effects of a real write.
+    fn write_typed_local<T: Clone + PartialEq + 'static>(
+        &mut self,
+        id: ElementId,
+        property: Property<T>,
+        value: T,
+    ) -> Option<ChannelSet> {
+        // Keep the typed store path for precise no-op suppression; the erased
+        // store path conservatively returns full metadata channels.
+        let channels = {
+            let registry = &self.registry;
+            let element = self.elements.get_mut(id)?;
+            element.set_local_notifying(property, value, registry)
+        };
+        Some(self.finish_element_local_write(
+            id,
+            property.id(),
+            channels,
+            TemplateExpansion::RetemplateNow,
+        ))
+    }
+
+    /// Writes an erased local value and applies normal element write consequences.
+    ///
+    /// Erased writes come from spec configuration and bindings. They share invalidation,
+    /// state projection, inherited-property, and template-dependency handling with typed
+    /// writes, but their caller decides whether `ControlTemplate` should be re-expanded now.
+    fn write_local_erased(
+        &mut self,
+        id: ElementId,
+        property: PropertyId,
+        value: ErasedValue,
+        source: LocalValueSource,
+        template_expansion: TemplateExpansion,
+    ) -> Option<ChannelSet> {
+        // Binding and config writes arrive erased, but they share all
+        // post-write consequences with typed writes below.
+        let channels = {
+            let registry = &self.registry;
+            let element = self.elements.get_mut(id)?;
+            element
+                .property_store_mut()
+                .set_local_erased_with_source_notifying(property, value, source, registry)
+                .ok()?
+        };
+        Some(self.finish_element_local_write(id, property, channels, template_expansion))
+    }
+
+    /// Applies the common consequences of writing an element-local property.
+    ///
+    /// This is the single chokepoint for dirty channels, inherited-property propagation,
+    /// template owner-property dependents, state-property projection, and runtime
+    /// `ControlTemplate` re-expansion. Endpoint notification intentionally remains with
+    /// the outer caller because only source writes should wake dependent bindings.
+    fn finish_element_local_write(
+        &mut self,
+        id: ElementId,
+        property: PropertyId,
+        channels: ChannelSet,
+        template_expansion: TemplateExpansion,
+    ) -> ChannelSet {
+        let channels = self.surface_aware_channels(property, channels);
+        if !channels.is_empty() {
+            self.mark_channels(id, channels);
+            self.mark_inherited_property_descendants(id, property, channels);
+            self.mark_template_owner_property_dependents(id, property, channels);
+        }
+        self.sync_state_property_projection(id, property);
+        if template_expansion == TemplateExpansion::RetemplateNow
+            && property == self.properties.control_template.id()
+        {
+            self.retemplate_if_needed(id);
+        }
+        channels
+    }
+
+    /// Applies an erased local value during initial element construction.
+    ///
+    /// Initial writes notify binding sources and update semantic projections, but defer
+    /// `ControlTemplate` expansion to the append/template construction lifecycle.
     pub(crate) fn set_initial_local_erased(
         &mut self,
         id: ElementId,
         property: PropertyId,
         value: ErasedValue,
     ) {
-        let channels = {
-            let registry = &self.registry;
-            let Some(element) = self.elements.get_mut(id) else {
-                return;
-            };
-            match element
-                .property_store_mut()
-                .set_local_erased_with_source_notifying(
-                    property,
-                    value,
-                    LocalValueSource::Local,
-                    registry,
-                ) {
-                Ok(channels) => channels,
-                Err(_) => return,
-            }
+        let Some(_) = self.write_local_erased(
+            id,
+            property,
+            value,
+            LocalValueSource::Local,
+            TemplateExpansion::DeferInitialExpansion,
+        ) else {
+            return;
         };
-        let channels = self.surface_aware_channels(property, channels);
-        self.mark_channels(id, channels);
-        self.mark_inherited_property_descendants(id, property, channels);
-        self.mark_template_owner_property_dependents(id, property, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
-        self.sync_state_property_projection(id, property);
     }
 
     /// Marks template-generated elements that depend on an owner property.
@@ -266,34 +338,18 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
         match endpoint.owner() {
             BindingOwner::Element(id) => {
                 let prop_id = endpoint.property();
-                let channels = {
-                    // Disjoint-field split-borrow: registry is read-only while
-                    // the element store mutates only the target element.
-                    let registry = &self.registry;
-                    let Some(element) = self.elements.get_mut(id) else {
-                        return BindingWrite::unchanged();
-                    };
-                    match element
-                        .property_store_mut()
-                        .set_local_erased_with_source_notifying(
-                            prop_id,
-                            value,
-                            write_source,
-                            registry,
-                        ) {
-                        Ok(channels) => channels,
-                        Err(_) => return BindingWrite::unchanged(),
-                    }
+                let Some(channels) = self.write_local_erased(
+                    id,
+                    prop_id,
+                    value,
+                    write_source,
+                    TemplateExpansion::RetemplateNow,
+                ) else {
+                    return BindingWrite::unchanged();
                 };
                 if channels.is_empty() {
-                    self.sync_state_property_projection(id, prop_id);
                     BindingWrite::unchanged()
                 } else {
-                    let channels = self.surface_aware_channels(prop_id, channels);
-                    self.mark_channels(id, channels);
-                    self.mark_inherited_property_descendants(id, prop_id, channels);
-                    self.mark_template_owner_property_dependents(id, prop_id, channels);
-                    self.sync_state_property_projection(id, prop_id);
                     BindingWrite::changed(channels)
                 }
             }
