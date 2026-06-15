@@ -39,6 +39,7 @@ impl Ui {
         };
         let channels = self.surface_aware_channels(property.id(), channels);
         self.mark_channels(id, channels);
+        self.mark_inherited_property_descendants(id, property.id(), channels);
         self.mark_template_owner_property_dependents(id, property.id(), channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
@@ -72,6 +73,7 @@ impl Ui {
         };
         let channels = self.surface_aware_channels(property, channels);
         self.mark_channels(id, channels);
+        self.mark_inherited_property_descendants(id, property, channels);
         self.mark_template_owner_property_dependents(id, property, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
@@ -286,6 +288,7 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
                 } else {
                     let channels = self.surface_aware_channels(prop_id, channels);
                     self.mark_channels(id, channels);
+                    self.mark_inherited_property_descendants(id, prop_id, channels);
                     self.mark_template_owner_property_dependents(id, prop_id, channels);
                     BindingWrite::changed(channels)
                 }

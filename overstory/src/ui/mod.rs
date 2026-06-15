@@ -393,6 +393,30 @@ impl Ui {
         self.record_element_tree_update(id);
     }
 
+    /// Marks descendants affected by an inherited property write on `id`.
+    pub(in crate::ui) fn mark_inherited_property_descendants(
+        &mut self,
+        id: ElementId,
+        property: PropertyId,
+        channels: ChannelSet,
+    ) {
+        if channels.is_empty() || !self.registry.inherits(property) {
+            return;
+        }
+        self.mark_descendant_channels(id, channels);
+    }
+
+    /// Marks every retained descendant of `id` with the supplied channels.
+    pub(in crate::ui) fn mark_descendant_channels(&mut self, id: ElementId, channels: ChannelSet) {
+        if channels.is_empty() {
+            return;
+        }
+        let descendants = collect_preorder(self, id);
+        for descendant in descendants.into_iter().skip(1) {
+            self.mark_channels(descendant, channels);
+        }
+    }
+
     pub(crate) fn surface_aware_channels(
         &self,
         property: PropertyId,

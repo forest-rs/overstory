@@ -23,6 +23,29 @@ use crate::element::{Element, ElementId};
 use crate::element_side_map::ElementSideMap;
 use crate::widget::TYPE_GENERIC;
 
+/// Invalidation produced by recomputing one element's selector state.
+#[derive(Copy, Clone, Debug, Default)]
+pub(crate) struct StyleInvalidation {
+    /// Channels affected on the styled element itself.
+    channels: ChannelSet,
+    /// Channels affected on descendants by changed inherited properties.
+    inherited_channels: ChannelSet,
+}
+
+impl StyleInvalidation {
+    /// Returns the channels affected on the styled element itself.
+    #[must_use]
+    pub(crate) fn channels(self) -> ChannelSet {
+        self.channels
+    }
+
+    /// Returns the channels affected on descendants by inheritance.
+    #[must_use]
+    pub(crate) fn inherited_channels(self) -> ChannelSet {
+        self.inherited_channels
+    }
+}
+
 /// Active style cascade, theme resources, and per-element match states.
 pub(crate) struct StyleRuntime {
     /// Framework-supplied defaults for built-in controls.
@@ -93,7 +116,7 @@ impl StyleRuntime {
         element: &Element,
         registry: &PropertyRegistry,
         surface_aware_channels: impl Fn(PropertyId, ChannelSet) -> ChannelSet,
-    ) -> Option<ChannelSet> {
+    ) -> Option<StyleInvalidation> {
         // Anonymous containers fall back to `TYPE_GENERIC` for selector
         // matching. Widgets may opt out of a global type and rely only on an
         // owner-local PartTag.
@@ -123,11 +146,19 @@ impl StyleRuntime {
             let restyle = self
                 .cascade
                 .restyle_subject(registry, old, parent_state, &inputs);
-            let mut channels = restyle.changed_channels();
+            let mut invalidation = StyleInvalidation::default();
             for property in restyle.changed_properties().property_ids() {
-                channels = surface_aware_channels(*property, channels);
+                let channels =
+                    surface_aware_channels(*property, registry.affects_channels(*property));
+                invalidation.channels |= channels;
+                if registry.inherits(*property) {
+                    invalidation.inherited_channels |= channels;
+                }
             }
-            return Some(channels);
+            if invalidation.channels.is_empty() && invalidation.inherited_channels.is_empty() {
+                return None;
+            }
+            return Some(invalidation);
         }
         None
     }

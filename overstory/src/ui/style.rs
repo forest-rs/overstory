@@ -145,8 +145,9 @@ impl Ui {
             .style_one(id, element, &self.registry, |property, channels| {
                 super::surface_aware_channels(properties, property, channels)
             });
-        if let Some(channels) = channels {
-            self.mark_channels(id, channels);
+        if let Some(invalidation) = channels {
+            self.mark_channels(id, invalidation.channels());
+            self.mark_descendant_channels(id, invalidation.inherited_channels());
         }
         if allow_retemplate {
             self.retemplate_if_needed(id);

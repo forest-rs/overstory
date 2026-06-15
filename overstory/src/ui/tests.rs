@@ -35,6 +35,7 @@ use crate::motion::{
 
 mod content_presenter;
 mod events;
+mod invalidation;
 mod layout_motion;
 
 #[test]

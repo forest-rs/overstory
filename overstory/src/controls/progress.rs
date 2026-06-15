@@ -17,8 +17,10 @@
 
 use alloc::{boxed::Box, format, string::String};
 
+use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
+use crate::behavior::{ArrangeContext, ArrangeResult};
 use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
 use crate::controls::support::read_local_or;
 use crate::element::{Element, ElementId};
@@ -141,14 +143,16 @@ impl Default for ProgressBar {
 
 impl AppendSpec for ProgressBar {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget_deferred_template(parent, Box::new(ProgressBarWidget));
+        let id = ui.append_widget_deferred_template(
+            parent,
+            Box::new(ProgressBarWidget::new(self.show_label)),
+        );
         let min_prop = ui.properties().minimum;
         let max_prop = ui.properties().maximum;
         ui.set_local(id, min_prop, self.min);
         ui.set_local(id, max_prop, self.max);
         self.element.apply_to(ui, id);
         ui.expand_resolved_template(id);
-        set_progress_label_visible(ui, id, self.show_label);
         set_progress_value(ui, id, self.value);
         id
     }
@@ -171,8 +175,24 @@ fn progress_layout(width: f32, height: f32) -> Layout {
 }
 
 /// Per-element widget for `ProgressBar`.
-#[derive(Debug, Default)]
-pub(crate) struct ProgressBarWidget;
+#[derive(Debug)]
+pub(crate) struct ProgressBarWidget {
+    /// Whether the default label projection writes percentage text.
+    show_label: bool,
+}
+
+impl ProgressBarWidget {
+    /// Creates a progress bar widget with label projection policy.
+    const fn new(show_label: bool) -> Self {
+        Self { show_label }
+    }
+}
+
+impl Default for ProgressBarWidget {
+    fn default() -> Self {
+        Self::new(true)
+    }
+}
 
 impl Widget for ProgressBarWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -201,6 +221,15 @@ impl Widget for ProgressBarWidget {
             .with_required_slot(SLOT_PROGRESS_BAR_FILL)
             .with_optional_slot(SLOT_PROGRESS_BAR_LABEL)
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let progress = ctx.id();
+        ArrangeResult::from_layout_changed(sync_progress_parts(
+            ctx.ui_mut(),
+            progress,
+            Some(self.show_label),
+        ))
+    }
 }
 
 static PROGRESS_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(progress_template_spec);
@@ -228,27 +257,64 @@ pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
     let range = ScalarRange::new(min, max);
     let clamped = range.clamp(value);
     ui.set_local(progress, ui.properties().value, clamped);
+    sync_progress_parts(ui, progress, None);
+}
+
+fn sync_progress_parts(ui: &mut Ui, progress: ElementId, show_label: Option<bool>) -> bool {
+    let min = read_local_or(ui, progress, ui.properties().minimum, 0.0);
+    let max = read_local_or(ui, progress, ui.properties().maximum, 1.0);
+    let range = ScalarRange::new(min, max);
+    let value_prop = ui.properties().value;
+    let value = read_local_or(ui, progress, value_prop, 0.0);
+    let clamped = range.clamp(value);
+    let mut changed = false;
+
+    if ui
+        .get(progress)
+        .and_then(|element| element.get_local_value(value_prop))
+        .copied()
+        != Some(clamped)
+    {
+        ui.set_local(progress, value_prop, clamped);
+        changed = true;
+    }
 
     let fraction = range.fraction(clamped);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
-        ui.set_layout_size(
-            fill,
-            LayoutSize::percent(f32_from_unit_fraction(fraction), 1.0),
-        );
+        let size = LayoutSize::percent(f32_from_unit_fraction(fraction), 1.0);
+        let size_changed = ui
+            .get(fill)
+            .and_then(|element| element.get_local_value(ui.properties().layout_size))
+            != Some(&size);
+        if size_changed {
+            ui.set_layout_size(fill, size);
+            changed = true;
+        }
     }
     if let Some(label) = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL) {
-        let content = label_for_fraction(fraction);
-        ui.set_local(label, ui.properties().text, content);
+        let content = if show_label.unwrap_or_else(|| progress_label_visible(ui, progress)) {
+            label_for_fraction(fraction)
+        } else {
+            String::new()
+        };
+        let text_changed = ui
+            .get(label)
+            .and_then(|element| element.get_local_value(ui.properties().text))
+            != Some(&content);
+        if text_changed {
+            ui.set_local(label, ui.properties().text, content);
+            changed = true;
+        }
     }
+
+    changed
 }
 
-fn set_progress_label_visible(ui: &mut Ui, progress: ElementId, visible: bool) {
-    let Some(label) = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL) else {
-        return;
-    };
-    if !visible {
-        ui.set_local(label, ui.properties().text, String::new());
-    }
+fn progress_label_visible(ui: &Ui, progress: ElementId) -> bool {
+    ui.get(progress)
+        .and_then(|element| element.widget())
+        .and_then(|widget| widget.downcast_ref::<ProgressBarWidget>())
+        .is_none_or(|widget| widget.show_label)
 }
 
 fn label_for_fraction(fraction: f64) -> String {
@@ -280,6 +346,56 @@ mod tests {
                 .and_then(|el| el.get_local_value(ui.properties().text))
                 .map(String::as_str),
             Some("25%")
+        );
+    }
+
+    #[test]
+    fn direct_value_write_sizes_fill_and_updates_label() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(300.0, 40.0));
+        let progress = ui.append(root, ProgressBar::new().value(0.25).size(200.0, 20.0));
+        ui.compute_layout(Size::new(300.0, 40.0));
+
+        ui.set_local(progress, ui.properties().value, 0.75);
+        ui.compute_layout(Size::new(300.0, 40.0));
+
+        let fill = ui.slot(progress, SLOT_PROGRESS_BAR_FILL).unwrap();
+        let label = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL).unwrap();
+        assert_eq!(ui.effective_bounds(fill).width(), 150.0);
+        assert_eq!(
+            ui.get(label)
+                .and_then(|el| el.get_local_value(ui.properties().text))
+                .map(String::as_str),
+            Some("75%")
+        );
+    }
+
+    #[test]
+    fn hidden_progress_label_stays_empty_after_value_changes() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(300.0, 40.0));
+        let progress = ui.append(
+            root,
+            ProgressBar::new()
+                .value(0.25)
+                .size(200.0, 20.0)
+                .label(false),
+        );
+        ui.compute_layout(Size::new(300.0, 40.0));
+
+        ui.set_local(progress, ui.properties().value, 0.75);
+        ui.compute_layout(Size::new(300.0, 40.0));
+
+        let fill = ui.slot(progress, SLOT_PROGRESS_BAR_FILL).unwrap();
+        let label = ui.slot(progress, SLOT_PROGRESS_BAR_LABEL).unwrap();
+        assert_eq!(ui.effective_bounds(fill).width(), 150.0);
+        assert_eq!(
+            ui.get(label)
+                .and_then(|el| el.get_local_value(ui.properties().text))
+                .map(String::as_str),
+            Some("")
         );
     }
 
