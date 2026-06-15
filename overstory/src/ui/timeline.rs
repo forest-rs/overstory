@@ -22,6 +22,7 @@ use crate::timeline_runtime::{
 };
 
 use super::Ui;
+use super::property_changes::{PropertyChange, StateProjectionPolicy, TemplateRefreshPolicy};
 
 impl Ui {
     pub(crate) fn request_presentation_transition(
@@ -267,11 +268,13 @@ impl Ui {
                 // animation layer. Invalidation still follows the property
                 // contract: inherited properties affect descendants, and
                 // template children can declare owner-property dependencies.
-                let channels =
-                    self.surface_aware_channels(property, self.registry.affects_channels(property));
-                self.mark_channels(element, channels);
-                self.mark_inherited_property_descendants(element, property, channels);
-                self.mark_template_owner_property_dependents(element, property, channels);
+                self.apply_property_change(PropertyChange {
+                    element,
+                    property,
+                    channels: self.registry.affects_channels(property),
+                    template_refresh: TemplateRefreshPolicy::DoNotRefreshTemplate,
+                    state_projection: StateProjectionPolicy::DoNotProjectState,
+                });
             }
             TimelineTarget::VisualOutput(
                 VisualOutput::LayerOffset | VisualOutput::VisualTranslation,

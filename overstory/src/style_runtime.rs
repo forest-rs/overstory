@@ -14,7 +14,6 @@
 //! - Keep theming resource resolution separate from control construction so
 //!   themes can swap without rebuilding the element tree.
 
-use invalidation::ChannelSet;
 use smallvec::SmallVec;
 use understory_property::{PropertyId, PropertyRegistry};
 use understory_style::{MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme};
@@ -26,10 +25,6 @@ use crate::widget::TYPE_GENERIC;
 /// Invalidation produced by recomputing one element's selector state.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct StyleInvalidation {
-    /// Channels affected on the styled element itself.
-    channels: ChannelSet,
-    /// Channels affected on descendants by changed inherited properties.
-    inherited_channels: ChannelSet,
     /// Styled properties whose effective values may have changed.
     ///
     /// `StyleRuntime` owns selector-state comparison, but it does not own
@@ -40,18 +35,6 @@ pub(crate) struct StyleInvalidation {
 }
 
 impl StyleInvalidation {
-    /// Returns the channels affected on the styled element itself.
-    #[must_use]
-    pub(crate) fn channels(&self) -> ChannelSet {
-        self.channels
-    }
-
-    /// Returns the channels affected on descendants by inheritance.
-    #[must_use]
-    pub(crate) fn inherited_channels(&self) -> ChannelSet {
-        self.inherited_channels
-    }
-
     /// Returns styled properties whose effective values may have changed.
     #[must_use]
     pub(crate) fn changed_properties(&self) -> &[PropertyId] {
@@ -128,7 +111,6 @@ impl StyleRuntime {
         id: ElementId,
         element: &Element,
         registry: &PropertyRegistry,
-        surface_aware_channels: impl Fn(PropertyId, ChannelSet) -> ChannelSet,
     ) -> Option<StyleInvalidation> {
         // Anonymous containers fall back to `TYPE_GENERIC` for selector
         // matching. Widgets may opt out of a global type and rely only on an
@@ -162,14 +144,8 @@ impl StyleRuntime {
             let mut invalidation = StyleInvalidation::default();
             for property in restyle.changed_properties().property_ids() {
                 invalidation.changed_properties.push(*property);
-                let channels =
-                    surface_aware_channels(*property, registry.affects_channels(*property));
-                invalidation.channels |= channels;
-                if registry.inherits(*property) {
-                    invalidation.inherited_channels |= channels;
-                }
             }
-            if invalidation.channels.is_empty() && invalidation.inherited_channels.is_empty() {
+            if invalidation.changed_properties.is_empty() {
                 return None;
             }
             return Some(invalidation);

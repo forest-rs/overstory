@@ -12,6 +12,7 @@ use crate::channels::{LAYOUT, STYLE};
 use crate::element::{Element, ElementId};
 use crate::lookup::UiResolveLookup;
 
+use super::property_changes::{PropertyChange, StateProjectionPolicy, TemplateRefreshPolicy};
 use super::{Ui, collect_preorder};
 
 impl Ui {
@@ -139,22 +140,25 @@ impl Ui {
             self.style.remove(id);
             return;
         };
-        let properties = self.properties;
-        let channels = self
-            .style
-            .style_one(id, element, &self.registry, |property, channels| {
-                super::surface_aware_channels(properties, property, channels)
-            });
-        if let Some(invalidation) = channels {
-            self.mark_channels(id, invalidation.channels());
-            self.mark_descendant_channels(id, invalidation.inherited_channels());
+        let invalidation = self.style.style_one(id, element, &self.registry);
+        let mut applied_property_change = false;
+        if let Some(invalidation) = invalidation {
             for property in invalidation.changed_properties() {
-                let channels = self
-                    .surface_aware_channels(*property, self.registry.affects_channels(*property));
-                self.mark_template_owner_property_dependents(id, *property, channels);
+                applied_property_change = true;
+                self.apply_property_change(PropertyChange {
+                    element: id,
+                    property: *property,
+                    channels: self.registry.affects_channels(*property),
+                    template_refresh: if allow_retemplate {
+                        TemplateRefreshPolicy::RefreshRuntimeTemplate
+                    } else {
+                        TemplateRefreshPolicy::DeferInitialExpansion
+                    },
+                    state_projection: StateProjectionPolicy::DoNotProjectState,
+                });
             }
         }
-        if allow_retemplate {
+        if allow_retemplate && !applied_property_change {
             self.retemplate_if_needed(id);
         }
     }

@@ -3,7 +3,6 @@
 
 //! Property writes and dependency-property binding integration.
 
-use alloc::vec::Vec;
 use invalidation::ChannelSet;
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, LocalValueSource, Property, PropertyId,
@@ -17,19 +16,7 @@ use crate::binding::{BindingOwner, ExternalSource, LocalState};
 use crate::element::ElementId;
 
 use super::Ui;
-
-/// Controls whether a `ControlTemplate` write refreshes generated template parts immediately.
-///
-/// Initial element construction applies local configuration before the normal append/template
-/// expansion lifecycle runs. Runtime writes, including binding writes, have already passed that
-/// construction point and must refresh the expanded template in place.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TemplateExpansion {
-    /// Refresh expanded template parts if the written property is `ControlTemplate`.
-    RetemplateNow,
-    /// Leave first expansion to the append/template construction lifecycle.
-    DeferInitialExpansion,
-}
+use super::property_changes::{PropertyChange, StateProjectionPolicy, TemplateRefreshPolicy};
 
 impl Ui {
     /// Writes a property value with notification.
@@ -68,12 +55,13 @@ impl Ui {
             let element = self.elements.get_mut(id)?;
             element.set_local_notifying(property, value, registry)
         };
-        Some(self.finish_element_local_write(
-            id,
-            property.id(),
+        Some(self.apply_property_change(PropertyChange {
+            element: id,
+            property: property.id(),
             channels,
-            TemplateExpansion::RetemplateNow,
-        ))
+            template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
+            state_projection: StateProjectionPolicy::ProjectSemanticState,
+        }))
     }
 
     /// Writes an erased local value and applies normal element write consequences.
@@ -87,7 +75,7 @@ impl Ui {
         property: PropertyId,
         value: ErasedValue,
         source: LocalValueSource,
-        template_expansion: TemplateExpansion,
+        template_refresh: TemplateRefreshPolicy,
     ) -> Option<ChannelSet> {
         // Binding and config writes arrive erased, but they share all
         // post-write consequences with typed writes below.
@@ -99,35 +87,13 @@ impl Ui {
                 .set_local_erased_with_source_notifying(property, value, source, registry)
                 .ok()?
         };
-        Some(self.finish_element_local_write(id, property, channels, template_expansion))
-    }
-
-    /// Applies the common consequences of writing an element-local property.
-    ///
-    /// This is the single chokepoint for dirty channels, inherited-property propagation,
-    /// template owner-property dependents, state-property projection, and runtime
-    /// `ControlTemplate` re-expansion. Endpoint notification intentionally remains with
-    /// the outer caller because only source writes should wake dependent bindings.
-    fn finish_element_local_write(
-        &mut self,
-        id: ElementId,
-        property: PropertyId,
-        channels: ChannelSet,
-        template_expansion: TemplateExpansion,
-    ) -> ChannelSet {
-        let channels = self.surface_aware_channels(property, channels);
-        if !channels.is_empty() {
-            self.mark_channels(id, channels);
-            self.mark_inherited_property_descendants(id, property, channels);
-            self.mark_template_owner_property_dependents(id, property, channels);
-        }
-        self.sync_state_property_projection(id, property);
-        if template_expansion == TemplateExpansion::RetemplateNow
-            && property == self.properties.control_template.id()
-        {
-            self.retemplate_if_needed(id);
-        }
-        channels
+        Some(self.apply_property_change(PropertyChange {
+            element: id,
+            property,
+            channels,
+            template_refresh,
+            state_projection: StateProjectionPolicy::ProjectSemanticState,
+        }))
     }
 
     /// Applies an erased local value during initial element construction.
@@ -145,35 +111,12 @@ impl Ui {
             property,
             value,
             LocalValueSource::Local,
-            TemplateExpansion::DeferInitialExpansion,
+            TemplateRefreshPolicy::DeferInitialExpansion,
         ) else {
             return;
         };
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
-    }
-
-    /// Marks template-generated elements that depend on an owner property.
-    ///
-    /// Template expansion owns the meaning of these edges. The property write
-    /// path only applies the invalidation channels to registered generated
-    /// dependents for this owner/property pair.
-    pub(in crate::ui) fn mark_template_owner_property_dependents(
-        &mut self,
-        owner: ElementId,
-        property: PropertyId,
-        channels: ChannelSet,
-    ) {
-        if channels.is_empty() {
-            return;
-        }
-        let dependents = self
-            .templates
-            .owner_property_dependents(owner, property)
-            .collect::<Vec<_>>();
-        for dependent in dependents {
-            self.mark_channels(dependent, channels);
-        }
     }
 
     /// Creates a local state value owned by this `Ui`.
@@ -343,7 +286,7 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
                     prop_id,
                     value,
                     write_source,
-                    TemplateExpansion::RetemplateNow,
+                    TemplateRefreshPolicy::RefreshRuntimeTemplate,
                 ) else {
                     return BindingWrite::unchanged();
                 };
