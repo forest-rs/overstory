@@ -261,15 +261,22 @@ impl Ui {
     }
 
     fn mark_timeline_target_channels(&mut self, element: ElementId, target: TimelineTarget) {
-        let channels = match target {
+        match target {
             TimelineTarget::Property(property) => {
-                self.surface_aware_channels(property, self.registry.affects_channels(property))
+                // Timeline property samples are effective-value writes at the
+                // animation layer. Invalidation still follows the property
+                // contract: inherited properties affect descendants, and
+                // template children can declare owner-property dependencies.
+                let channels =
+                    self.surface_aware_channels(property, self.registry.affects_channels(property));
+                self.mark_channels(element, channels);
+                self.mark_inherited_property_descendants(element, property, channels);
+                self.mark_template_owner_property_dependents(element, property, channels);
             }
             TimelineTarget::VisualOutput(
                 VisualOutput::LayerOffset | VisualOutput::VisualTranslation,
-            ) => COMPOSE.into_set(),
-        };
-        self.mark_channels(element, channels);
+            ) => self.mark_channels(element, COMPOSE.into_set()),
+        }
     }
 
     /// Schedules an app-level timeline cue relative to [`Self::now`].

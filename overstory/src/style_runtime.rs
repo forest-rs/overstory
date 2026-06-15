@@ -24,25 +24,38 @@ use crate::element_side_map::ElementSideMap;
 use crate::widget::TYPE_GENERIC;
 
 /// Invalidation produced by recomputing one element's selector state.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct StyleInvalidation {
     /// Channels affected on the styled element itself.
     channels: ChannelSet,
     /// Channels affected on descendants by changed inherited properties.
     inherited_channels: ChannelSet,
+    /// Styled properties whose effective values may have changed.
+    ///
+    /// `StyleRuntime` owns selector-state comparison, but it does not own
+    /// Overstory's template dependency graph. Returning property ids lets `Ui`
+    /// apply owner-property dependency invalidation without teaching the style
+    /// runtime about templates.
+    changed_properties: SmallVec<[PropertyId; 4]>,
 }
 
 impl StyleInvalidation {
     /// Returns the channels affected on the styled element itself.
     #[must_use]
-    pub(crate) fn channels(self) -> ChannelSet {
+    pub(crate) fn channels(&self) -> ChannelSet {
         self.channels
     }
 
     /// Returns the channels affected on descendants by inheritance.
     #[must_use]
-    pub(crate) fn inherited_channels(self) -> ChannelSet {
+    pub(crate) fn inherited_channels(&self) -> ChannelSet {
         self.inherited_channels
+    }
+
+    /// Returns styled properties whose effective values may have changed.
+    #[must_use]
+    pub(crate) fn changed_properties(&self) -> &[PropertyId] {
+        &self.changed_properties
     }
 }
 
@@ -148,6 +161,7 @@ impl StyleRuntime {
                 .restyle_subject(registry, old, parent_state, &inputs);
             let mut invalidation = StyleInvalidation::default();
             for property in restyle.changed_properties().property_ids() {
+                invalidation.changed_properties.push(*property);
                 let channels =
                     surface_aware_channels(*property, registry.affects_channels(*property));
                 invalidation.channels |= channels;

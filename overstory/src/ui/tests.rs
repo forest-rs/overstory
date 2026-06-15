@@ -1652,6 +1652,77 @@ fn interaction_transitions_track_descendant_effective_value_changes() {
 }
 
 #[test]
+fn inherited_timeline_property_samples_invalidate_descendants() {
+    const MOTION_ROW: ClassId = ClassId(94);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(260.0, 80.0));
+
+    let idle = Color::from_rgba8(0xd0, 0xd4, 0xdf, 0xff);
+    let selected = Color::from_rgba8(0x60, 0x7f, 0xff, 0xff);
+    let foreground = ui.properties().foreground;
+    let transitions = ui.properties().transitions;
+    let row_selector =
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(MOTION_ROW)).build();
+    let selected_row_selector = SelectorBuilder::new(
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(MOTION_ROW)
+            .with_pseudo(PSEUDO_SELECTED),
+    )
+    .build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                row_selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(idle))
+                    .set(
+                        transitions,
+                        TransitionRules::single(TransitionRule::interaction(
+                            TransitionTarget::property(foreground.id()),
+                            TransitionSpec::linear(millis(100))
+                                .with_color_interpolation(ColorInterpolation::SRGB),
+                        )),
+                    )
+                    .build(),
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                selected_row_selector,
+                StyleBuilder::new()
+                    .set(foreground, Brush::Solid(selected))
+                    .build(),
+            )
+            .build(),
+    );
+
+    let row = ui.append(
+        root,
+        crate::Panel::new()
+            .class(MOTION_ROW)
+            .layout(Layout::flex().logical_size(220.0, 40.0)),
+    );
+    let label = ui.append(row, crate::Text::new("Inherited"));
+    ui.compute_layout(Size::new(260.0, 80.0));
+
+    ui.set_now(0);
+    ui.add_pseudo(row, PSEUDO_SELECTED);
+    ui.compute_layout(Size::new(260.0, 80.0));
+    ui.invalidation.clear(PAINT);
+
+    ui.set_now(millis(50));
+
+    assert_eq!(
+        element_foreground_color(&ui, label),
+        Some(interpolate_srgb_color(idle, selected, 0.5))
+    );
+    assert!(ui.invalidation().is_invalidated(row, PAINT));
+    assert!(ui.invalidation().is_invalidated(label, PAINT));
+}
+
+#[test]
 fn local_background_change_after_transition_paints_new_target() {
     use crate::{Button, theme};
 

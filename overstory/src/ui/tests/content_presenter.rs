@@ -1,10 +1,13 @@
 use super::presented_element_text;
 use super::{COMPOSE, LAYOUT};
 use crate::{
-    Button, ControlTemplateSpecExt, SLOT_BUTTON_CONTENT, SLOT_SELECT_LABEL, Select, TemplateNode,
-    TemplateSlot, TemplateSpec, Ui, selected_select_item, set_select_index,
+    Button, ControlTemplateSpecExt, SLOT_BUTTON_CONTENT, SLOT_SELECT_LABEL, Select, TYPE_BUTTON,
+    TemplateNode, TemplateSlot, TemplateSpec, Ui, selected_select_item, set_select_index,
 };
 use alloc::string::String;
+use understory_style::{
+    ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin,
+};
 
 #[test]
 fn select_selection_updates_presented_content_label() {
@@ -81,6 +84,47 @@ fn template_nodes_can_depend_on_non_content_owner_properties() {
     ui.invalidation.clear(COMPOSE);
 
     ui.set_local(button, ui.properties().opacity, 0.5_f32);
+
+    assert!(ui.invalidation().is_invalidated(dependent, COMPOSE));
+    assert!(!ui.invalidation().is_invalidated(other, COMPOSE));
+}
+
+#[test]
+fn styled_owner_property_change_invalidates_declared_template_dependents_only() {
+    const STYLED_OWNER: ClassId = ClassId(0x79);
+    const DEPENDENT_SLOT: TemplateSlot = TemplateSlot::new("test.styled-dependent");
+    const OTHER_SLOT: TemplateSlot = TemplateSlot::new("test.styled-other");
+
+    let mut ui = Ui::new();
+    let template = TemplateSpec::from_nodes([
+        TemplateNode::text_slot(DEPENDENT_SLOT).reads_owner_property(ui.properties().opacity),
+        TemplateNode::text_slot(OTHER_SLOT),
+    ]);
+    let selector =
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON).with_class(STYLED_OWNER)).build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                selector,
+                StyleBuilder::new()
+                    .set(ui.properties().opacity, 0.5_f32)
+                    .build(),
+            )
+            .build(),
+    );
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Before").template(template));
+    let dependent = ui
+        .slot(button, DEPENDENT_SLOT)
+        .expect("custom template should expose its dependent slot");
+    let other = ui
+        .slot(button, OTHER_SLOT)
+        .expect("custom template should expose its unrelated slot");
+
+    ui.invalidation.clear(COMPOSE);
+
+    ui.add_class(button, STYLED_OWNER);
 
     assert!(ui.invalidation().is_invalidated(dependent, COMPOSE));
     assert!(!ui.invalidation().is_invalidated(other, COMPOSE));

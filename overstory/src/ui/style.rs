@@ -148,6 +148,11 @@ impl Ui {
         if let Some(invalidation) = channels {
             self.mark_channels(id, invalidation.channels());
             self.mark_descendant_channels(id, invalidation.inherited_channels());
+            for property in invalidation.changed_properties() {
+                let channels = self
+                    .surface_aware_channels(*property, self.registry.affects_channels(*property));
+                self.mark_template_owner_property_dependents(id, *property, channels);
+            }
         }
         if allow_retemplate {
             self.retemplate_if_needed(id);

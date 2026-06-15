@@ -158,7 +158,7 @@ impl Ui {
     /// Template expansion owns the meaning of these edges. The property write
     /// path only applies the invalidation channels to registered generated
     /// dependents for this owner/property pair.
-    fn mark_template_owner_property_dependents(
+    pub(in crate::ui) fn mark_template_owner_property_dependents(
         &mut self,
         owner: ElementId,
         property: PropertyId,
