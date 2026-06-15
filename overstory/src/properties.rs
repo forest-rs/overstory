@@ -195,14 +195,13 @@ pub struct BuiltInProperties {
     pub transitions: Property<TransitionRules>,
 
     /// Boolean toggled state for two-state controls (`ToggleSwitch`,
-    /// `CheckBox`, …). Default `false`. Writers should pair the value
-    /// change with adding / removing the `:checked` pseudoclass so
-    /// the cascade reflects the new state.
+    /// `CheckBox`, …). Default `false`. `Ui` projects writes into the
+    /// `:checked` pseudoclass so the cascade reflects the new state.
     pub is_checked: Property<bool>,
 
     /// Boolean expanded state for disclosure-style controls. Default `false`.
-    /// Writers should pair the value change with adding / removing the
-    /// `:expanded` pseudoclass so the cascade reflects the new state.
+    /// Disclosure controls project writes into `:expanded` and their
+    /// generated slot state during arrange.
     pub is_expanded: Property<bool>,
 
     /// Whether an element can participate in control interaction. Default

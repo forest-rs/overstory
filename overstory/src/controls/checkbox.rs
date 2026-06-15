@@ -26,7 +26,6 @@ use crate::controls::support::{
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -284,14 +283,9 @@ fn check_box_template_spec() -> TemplateSpec {
     ])
 }
 
-/// Sets `IsChecked` on `checkbox` and keeps the `:checked` pseudoclass in sync.
+/// Sets whether `checkbox` is checked.
 pub fn set_check_box_checked(ui: &mut Ui, checkbox: ElementId, checked: bool) {
     ui.set_local(checkbox, ui.properties().is_checked, checked);
-    if checked {
-        ui.add_pseudo(checkbox, PSEUDO_CHECKED);
-    } else {
-        ui.remove_pseudo(checkbox, PSEUDO_CHECKED);
-    }
 
     if let Some(mark) = ui.slot(checkbox, SLOT_CHECK_BOX_MARK) {
         let content = if checked { "✓" } else { "" };

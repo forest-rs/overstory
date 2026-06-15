@@ -28,7 +28,6 @@ use crate::controls::support::{
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
-use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -255,9 +254,10 @@ fn toggle_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::surface_slot(SLOT_TOGGLE_THUMB)])
 }
 
-/// Flips `IsChecked` on `toggle` and keeps the `:checked`
-/// pseudoclass in sync. Available as `pub` so app code or other
-/// behaviors can drive a toggle without going through user input.
+/// Flips `IsChecked` on `toggle`.
+///
+/// Available as `pub` so app code or other behaviors can drive a toggle
+/// without going through user input.
 pub fn toggle_checked(ui: &mut Ui, toggle: ElementId) {
     let _ = toggle_checked_state(ui, toggle);
 }
@@ -276,11 +276,6 @@ fn toggle_checked_state(ui: &mut Ui, toggle: ElementId) -> bool {
 fn set_toggle_checked(ui: &mut Ui, toggle: ElementId, checked: bool) {
     let is_checked = ui.properties().is_checked;
     ui.set_local(toggle, is_checked, checked);
-    if checked {
-        ui.add_pseudo(toggle, PSEUDO_CHECKED);
-    } else {
-        ui.remove_pseudo(toggle, PSEUDO_CHECKED);
-    }
 }
 
 #[cfg(test)]

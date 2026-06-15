@@ -36,7 +36,6 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutSpacing};
-use crate::pseudos::PSEUDO_CHECKED;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -632,14 +631,9 @@ fn radio_button_template_spec() -> TemplateSpec {
     ])
 }
 
-/// Sets `IsChecked` on `radio` and keeps the `:checked` pseudoclass in sync.
+/// Sets whether `radio` is checked.
 pub fn set_radio_button_checked(ui: &mut Ui, radio: ElementId, checked: bool) {
     ui.set_local(radio, ui.properties().is_checked, checked);
-    if checked {
-        ui.add_pseudo(radio, PSEUDO_CHECKED);
-    } else {
-        ui.remove_pseudo(radio, PSEUDO_CHECKED);
-    }
 }
 
 /// Returns whether `radio` is currently checked.
