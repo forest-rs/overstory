@@ -23,7 +23,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::Phase;
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, last_enabled_index, option_label,
     selected_enabled_index, wrapping_next_enabled_index, wrapping_previous_enabled_index,
@@ -545,6 +545,12 @@ impl Widget for RadioGroupWidget {
             event.mark_handled();
         }
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let group = ctx.id();
+        let requested = selected_index_local(ctx.ui(), group);
+        ArrangeResult::from_layout_changed(self.set_selected_index(ctx.ui_mut(), group, requested))
+    }
 }
 
 impl RadioGroupWidget {
@@ -679,6 +685,16 @@ pub fn selected_radio_group_item(ui: &Ui, group: ElementId) -> Option<String> {
     option_label(&widget.options, widget.selected_index)
 }
 
+fn selected_index_local(ui: &Ui, group: ElementId) -> Option<usize> {
+    ui.get(group)
+        .and_then(|element| {
+            element
+                .get_local_value(ui.properties().selected_index)
+                .copied()
+        })
+        .flatten()
+}
+
 fn with_radio_group_mut<R>(
     ui: &mut Ui,
     group: ElementId,
@@ -757,6 +773,22 @@ mod tests {
 
         assert_eq!(selected_radio_group_index(&ui, group), Some(2));
         assert!(!radio_button_checked(&ui, radios[1]));
+        assert!(radio_button_checked(&ui, radios[2]));
+    }
+
+    #[test]
+    fn direct_selected_index_write_updates_radio_state() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let group = ui.append(root, RadioGroup::new().items(ITEMS).selected_index(0));
+        let radios = radio_group_widget(&ui, group).unwrap().radios.clone();
+        ui.compute_layout(Size::new(320.0, 160.0));
+
+        ui.set_local(group, ui.properties().selected_index, Some(2));
+        ui.compute_layout(Size::new(320.0, 160.0));
+
+        assert_eq!(selected_radio_group_index(&ui, group), Some(2));
+        assert!(!radio_button_checked(&ui, radios[0]));
         assert!(radio_button_checked(&ui, radios[2]));
     }
 

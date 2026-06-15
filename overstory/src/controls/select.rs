@@ -21,7 +21,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
     last_enabled_index, next_enabled_index, option_label, previous_enabled_index,
@@ -254,6 +254,7 @@ impl AppendSpec for Select {
         let widget = SelectWidget {
             options: self.options,
             item_template: self.item_template,
+            selected_index,
             placeholder: self.placeholder,
             popup: ElementSlot::new(),
             popup_height: self.popup_height,
@@ -289,6 +290,7 @@ impl ElementSpec for Select {
 pub(crate) struct SelectWidget {
     options: Vec<ChoiceOption>,
     item_template: Option<SharedListItemTemplate>,
+    selected_index: Option<usize>,
     placeholder: String,
     popup: ElementSlot,
     popup_height: f32,
@@ -301,6 +303,7 @@ impl core::fmt::Debug for SelectWidget {
         f.debug_struct("SelectWidget")
             .field("options_len", &self.options.len())
             .field("has_item_template", &self.item_template.is_some())
+            .field("selected_index", &self.selected_index)
             .field("popup", &self.popup.get())
             .field("popup_height", &self.popup_height)
             .field("item_extent", &self.item_extent)
@@ -355,6 +358,12 @@ impl Widget for SelectWidget {
                 String::from(SELECT_INDICATOR),
             );
         }
+    }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let select = ctx.id();
+        let requested = selected_select_index_local(ctx.ui(), select);
+        ArrangeResult::from_layout_changed(self.set_selected_index(ctx.ui_mut(), select, requested))
     }
 
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
@@ -452,8 +461,7 @@ impl SelectWidget {
         let popup_width = self.popup_width(ui, select);
         let item_extent = self.item_extent;
         let item_template = self.item_template.clone();
-        let selected_index =
-            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
+        let selected_index = self.selected_index;
         let options = self.options.clone();
         let popup = ui.open_popup(
             select,
@@ -486,8 +494,7 @@ impl SelectWidget {
         if self.options.is_empty() {
             return;
         }
-        let current =
-            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
+        let current = self.selected_index;
         let next = match direction.is_positive() {
             true => next_enabled_index(&self.options, current),
             false => previous_enabled_index(&self.options, current),
@@ -499,8 +506,7 @@ impl SelectWidget {
         if !ui.is_enabled(select) {
             return false;
         }
-        let current =
-            selected_enabled_index(&self.options, selected_select_index_local(ui, select));
+        let current = self.selected_index;
         let Some(selection) = ResolvedChoiceSelection::from_enabled_target(&self.options, index)
             .and_then(|selection| selection.changed_from(current))
         else {
@@ -511,6 +517,7 @@ impl SelectWidget {
             .clone()
             .unwrap_or_else(|| self.placeholder.clone());
         let props = *ui.properties();
+        self.selected_index = selection.index;
         ui.set_local(select, props.selected_index, selection.index);
         ui.set_local(select, props.content, content);
         dispatch_select_selection_changed(
@@ -605,7 +612,7 @@ pub fn clear_select_selection(ui: &mut Ui, select: ElementId) -> bool {
 #[must_use]
 pub fn selected_select_index(ui: &Ui, select: ElementId) -> Option<usize> {
     let widget = select_widget(ui, select)?;
-    selected_enabled_index(&widget.options, selected_select_index_local(ui, select))
+    widget.selected_index
 }
 
 /// Returns the currently selected item text in `select`, if any.
@@ -716,6 +723,25 @@ mod tests {
                 .and_then(|element| element.get_local_value(ui.properties().content))
                 .map(String::as_str),
             Some("Review")
+        );
+    }
+
+    #[test]
+    fn direct_selected_index_write_updates_collapsed_content() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        compute_layout(&mut ui);
+
+        ui.set_local(select, ui.properties().selected_index, Some(2));
+        compute_layout(&mut ui);
+
+        assert_eq!(selected_select_index(&ui, select), Some(2));
+        assert_eq!(
+            ui.get(select)
+                .and_then(|element| element.get_local_value(ui.properties().content))
+                .map(String::as_str),
+            Some("Ready")
         );
     }
 

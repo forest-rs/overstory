@@ -15,6 +15,7 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use kurbo::Vec2;
+use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
@@ -322,7 +323,10 @@ impl Widget for SegmentedControlWidget {
 
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let segmented = ctx.id();
-        let changed = self.sync_indicator_layout(ctx.ui_mut(), segmented);
+        let requested = selected_index_local(ctx.ui(), segmented);
+        let ui = ctx.ui_mut();
+        let mut changed = self.set_selected_index(ui, segmented, requested);
+        changed |= self.sync_indicator_layout(ui, segmented);
         ArrangeResult::from_layout_changed(changed)
     }
 }
@@ -631,6 +635,16 @@ pub fn selected_segmented_item(ui: &Ui, segmented: ElementId) -> Option<String> 
     option_label(&widget.options, widget.selected_index)
 }
 
+fn selected_index_local(ui: &Ui, segmented: ElementId) -> Option<usize> {
+    ui.get(segmented)
+        .and_then(|element| {
+            element
+                .get_local_value(ui.properties().selected_index)
+                .copied()
+        })
+        .flatten()
+}
+
 /// Returns the generated segment element for `index`, if currently present.
 #[must_use]
 pub fn segmented_item(ui: &Ui, segmented: ElementId, index: usize) -> Option<ElementId> {
@@ -712,6 +726,23 @@ mod tests {
         assert_eq!(selected_segmented_index(&ui, segmented), Some(1));
         assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
         assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+    }
+
+    #[test]
+    fn direct_selected_index_write_updates_segment_state() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let segmented = ui.append(root, SegmentedControl::new().items(ITEMS).selected_index(0));
+        let first = segmented_item(&ui, segmented, 0).unwrap();
+        let third = segmented_item(&ui, segmented, 2).unwrap();
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        ui.set_local(segmented, ui.properties().selected_index, Some(2));
+        ui.compute_layout(Size::new(320.0, 80.0));
+
+        assert_eq!(selected_segmented_index(&ui, segmented), Some(2));
+        assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_SELECTED));
+        assert!(ui.get(third).unwrap().pseudos().contains(&PSEUDO_SELECTED));
     }
 
     #[test]

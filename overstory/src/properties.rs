@@ -483,7 +483,12 @@ impl BuiltInProperties {
                 .register("IsReadOnly", PropertyMetadataBuilder::new(false).build()),
             selected_index: registry.register(
                 "SelectedIndex",
-                PropertyMetadataBuilder::new(None::<usize>).build(),
+                PropertyMetadataBuilder::new(None::<usize>)
+                    // Selection is semantic state, but controls project it
+                    // into generated item pseudos, owner content, and layout
+                    // affordances such as segmented indicators.
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
             ),
             value: registry.register(
                 "Value",
