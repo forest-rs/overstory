@@ -4,8 +4,8 @@
 use super::*;
 use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::pseudos::{
-    PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
-    PSEUDO_SELECTED,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
+    PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
 use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
 use crate::{
@@ -5231,6 +5231,48 @@ fn set_enabled_false_clears_focus_and_pressed_state() {
         "re-enabling should restore the stored focusable preference"
     );
     assert!(ui.set_focus(Some(button)));
+}
+
+#[test]
+fn direct_is_checked_write_updates_checked_pseudo() {
+    use crate::CheckBox;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let checkbox = ui.append(root, CheckBox::new("Enabled"));
+
+    ui.set_local(checkbox, ui.properties().is_checked, true);
+
+    assert!(
+        ui.get(checkbox)
+            .unwrap()
+            .pseudos()
+            .contains(&PSEUDO_CHECKED)
+    );
+}
+
+#[test]
+fn direct_is_enabled_write_clears_focus_and_pressed_state() {
+    use crate::Button;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Run"));
+
+    assert!(ui.set_focus(Some(button)));
+    ui.set_press_target(Some(button));
+    ui.set_pointer_capture(Some(button));
+    ui.set_local(button, ui.properties().is_enabled, false);
+
+    assert!(!ui.is_enabled(button));
+    assert_eq!(ui.focused(), None);
+    assert_eq!(ui.events.press_target(), None);
+    assert_eq!(ui.pointer_capture(), None);
+    let pseudos = ui.get(button).unwrap().pseudos();
+    assert!(pseudos.contains(&PSEUDO_DISABLED));
+    assert!(!pseudos.contains(&PSEUDO_FOCUSED));
+    assert!(!pseudos.contains(&PSEUDO_FOCUS_VISIBLE));
+    assert!(!pseudos.contains(&PSEUDO_PRESSED));
 }
 
 #[test]

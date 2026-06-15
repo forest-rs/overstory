@@ -43,6 +43,7 @@ impl Ui {
         self.mark_template_owner_property_dependents(id, property.id(), channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
+        self.sync_state_property_projection(id, property.id());
         if property.id() == self.properties.control_template.id() {
             self.retemplate_if_needed(id);
         }
@@ -77,6 +78,7 @@ impl Ui {
         self.mark_template_owner_property_dependents(id, property, channels);
         self.bindings
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
+        self.sync_state_property_projection(id, property);
     }
 
     /// Marks template-generated elements that depend on an owner property.
@@ -284,12 +286,14 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
                     }
                 };
                 if channels.is_empty() {
+                    self.sync_state_property_projection(id, prop_id);
                     BindingWrite::unchanged()
                 } else {
                     let channels = self.surface_aware_channels(prop_id, channels);
                     self.mark_channels(id, channels);
                     self.mark_inherited_property_descendants(id, prop_id, channels);
                     self.mark_template_owner_property_dependents(id, prop_id, channels);
+                    self.sync_state_property_projection(id, prop_id);
                     BindingWrite::changed(channels)
                 }
             }

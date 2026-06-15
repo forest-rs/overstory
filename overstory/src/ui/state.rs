@@ -10,11 +10,14 @@ use cursor_icon::CursorIcon;
 use kurbo::Point;
 use understory_box_tree::NodeFlags;
 use understory_event_state::hover::HoverEvent;
+use understory_property::PropertyId;
+use understory_style::PseudoClassId;
 
 use crate::element::ElementId;
 use crate::event_runtime::{FocusChangeReason, PointerDispatchResult, RoutedEventKind};
 use crate::pseudos::{
-    PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER, PSEUDO_PRESSED,
+    PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
+    PSEUDO_PRESSED,
 };
 use crate::style_class::StyleClass;
 
@@ -67,7 +70,7 @@ impl Ui {
     }
 
     /// Adds `pseudo` to `id` and re-styles the affected subtree.
-    pub fn add_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+    pub fn add_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
         let transition_plan = InteractionTransitionPlan::capture(self, id);
         let changed = self
             .get_mut(id)
@@ -81,7 +84,7 @@ impl Ui {
     }
 
     /// Removes `pseudo` from `id` and re-styles the affected subtree.
-    pub fn remove_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+    pub fn remove_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
         let transition_plan = InteractionTransitionPlan::capture(self, id);
         let changed = self
             .get_mut(id)
@@ -175,7 +178,7 @@ impl Ui {
         }
     }
 
-    fn add_initial_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+    fn add_initial_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
         let changed = self
             .get_mut(id)
             .map(|el| el.add_pseudo(pseudo))
@@ -186,7 +189,7 @@ impl Ui {
         }
     }
 
-    fn remove_initial_pseudo(&mut self, id: ElementId, pseudo: understory_style::PseudoClassId) {
+    fn remove_initial_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_pseudo(pseudo))
@@ -266,6 +269,37 @@ impl Ui {
             return;
         }
         self.set_local(id, self.properties.is_enabled, enabled);
+    }
+
+    /// Projects semantic state properties into their runtime side effects.
+    pub(in crate::ui) fn sync_state_property_projection(
+        &mut self,
+        id: ElementId,
+        property: PropertyId,
+    ) {
+        if property == self.properties.is_checked.id() {
+            let checked = self
+                .get(id)
+                .map(|element| self.resolve_value_for(element, self.properties.is_checked))
+                .unwrap_or(false);
+            self.set_pseudo_state(id, PSEUDO_CHECKED, checked);
+        } else if property == self.properties.is_enabled.id() {
+            self.sync_enabled_projection(id, self.is_enabled(id));
+        }
+    }
+
+    fn set_pseudo_state(&mut self, id: ElementId, pseudo: PseudoClassId, active: bool) {
+        if active {
+            self.add_pseudo(id, pseudo);
+        } else {
+            self.remove_pseudo(id, pseudo);
+        }
+    }
+
+    fn sync_enabled_projection(&mut self, id: ElementId, enabled: bool) {
+        if self.get(id).is_none() {
+            return;
+        }
         if enabled {
             self.remove_pseudo(id, PSEUDO_DISABLED);
             self.apply_focusable_preference(id);
