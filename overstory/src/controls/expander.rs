@@ -19,7 +19,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
@@ -257,6 +257,12 @@ impl Widget for ExpanderWidget {
         disclosure::action_target(request.action, self.expanded)
             .is_some_and(|expanded| self.set_expanded(ctx, expander, expanded))
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let expander = ctx.id();
+        let expanded = disclosure::resolved_expanded(ctx.ui(), expander);
+        ArrangeResult::from_layout_changed(self.set_expanded(ctx.ui_mut(), expander, expanded))
+    }
 }
 
 impl ExpanderWidget {
@@ -362,6 +368,7 @@ fn click_source_is_header(
 mod tests {
     use super::*;
     use crate::accessibility::accesskit_node_id;
+    use crate::pseudos::PSEUDO_EXPANDED;
     use accesskit::{Action, ActionRequest, Role, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
@@ -383,6 +390,30 @@ mod tests {
 
         assert!(set_expander_expanded(&mut ui, expander, true));
         ui.compute_layout(Size::new(240.0, 140.0));
+        assert!(ui.effective_bounds(content).height() > 0.0);
+    }
+
+    #[test]
+    fn direct_is_expanded_write_updates_expander_state_and_content_slot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, crate::Layout::column(0.0).logical_size(240.0, 140.0));
+        let (expander, _) = ui.content(root, Expander::new("Advanced"), |content| {
+            content.add(crate::Text::new("Details"));
+        });
+        let content = expander_content(&ui, expander).unwrap();
+
+        ui.compute_layout(Size::new(240.0, 140.0));
+        ui.set_local(expander, ui.properties().is_expanded, true);
+        ui.compute_layout(Size::new(240.0, 140.0));
+
+        assert_eq!(expander_expanded(&ui, expander), Some(true));
+        assert!(
+            ui.get(expander)
+                .unwrap()
+                .pseudos()
+                .contains(&PSEUDO_EXPANDED)
+        );
         assert!(ui.effective_bounds(content).height() > 0.0);
     }
 

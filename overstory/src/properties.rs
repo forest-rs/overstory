@@ -467,8 +467,9 @@ impl BuiltInProperties {
             is_expanded: registry.register(
                 "IsExpanded",
                 PropertyMetadataBuilder::new(false)
-                    // No direct visual impact. Expander-like controls update
-                    // `:expanded` and synchronize their content slot.
+                    // Disclosure controls project this into `:expanded`,
+                    // glyph text, and content-slot layout during arrange.
+                    .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
             is_enabled: registry.register(

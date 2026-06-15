@@ -17,6 +17,12 @@ use crate::pseudos::PSEUDO_EXPANDED;
 use crate::template::TemplateSlot;
 use crate::ui::Ui;
 
+pub(crate) fn resolved_expanded(ui: &Ui, owner: ElementId) -> bool {
+    ui.get(owner)
+        .map(|element| ui.resolve_value_for(element, ui.properties().is_expanded))
+        .unwrap_or(false)
+}
+
 pub(crate) fn configure_accessibility(
     element: &Element,
     ctx: &AccessibilityContext<'_>,

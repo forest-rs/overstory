@@ -17,7 +17,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::disclosure;
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
@@ -411,6 +411,12 @@ impl Widget for AccordionSectionWidget {
         disclosure::action_target(request.action, self.expanded)
             .is_some_and(|expanded| self.set_expanded(ctx, section, expanded))
     }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let section = ctx.id();
+        let expanded = disclosure::resolved_expanded(ctx.ui(), section);
+        ArrangeResult::from_layout_changed(self.set_expanded(ctx.ui_mut(), section, expanded))
+    }
 }
 
 impl AccordionSectionWidget {
@@ -663,6 +669,7 @@ fn click_source_is_section_header(
 mod tests {
     use super::*;
     use crate::accessibility::accesskit_node_id;
+    use crate::pseudos::PSEUDO_EXPANDED;
     use accesskit::{Action, ActionRequest, Role, TreeId};
     use alloc::rc::Rc;
     use core::cell::Cell;
@@ -705,6 +712,37 @@ mod tests {
         assert!(set_accordion_section_expanded(&mut ui, second, false));
         assert_eq!(accordion_section_expanded(&ui, first), Some(false));
         assert_eq!(accordion_section_expanded(&ui, second), Some(false));
+    }
+
+    #[test]
+    fn direct_is_expanded_write_updates_accordion_section_state_and_policy() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(240.0, 180.0));
+        let (_accordion, (first, second)) =
+            ui.children(root, Accordion::new().single(), |accordion| {
+                let (first, _) =
+                    accordion.section_with(AccordionSection::new("One").expanded(true), |slot| {
+                        slot.add(crate::Text::new("First"));
+                    });
+                let (second, _) = accordion.section("Two", |slot| {
+                    slot.add(crate::Text::new("Second"));
+                });
+                (first, second)
+            });
+        let first_content = accordion_section_content(&ui, first).unwrap();
+        let second_content = accordion_section_content(&ui, second).unwrap();
+
+        ui.compute_layout(Size::new(240.0, 180.0));
+        ui.set_local(second, ui.properties().is_expanded, true);
+        ui.compute_layout(Size::new(240.0, 180.0));
+
+        assert_eq!(accordion_section_expanded(&ui, first), Some(false));
+        assert_eq!(accordion_section_expanded(&ui, second), Some(true));
+        assert!(!ui.get(first).unwrap().pseudos().contains(&PSEUDO_EXPANDED));
+        assert!(ui.get(second).unwrap().pseudos().contains(&PSEUDO_EXPANDED));
+        assert_eq!(ui.effective_bounds(first_content).height(), 0.0);
+        assert!(ui.effective_bounds(second_content).height() > 0.0);
     }
 
     #[test]
