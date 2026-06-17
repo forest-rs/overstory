@@ -263,10 +263,18 @@ impl UiHost {
     /// Returns the duration until the next pending UI wakeup, if any.
     #[must_use]
     pub fn duration_until_next_wakeup(&self) -> Option<Duration> {
+        self.duration_until_next_wakeup_at(self.now())
+    }
+
+    /// Returns the duration until the next pending UI wakeup from `now`.
+    ///
+    /// Hosts that use an external platform clock for frame ticks and input
+    /// timestamps should call this with that clock's normalized host time.
+    #[must_use]
+    pub fn duration_until_next_wakeup_at(&self, now: TimerInstant) -> Option<Duration> {
         self.next_wakeup_deadline().map(|deadline| {
-            let elapsed = self.start_instant.elapsed().as_nanos();
-            let until = u128::from(deadline).saturating_sub(elapsed);
-            Duration::from_nanos(u64::try_from(until).unwrap_or(u64::MAX))
+            let until = deadline.saturating_sub(now);
+            Duration::from_nanos(until)
         })
     }
 
@@ -684,6 +692,22 @@ mod tests {
 
         assert_eq!(host.last_frame_diagnostics().ui.renderer_timings, timings);
         assert_eq!(host.ui().frame_stats().renderer_timings, timings);
+    }
+
+    #[test]
+    fn duration_until_next_wakeup_can_use_external_clock_domain() {
+        let mut host = UiHost::new(Ui::new());
+
+        host.ui_mut().schedule_timeline_cue(10, 1);
+
+        assert_eq!(
+            host.duration_until_next_wakeup_at(4),
+            Some(Duration::from_nanos(6))
+        );
+        assert_eq!(
+            host.duration_until_next_wakeup_at(12),
+            Some(Duration::from_nanos(0))
+        );
     }
 
     #[test]

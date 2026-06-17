@@ -203,9 +203,11 @@ where
             state.window.request_redraw();
         }
 
-        if let Some(translation) = state
-            .event_reducer
-            .reduce(state.window.scale_factor(), &event)
+        let event_time = state.host.frame_now().ticks();
+        if let Some(translation) =
+            state
+                .event_reducer
+                .reduce(state.window.scale_factor(), &event, event_time)
         {
             match translation {
                 WindowEventTranslation::Pointer(pointer) => {
@@ -261,11 +263,12 @@ where
         if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. })
             && let Some(state) = self.state.as_mut()
         {
-            let timer_due = state.host.pump_timers_now();
+            let now = state.host.frame_now();
+            let timer_due = state.host.pump_timers(now.ticks());
             let frame_due = state
                 .host
                 .pending_frame_start()
-                .is_some_and(|frame_start| frame_start <= state.host.frame_now());
+                .is_some_and(|frame_start| frame_start <= now);
             if timer_due || frame_due {
                 state.window.request_redraw();
                 event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
@@ -336,7 +339,8 @@ impl WindowState {
     }
 
     fn arm_next_wakeup(&self, event_loop: &ActiveEventLoop) {
-        if let Some(wait) = self.host.duration_until_next_wakeup() {
+        let now = self.host.frame_now();
+        if let Some(wait) = self.host.duration_until_next_wakeup_at(now.ticks()) {
             event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
                 Instant::now() + wait,
             ));

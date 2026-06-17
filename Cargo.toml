@@ -32,6 +32,7 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 
 # Core data deps
 accesskit = { default-features = false, version = "0.24.0" }
+frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
@@ -41,7 +42,6 @@ kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
 peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
 smallvec = { default-features = false, version = "1.13.2" }
 spoor_session = { default-features = false, git = "https://github.com/forest-rs/spoor.git", rev = "42a84421d9fb1251b21d92882f402a90d42ca6f0" }
-frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 
 # Understory primitives.
@@ -71,8 +71,8 @@ imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.
 
 # Input event normalization.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
-ui-events = { default-features = false, features = ["kurbo"], version = "0.3" }
-ui-events-winit = { version = "0.3" }
+ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
+ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }
 
