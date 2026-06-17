@@ -80,6 +80,19 @@ impl<T> ElementRef<T> {
         ui.set_local(id, property, value);
     }
 
+    /// Clears a local property value on the referenced element if it is live.
+    ///
+    /// Returns `true` if a local value was removed.
+    pub fn clear_local<V>(&self, ui: &mut Ui, property: Property<V>) -> bool
+    where
+        V: Clone + PartialEq + 'static,
+    {
+        let Some(id) = self.resolve(ui) else {
+            return false;
+        };
+        ui.clear_local(id, property)
+    }
+
     pub(crate) fn assign(&self, id: ElementId) {
         self.id.set(Some(id));
     }

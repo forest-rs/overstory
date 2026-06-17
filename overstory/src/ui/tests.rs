@@ -332,6 +332,26 @@ fn element_ref_can_write_properties_without_raw_element_id() {
 }
 
 #[test]
+fn element_ref_can_clear_properties_without_raw_element_id() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let label = ElementRef::<crate::Text>::new();
+
+    ui.append(root, crate::Text::new("Before").reference(label.clone()));
+    let font_size = ui.properties().font_size;
+
+    label.set_local(&mut ui, font_size, 24.0);
+    assert!(label.clear_local(&mut ui, font_size));
+
+    let id = label.resolve(&ui).expect("label ref should resolve");
+    assert_eq!(
+        ui.get(id).unwrap().get_local_value(font_size),
+        None,
+        "clear_local should remove the ref-targeted local override",
+    );
+}
+
+#[test]
 fn tooltip_spec_ext_attaches_tooltip_during_append() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -424,6 +444,36 @@ fn set_local_marks_paint_dirty() {
         root,
         background,
         Some(Brush::Solid(Color::from_rgba8(0, 0, 0, 0xff))),
+    );
+    assert!(ui.invalidation().is_invalidated(root, PAINT));
+}
+
+#[test]
+fn clear_local_removes_override_and_reveals_styled_value() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let background = ui.properties().surface.background;
+    let styled = Some(Brush::Solid(Color::from_rgba8(0x24, 0x78, 0xff, 0xff)));
+    let local = Some(Brush::Solid(Color::from_rgba8(0xff, 0x44, 0x55, 0xff)));
+    let style = StyleBuilder::new().set(background, styled.clone()).build();
+    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(StyleOrigin::Base, selector, style)
+        .build();
+    ui.set_cascade(cascade);
+    ui.set_local(root, background, local.clone());
+    assert_eq!(
+        ui.resolve_value_for(ui.get(root).unwrap(), background),
+        local
+    );
+
+    ui.invalidation.clear(PAINT);
+    assert!(ui.clear_local(root, background));
+
+    assert_eq!(ui.get(root).unwrap().get_local_value(background), None);
+    assert_eq!(
+        ui.resolve_value_for(ui.get(root).unwrap(), background),
+        styled
     );
     assert!(ui.invalidation().is_invalidated(root, PAINT));
 }
@@ -2514,6 +2564,47 @@ fn changing_control_template_replaces_parts_and_preserves_slot_content() {
     assert_eq!(ui.part(button, OLD_FRAME), None);
     assert_eq!(ui.get(new_frame).unwrap().parent(), Some(button));
     assert_eq!(ui.get(content).unwrap().parent(), Some(new_frame));
+    assert_eq!(ui.get(authored).unwrap().parent(), Some(content));
+    assert_eq!(
+        presented_element_text(&mut ui, authored).as_deref(),
+        Some("Retained child")
+    );
+}
+
+#[test]
+fn clearing_control_template_reexpands_default_template() {
+    use crate::{Button, ControlTemplate, SLOT_BUTTON_CONTENT, TemplateNode, TemplateSpec, Text};
+
+    const LOCAL_FRAME: PartTag = PartTag(0x4B);
+    let local_template =
+        ControlTemplate::from(TemplateSpec::from_nodes([TemplateNode::surface_part(
+            LOCAL_FRAME,
+        )
+        .with_child(TemplateNode::content_presenter(SLOT_BUTTON_CONTENT))]));
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Button").template(local_template));
+    let local_frame = ui
+        .part(button, LOCAL_FRAME)
+        .expect("local template should create its frame");
+    let authored = ui
+        .slot_children(button, SLOT_BUTTON_CONTENT, |content| {
+            content.add(Text::new("Retained child"))
+        })
+        .expect("local template should expose the content slot");
+
+    assert!(ui.clear_local(button, ui.properties().control_template));
+
+    let content = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("default button template should expose the content slot");
+    assert!(
+        ui.get(local_frame).is_none(),
+        "local template frame is removed"
+    );
+    assert_eq!(ui.part(button, LOCAL_FRAME), None);
+    assert_eq!(ui.get(content).unwrap().parent(), Some(button));
     assert_eq!(ui.get(authored).unwrap().parent(), Some(content));
     assert_eq!(
         presented_element_text(&mut ui, authored).as_deref(),

@@ -37,6 +37,31 @@ impl Ui {
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
     }
 
+    /// Clears the ordinary local value for `property` on `id`.
+    ///
+    /// This removes only the app-authored [`LocalValueSource::Local`] slot.
+    /// Values from template bindings, template defaults, style, theme
+    /// resources, inheritance, or the property's registered default may become
+    /// visible afterward. Clearing flows through the same invalidation,
+    /// semantic-state projection, template refresh, and binding endpoint
+    /// notification path as [`Self::set_local`].
+    ///
+    /// Returns `true` if a local value was removed.
+    pub fn clear_local<T: Clone + PartialEq + 'static>(
+        &mut self,
+        id: ElementId,
+        property: Property<T>,
+    ) -> bool {
+        let Some(removed) = self.clear_typed_local(id, property) else {
+            return false;
+        };
+        if removed {
+            self.bindings
+                .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
+        }
+        removed
+    }
+
     /// Writes a typed local value and applies normal element write consequences.
     ///
     /// Typed writes keep the property store's typed equality check, so unchanged values can
@@ -62,6 +87,36 @@ impl Ui {
             template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
             state_projection: StateProjectionPolicy::ProjectSemanticState,
         }))
+    }
+
+    /// Clears a typed local value and applies normal element clear consequences.
+    ///
+    /// Returns `None` for stale element ids, `Some(false)` when the element was
+    /// live but did not have a `Local` slot for `property`, and `Some(true)`
+    /// when a local value was removed.
+    fn clear_typed_local<T: Clone + PartialEq + 'static>(
+        &mut self,
+        id: ElementId,
+        property: Property<T>,
+    ) -> Option<bool> {
+        let channels = {
+            let element = self.elements.get_mut(id)?;
+            if !element
+                .property_store()
+                .has_local_at_source(property, LocalValueSource::Local)
+            {
+                return Some(false);
+            }
+            element.clear_local_notifying(property, &self.registry)
+        };
+        self.apply_property_change(PropertyChange {
+            element: id,
+            property: property.id(),
+            channels,
+            template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
+            state_projection: StateProjectionPolicy::ProjectSemanticState,
+        });
+        Some(true)
     }
 
     /// Writes an erased local value and applies normal element write consequences.
