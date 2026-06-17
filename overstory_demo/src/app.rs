@@ -30,7 +30,6 @@ use overstory::{
     TextInput, TextSpecExt, TimerDuration, TimerId, ToggleSwitch, TooltipSpecExt, Ui, View,
     Viewport, layouts, set_progress_value, set_text_input_text, text_input_text, theme,
 };
-use overstory_host_winit::WindowOptions;
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};
 use peniko::{Brush, Color};
@@ -81,11 +80,12 @@ mod widgets;
 use chrome::*;
 use devtools::*;
 use fixtures::*;
+use overstory_app::WindowOptions;
 use style::*;
 use widgets::*;
 
-pub(crate) fn run() -> overstory_host_winit::HostResult<()> {
-    overstory_host_winit::run(
+pub(crate) fn run() -> overstory_app::HostResult<()> {
+    overstory_app::run(
         WindowOptions::new("overstory_demo").initial_size(INITIAL_SIZE.0, INITIAL_SIZE.1),
         build_ui,
     )

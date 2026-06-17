@@ -71,7 +71,7 @@ dependencies = [
  "accesskit_consumer 0.36.0",
  "hashbrown 0.16.1",
  "objc2 0.5.2",
- "objc2-app-kit",
+ "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
 ]
 
@@ -1045,6 +1045,18 @@ version = "0.0.1"
 source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
 
 [[package]]
+name = "frameclock_apple"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
+dependencies = [
+ "frameclock",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1850,6 +1862,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-app-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
+dependencies = [
+ "bitflags 2.11.1",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+]
+
+[[package]]
 name = "objc2-cloud-kit"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1894,6 +1919,18 @@ dependencies = [
  "bitflags 2.11.1",
  "dispatch2",
  "objc2 0.6.4",
+]
+
+[[package]]
+name = "objc2-core-graphics"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
+dependencies = [
+ "dispatch2",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-io-surface",
 ]
 
 [[package]]
@@ -1961,6 +1998,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-io-surface"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
+dependencies = [
+ "bitflags 2.11.1",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+]
+
+[[package]]
 name = "objc2-link-presentation"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1968,7 +2016,7 @@ checksum = "a1a1ae721c5e35be65f01a03b6d2ac13a54cb4fa70d8a5da293d7b0020261398"
 dependencies = [
  "block2 0.5.1",
  "objc2 0.5.2",
- "objc2-app-kit",
+ "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
 ]
 
@@ -2018,6 +2066,7 @@ dependencies = [
  "bitflags 2.11.1",
  "objc2 0.6.4",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
 ]
@@ -2152,14 +2201,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_app"
+version = "0.0.1"
+dependencies = [
+ "overstory_host_appkit",
+ "overstory_host_winit",
+]
+
+[[package]]
 name = "overstory_demo"
 version = "0.0.1"
 dependencies = [
  "frameclock",
  "kurbo",
  "overstory",
+ "overstory_app",
  "overstory_devtools",
- "overstory_host_winit",
  "overstory_svg",
  "overstory_transcript",
  "peniko",
@@ -2190,6 +2247,29 @@ dependencies = [
  "overstory",
  "ui-events",
  "web-time",
+]
+
+[[package]]
+name = "overstory_host_appkit"
+version = "0.0.1"
+dependencies = [
+ "frameclock",
+ "frameclock_apple",
+ "imaging_vello",
+ "imaging_wgpu",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "overstory",
+ "overstory_host",
+ "pollster",
+ "ui-events",
+ "ui-events-appkit",
+ "web-time",
+ "wgpu",
 ]
 
 [[package]]
@@ -3314,6 +3394,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui-events-appkit"
+version = "0.3.0"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+dependencies = [
+ "dpi",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "ui-events",
+ "ui-events-apple-common",
+]
+
+[[package]]
+name = "ui-events-apple-common"
+version = "0.3.0"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+dependencies = [
+ "dpi",
+ "ui-events",
+]
+
+[[package]]
 name = "ui-events-winit"
 version = "0.3.0"
 source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
@@ -4232,7 +4333,7 @@ dependencies = [
  "memmap2",
  "ndk",
  "objc2 0.5.2",
- "objc2-app-kit",
+ "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
  "objc2-ui-kit",
  "orbclient",

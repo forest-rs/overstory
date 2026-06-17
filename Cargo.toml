@@ -2,9 +2,11 @@
 resolver = "2"
 members = [
     "overstory",
+    "overstory_app",
     "overstory_demo",
     "overstory_devtools",
     "overstory_host",
+    "overstory_host_appkit",
     "overstory_host_winit",
     "overstory_node_graph_demo",
     "overstory_svg",
@@ -24,8 +26,10 @@ repository = "https://github.com/forest-rs/overstory"
 [workspace.dependencies]
 # Overstory workspace crates.
 overstory = { default-features = false, path = "overstory", version = "0.0.1" }
+overstory_app = { default-features = false, path = "overstory_app", version = "0.0.1" }
 overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
+overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 overstory_svg = { path = "overstory_svg", version = "0.0.1" }
 overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
@@ -33,6 +37,9 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 # Core data deps
 accesskit = { default-features = false, version = "0.24.0" }
 frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
+frameclock_apple = { default-features = false, features = [
+    "ca-display-link",
+], git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
@@ -72,6 +79,7 @@ imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.
 # Input event normalization.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
 ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
+ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }

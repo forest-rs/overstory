@@ -2,6 +2,6 @@
 
 mod app;
 
-fn main() -> overstory_host_winit::HostResult<()> {
+fn main() -> overstory_app::HostResult<()> {
     app::run()
 }

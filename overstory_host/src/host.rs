@@ -177,17 +177,28 @@ impl UiHost {
     /// Creates a host for `ui` with a fresh monotonic clock anchor.
     #[must_use]
     pub fn new(ui: Ui) -> Self {
+        let mut config = SchedulerConfig::pacing_only();
+        config.initial_depth = 1;
+        Self::with_scheduler_config(ui, config)
+    }
+
+    /// Creates a host for `ui` with an explicit frame scheduler
+    /// configuration.
+    ///
+    /// Platform hosts use this when their native wake source changes how
+    /// [`FrameBeginResult::WaitUntil`] should be handled. Event-loop hosts can
+    /// mirror frame-start waits into a timer queue; display-link-only hosts may
+    /// instead choose a fixed one-deep predictive plan that uses each display
+    /// callback as the frame-start wake.
+    #[must_use]
+    pub fn with_scheduler_config(ui: Ui, scheduler_config: SchedulerConfig) -> Self {
         Self {
             ui,
             scene: Scene::new(),
             scaled_scene: Scene::new(),
             surface_scenes: HashMap::new(),
             start_instant: Instant::now(),
-            frame_driver: {
-                let mut config = SchedulerConfig::pacing_only();
-                config.initial_depth = 1;
-                FrameDriver::new(config)
-            },
+            frame_driver: FrameDriver::new(scheduler_config),
             frame_output: OutputId(0),
             next_frame_index: 0,
             active_frame: None,

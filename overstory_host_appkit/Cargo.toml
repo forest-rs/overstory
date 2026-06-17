@@ -1,0 +1,57 @@
+[package]
+name = "overstory_host_appkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AppKit, wgpu, and vello native host for Overstory applications."
+publish = false
+
+[dependencies]
+overstory = { features = ["std"], workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+frameclock.workspace = true
+frameclock_apple.workspace = true
+imaging_vello.workspace = true
+imaging_wgpu.workspace = true
+overstory_host.workspace = true
+pollster.workspace = true
+ui-events.workspace = true
+ui-events-appkit.workspace = true
+web-time.workspace = true
+wgpu = { features = ["wgsl"], workspace = true }
+
+objc2 = { version = "0.6", default-features = false, features = ["alloc"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "NSApplication",
+    "NSEvent",
+    "NSGraphics",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSView",
+    "NSWindow",
+    "objc2-quartz-core",
+] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "CFCGTypes",
+] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "CGBase",
+    "objc2",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "NSNotification",
+    "NSObject",
+    "NSString",
+] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = [
+    "CALayer",
+    "CAMetalLayer",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+] }
+
+[lints]
+workspace = true
