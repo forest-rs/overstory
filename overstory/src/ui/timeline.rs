@@ -58,6 +58,17 @@ impl Ui {
             .has_pending_transition(TimelineTrackKey::new(element, target))
     }
 
+    /// Returns whether any presentation transition or one-shot effect is still
+    /// active.
+    ///
+    /// Host runtimes use this after dispatch or sampling a frame to keep
+    /// animation frame demand alive until all presentation motion has
+    /// completed.
+    #[must_use]
+    pub fn has_active_presentation_motion(&self) -> bool {
+        self.timeline.has_active_motion()
+    }
+
     pub(in crate::ui) fn has_presentation_target(
         &self,
         element: ElementId,

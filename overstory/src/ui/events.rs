@@ -63,8 +63,8 @@ fn pointer_event_time(event: &PointerEvent) -> Option<TimerInstant> {
         PointerEvent::Move(update) => Some(update.current.time),
         PointerEvent::Down(b) | PointerEvent::Up(b) => Some(b.state.time),
         PointerEvent::Scroll(s) => Some(s.state.time),
+        PointerEvent::Gesture(g) => Some(g.state.time),
         PointerEvent::Enter(_) | PointerEvent::Leave(_) | PointerEvent::Cancel(_) => None,
-        _ => None,
     }
 }
 

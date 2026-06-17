@@ -500,8 +500,10 @@ pub struct UiStorageInspectionSnapshot {
 pub struct TimelineInspectionSnapshot {
     /// Targets currently retained by the timeline runtime.
     pub targets: usize,
-    /// Active tracks currently sampling presentation values.
-    pub active_tracks: usize,
+    /// Active implicit transitions currently sampling presentation values.
+    pub active_transitions: usize,
+    /// Active one-shot effects currently sampling presentation values.
+    pub active_effects: usize,
     /// Transition specs waiting for a future target change.
     pub pending_transitions: usize,
     /// Scheduled cues that have not yet fired.

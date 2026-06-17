@@ -619,10 +619,22 @@ impl TimelineRuntime {
         self.targets.len()
     }
 
-    /// Returns the number of active timeline tracks.
+    /// Returns the number of active implicit transitions.
     #[must_use]
-    pub(crate) fn active_track_count(&self) -> usize {
+    pub(crate) fn active_transition_count(&self) -> usize {
         self.tracks.len()
+    }
+
+    /// Returns the number of active one-shot effects.
+    #[must_use]
+    pub(crate) fn active_effect_count(&self) -> usize {
+        self.effects.len()
+    }
+
+    /// Returns whether any transition or one-shot effect is active.
+    #[must_use]
+    pub(crate) fn has_active_motion(&self) -> bool {
+        !self.tracks.is_empty() || !self.effects.is_empty()
     }
 
     /// Returns the number of pending transition specs.

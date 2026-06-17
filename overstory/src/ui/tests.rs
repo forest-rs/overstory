@@ -4727,7 +4727,8 @@ fn inspection_snapshot_reports_timeline_counts() {
     let snapshot = ui.inspection_snapshot();
     assert_eq!(snapshot.timeline.pending_cues, 2);
     assert_eq!(snapshot.timeline.targets, 0);
-    assert_eq!(snapshot.timeline.active_tracks, 0);
+    assert_eq!(snapshot.timeline.active_transitions, 0);
+    assert_eq!(snapshot.timeline.active_effects, 0);
     assert_eq!(snapshot.timeline.pending_transitions, 0);
 }
 

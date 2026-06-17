@@ -300,12 +300,17 @@ impl UiHost {
 
     /// Dispatches a normalized pointer event into the UI.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> HostDispatchResult {
-        HostDispatchResult::from_pointer_event(event, self.ui.dispatch_pointer_event(event))
+        let result = self.ui.dispatch_pointer_event(event);
+        let mut result = HostDispatchResult::from_pointer_event(event, result);
+        self.include_active_presentation_motion(&mut result);
+        result
     }
 
     /// Dispatches a normalized keyboard event into the UI.
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> HostDispatchResult {
-        self.ui.dispatch_key(event).into()
+        let mut result = self.ui.dispatch_key(event).into();
+        self.include_active_presentation_motion(&mut result);
+        result
     }
 
     /// Returns a cursor icon when the UI's current cursor intent differs from
@@ -334,7 +339,7 @@ impl UiHost {
         let focused_before = self.ui.focused();
         let handled = self.ui.handle_accesskit_action(request);
         let focus_changed = focused_before != self.ui.focused();
-        HostDispatchResult {
+        let mut result = HostDispatchResult {
             handled,
             focus_changed,
             needs_redraw: handled || focus_changed,
@@ -343,7 +348,9 @@ impl UiHost {
             } else {
                 FrameDemand::NONE
             },
-        }
+        };
+        self.include_active_presentation_motion(&mut result);
+        result
     }
 
     /// Lays out and paints the hosted UI for `viewport`, then returns a
@@ -459,6 +466,9 @@ impl UiHost {
             output_empty,
             frame_timing: self.last_frame_timing,
         };
+        if self.ui.has_active_presentation_motion() {
+            self.request_frame(FrameDemand::ANIMATION);
+        }
         let scene = if use_scaled_scene {
             &self.scaled_scene
         } else {
@@ -513,6 +523,12 @@ impl UiHost {
         for update in self.ui.composition_surface_updates() {
             self.surface_scenes
                 .insert(update.surface(), update.scene().clone());
+        }
+    }
+
+    fn include_active_presentation_motion(&self, result: &mut HostDispatchResult) {
+        if self.ui.has_active_presentation_motion() {
+            result.include_frame_demand(FrameDemand::ANIMATION);
         }
     }
 
@@ -601,17 +617,25 @@ mod tests {
     use alloc::rc::Rc;
     use core::cell::Cell;
     use frameclock::diagnostics::{FrameDropReason, FrameTimingBasis};
-    use kurbo::Size;
-    use overstory::{Button, ElementId};
+    use kurbo::{Point, Size, Vec2};
+    use overstory::motion::{
+        EffectClip, EffectKeyframe, EffectRule, EffectRules, EffectTriggerId, PresentationSlot,
+        PresentationTarget, PresentationValue,
+    };
+    use overstory::{
+        Button, ChoiceOption, ElementId, Layout, SegmentedControl, segmented_item,
+        selected_segmented_index,
+    };
+    use ui_events::pointer::{
+        PointerButton, PointerButtonEvent, PointerButtons, PointerEvent, PointerId, PointerInfo,
+        PointerState, PointerType,
+    };
 
     #[test]
     fn prepare_frame_populates_surface_scene_cache() {
         let mut ui = Ui::new();
         let root = ui.root();
-        ui.set_layout(
-            root,
-            overstory::Layout::column(0.0).logical_size(100.0, 50.0),
-        );
+        ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 50.0));
         ui.append(root, overstory::Text::new("Hello"));
 
         let mut host = UiHost::new(ui);
@@ -628,10 +652,7 @@ mod tests {
     fn prepare_frame_records_diagnostics() {
         let mut ui = Ui::new();
         let root = ui.root();
-        ui.set_layout(
-            root,
-            overstory::Layout::column(0.0).logical_size(100.0, 50.0),
-        );
+        ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 50.0));
         ui.append(root, overstory::Text::new("Hello"));
 
         let mut host = UiHost::new(ui);
@@ -755,6 +776,73 @@ mod tests {
             .expect("submitted animation frame should publish timing");
         assert_eq!(summary.demand, FrameDemand::ANIMATION);
         assert_eq!(host.pending_frame_demand(), FrameDemand::BACKGROUND);
+    }
+
+    #[test]
+    fn active_presentation_motion_requeues_animation_demand_after_sampling() {
+        const TRIGGER: EffectTriggerId = EffectTriggerId::new(7);
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let target = PresentationTarget::Slot(PresentationSlot::VisualTranslation);
+        let clip = EffectClip::from_keyframes([
+            EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+            EffectKeyframe::new(
+                100_000_000,
+                PresentationValue::Offset2d(Vec2::new(12.0, 0.0)),
+            ),
+        ]);
+        ui.set_local(
+            root,
+            ui.properties().effects,
+            EffectRules::single(EffectRule::new(TRIGGER, target, clip)),
+        );
+        ui.set_now(0);
+        assert!(ui.trigger_effect(root, TRIGGER));
+
+        let mut host = UiHost::new(ui);
+        host.request_frame(FrameDemand::INPUT);
+        let prepared_demand = {
+            let prepared = host
+                .prepare_requested_frame(test_viewport(), HostFrameTiming::pacing_only(HostTime(0)))
+                .expect("input demand should produce an immediate prepared frame");
+            prepared.demand()
+        };
+
+        assert_eq!(prepared_demand, FrameDemand::INPUT);
+        assert!(
+            host.pending_frame_demand().contains(FrameDemand::ANIMATION),
+            "unfinished presentation motion should carry animation demand into the next frame"
+        );
+    }
+
+    #[test]
+    fn disabled_segment_effect_requests_animation_demand_after_dispatch() {
+        let mut ui = Ui::new();
+        ui.set_theme(overstory::theme::default_theme());
+        ui.set_cascade(overstory::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        ui.set_layout(root, Layout::row(0.0).logical_size(320.0, 80.0));
+        let segmented = ui.append(
+            root,
+            SegmentedControl::new()
+                .options([
+                    ChoiceOption::new("Preview"),
+                    ChoiceOption::new("Code").disabled(),
+                    ChoiceOption::new("Metrics"),
+                ])
+                .selected_index(0),
+        );
+        let disabled = segmented_item(&ui, segmented, 1).expect("disabled segment should exist");
+        ui.compute_layout(Size::new(320.0, 80.0));
+        let down = pointer_down(ui.effective_bounds(disabled).center(), 0);
+
+        let mut host = UiHost::new(ui);
+        let result = host.dispatch_pointer_event(&down);
+
+        assert_eq!(selected_segmented_index(host.ui(), segmented), Some(0));
+        assert!(result.needs_redraw);
+        assert!(result.frame_demand.contains(FrameDemand::ANIMATION));
     }
 
     #[test]
@@ -883,10 +971,7 @@ mod tests {
     fn accesskit_tree_update_applies_host_scale_factor() {
         let mut ui = Ui::new();
         let root = ui.root();
-        ui.set_layout(
-            root,
-            overstory::Layout::column(0.0).logical_size(100.0, 40.0),
-        );
+        ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 40.0));
         ui.compute_layout(Size::new(100.0, 40.0));
 
         let host = UiHost::new(ui);
@@ -916,6 +1001,39 @@ mod tests {
 
     fn test_viewport() -> FrameViewport {
         FrameViewport::from_logical_size(Size::new(100.0, 50.0), 1.0)
+    }
+
+    fn pointer_down(point: Point, time: u64) -> PointerEvent {
+        PointerEvent::Down(PointerButtonEvent {
+            pointer: pointer_info(),
+            button: Some(PointerButton::Primary),
+            state: pointer_state(point, time, true),
+        })
+    }
+
+    fn pointer_info() -> PointerInfo {
+        PointerInfo {
+            pointer_id: Some(PointerId::PRIMARY),
+            persistent_device_id: None,
+            pointer_type: PointerType::Mouse,
+        }
+    }
+
+    fn pointer_state(point: Point, time: u64, primary_down: bool) -> PointerState {
+        let mut buttons = PointerButtons::new();
+        if primary_down {
+            buttons.insert(PointerButton::Primary);
+        }
+        let mut state = PointerState {
+            time,
+            buttons,
+            count: 1,
+            pressure: if primary_down { 0.5 } else { 0.0 },
+            ..PointerState::default()
+        };
+        state.position.x = point.x;
+        state.position.y = point.y;
+        state
     }
 
     fn renderer_timings() -> UiRendererTimings {

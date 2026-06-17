@@ -42,6 +42,15 @@ impl From<KeyDispatchResult> for HostDispatchResult {
 }
 
 impl HostDispatchResult {
+    /// Adds `demand` to this result and marks the host as needing a redraw.
+    pub(crate) fn include_frame_demand(&mut self, demand: FrameDemand) {
+        if demand == FrameDemand::NONE {
+            return;
+        }
+        self.needs_redraw = true;
+        self.frame_demand |= demand;
+    }
+
     /// Creates a host dispatch result from a normalized pointer event and the
     /// corresponding core Overstory dispatch result.
     #[must_use]

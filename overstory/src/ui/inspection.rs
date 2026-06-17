@@ -709,7 +709,8 @@ impl Ui {
     fn timeline_inspection_snapshot(&self) -> TimelineInspectionSnapshot {
         TimelineInspectionSnapshot {
             targets: self.timeline.target_count(),
-            active_tracks: self.timeline.active_track_count(),
+            active_transitions: self.timeline.active_transition_count(),
+            active_effects: self.timeline.active_effect_count(),
             pending_transitions: self.timeline.pending_transition_count(),
             pending_cues: self.timeline.pending_cue_count(),
         }
