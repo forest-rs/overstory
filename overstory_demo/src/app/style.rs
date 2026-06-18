@@ -285,6 +285,8 @@ impl DemoThemeMode {
                 .set(theme::ACCENT_BG, accent_bg.clone())
                 .set(theme::ACCENT_HOVER_BG, accent_hover.clone())
                 .set(theme::ACCENT_PRESSED_BG, accent_pressed.clone())
+                // Re-skin the toggle/checkbox/radio "on" color with the accent.
+                .set(theme::SUCCESS_BG, accent_bg.clone())
                 .set(resources.root_bg, opt_solid(0x1e, 0x1e, 0x24, 0xff))
                 .set(resources.nav_bg, opt_solid(0x22, 0x23, 0x2b, 0xff))
                 .set(resources.nav_border, opt_solid(0x3a, 0x3d, 0x4b, 0xff))
@@ -313,6 +315,8 @@ impl DemoThemeMode {
                 .set(theme::ACCENT_BG, accent_bg.clone())
                 .set(theme::ACCENT_HOVER_BG, accent_hover)
                 .set(theme::ACCENT_PRESSED_BG, accent_pressed)
+                // Re-skin the toggle/checkbox/radio "on" color with the accent.
+                .set(theme::SUCCESS_BG, accent_bg.clone())
                 .set(resources.root_bg, opt_solid(0xf0, 0xf3, 0xf8, 0xff))
                 .set(resources.nav_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
                 .set(resources.nav_border, opt_solid(0xd2, 0xd8, 0xe5, 0xff))
