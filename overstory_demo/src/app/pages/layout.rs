@@ -10,7 +10,7 @@ impl View for LayoutPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("RESIZABLE PANES", PAGE_CARD_WIDTH, 326.0, |panes| {
+                row.demo_responsive_card("RESIZABLE PANES", PAGE_CARD_WIDTH, |panes| {
                     panes.with_child(Panel::row(8.0).align_center(), |split_row| {
                         let left_pane = split_row.add_with_children(
                             Panel::column(8.0)
@@ -62,7 +62,7 @@ impl View for LayoutPage {
                     });
                 });
 
-                row.demo_card("AXIS RULER", PAGE_CARD_WIDTH, 326.0, |ruler| {
+                row.demo_responsive_card("AXIS RULER", PAGE_CARD_WIDTH, |ruler| {
                     ruler.add(caption("Slider ticks come from understory_axis"));
                     ruler.add(
                         Slider::new()
@@ -70,7 +70,8 @@ impl View for LayoutPage {
                             .max(24.0)
                             .value(6.0)
                             .small_change(1.0)
-                            .large_change(8.0),
+                            .large_change(8.0)
+                            .fill_width(),
                     );
                     ruler.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
                     ruler.add(
