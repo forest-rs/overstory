@@ -1,0 +1,26 @@
+[package]
+name = "sightline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Remote diagnostics workspace for Spoor and Overstory applications."
+publish = false
+
+[features]
+default = ["winit-host"]
+appkit-host = ["overstory_app/appkit-host"]
+winit-host = ["overstory_app/winit-host"]
+
+[dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { default-features = false, workspace = true }
+peniko.workspace = true
+understory_style.workspace = true
+
+[dev-dependencies]
+ui-events.workspace = true
+
+[lints]
+workspace = true
