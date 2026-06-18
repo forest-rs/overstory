@@ -2493,13 +2493,13 @@ mod tests {
             .iter()
             .find(|row| row.label() == "Background")
             .expect("surface section should contain background row");
-        assert_eq!(background.origin(), Some("effective"));
+        assert_eq!(background.origin(), Some("local"));
         assert_eq!(
             background
                 .origin_info()
                 .expect("background row should carry origin metadata")
                 .description(),
-            "Resolved value after local stores, styles, inheritance, defaults, and presentation overrides."
+            "Value source: local"
         );
         assert_eq!(
             background.value(),

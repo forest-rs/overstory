@@ -240,7 +240,7 @@ pub struct ElementPropertyInspectionRow {
     pub group: ElementPropertyInspectionGroup,
     /// Display value sampled for this snapshot.
     pub value: ElementPropertyInspectionValue,
-    /// Where this concise value was sampled from.
+    /// Resolution stage that supplied the value.
     pub origin: ElementPropertyInspectionOrigin,
 }
 
