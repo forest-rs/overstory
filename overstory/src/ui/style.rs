@@ -3,10 +3,15 @@
 
 //! Style cascade, theme, match-state, and effective-value resolution.
 
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use understory_property::Property;
-use understory_style::{MatchState, ResolveCx, Resolved, StyleCascade, Theme};
+use understory_style::{
+    MatchState, ResolveCx, Resolved, ResolvedSource, ResourceKey, StyleCascade, StyleVocabulary,
+    Theme,
+};
 
 use crate::channels::{LAYOUT, STYLE};
 use crate::element::{Element, ElementId};
@@ -137,6 +142,22 @@ impl Ui {
         )
     }
 
+    /// Resolves `property` on `id` and returns a short human-readable
+    /// description of the source that supplied the value, mapping resource
+    /// keys to their registered names. Returns `None` if `id` does not exist.
+    #[must_use]
+    pub fn describe_property_source<T: Clone + 'static>(
+        &self,
+        id: ElementId,
+        property: Property<T>,
+    ) -> Option<String> {
+        let resolved = self.explain_property(id, property)?;
+        Some(describe_resolved_source(
+            &resolved.source,
+            self.style_vocabulary(),
+        ))
+    }
+
     /// Drains the STYLE channel, recomputing the match state of any dirty
     /// element subtree. Channels affected by changed styled properties are
     /// unioned into the invalidation tracker.
@@ -209,6 +230,44 @@ impl Ui {
     }
 }
 
+/// Formats a [`ResolvedSource`] into a short, name-mapped description for
+/// inspectors. Resource keys are mapped to their registered names; selector
+/// structure is summarized by stage and origin rather than fully printed.
+fn describe_resolved_source(source: &ResolvedSource, vocabulary: &StyleVocabulary) -> String {
+    fn resource(vocabulary: &StyleVocabulary, key: ResourceKey) -> String {
+        vocabulary
+            .resource_name(key)
+            .map_or_else(|| String::from("resource"), String::from)
+    }
+    match source {
+        ResolvedSource::Animation => String::from("Animation"),
+        ResolvedSource::LocalOverride { source } => format!("Local override ({source:?})"),
+        ResolvedSource::CascadeRule {
+            origin,
+            resource: res,
+            ..
+        } => match res {
+            Some(key) => format!("{origin:?} rule \u{2192} {}", resource(vocabulary, *key)),
+            None => format!("{origin:?} rule"),
+        },
+        ResolvedSource::CascadeDirect {
+            origin,
+            resource: res,
+            ..
+        } => match res {
+            Some(key) => format!("{origin:?} style \u{2192} {}", resource(vocabulary, *key)),
+            None => format!("{origin:?} style"),
+        },
+        ResolvedSource::ThemeResource { key } => {
+            format!("Theme resource {}", resource(vocabulary, *key))
+        }
+        ResolvedSource::Inherited { ancestor_depth, .. } => {
+            format!("Inherited (depth {ancestor_depth})")
+        }
+        ResolvedSource::Default => String::from("Framework default"),
+    }
+}
+
 #[cfg(test)]
 mod provenance_tests {
     use crate::{Button, ResolvedSource, Ui};
@@ -241,5 +300,13 @@ mod provenance_tests {
             explained.source,
             ResolvedSource::LocalOverride { .. }
         ));
+
+        let described = ui
+            .describe_property_source(button, font_size)
+            .expect("button should exist");
+        assert!(
+            described.contains("Local override"),
+            "described source was {described:?}",
+        );
     }
 }
