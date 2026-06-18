@@ -182,6 +182,13 @@ pub enum RoutedHandlerScope {
     Capture,
     /// Invoke only when the current element is the physical route target.
     Target,
+    /// Invoke when the current element is the physical target or is reached
+    /// during the bubble phase.
+    ///
+    /// This is the default app-facing click shape: handlers do not run during
+    /// capture, but parent elements still observe clicks that bubble out of
+    /// their ordinary descendants.
+    TargetOrBubble,
     /// Invoke only during the bubble phase.
     Bubble,
     /// Invoke when the current element is the semantic event target.
@@ -500,6 +507,7 @@ impl RoutedHandlerScope {
             Self::EntireRoute => true,
             Self::Capture => matches!(route.phase, Phase::Capture),
             Self::Target => route.is_target(),
+            Self::TargetOrBubble => route.is_target() || matches!(route.phase, Phase::Bubble),
             Self::Bubble => matches!(route.phase, Phase::Bubble),
             Self::SemanticTarget => route.is_semantic_target(),
         }
@@ -913,10 +921,6 @@ impl EventRuntime {
             press_position: None,
             last_drag_position: None,
         }
-    }
-
-    pub(crate) fn on_click(&mut self, id: ElementId, handler: ClickHandler) {
-        self.on_click_with_options(id, RoutedHandlerOptions::default(), handler);
     }
 
     pub(crate) fn on_click_with_options(

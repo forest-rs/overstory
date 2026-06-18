@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
+use crate::RoutedHandlerScope;
 use alloc::borrow::ToOwned;
 
 #[test]
@@ -118,6 +119,31 @@ fn button_builder_click_runs_once_for_template_part_source() {
     let label = ui
         .slot(button, SLOT_BUTTON_CONTENT)
         .expect("button template exposes content slot");
+
+    ui.synthesize_click(label, Point::ZERO);
+
+    assert_eq!(count.get(), 1);
+}
+
+#[test]
+fn ui_click_handler_runs_for_button_template_part_source() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{Button, SLOT_BUTTON_CONTENT};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let button = ui.append(root, Button::new("Run"));
+    let label = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("button template exposes content slot");
+    let count = Rc::new(Cell::new(0));
+    let count_for_handler = Rc::clone(&count);
+    ui.on_click(button, move |_ui, event| {
+        assert!(event.is_semantic_target());
+        count_for_handler.set(count_for_handler.get() + 1);
+    });
 
     ui.synthesize_click(label, Point::ZERO);
 
@@ -618,14 +644,18 @@ fn dispatch_click_walks_capture_target_bubble() {
     let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
     for (name, id) in [("root", root), ("child", child), ("grand", grand)] {
         let log = log.clone();
-        ui.on_click(id, move |_ui, event| {
-            let phase = match event.phase {
-                Phase::Capture => "capture",
-                Phase::Target => "target",
-                Phase::Bubble => "bubble",
-            };
-            log.borrow_mut().push(alloc::format!("{name}:{phase}"));
-        });
+        ui.on_click_with_options(
+            id,
+            RoutedHandlerOptions::new().scope(RoutedHandlerScope::EntireRoute),
+            move |_ui, event| {
+                let phase = match event.phase {
+                    Phase::Capture => "capture",
+                    Phase::Target => "target",
+                    Phase::Bubble => "bubble",
+                };
+                log.borrow_mut().push(alloc::format!("{name}:{phase}"));
+            },
+        );
     }
 
     ui.dispatch_click(grand, Point::ZERO);
@@ -654,11 +684,13 @@ fn dispatch_click_stops_route_when_handler_stops_propagation() {
 
     let child_fired = Rc::new(Cell::new(false));
     let child_fired_for_handler = Rc::clone(&child_fired);
-    ui.on_click(root, move |_ui, event| {
-        if matches!(event.phase, Phase::Capture) {
+    ui.on_click_with_options(
+        root,
+        RoutedHandlerOptions::new().scope(RoutedHandlerScope::Capture),
+        move |_ui, event| {
             event.stop_propagation();
-        }
-    });
+        },
+    );
     ui.on_click(child, move |_ui, _event| {
         child_fired_for_handler.set(true);
     });

@@ -25,7 +25,7 @@ use crate::event_runtime::{
     FocusHandlers, HandlerFamily, HandlerLane, KeyDispatchResult, KeyEvent, KeyHandlers,
     PointerDispatchResult, PointerEventKind, PointerHandlers, PointerRoutedEvent,
     RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedEventState,
-    RoutedHandlerOptions, ScrollEvent, ScrollHandlers,
+    RoutedHandlerOptions, RoutedHandlerScope, ScrollEvent, ScrollHandlers,
 };
 use crate::widget::Widget;
 
@@ -708,16 +708,26 @@ impl Ui {
         }
     }
 
-    /// Registers a click handler on `id`. The handler runs along the
-    /// responder capture → target → bubble sequence when
-    /// the click recognizer reports a primary-button click whose target
-    /// path includes this element. One handler per element for now;
-    /// subsequent calls replace the previous handler.
+    /// Registers a click handler on `id`.
+    ///
+    /// The handler runs when `id` is the clicked element or the click bubbles
+    /// through `id`. It deliberately skips capture so app handlers do not see
+    /// an early pre-target click before the control or template part that was
+    /// actually activated.
+    ///
+    /// For templated controls, a click on generated or presented template
+    /// content bubbles through the owning control as the semantic target. Use
+    /// [`Self::on_click_with_options`] for capture-only observation, handled
+    /// events, or other explicit routed-event policies.
     pub fn on_click<F>(&mut self, id: ElementId, handler: F)
     where
         F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
     {
-        self.events.on_click(id, Box::new(handler));
+        self.on_click_with_options(
+            id,
+            RoutedHandlerOptions::new().scope(RoutedHandlerScope::TargetOrBubble),
+            handler,
+        );
     }
 
     /// Registers a click handler with explicit routed handler options.
