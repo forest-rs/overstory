@@ -11,20 +11,14 @@ impl View for TypographyPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("TABULAR NUMBERS", PAGE_CARD_WIDTH, 326.0, |counter| {
-                    append_large_counter_to(
-                        counter,
-                        "Steady suffix",
-                        "events / min",
-                        85_000_000,
-                        257,
-                    );
+                row.demo_responsive_card("TABULAR NUMBERS", PAGE_CARD_WIDTH, |counter| {
+                    append_large_counter_to(counter, "Counter", "per minute", 85_000_000, 257);
                     counter.add(
                         body_text("The number text uses the OpenType tabular-figures feature, so its measured width stays steady as digits change."),
                     );
                 });
 
-                row.demo_card("TEXT SURFACES", PAGE_CARD_WIDTH, 326.0, |text| {
+                row.demo_responsive_card("TEXT SURFACES", PAGE_CARD_WIDTH, |text| {
                     text.add(
                         Text::new("Overstory keeps simple labels cheap while still resolving inherited text style through templates and generated parts.")
                             .font_size(16.0)
@@ -35,12 +29,12 @@ impl View for TypographyPage {
                     text.add(
                         TextInput::new()
                             .text("PlainEditor-backed editing")
-                            .width(PAGE_CONTROL_WIDTH),
+                            .fill_width(),
                     );
                     text.add(
                         TextInput::new()
                             .placeholder("IME, clipboard, accessibility next")
-                            .width(PAGE_CONTROL_WIDTH),
+                            .fill_width(),
                     );
                 });
             },
