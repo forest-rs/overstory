@@ -11,7 +11,7 @@ impl View for OverviewPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("INPUTS", OVERVIEW_CARD_WIDTH, 222.0, |inputs| {
+                row.demo_responsive_card("INPUTS", OVERVIEW_CARD_WIDTH, |inputs| {
                     inputs.add(
                         TextInput::new()
                             .placeholder("Search actions")
@@ -34,7 +34,7 @@ impl View for OverviewPage {
                     inputs.add(CheckBox::new("Record diagnostics").checked(true));
                 });
 
-                row.demo_card("SYSTEMS", OVERVIEW_CARD_WIDTH, 222.0, |systems| {
+                row.demo_responsive_card("SYSTEMS", OVERVIEW_CARD_WIDTH, |systems| {
                     systems.with_child(Panel::row(12.0).align_center(), |toggle_row| {
                         toggle_row.add(ToggleSwitch::new().checked(true));
                         toggle_row.add(control_label("Rendering enabled"));
@@ -49,7 +49,7 @@ impl View for OverviewPage {
                     append_tabular_counter_to(systems, "Frames", "fps", 120_000_000, 7);
                 });
 
-                row.demo_card("SELECTION", OVERVIEW_CARD_WIDTH, 222.0, |selection| {
+                row.demo_responsive_card("SELECTION", OVERVIEW_CARD_WIDTH, |selection| {
                     selection.add(
                         ListBox::new()
                             .items(renderer_queue_items())
