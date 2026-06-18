@@ -12,11 +12,7 @@ impl View for OverviewPage {
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
                 row.demo_responsive_card("INPUTS", OVERVIEW_CARD_WIDTH, |inputs| {
-                    inputs.add(
-                        TextInput::new()
-                            .placeholder("Search actions")
-                            .width(OVERVIEW_CONTROL_WIDTH),
-                    );
+                    inputs.add(TextInput::new().placeholder("Search actions").fill_width());
                     inputs.with_child(Panel::row(10.0).align_center(), |actions| {
                         let deploy_clicks = actions.local_state(0_u32);
                         actions.add(
@@ -40,11 +36,7 @@ impl View for OverviewPage {
                         toggle_row.add(control_label("Rendering enabled"));
                     });
                     systems.add(caption("GPU Budget"));
-                    let progress = systems.add(
-                        ProgressBar::new()
-                            .value(0.62)
-                            .size(OVERVIEW_CONTROL_WIDTH, 18.0),
-                    );
+                    let progress = systems.add(ProgressBar::new().value(0.62).fill_width(18.0));
                     drive_progress(systems.ui_mut(), progress, 0.62, 0.015, 120_000_000);
                     append_tabular_counter_to(systems, "Frames", "fps", 120_000_000, 7);
                 });
@@ -53,7 +45,7 @@ impl View for OverviewPage {
                     selection.add(
                         ListBox::new()
                             .items(renderer_queue_items())
-                            .size(OVERVIEW_LIST_WIDTH, 132.0)
+                            .fill_width(132.0)
                             .multiple_selection()
                             .selected_index(INITIAL_RENDERER_SELECTION)
                             .scroll_offset_y(28.0)
