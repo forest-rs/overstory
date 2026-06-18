@@ -24,6 +24,7 @@ mod template;
 use alloc::boxed::Box;
 
 use crate::controls::range::ScalarRange;
+use crate::controls::support::control_size;
 use crate::element::ElementId;
 use crate::layouts::Layout;
 use crate::ui::{ControlState, Ui};
@@ -90,6 +91,19 @@ impl Slider {
             on_value_changed: None,
             element,
         }
+    }
+
+    /// Stretches the slider to fill its container width, keeping its intrinsic
+    /// height.
+    #[must_use]
+    pub fn fill_width(mut self) -> Self {
+        self.element
+            .set_layout(Layout::new().relative().size(control_size(
+                true,
+                SLIDER_WIDTH,
+                SLIDER_HEIGHT,
+            )));
+        self
     }
 
     /// Sets the initial value.

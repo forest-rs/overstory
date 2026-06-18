@@ -564,7 +564,7 @@ mod fill_width_tests {
     use kurbo::Size;
 
     use crate::widget::AppendSpec;
-    use crate::{Layout, ListBox, ProgressBar, TextInput, Ui};
+    use crate::{Layout, ListBox, ProgressBar, Slider, TextInput, Ui};
 
     fn filled_width(spec: impl AppendSpec) -> f64 {
         let mut ui = Ui::new();
@@ -588,6 +588,10 @@ mod fill_width_tests {
         assert!(
             (filled_width(ProgressBar::new().fill_width(18.0)) - 300.0).abs() < 0.5,
             "progress bar should fill its container width",
+        );
+        assert!(
+            (filled_width(Slider::new().fill_width()) - 300.0).abs() < 0.5,
+            "slider should fill its container width",
         );
     }
 }
