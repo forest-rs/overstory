@@ -10,7 +10,7 @@ impl View for SelectionPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("RENDERER QUEUE", PAGE_CARD_WIDTH, 326.0, |list_card| {
+                row.demo_responsive_card("RENDERER QUEUE", PAGE_CARD_WIDTH, |list_card| {
                     let initial_summary = format!(
                         "Selected: {}",
                         renderer_queue_label(INITIAL_RENDERER_SELECTION)
@@ -39,7 +39,7 @@ impl View for SelectionPage {
                                     });
                                 });
                             })
-                            .size(PAGE_LIST_WIDTH, 190.0)
+                            .fill_width(190.0)
                             .item_extent(46.0)
                             .multiple_selection()
                             .selected_index(INITIAL_RENDERER_SELECTION)
@@ -56,7 +56,7 @@ impl View for SelectionPage {
                     )
                 });
 
-                row.demo_card("DETAIL", PAGE_CARD_WIDTH, 326.0, |detail| {
+                row.demo_responsive_card("DETAIL", PAGE_CARD_WIDTH, |detail| {
                     detail.add(page_heading("Virtualized by default"));
                     detail.add(body_text(
                         "Only visible rows are realized. Selection and scrolling stay keyed to item indices.",
