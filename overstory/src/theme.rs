@@ -440,6 +440,8 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .build();
     let slider_thumb_style = StyleBuilder::new()
         .background_resource(properties, THUMB_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
         .set(
             properties.transitions,
             layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
