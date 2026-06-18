@@ -17,6 +17,7 @@
 
 use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
+use cursor_icon::CursorIcon;
 use kurbo::Rect;
 use parley::{FontFeatures, FontVariations, PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
@@ -311,6 +312,10 @@ impl core::fmt::Debug for TextInputWidget {
 impl Widget for TextInputWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         Some(TYPE_TEXT_INPUT)
+    }
+
+    fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
+        Some(CursorIcon::Text)
     }
 
     fn accessibility_role(
@@ -1295,6 +1300,20 @@ mod tests {
             (caret_bounds.x0 - text_bounds.x1).abs() <= 1.0,
             "caret should land at shaped text end; text={text_bounds:?}, caret={caret_bounds:?}"
         );
+    }
+
+    #[test]
+    fn text_input_reports_text_cursor_on_hover() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::flex().logical_size(360.0, 80.0));
+        let input = ui.append(root, TextInput::new().text("edit me"));
+        ui.compute_layout(Size::new(360.0, 80.0));
+
+        let hover = pointer_move(ui.effective_bounds(input).center(), 1, false);
+        assert!(ui.dispatch_pointer_event(&hover).changed());
+
+        assert_eq!(ui.cursor_icon(), Some(CursorIcon::Text));
     }
 
     #[test]
