@@ -369,8 +369,8 @@ fn append_provenance_section(inspector: &mut ChildUi<'_>, subject: ElementId) {
         let background_readout = note.add(caption("Background: \u{2026}").wrap());
         note.add(
             caption(
-                "Drag a slider to flip a value to \"Local override\", or change the accent to see \
-                 the winning theme resource.",
+                "Corner radius is a local override (the inspector drives it); the background \
+                 resolves from the theme, and the readout names the winning origin and resource.",
             )
             .wrap(),
         );
