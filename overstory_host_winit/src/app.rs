@@ -11,8 +11,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::window::WindowId;
 
-use crate::state::{WindowState, init_window};
 use crate::WindowOptions;
+use crate::state::{WindowState, init_window};
 
 #[derive(Debug)]
 pub(crate) enum HostEvent {

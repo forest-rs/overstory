@@ -24,18 +24,21 @@ impl WindowOptions {
     }
 
     /// Sets the initial logical window size.
-    pub fn initial_size(mut self, width: u32, height: u32) -> Self {
+    #[must_use]
+    pub const fn initial_size(mut self, width: u32, height: u32) -> Self {
         self.initial_size = (width, height);
         self
     }
 
     /// Returns the platform window title.
+    #[must_use]
     pub fn title(&self) -> &str {
         &self.title
     }
 
     /// Returns the initial logical window size.
-    pub fn size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn size(&self) -> (u32, u32) {
         self.initial_size
     }
 }

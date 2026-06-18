@@ -13,6 +13,7 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindow};
 use overstory::Ui;
 
 mod blit;
+mod cursor;
 mod input;
 mod state;
 mod time;

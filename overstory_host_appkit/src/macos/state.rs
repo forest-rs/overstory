@@ -40,6 +40,7 @@ use ui_events::pointer::PointerEvent;
 use ui_events_appkit::AppKitInputResponder;
 
 use super::blit::BlitState;
+use super::cursor::set_cursor;
 use super::input::install_input_responder;
 use super::time::AppleTimeMap;
 use super::window::{
@@ -157,11 +158,13 @@ impl WindowState {
     pub(crate) fn dispatch_keyboard_event(&mut self, event: &KeyboardEvent) {
         let result = self.host.dispatch_key(event);
         self.finish_input_dispatch(result);
+        self.sync_cursor();
     }
 
     pub(crate) fn dispatch_pointer_event(&mut self, event: &PointerEvent) {
         let result = self.host.dispatch_pointer_event(event);
         self.finish_input_dispatch(result);
+        self.sync_cursor();
     }
 
     pub(crate) fn pointer_position(&self, event: &NSEvent) -> (f64, f64) {
@@ -202,6 +205,12 @@ impl WindowState {
             // after every dispatch so those deadlines are not stranded behind a
             // paused display link.
             self.sync_display_link_activity();
+        }
+    }
+
+    fn sync_cursor(&mut self) {
+        if let Some(next) = self.host.cursor_update() {
+            set_cursor(next);
         }
     }
 
