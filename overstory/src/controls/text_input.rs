@@ -25,6 +25,7 @@ use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::WidgetEventContext;
+use crate::controls::support::control_size;
 use crate::controls::support::f32_from_logical;
 use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
@@ -173,6 +174,14 @@ impl TextInput {
         self
     }
 
+    /// Stretches the input to fill its container width, keeping its intrinsic
+    /// height, instead of the fixed pixel width set by [`Self::width`].
+    #[must_use]
+    pub fn fill_width(mut self) -> Self {
+        self.element.set_layout(text_input_fill_layout());
+        self
+    }
+
     /// Overrides the text font size.
     ///
     /// When unset, the value comes from the active style cascade.
@@ -290,6 +299,12 @@ fn text_input_layout(width: f32) -> Layout {
     Layout::new()
         .relative()
         .logical_size(width.max(1.0), TEXT_INPUT_HEIGHT)
+}
+
+fn text_input_fill_layout() -> Layout {
+    Layout::new()
+        .relative()
+        .size(control_size(true, TEXT_INPUT_WIDTH, TEXT_INPUT_HEIGHT))
 }
 
 /// Per-element widget for `TextInput`.

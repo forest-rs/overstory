@@ -18,10 +18,24 @@ use crate::controls::scroll::ScrollBar;
 use crate::controls::scroll::normalize_scroll_offset_y;
 use crate::element::Element;
 use crate::element::ElementId;
-use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
+use crate::layouts::{Layout, LayoutDimension, LayoutPlacement, LayoutSize};
 use crate::scroll_runtime::ScrollState;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
+
+/// Resolves a control's outer size: either a fixed logical size, or a
+/// fill-width size with a fixed logical height. Controls swap only the width
+/// dimension so they keep their own layout flavor (relative positioning,
+/// centered rows) while stretching to fill their container.
+pub(crate) fn control_size(fill_width: bool, width: f32, height: f32) -> LayoutSize {
+    if fill_width {
+        LayoutSize::new()
+            .width(LayoutDimension::Percent(1.0))
+            .height(LayoutDimension::Logical(height))
+    } else {
+        LayoutSize::logical(width, height)
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct ElementSlot {
@@ -542,5 +556,38 @@ impl RectAxisExt for Rect {
             Axis::Horizontal => self.width(),
             Axis::Vertical => self.height(),
         }
+    }
+}
+
+#[cfg(test)]
+mod fill_width_tests {
+    use kurbo::Size;
+
+    use crate::widget::AppendSpec;
+    use crate::{Layout, ListBox, ProgressBar, TextInput, Ui};
+
+    fn filled_width(spec: impl AppendSpec) -> f64 {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(300.0, 200.0));
+        let id = ui.append(root, spec);
+        ui.compute_layout(Size::new(300.0, 200.0));
+        ui.effective_bounds(id).width()
+    }
+
+    #[test]
+    fn controls_fill_width_stretch_to_container() {
+        assert!(
+            (filled_width(ListBox::new().fill_width(120.0)) - 300.0).abs() < 0.5,
+            "list box should fill its container width",
+        );
+        assert!(
+            (filled_width(TextInput::new().fill_width()) - 300.0).abs() < 0.5,
+            "text input should fill its container width",
+        );
+        assert!(
+            (filled_width(ProgressBar::new().fill_width(18.0)) - 300.0).abs() < 0.5,
+            "progress bar should fill its container width",
+        );
     }
 }

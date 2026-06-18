@@ -35,6 +35,7 @@ use crate::controls::choice::{
 use crate::controls::scroll::{
     normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
 };
+use crate::controls::support::control_size;
 use crate::controls::support::{
     CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
     append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
@@ -172,6 +173,7 @@ pub struct ListBox {
     options: Vec<ChoiceOption>,
     item_template: Option<SharedListItemTemplate>,
     size: Option<(f32, f32)>,
+    fill_width: bool,
     item_extent: f64,
     overscan: f64,
     element: ElementConfig,
@@ -206,6 +208,7 @@ impl ListBox {
             options: Vec::new(),
             item_template: None,
             size: None,
+            fill_width: false,
             item_extent: DEFAULT_LIST_ITEM_EXTENT,
             overscan: DEFAULT_LIST_OVERSCAN,
             element,
@@ -283,6 +286,15 @@ impl ListBox {
     #[must_use]
     pub fn size(mut self, width: f32, height: f32) -> Self {
         self.size = Some((width, height));
+        self
+    }
+
+    /// Stretches the list to fill its container width, with a fixed logical
+    /// height, instead of the fixed pixel width set by [`Self::size`].
+    #[must_use]
+    pub fn fill_width(mut self, height: f32) -> Self {
+        self.fill_width = true;
+        self.size = Some((DEFAULT_LIST_BOX_WIDTH, height));
         self
     }
 
@@ -417,7 +429,12 @@ impl AppendSpec for ListBox {
             .size
             .unwrap_or((DEFAULT_LIST_BOX_WIDTH, DEFAULT_LIST_BOX_HEIGHT));
         ui.register_virtual_scroll_target(id, scroll_state);
-        ui.set_layout(id, Layout::new().relative().logical_size(width, height));
+        ui.set_layout(
+            id,
+            Layout::new()
+                .relative()
+                .size(control_size(self.fill_width, width, height)),
+        );
         self.element.apply_to(ui, id);
         id
     }

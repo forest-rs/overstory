@@ -22,6 +22,7 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{ArrangeContext, ArrangeResult};
 use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
+use crate::controls::support::control_size;
 use crate::controls::support::read_local_or;
 use crate::element::{Element, ElementId};
 use crate::layouts::{Layout, LayoutSize};
@@ -111,6 +112,14 @@ impl ProgressBar {
         self
     }
 
+    /// Stretches the bar to fill its container width, with a fixed logical
+    /// height, instead of the fixed pixel size set by [`Self::size`].
+    #[must_use]
+    pub fn fill_width(mut self, height: f32) -> Self {
+        self.element.set_layout(progress_fill_layout(height));
+        self
+    }
+
     /// Sets whether the percent label is shown.
     #[must_use]
     pub fn label(mut self, show_label: bool) -> Self {
@@ -172,6 +181,14 @@ fn progress_layout(width: f32, height: f32) -> Layout {
         .justify_center()
         .align_center()
         .logical_size(width.max(1.0), height.max(1.0))
+}
+
+fn progress_fill_layout(height: f32) -> Layout {
+    Layout::row(0.0)
+        .relative()
+        .justify_center()
+        .align_center()
+        .size(control_size(true, DEFAULT_WIDTH, height.max(1.0)))
 }
 
 /// Per-element widget for `ProgressBar`.
