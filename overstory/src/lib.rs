@@ -184,7 +184,7 @@ pub use controls::slider::{
     CLASS_SLIDER_MAJOR_TICK, CLASS_SLIDER_MINOR_TICK, PART_SLIDER_AXIS, PART_SLIDER_THUMB,
     PART_SLIDER_TICK, PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, SLOT_SLIDER_AXIS,
     SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL, SLOT_SLIDER_TRACK, Slider,
-    TYPE_SLIDER, set_slider_value,
+    SliderValueChangePhase, SliderValueChangedEvent, TYPE_SLIDER, set_slider_value,
 };
 pub use controls::spinner::{Spinner, TYPE_SPINNER};
 pub use controls::splitter::{
@@ -259,10 +259,10 @@ pub mod prelude {
         ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
         PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
         ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
-        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
-        SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration,
-        ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View,
-        Viewport,
+        SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter, StyleClass,
+        StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, Text, TextInput,
+        TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt,
+        TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 

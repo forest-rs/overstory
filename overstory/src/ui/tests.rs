@@ -187,7 +187,7 @@ fn child_ui_view_builds_reusable_authoring_units() {
 
 #[test]
 fn authoring_view_example_builds_and_binds_with_real_api() {
-    use crate::{BindingSpecExt, RangeSpecExt};
+    use crate::BindingSpecExt;
     use alloc::format;
 
     struct DeploymentView;
