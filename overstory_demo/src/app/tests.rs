@@ -157,6 +157,11 @@ fn gallery_nav_supports_focus_and_keyboard_controls() {
         assert!(ui.is_focusable(*row), "nav rows should be focusable");
     }
 
+    // Drive by position so the test survives nav reordering.
+    let first = DemoPage::ALL[0];
+    let second = DemoPage::ALL[1];
+    let third = DemoPage::ALL[2];
+
     assert!(ui.set_focus(Some(nav_rows[1])));
     assert!(
         ui.get(nav_rows[1])
@@ -168,27 +173,19 @@ fn gallery_nav_supports_focus_and_keyboard_controls() {
     let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
     let result = ui.dispatch_key(&enter);
     assert!(result.handled, "Enter should activate the focused nav row");
-    assert_selected_page_title(&mut ui, DemoPage::Inputs, "Enter should switch to Inputs");
+    assert_selected_page_title(&mut ui, second, "Enter should activate the focused page");
 
     let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
     let result = ui.dispatch_key(&down);
     assert!(result.handled, "ArrowDown should move and activate nav");
-    assert_eq!(ui.focused(), Some(nav_rows[DemoPage::Disclosure.index()]));
-    assert_selected_page_title(
-        &mut ui,
-        DemoPage::Disclosure,
-        "ArrowDown should switch to Disclosure",
-    );
+    assert_eq!(ui.focused(), Some(nav_rows[2]));
+    assert_selected_page_title(&mut ui, third, "ArrowDown should advance one page");
 
     let home = KeyboardEvent::key_down(Key::Named(NamedKey::Home), Code::Home);
     let result = ui.dispatch_key(&home);
     assert!(result.handled, "Home should move to the first nav row");
     assert_eq!(ui.focused(), Some(nav_rows[0]));
-    assert_selected_page_title(
-        &mut ui,
-        DemoPage::Overview,
-        "Home should switch to Overview",
-    );
+    assert_selected_page_title(&mut ui, first, "Home should switch to the first page");
 }
 
 #[test]

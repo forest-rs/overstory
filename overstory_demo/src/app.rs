@@ -94,6 +94,7 @@ pub(crate) fn run() -> overstory_app::HostResult<()> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DemoPage {
     Overview,
+    Workbench,
     Inputs,
     Disclosure,
     Systems,
@@ -108,8 +109,9 @@ enum DemoPage {
 }
 
 impl DemoPage {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 13] = [
         Self::Overview,
+        Self::Workbench,
         Self::Inputs,
         Self::Disclosure,
         Self::Systems,
@@ -130,23 +132,25 @@ impl DemoPage {
     fn index(self) -> usize {
         match self {
             Self::Overview => 0,
-            Self::Inputs => 1,
-            Self::Disclosure => 2,
-            Self::Systems => 3,
-            Self::Selection => 4,
-            Self::Outline => 5,
-            Self::Layout => 6,
-            Self::BoxModel => 7,
-            Self::Transcript => 8,
-            Self::Svg => 9,
-            Self::Typography => 10,
-            Self::Motion => 11,
+            Self::Workbench => 1,
+            Self::Inputs => 2,
+            Self::Disclosure => 3,
+            Self::Systems => 4,
+            Self::Selection => 5,
+            Self::Outline => 6,
+            Self::Layout => 7,
+            Self::BoxModel => 8,
+            Self::Transcript => 9,
+            Self::Svg => 10,
+            Self::Typography => 11,
+            Self::Motion => 12,
         }
     }
 
     fn nav_label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
+            Self::Workbench => "Workbench",
             Self::Inputs => "Inputs",
             Self::Disclosure => "Disclosure",
             Self::Systems => "Systems",
@@ -164,6 +168,7 @@ impl DemoPage {
     fn title(self) -> &'static str {
         match self {
             Self::Overview => "Overstory Control Gallery",
+            Self::Workbench => "Styling & Theming Workbench",
             Self::Inputs => "Inputs and Command Surfaces",
             Self::Disclosure => "Disclosure Containers",
             Self::Systems => "Controls and Values",
@@ -182,6 +187,9 @@ impl DemoPage {
         match self {
             Self::Overview => {
                 "A focused gallery for retained controls, routed input, style, timers, and composition."
+            }
+            Self::Workbench => {
+                "Drive a live control's properties, swap its template, and re-skin the accent token \u{2014} every edit flows through the real binding, style, and theme paths."
             }
             Self::Inputs => {
                 "Buttons, text fields, popups, checkboxes, disabled state, focus, hover, and tooltips."
@@ -224,6 +232,7 @@ impl DemoPage {
 struct DemoShellState {
     resources: DemoResources,
     theme_mode: Cell<DemoThemeMode>,
+    accent: Cell<DemoAccent>,
     selected_page: Cell<DemoPage>,
 }
 
@@ -232,16 +241,21 @@ impl DemoShellState {
         Self {
             resources,
             theme_mode: Cell::new(DemoThemeMode::Dark),
+            accent: Cell::new(DemoAccent::Indigo),
             selected_page: Cell::new(DemoPage::Overview),
         }
     }
 
-    fn resources(&self) -> DemoResources {
-        self.resources
+    fn accent(&self) -> DemoAccent {
+        self.accent.get()
     }
 
-    fn theme_mode(&self) -> DemoThemeMode {
-        self.theme_mode.get()
+    /// The theme for the current mode + accent. Both the mode toggle and the
+    /// styling workbench rebuild and re-apply through this single path.
+    fn current_theme(&self) -> understory_style::Theme {
+        self.theme_mode
+            .get()
+            .theme(self.resources, self.accent.get())
     }
 
     fn toggle_theme(&self) -> DemoThemeMode {
@@ -250,9 +264,19 @@ impl DemoShellState {
         next
     }
 
+    fn set_accent(&self, accent: DemoAccent) {
+        self.accent.set(accent);
+    }
+
     fn set_selected_page(&self, page: DemoPage) {
         self.selected_page.set(page);
     }
+}
+
+/// Applies the shell's current mode + accent theme. Visible to the chrome and
+/// page submodules as a private ancestor item.
+fn apply_demo_theme(ui: &mut Ui, shell: &DemoShellState) {
+    ui.set_theme(shell.current_theme());
 }
 
 /// Builds the demo tree as a focused gallery. The shell owns page selection;
@@ -261,7 +285,7 @@ fn build_ui() -> Ui {
     let mut ui = Ui::new();
     let tokens = ui.style_tokens::<DemoStyleTokens>();
     let shell = Rc::new(DemoShellState::new(tokens.resources));
-    ui.set_theme(shell.theme_mode().theme(shell.resources()));
+    apply_demo_theme(&mut ui, &shell);
     let root = ui.root();
     ui.add_class(root, CLASS_DEMO_ROOT);
 
@@ -311,7 +335,7 @@ fn build_ui() -> Ui {
     wire_nav_rows(&mut ui, &nav_rows, stage, Rc::clone(&shell));
     wire_theme_toggle(&mut ui, nav_chrome, Rc::clone(&shell));
     wire_devtools_button(&mut ui, nav_chrome.devtools_button());
-    pages::show_demo_page(&mut ui, stage, DemoPage::Overview);
+    pages::show_demo_page_themed(&mut ui, stage, DemoPage::Overview, &shell);
 
     ui.set_cascade(demo_cascade(ui.properties(), tokens));
     ui

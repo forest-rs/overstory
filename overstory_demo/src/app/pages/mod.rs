@@ -11,6 +11,7 @@ pub(super) mod svg;
 mod systems;
 mod transcript;
 mod typography;
+mod workbench;
 
 use super::*;
 
@@ -26,12 +27,29 @@ fn clear_children(ui: &mut Ui, parent: ElementId) {
     }
 }
 
+/// Test-only entry that renders a page without the live shell. Builds a
+/// throwaway shell so the styling workbench still functions in isolation.
+#[cfg(test)]
 pub(super) fn show_demo_page(ui: &mut Ui, stage: ElementId, page: DemoPage) {
+    let resources = ui.style_tokens::<DemoStyleTokens>().resources;
+    let shell = Rc::new(DemoShellState::new(resources));
+    show_demo_page_themed(ui, stage, page, &shell);
+}
+
+/// Renders a page into the stage, threading the live shell so the styling
+/// workbench can persist accent edits and re-apply the theme.
+pub(super) fn show_demo_page_themed(
+    ui: &mut Ui,
+    stage: ElementId,
+    page: DemoPage,
+    shell: &Rc<DemoShellState>,
+) {
     clear_children(ui, stage);
     ui.with_children(stage, |stage| {
         stage.view(PageHeader(page));
         match page {
             DemoPage::Overview => stage.view(overview::OverviewPage),
+            DemoPage::Workbench => stage.view(workbench::WorkbenchPage::new(Rc::clone(shell))),
             DemoPage::Inputs => stage.view(inputs::InputsPage),
             DemoPage::Disclosure => stage.view(disclosure::DisclosurePage),
             DemoPage::Systems => stage.view(systems::SystemsPage),

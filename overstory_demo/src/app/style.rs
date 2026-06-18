@@ -205,6 +205,59 @@ impl overstory::StyleTokenSet for DemoStyleTokens {
 pub(super) const EASE_OUT: TimingFunction = TimingFunction::cubic_bezier(0.16, 1.0, 0.3, 1.0);
 pub(super) const EASE_IN_OUT: TimingFunction = TimingFunction::cubic_bezier(0.65, 0.0, 0.35, 1.0);
 pub(super) const MID_SLOW: TimingFunction = TimingFunction::cubic_bezier(0.2, 0.48, 0.8, 0.52);
+
+/// Editable accent palette. The styling workbench rebuilds the theme with a
+/// new accent and re-applies it live, recoloring built-in controls (via the
+/// `theme::ACCENT_*` tokens) and demo chrome (the demo accent resource and nav
+/// selection) together.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DemoAccent {
+    Indigo,
+    Emerald,
+    Amber,
+    Rose,
+}
+
+impl DemoAccent {
+    pub(super) const ALL: [Self; 4] = [Self::Indigo, Self::Emerald, Self::Amber, Self::Rose];
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Indigo => "Indigo",
+            Self::Emerald => "Emerald",
+            Self::Amber => "Amber",
+            Self::Rose => "Rose",
+        }
+    }
+
+    pub(super) fn base(self) -> Color {
+        match self {
+            Self::Indigo => Color::from_rgba8(0x59, 0x75, 0xe6, 0xff),
+            Self::Emerald => Color::from_rgba8(0x1f, 0xb6, 0x7a, 0xff),
+            Self::Amber => Color::from_rgba8(0xe7, 0x95, 0x22, 0xff),
+            Self::Rose => Color::from_rgba8(0xe5, 0x5d, 0x87, 0xff),
+        }
+    }
+
+    pub(super) fn hover(self) -> Color {
+        match self {
+            Self::Indigo => Color::from_rgba8(0x6f, 0x89, 0xf0, 0xff),
+            Self::Emerald => Color::from_rgba8(0x33, 0xc9, 0x8c, 0xff),
+            Self::Amber => Color::from_rgba8(0xf5, 0xa8, 0x3c, 0xff),
+            Self::Rose => Color::from_rgba8(0xf0, 0x73, 0x9b, 0xff),
+        }
+    }
+
+    pub(super) fn pressed(self) -> Color {
+        match self {
+            Self::Indigo => Color::from_rgba8(0x45, 0x60, 0xc9, 0xff),
+            Self::Emerald => Color::from_rgba8(0x15, 0x9a, 0x66, 0xff),
+            Self::Amber => Color::from_rgba8(0xc9, 0x7d, 0x16, 0xff),
+            Self::Rose => Color::from_rgba8(0xc9, 0x4a, 0x72, 0xff),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum DemoThemeMode {
     Dark,
@@ -219,13 +272,23 @@ impl DemoThemeMode {
         }
     }
 
-    pub(super) fn theme(self, resources: DemoResources) -> understory_style::Theme {
+    pub(super) fn theme(
+        self,
+        resources: DemoResources,
+        accent: DemoAccent,
+    ) -> understory_style::Theme {
+        let accent_bg: Option<Brush> = Some(accent.base().into());
+        let accent_hover: Option<Brush> = Some(accent.hover().into());
+        let accent_pressed: Option<Brush> = Some(accent.pressed().into());
         match self {
             Self::Dark => theme::dark_theme_builder()
+                .set(theme::ACCENT_BG, accent_bg.clone())
+                .set(theme::ACCENT_HOVER_BG, accent_hover.clone())
+                .set(theme::ACCENT_PRESSED_BG, accent_pressed.clone())
                 .set(resources.root_bg, opt_solid(0x1e, 0x1e, 0x24, 0xff))
                 .set(resources.nav_bg, opt_solid(0x22, 0x23, 0x2b, 0xff))
                 .set(resources.nav_border, opt_solid(0x3a, 0x3d, 0x4b, 0xff))
-                .set(resources.nav_selected_bg, opt_solid(0x4d, 0x6f, 0xdc, 0xff))
+                .set(resources.nav_selected_bg, accent_bg.clone())
                 .set(resources.stage_bg, opt_solid(0x1b, 0x1c, 0x23, 0xff))
                 .set(resources.stage_border, opt_solid(0x2f, 0x32, 0x3d, 0xff))
                 .set(resources.header_bg, opt_solid(0x24, 0x25, 0x2e, 0xff))
@@ -239,7 +302,7 @@ impl DemoThemeMode {
                     opt_solid(0x2e, 0x3a, 0x35, 0xff),
                 )
                 .set(resources.motion_stage_bg, opt_solid(0x27, 0x28, 0x31, 0xff))
-                .set(resources.accent_bg, opt_solid(0x59, 0x75, 0xe6, 0xff))
+                .set(resources.accent_bg, accent_bg.clone())
                 .set(resources.text_fg, solid(0xf4, 0xf4, 0xf7, 0xff))
                 .set(resources.body_fg, solid(0xd8, 0xd9, 0xe2, 0xff))
                 .set(resources.muted_fg, solid(0xc8, 0xc8, 0xd2, 0xff))
@@ -247,10 +310,13 @@ impl DemoThemeMode {
                 .set(resources.focus_border, opt_solid(0xee, 0xef, 0xf8, 0xff))
                 .build(),
             Self::Light => theme::light_theme_builder()
+                .set(theme::ACCENT_BG, accent_bg.clone())
+                .set(theme::ACCENT_HOVER_BG, accent_hover)
+                .set(theme::ACCENT_PRESSED_BG, accent_pressed)
                 .set(resources.root_bg, opt_solid(0xf0, 0xf3, 0xf8, 0xff))
                 .set(resources.nav_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
                 .set(resources.nav_border, opt_solid(0xd2, 0xd8, 0xe5, 0xff))
-                .set(resources.nav_selected_bg, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(resources.nav_selected_bg, accent_bg.clone())
                 .set(resources.stage_bg, opt_solid(0xf7, 0xf9, 0xfc, 0xff))
                 .set(resources.stage_border, opt_solid(0xd8, 0xde, 0xea, 0xff))
                 .set(resources.header_bg, opt_solid(0xff, 0xff, 0xff, 0xff))
@@ -264,7 +330,7 @@ impl DemoThemeMode {
                     opt_solid(0xea, 0xf5, 0xef, 0xff),
                 )
                 .set(resources.motion_stage_bg, opt_solid(0xf2, 0xf4, 0xf8, 0xff))
-                .set(resources.accent_bg, opt_solid(0x2f, 0x62, 0xd6, 0xff))
+                .set(resources.accent_bg, accent_bg)
                 .set(resources.text_fg, solid(0x16, 0x1a, 0x24, 0xff))
                 .set(resources.body_fg, solid(0x3a, 0x40, 0x4e, 0xff))
                 .set(resources.muted_fg, solid(0x61, 0x68, 0x78, 0xff))
@@ -464,8 +530,11 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
             StyleOrigin::Base,
             untyped_class_selector(classes.demo_template_button_outer),
             StyleBuilder::new()
-                .background(properties, opt_solid(0x27, 0x3b, 0x6f, 0xff))
-                .border_brush(properties, opt_solid(0x90, 0xa7, 0xff, 0xff))
+                // Transparent so the surface behind shows through the frame gap,
+                // and a mode-aware neutral border so the frame re-skins instead
+                // of staying a fixed navy in light mode.
+                .background(properties, opt_solid(0x00, 0x00, 0x00, 0x00))
+                .border_brush_resource(properties, resources.card_border)
                 .border_width(properties, 1.0_f64)
                 .corner_radius(properties, 12.0_f64)
                 .set(properties.layout_container, LayoutContainer::row())

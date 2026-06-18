@@ -161,19 +161,20 @@ pub(super) fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, shell: Rc<De
 }
 
 pub(super) fn switch_demo_theme(ui: &mut Ui, shell: &DemoShellState) {
-    ui.set_theme(shell.toggle_theme().theme(shell.resources()));
+    shell.toggle_theme();
+    apply_demo_theme(ui, shell);
 }
 
 pub(super) fn activate_nav_page(
     ui: &mut Ui,
     nav_rows: &[ElementId],
-    shell: &DemoShellState,
+    shell: &Rc<DemoShellState>,
     stage: ElementId,
     page: DemoPage,
 ) {
     shell.set_selected_page(page);
     style_nav_rows(ui, nav_rows, page);
-    pages::show_demo_page(ui, stage, page);
+    pages::show_demo_page_themed(ui, stage, page, shell);
 }
 
 pub(super) fn focus_nav_page(ui: &mut Ui, nav_rows: &[ElementId], page: DemoPage) {
