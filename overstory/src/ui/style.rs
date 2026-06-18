@@ -6,7 +6,7 @@
 use alloc::vec::Vec;
 
 use understory_property::Property;
-use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
+use understory_style::{MatchState, ResolveCx, Resolved, StyleCascade, Theme};
 
 use crate::channels::{LAYOUT, STYLE};
 use crate::element::{Element, ElementId};
@@ -92,6 +92,51 @@ impl Ui {
         )
     }
 
+    /// Reads the effective resolved value of `property` on `id`.
+    ///
+    /// Resolves through the full precedence chain — animation, local layers,
+    /// style cascade, theme resources, inheritance, and the registry default —
+    /// the same path styling and layout use. Returns `None` if `id` does not
+    /// exist.
+    #[must_use]
+    pub fn resolved_value<T: Clone + 'static>(
+        &self,
+        id: ElementId,
+        property: Property<T>,
+    ) -> Option<T> {
+        let element = self.get(id)?;
+        Some(self.resolve_value_for(element, property))
+    }
+
+    /// Resolves `property` on `id` and explains which precedence stage and
+    /// source supplied the value.
+    ///
+    /// This is an owned, cold-path inspection API for devtools and tooling; it
+    /// does not affect the borrowed hot path. The returned
+    /// [`Resolved::source`](understory_style::Resolved) carries ids and
+    /// selector structures — mapping those to author-facing names is the
+    /// caller's job through [`Ui::style_vocabulary`].
+    #[must_use]
+    pub fn explain_property<T: Clone + 'static>(
+        &self,
+        id: ElementId,
+        property: Property<T>,
+    ) -> Option<Resolved<T>> {
+        let element = self.get(id)?;
+        Some(
+            ResolveCx::new(
+                &self.registry,
+                self.style.theme(),
+                UiResolveLookup::new(self),
+            )
+            .explain_value(
+                element,
+                property,
+                Some((self.style.cascade(), self.match_state(element.id()))),
+            ),
+        )
+    }
+
     /// Drains the STYLE channel, recomputing the match state of any dirty
     /// element subtree. Channels affected by changed styled properties are
     /// unioned into the invalidation tracker.
@@ -161,5 +206,40 @@ impl Ui {
         if allow_retemplate && !applied_property_change {
             self.retemplate_if_needed(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use crate::{Button, ResolvedSource, Ui};
+
+    #[test]
+    fn resolved_value_and_explain_property_report_source() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Hi"));
+        let font_size = ui.properties().font_size;
+
+        // Unset locally: resolves from the cascade/default, not a local override.
+        let explained = ui
+            .explain_property(button, font_size)
+            .expect("button should exist");
+        assert!(!matches!(
+            explained.source,
+            ResolvedSource::LocalOverride { .. }
+        ));
+        assert_eq!(ui.resolved_value(button, font_size), Some(explained.value));
+
+        // Set locally: the value reflects it and provenance reports the override.
+        ui.set_local(button, font_size, 22.0);
+        assert_eq!(ui.resolved_value(button, font_size), Some(22.0));
+        let explained = ui
+            .explain_property(button, font_size)
+            .expect("button should exist");
+        assert_eq!(explained.value, 22.0);
+        assert!(matches!(
+            explained.source,
+            ResolvedSource::LocalOverride { .. }
+        ));
     }
 }

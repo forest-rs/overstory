@@ -281,6 +281,7 @@ pub use understory_presentation::{
 pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;
 pub use understory_style::{
-    ClassId, PartTag, PseudoClassId, ResourceKey, StyleTokenSet, StyleVocabulary, TypeTag,
+    ClassId, PartTag, PseudoClassId, Resolved, ResolvedSource, ResourceKey, Selector, Specificity,
+    StyleOrigin, StyleTokenSet, StyleVocabulary, TypeTag,
 };
 pub use understory_timing::{TimerDuration, TimerId, TimerInstant};
