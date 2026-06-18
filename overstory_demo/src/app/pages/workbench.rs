@@ -243,7 +243,7 @@ fn build_inspector(row: &mut ChildUi<'_>, subject: ElementId, shell: Rc<DemoShel
                 );
             });
 
-            append_provenance_note(inspector);
+            append_provenance_section(inspector, subject);
         },
     );
 }
@@ -360,17 +360,55 @@ fn accent_from_label(label: &str) -> Option<DemoAccent> {
 /// "which selector set this value?" for each resolved property. understory now
 /// computes that provenance internally, but overstory has not yet surfaced a
 /// public `Ui::property_provenance` to read it — the next step for this page.
-fn append_provenance_note(inspector: &mut ChildUi<'_>) {
+/// Live provenance readout: shows where the subject's corner radius and
+/// background resolve from, refreshed on a timer so it reflects the current
+/// resolved state after slider edits and accent changes.
+fn append_provenance_section(inspector: &mut ChildUi<'_>, subject: ElementId) {
     section(inspector, "PROVENANCE", |note| {
+        let radius_readout = note.add(caption("Corner radius: \u{2026}").wrap());
+        let background_readout = note.add(caption("Background: \u{2026}").wrap());
         note.add(
             caption(
-                "Resolved values are observable, but origin is not yet surfaced in overstory. \
-                 A \"which selector won\" drill-down is the next step now that understory \
-                 computes provenance.",
+                "Drag a slider to flip a value to \"Local override\", or change the accent to see \
+                 the winning theme resource.",
             )
             .wrap(),
         );
+
+        let ui = note.ui_mut();
+        let _ = ui.schedule_timer_repeating(radius_readout, millis(450));
+        ui.on_timer(radius_readout, move |ui, _event| {
+            refresh_provenance(ui, subject, radius_readout, background_readout);
+        });
+        refresh_provenance(ui, subject, radius_readout, background_readout);
     });
+}
+
+fn refresh_provenance(
+    ui: &mut Ui,
+    subject: ElementId,
+    radius_readout: ElementId,
+    background_readout: ElementId,
+) {
+    let radii = ui.properties().surface.corner_radii;
+    let background = ui.properties().surface.background;
+    let radius_source = ui
+        .describe_property_source(subject, radii.top_left)
+        .unwrap_or_default();
+    let background_source = ui
+        .describe_property_source(subject, background)
+        .unwrap_or_default();
+    let text_prop = ui.properties().text;
+    ui.set_local(
+        radius_readout,
+        text_prop,
+        format!("Corner radius: {radius_source}"),
+    );
+    ui.set_local(
+        background_readout,
+        text_prop,
+        format!("Background: {background_source}"),
+    );
 }
 
 #[cfg(test)]
