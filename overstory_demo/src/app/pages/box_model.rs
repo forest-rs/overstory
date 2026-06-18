@@ -8,9 +8,9 @@ impl View for BoxModelPage {
 
     fn build(self, stage: &mut ChildUi<'_>) -> Self::Output {
         stage.with_child(
-            Panel::new().layout(Layout::row(18.0).fill_width()),
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_auto_card("CORNER CONTOURS", PAGE_CARD_WIDTH, |card| {
+                row.demo_responsive_card("CORNER CONTOURS", PAGE_CARD_WIDTH, |card| {
                     card.add(
                         body_text("Each specimen is an ordinary panel. Overstory resolves its surface longhands into presentation geometry before lowering."),
                     );
@@ -22,7 +22,7 @@ impl View for BoxModelPage {
                     });
                 });
 
-                row.demo_auto_card("BORDER SIDES", PAGE_CARD_WIDTH, |card| {
+                row.demo_responsive_card("BORDER SIDES", PAGE_CARD_WIDTH, |card| {
                     card.add(body_text(
                         "Physical sides can carry different widths and brushes. The lowerer now fills the border ring instead of stroking outside the box.",
                     ));
@@ -43,7 +43,7 @@ impl View for BoxModelPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_auto_card("BOX PADDING", PAGE_CARD_WIDTH, |card| {
+                row.demo_responsive_card("BOX PADDING", PAGE_CARD_WIDTH, |card| {
                     card.add(body_text(
                         "Surface padding and border widths now define the same content inset used by layout and decoration geometry.",
                     ));
