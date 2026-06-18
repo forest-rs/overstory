@@ -10,7 +10,7 @@ impl View for MotionPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("COLOR MOTION", PAGE_CARD_WIDTH, 376.0, |color| {
+                row.demo_responsive_card("COLOR MOTION", PAGE_CARD_WIDTH, |color| {
                     let [oklab, srgb] = color.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 128.0)),
@@ -55,7 +55,7 @@ impl View for MotionPage {
                     );
                 });
 
-                row.demo_card("COMPOSITION MOTION", PAGE_CARD_WIDTH, 326.0, |composition| {
+                row.demo_responsive_card("COMPOSITION MOTION", PAGE_CARD_WIDTH, |composition| {
                     let [opacity, border, retarget] = composition.with_child(
                         Panel::row(12.0)
                             .layout(Layout::row(12.0).logical_size(PAGE_CONTROL_WIDTH, 74.0)),
