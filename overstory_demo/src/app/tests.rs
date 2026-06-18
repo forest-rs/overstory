@@ -714,10 +714,17 @@ fn nav_element(ui: &Ui) -> ElementId {
 fn nav_rows(ui: &Ui) -> &[ElementId] {
     let nav = nav_element(ui);
     let nav_children = ui.get(nav).expect("nav should exist").children();
-    let nav_stack = nav_children
+    let nav_scroll = nav_children
         .get(5)
         .copied()
-        .expect("nav should contain a compact row stack");
+        .expect("nav should contain a scrollable row stack");
+    let nav_stack = ui
+        .get(nav_scroll)
+        .expect("nav scroll should exist")
+        .children()
+        .first()
+        .copied()
+        .expect("nav scroll should contain the row stack");
     ui.get(nav_stack)
         .expect("nav stack should exist")
         .children()

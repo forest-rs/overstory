@@ -60,13 +60,29 @@ pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
     let row_count = DemoPage::ALL.len() as f32;
     let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
+    // Put the row stack inside a scroll viewport that fills the remaining nav
+    // height, so the page list scrolls when it cannot fit the window.
     nav.with_child(
-        Panel::column(4.0)
-            .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
-        |stack| {
-            for page in DemoPage::ALL {
-                rows.push(append_nav_row(stack, page, page == DemoPage::Overview));
-            }
+        ScrollView::new().layout(
+            Layout::column(0.0)
+                .size(
+                    LayoutSize::new()
+                        .width(LayoutDimension::Logical(NAV_CONTENT_WIDTH))
+                        .min_height(LayoutDimension::Logical(0.0)),
+                )
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        ),
+        |scroll| {
+            scroll.with_child(
+                Panel::column(4.0)
+                    .layout(Layout::column(4.0).logical_size(NAV_CONTENT_WIDTH, stack_height)),
+                |stack| {
+                    for page in DemoPage::ALL {
+                        rows.push(append_nav_row(stack, page, page == DemoPage::Overview));
+                    }
+                },
+            );
         },
     );
     Rc::from(rows.into_boxed_slice())
