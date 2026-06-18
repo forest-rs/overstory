@@ -29,76 +29,93 @@ impl View for InputsPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_fit_card("TEXT INPUTS", PAGE_CARD_WIDTH, 224.0, |forms| {
+                row.demo_responsive_card("TEXT FIELDS", PAGE_CARD_WIDTH, |forms| {
                     forms.add(
                         TextInput::new()
-                            .placeholder("Search command palette")
-                            .width(PAGE_CONTROL_WIDTH),
+                            .placeholder("Placeholder text")
+                            .fill_width(),
+                    );
+                    forms.add(TextInput::new().text("Editable value").fill_width());
+                    forms.add(
+                        TextInput::new()
+                            .text("Read-only field")
+                            .read_only(true)
+                            .fill_width(),
                     );
                     forms.add(
                         TextInput::new()
-                            .text("Read-only selection")
-                            .read_only(true)
-                            .width(PAGE_CONTROL_WIDTH),
+                            .text("Disabled field")
+                            .disabled()
+                            .fill_width(),
                     );
                     forms.add(caption(
-                        "Focus rings, hover borders, selection, and read-only state",
+                        "Placeholder, editable, read-only, and disabled states. Focus and hover \
+                         draw from the active theme.",
                     ));
                 });
 
-                row.demo_fit_card("ACTIONS", PAGE_CARD_WIDTH, 224.0, |actions| {
-                    actions.with_child(Panel::row(10.0).align_center(), |buttons| {
-                        let deploy_clicks = buttons.local_state(0_u32);
-                        buttons.content(
-                            Button::new("")
-                                .template(double_frame_button_template())
-                                .font_size(15.0)
-                                .layout(Layout::row(0.0).align_center())
-                                .background(None::<Brush>)
-                                .border_brush(None::<Brush>)
-                                .border_width(0.0)
-                                .corner_radius(0.0)
-                                .on_click(cycling_click_handler(deploy_clicks))
-                                .tooltip("Run the staged deployment workflow"),
-                            |content| {
-                                content.with_child(Panel::row(8.0).align_center(), |label| {
-                                    label.add(
-                                        Panel::new()
-                                            .layout(Layout::new().logical_size(8.0, 8.0))
-                                            .background(solid(0x9d, 0xf8, 0xb0, 0xff))
-                                            .corner_radius(4.0),
-                                    );
-                                    label.add(
-                                        Text::new("")
-                                            .font_size(15.0)
-                                            .bind_text(deploy_clicks.map(|count| {
-                                                cycling_click_label("Deploy", *count)
-                                            })),
-                                    );
-                                });
-                            },
-                        );
-                        buttons.add(
-                            Button::new("Review")
-                                .font_size(15.0)
-                                .on_click(popup_click_handler())
-                                .tooltip("Toggle an anchored popup"),
-                        );
-                    });
+                row.demo_responsive_card("BUTTONS & CHECKS", PAGE_CARD_WIDTH, |actions| {
+                    actions.with_child(
+                        Panel::new().layout(Layout::row(10.0).wrap().align_center()),
+                        |buttons| {
+                            let activations = buttons.local_state(0_u32);
+                            // A button wearing a custom two-surface template; behavior and
+                            // bound content are unchanged.
+                            buttons.content(
+                                Button::new("")
+                                    .template(double_frame_button_template())
+                                    .font_size(15.0)
+                                    .layout(Layout::row(0.0).align_center())
+                                    .background(None::<Brush>)
+                                    .border_brush(None::<Brush>)
+                                    .border_width(0.0)
+                                    .corner_radius(0.0)
+                                    .on_click(cycling_click_handler(activations))
+                                    .tooltip("Same button behavior, replacement template"),
+                                |content| {
+                                    content.with_child(Panel::row(8.0).align_center(), |label| {
+                                        label.add(
+                                            Panel::new()
+                                                .layout(Layout::new().logical_size(8.0, 8.0))
+                                                .background(solid(0x9d, 0xf8, 0xb0, 0xff))
+                                                .corner_radius(4.0),
+                                        );
+                                        label.add(
+                                            Text::new("").font_size(15.0).bind_text(
+                                                activations.map(|count| {
+                                                    cycling_click_label("Deploy", *count)
+                                                }),
+                                            ),
+                                        );
+                                    });
+                                },
+                            );
+                            buttons.add(Button::new("Default").font_size(15.0));
+                            buttons.add(Button::new("Disabled").font_size(15.0).disabled());
+                            buttons.add(
+                                Button::new("Popup")
+                                    .font_size(15.0)
+                                    .on_click(popup_click_handler())
+                                    .tooltip("Anchored popup"),
+                            );
+                        },
+                    );
                     actions.add(Divider::horizontal().length(PAGE_CONTROL_WIDTH));
+                    // A check box wearing a custom box template; checked behavior is
+                    // unchanged.
                     actions.content(
                         CheckBox::new("")
                             .checked(true)
                             .template(round_check_box_template()),
                         |label| {
                             label.with_child(Panel::row(8.0).align_center(), |row| {
-                                row.add(Text::new("Enable staged rollout").font_size(15.0));
-                                row.add(caption("template slot"));
+                                row.add(Text::new("Custom box template").font_size(15.0));
+                                row.add(caption("checked"));
                             });
                         },
                     );
-                    actions.add(CheckBox::new("Collect timing traces"));
-                    actions.add(CheckBox::new("Send diagnostics").disabled());
+                    actions.add(CheckBox::new("Unchecked"));
+                    actions.add(CheckBox::new("Disabled").disabled());
                 });
             },
         );
@@ -106,8 +123,8 @@ impl View for InputsPage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_fit_card("RADIO GROUP", PAGE_CARD_WIDTH, 214.0, |radios| {
-                    let summary = radios.local_state(String::from("Release lane: Balanced"));
+                row.demo_responsive_card("RADIO GROUP", PAGE_CARD_WIDTH, |radios| {
+                    let summary = radios.local_state(String::from("Selected: Balanced"));
                     radios.add(caption("").bind_text(summary.binding()));
                     radios.add(
                         RadioGroup::new()
@@ -116,18 +133,17 @@ impl View for InputsPage {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                summary.set(ui, format!("Release lane: {selected_item}"));
+                                summary.set(ui, format!("Selected: {selected_item}"));
                             }),
                     );
                     radios.content(RadioButton::new("").disabled(), |label| {
                         label.with_child(Panel::row(8.0).align_center(), |row| {
-                            row.add(Text::new("Canary").font_size(15.0));
-                            row.add(caption("retained label"));
+                            row.add(Text::new("Disabled option").font_size(15.0));
                         });
                     });
                 });
-                row.demo_fit_card("SEGMENTED", PAGE_CARD_WIDTH, 154.0, |segments| {
-                    let summary = segments.local_state(String::from("View mode: Preview"));
+                row.demo_responsive_card("SEGMENTED", PAGE_CARD_WIDTH, |segments| {
+                    let summary = segments.local_state(String::from("Selected: Preview"));
                     segments.add(caption("").bind_text(summary.binding()));
                     segments.add(
                         SegmentedControl::new()
@@ -141,9 +157,10 @@ impl View for InputsPage {
                             .on_selection_changed(move |ui, event| {
                                 let selected_item =
                                     event.selected_item.unwrap_or_else(|| "None".to_owned());
-                                summary.set(ui, format!("View mode: {selected_item}"));
+                                summary.set(ui, format!("Selected: {selected_item}"));
                             }),
                     );
+                    segments.add(caption("One segment disabled; selection skips it."));
                 });
             },
         );

@@ -67,14 +67,6 @@ pub(super) trait DemoChildUiExt {
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R;
 
-    fn demo_fit_card<R>(
-        &mut self,
-        title: &str,
-        width: f32,
-        min_height: f32,
-        f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> R;
-
     /// A fluid card: `min_width` is the floor, but the card grows to share the
     /// row and wraps to the next line when the row runs out of space. Height
     /// follows content. Use inside a `Layout::row(..).wrap().fill_width()` so
@@ -124,31 +116,6 @@ impl DemoChildUiExt for ChildUi<'_> {
                 .class(CLASS_DEMO_CARD)
                 .padding_all(18.0)
                 .layout(Layout::column(14.0).logical_size(width, height)),
-            |card| {
-                card.add(card_title(title));
-                f(card)
-            },
-        )
-    }
-
-    fn demo_fit_card<R>(
-        &mut self,
-        title: &str,
-        width: f32,
-        min_height: f32,
-        f: impl FnOnce(&mut ChildUi<'_>) -> R,
-    ) -> R {
-        self.with_child(
-            Panel::column(14.0)
-                .class(CLASS_DEMO_CARD)
-                .padding_all(18.0)
-                .layout(
-                    Layout::column(14.0).size(
-                        LayoutSize::new()
-                            .width(LayoutDimension::Logical(width))
-                            .min_height(LayoutDimension::Logical(min_height)),
-                    ),
-                ),
             |card| {
                 card.add(card_title(title));
                 f(card)
