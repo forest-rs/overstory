@@ -16,12 +16,13 @@ use overstory::{
 };
 
 use crate::app::AppState;
-use crate::style::{COLOR_ACTIVITY, COLOR_SUCCESS, COLOR_TIMING, SightlineTokens, sightline_theme};
+use crate::sample_profiler::{self, SampleProfilerView};
+use crate::style::{SightlineTokens, sightline_theme};
 
 const SHELL_PADDING: f32 = 18.0;
 const TOP_BAR_HEIGHT: f32 = 60.0;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Shell {
     #[cfg_attr(
         not(test),
@@ -32,6 +33,7 @@ pub(crate) struct Shell {
     )]
     source_select: ElementId,
     theme_button: ElementId,
+    sample_profiler: SampleProfilerView,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -54,19 +56,22 @@ pub(crate) fn build(
             .padding(SHELL_PADDING),
         |shell| {
             let top_bar = build_top_bar(shell, tokens, &state);
-            build_workspace(shell, tokens);
-            top_bar
+            let sample_profiler = build_workspace(shell, tokens, &state);
+            (top_bar, sample_profiler)
         },
     );
+    let (top_bar, sample_profiler) = top_bar;
     Shell {
         source_select: top_bar.source_select,
         theme_button: top_bar.theme_button,
+        sample_profiler,
     }
 }
 
 pub(crate) fn wire(ui: &mut Ui, shell: Shell, tokens: SightlineTokens, state: Rc<AppState>) {
+    let theme_state = Rc::clone(&state);
     ui.on_click(shell.theme_button, move |ui, event| {
-        let next = state.toggle_theme();
+        let next = theme_state.toggle_theme();
         ui.set_theme(sightline_theme(next, tokens));
         ui.set_local(
             event.semantic_source(),
@@ -74,6 +79,7 @@ pub(crate) fn wire(ui: &mut Ui, shell: Shell, tokens: SightlineTokens, state: Rc
             theme_button_label(next).to_string(),
         );
     });
+    sample_profiler::wire(ui, shell.sample_profiler, state);
 }
 
 fn build_top_bar(shell: &mut ChildUi<'_>, tokens: SightlineTokens, state: &AppState) -> TopBar {
@@ -127,16 +133,26 @@ fn build_top_bar(shell: &mut ChildUi<'_>, tokens: SightlineTokens, state: &AppSt
     )
 }
 
-fn build_workspace(shell: &mut ChildUi<'_>, tokens: SightlineTokens) {
-    shell.with_child(
-        Panel::column(18.0)
-            .class(tokens.workspace)
-            .layout(Layout::column(18.0).fill_size()),
-        |workspace| build_stage(workspace, tokens),
-    );
+fn build_workspace(
+    shell: &mut ChildUi<'_>,
+    tokens: SightlineTokens,
+    state: &AppState,
+) -> SampleProfilerView {
+    shell
+        .children(
+            Panel::column(18.0)
+                .class(tokens.workspace)
+                .layout(Layout::column(18.0).fill_size()),
+            |workspace| build_stage(workspace, tokens, state),
+        )
+        .1
 }
 
-fn build_stage(parent: &mut ChildUi<'_>, tokens: SightlineTokens) {
+fn build_stage(
+    parent: &mut ChildUi<'_>,
+    tokens: SightlineTokens,
+    state: &AppState,
+) -> SampleProfilerView {
     parent.with_child(
         Panel::column(18.0)
             .class(tokens.workspace)
@@ -149,94 +165,14 @@ fn build_stage(parent: &mut ChildUi<'_>, tokens: SightlineTokens) {
                     .layout(Layout::new().flex_shrink(0.0)),
             );
             stage.add(
-                Text::new("No data source selected.")
+                Text::new("Local sampled frame data")
                     .font_size(16.0)
                     .class(tokens.secondary_text)
                     .layout(Layout::new().flex_shrink(0.0)),
             );
-            build_instrument_placeholder(stage, tokens);
+            sample_profiler::build(stage, tokens, state.sample_profiler())
         },
-    );
-}
-
-fn build_instrument_placeholder(parent: &mut ChildUi<'_>, tokens: SightlineTokens) {
-    parent.with_child(
-        Panel::column(16.0)
-            .class(tokens.instrument)
-            .layout(Layout::column(16.0).fill_size())
-            .padding(22.0)
-            .border_width(1.0)
-            .corner_radius(8.0),
-        |surface| {
-            surface.add(
-                Text::new("Sample Profiler")
-                    .font_size(24.0)
-                    .class(tokens.title_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            surface.add(
-                Text::new("Chronostore-backed samples will render here.")
-                    .font_size(14.0)
-                    .class(tokens.secondary_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            surface.with_child(
-                Panel::column(10.0).layout(Layout::column(10.0).fill_width().flex_shrink(0.0)),
-                |lanes| {
-                    build_lane(lanes, tokens, "frame", COLOR_ACTIVITY, 0.82);
-                    build_lane(lanes, tokens, "layout", COLOR_SUCCESS, 0.35);
-                    build_lane(lanes, tokens, "backend", COLOR_TIMING, 0.58);
-                },
-            );
-        },
-    );
-}
-
-fn build_lane(
-    parent: &mut ChildUi<'_>,
-    tokens: SightlineTokens,
-    label: &'static str,
-    color: peniko::Color,
-    width: f32,
-) {
-    parent.with_child(
-        Panel::row(10.0).layout(
-            Layout::row(10.0)
-                .fill_width()
-                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center)),
-        ),
-        |row| {
-            row.add(
-                Text::new(label)
-                    .font_size(13.0)
-                    .class(tokens.muted_text)
-                    .layout(
-                        Layout::new()
-                            .size(LayoutSize::new().width(LayoutDimension::Logical(82.0)))
-                            .flex_shrink(0.0),
-                    ),
-            );
-            row.with_child(
-                Panel::row(0.0).class(tokens.rule).layout(
-                    Layout::row(0.0)
-                        .fill_width()
-                        .size(LayoutSize::new().height(LayoutDimension::Logical(12.0))),
-                ),
-                |track| {
-                    track.add(
-                        Panel::new()
-                            .background(Some(peniko::Brush::from(color)))
-                            .layout(
-                                Layout::new()
-                                    .logical_size((560.0 * width).max(2.0), 12.0)
-                                    .flex_shrink(0.0),
-                            )
-                            .corner_radius(4.0),
-                    );
-                },
-            );
-        },
-    );
+    )
 }
 
 fn theme_button_label(mode: crate::style::SightlineThemeMode) -> &'static str {
@@ -267,7 +203,7 @@ mod tests {
 
         let root = ui.root();
         let shell = build(&mut ui, root, tokens, Rc::clone(&state));
-        wire(&mut ui, shell, tokens, Rc::clone(&state));
+        wire(&mut ui, shell.clone(), tokens, Rc::clone(&state));
 
         assert_eq!(state.theme_mode(), SightlineThemeMode::Graphite);
         assert_eq!(theme_button_label(state.theme_mode()), "Blueprint");
@@ -289,7 +225,7 @@ mod tests {
         let root = ui.root();
         ui.set_layout(root, Layout::column(0.0).fill_size());
         let shell = build(&mut ui, root, tokens, Rc::clone(&state));
-        wire(&mut ui, shell, tokens, Rc::clone(&state));
+        wire(&mut ui, shell.clone(), tokens, Rc::clone(&state));
         ui.compute_layout(Size::new(1440.0, 900.0));
 
         let source_center = ui.effective_bounds(shell.source_select).center();

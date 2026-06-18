@@ -13,6 +13,7 @@ use core::cell::Cell;
 use overstory::{Layout, Ui};
 use overstory_app::WindowOptions;
 
+use crate::sample_profiler::SampleProfilerState;
 use crate::shell;
 use crate::style::{SightlineStyleTokens, SightlineThemeMode, sightline_cascade, sightline_theme};
 
@@ -29,12 +30,14 @@ pub(crate) fn run() -> overstory_app::HostResult<()> {
 #[derive(Debug)]
 pub(crate) struct AppState {
     theme_mode: Cell<SightlineThemeMode>,
+    sample_profiler: SampleProfilerState,
 }
 
 impl AppState {
     pub(crate) fn new() -> Self {
         Self {
             theme_mode: Cell::new(SightlineThemeMode::Graphite),
+            sample_profiler: SampleProfilerState::new(),
         }
     }
 
@@ -46,6 +49,10 @@ impl AppState {
         let next = self.theme_mode.get().toggled();
         self.theme_mode.set(next);
         next
+    }
+
+    pub(crate) fn sample_profiler(&self) -> &SampleProfilerState {
+        &self.sample_profiler
     }
 }
 

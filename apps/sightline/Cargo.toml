@@ -14,10 +14,14 @@ appkit-host = ["overstory_app/appkit-host"]
 winit-host = ["overstory_app/winit-host"]
 
 [dependencies]
+chronostore.workspace = true
 overstory = { features = ["system-fonts"], workspace = true }
 overstory_app = { default-features = false, workspace = true }
 peniko.workspace = true
+understory_axis.workspace = true
 understory_style.workspace = true
+understory_timeline_model.workspace = true
+understory_view2d.workspace = true
 
 [dev-dependencies]
 ui-events.workspace = true

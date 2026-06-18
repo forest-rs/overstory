@@ -570,6 +570,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chronostore"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/chronostore.git?rev=f618fbf045db7767e4ca6c68e12b86a327447ad2#f618fbf045db7767e4ca6c68e12b86a327447ad2"
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2966,11 +2971,15 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "sightline"
 version = "0.0.1"
 dependencies = [
+ "chronostore",
  "overstory",
  "overstory_app",
  "peniko",
  "ui-events",
+ "understory_axis",
  "understory_style",
+ "understory_timeline_model",
+ "understory_view2d",
 ]
 
 [[package]]
@@ -3584,6 +3593,11 @@ dependencies = [
  "invalidation",
  "understory_property",
 ]
+
+[[package]]
+name = "understory_timeline_model"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=9ae55ad08ed96c0a66eb9156b9c665ba64e113cf#9ae55ad08ed96c0a66eb9156b9c665ba64e113cf"
 
 [[package]]
 name = "understory_timing"

@@ -114,6 +114,10 @@ pub(crate) struct SightlineTokens {
     pub(crate) instrument: ClassId,
     pub(crate) metric: ClassId,
     pub(crate) rule: ClassId,
+    pub(crate) plot: ClassId,
+    pub(crate) plot_bar: ClassId,
+    pub(crate) plot_tick: ClassId,
+    pub(crate) plot_selection: ClassId,
     pub(crate) title_text: ClassId,
     pub(crate) secondary_text: ClassId,
     pub(crate) muted_text: ClassId,
@@ -131,8 +135,10 @@ pub(crate) struct SightlineTokens {
     secondary_fg: ResourceKey,
     muted_fg: ResourceKey,
     activity: ResourceKey,
+    activity_bg: ResourceKey,
     success: ResourceKey,
     warning: ResourceKey,
+    warning_bg: ResourceKey,
     timing: ResourceKey,
     metadata: ResourceKey,
     on_activity: ResourceKey,
@@ -152,6 +158,10 @@ impl StyleTokenSet for SightlineStyleTokens {
             instrument: vocabulary.class_id(".sightline-instrument"),
             metric: vocabulary.class_id(".sightline-metric"),
             rule: vocabulary.class_id(".sightline-rule"),
+            plot: vocabulary.class_id(".sightline-plot"),
+            plot_bar: vocabulary.class_id(".sightline-plot-bar"),
+            plot_tick: vocabulary.class_id(".sightline-plot-tick"),
+            plot_selection: vocabulary.class_id(".sightline-plot-selection"),
             title_text: vocabulary.class_id(".sightline-title-text"),
             secondary_text: vocabulary.class_id(".sightline-secondary-text"),
             muted_text: vocabulary.class_id(".sightline-muted-text"),
@@ -169,8 +179,10 @@ impl StyleTokenSet for SightlineStyleTokens {
             secondary_fg: vocabulary.resource_key("sightline.text.secondary"),
             muted_fg: vocabulary.resource_key("sightline.text.muted"),
             activity: vocabulary.resource_key("sightline.activity"),
+            activity_bg: vocabulary.resource_key("sightline.activity.bg"),
             success: vocabulary.resource_key("sightline.success"),
             warning: vocabulary.resource_key("sightline.warning"),
+            warning_bg: vocabulary.resource_key("sightline.warning.bg"),
             timing: vocabulary.resource_key("sightline.timing"),
             metadata: vocabulary.resource_key("sightline.metadata"),
             on_activity: vocabulary.resource_key("sightline.on-activity"),
@@ -213,9 +225,11 @@ fn extend_theme(builder: ThemeBuilder, tokens: SightlineTokens, palette: Palette
         .set(tokens.text, palette.text)
         .set(tokens.secondary_fg, palette.secondary)
         .set(tokens.muted_fg, palette.muted)
-        .set(tokens.activity, palette.activity)
+        .set(tokens.activity, palette.activity.clone())
+        .set(tokens.activity_bg, Some(palette.activity))
         .set(tokens.success, palette.success)
-        .set(tokens.warning, palette.warning)
+        .set(tokens.warning, palette.warning.clone())
+        .set(tokens.warning_bg, Some(palette.warning))
         .set(tokens.timing, palette.timing)
         .set(tokens.metadata, palette.metadata)
         .set(tokens.on_activity, palette.on_activity)
@@ -278,6 +292,35 @@ pub(crate) fn sightline_cascade(
             class_selector(tokens.rule),
             StyleBuilder::new()
                 .background_resource(properties, tokens.rule_bg)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Sheet,
+            class_selector(tokens.plot),
+            StyleBuilder::new()
+                .background_resource(properties, tokens.panel_bg)
+                .border_brush_resource(properties, tokens.border)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Sheet,
+            class_selector(tokens.plot_bar),
+            StyleBuilder::new()
+                .background_resource(properties, tokens.activity_bg)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Sheet,
+            class_selector(tokens.plot_tick),
+            StyleBuilder::new()
+                .background_resource(properties, tokens.rule_bg)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Sheet,
+            class_selector(tokens.plot_selection),
+            StyleBuilder::new()
+                .background_resource(properties, tokens.warning_bg)
                 .build(),
         )
         .push_rule(

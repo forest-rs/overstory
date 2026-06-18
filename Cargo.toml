@@ -38,6 +38,7 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 # Core data deps
 accesskit = { default-features = false, version = "0.24.0" }
 accesskit_macos = { version = "0.26.1" }
+chronostore = { default-features = false, git = "https://github.com/forest-rs/chronostore.git", rev = "f618fbf045db7767e4ca6c68e12b86a327447ad2" }
 frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 frameclock_apple = { default-features = false, features = [
     "ca-display-link",
@@ -68,6 +69,7 @@ understory_property_binding = { default-features = false, git = "https://github.
 understory_responder = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
 understory_selection = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
 understory_style = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
+understory_timeline_model = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
 understory_timing = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
 understory_transcript = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }
 understory_view2d = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "9ae55ad08ed96c0a66eb9156b9c665ba64e113cf" }

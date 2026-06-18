@@ -6,6 +6,7 @@
 extern crate alloc;
 
 mod app;
+mod sample_profiler;
 mod shell;
 mod style;
 
