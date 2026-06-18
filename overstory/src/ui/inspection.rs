@@ -18,6 +18,21 @@ use peniko::Brush;
 use understory_presentation::CornerShape;
 use understory_presentation_properties::CornerRadius;
 use understory_property::{DependencyObject, Property};
+use understory_style::ResolvedSource;
+
+/// Maps style provenance to the coarse origin shown in inspection rows.
+fn property_inspection_origin(source: &ResolvedSource) -> ElementPropertyInspectionOrigin {
+    match source {
+        ResolvedSource::Animation => ElementPropertyInspectionOrigin::Animation,
+        ResolvedSource::LocalOverride { .. } => ElementPropertyInspectionOrigin::Local,
+        ResolvedSource::CascadeRule { .. } | ResolvedSource::CascadeDirect { .. } => {
+            ElementPropertyInspectionOrigin::Cascade
+        }
+        ResolvedSource::ThemeResource { .. } => ElementPropertyInspectionOrigin::Theme,
+        ResolvedSource::Inherited { .. } => ElementPropertyInspectionOrigin::Inherited,
+        ResolvedSource::Default => ElementPropertyInspectionOrigin::Default,
+    }
+}
 
 use super::{Ui, collect_preorder};
 
@@ -583,15 +598,15 @@ impl Ui {
     ) where
         T: Clone + PartialEq + 'static,
     {
-        let resolved = self.resolve_value_for(element, property);
-        if !self.should_include_property_row(element, property, &resolved) {
+        let resolved = self.explain_value_for(element, property);
+        if !self.should_include_property_row(element, property, &resolved.value) {
             return;
         }
         rows.push(ElementPropertyInspectionRow {
             name,
             group,
-            value: value(resolved),
-            origin: ElementPropertyInspectionOrigin::Effective,
+            value: value(resolved.value),
+            origin: property_inspection_origin(&resolved.source),
         });
     }
 

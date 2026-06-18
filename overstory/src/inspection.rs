@@ -275,9 +275,19 @@ pub enum ElementPropertyInspectionGroup {
 /// Origin of a concise property value in an inspection row.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElementPropertyInspectionOrigin {
-    /// Value after local stores, style/theme resolution, inheritance, and
-    /// presentation overrides have been applied.
-    Effective,
+    /// The element's animation slot supplied the value.
+    Animation,
+    /// A locally authored value supplied the value (a user/local write, a
+    /// template binding, or a template default).
+    Local,
+    /// A style cascade rule or direct style supplied the value.
+    Cascade,
+    /// A theme resource fallback supplied the value.
+    Theme,
+    /// An ancestor supplied the value through inherited resolution.
+    Inherited,
+    /// The registry default supplied the value.
+    Default,
 }
 
 impl ElementPropertyInspectionOrigin {
@@ -285,7 +295,12 @@ impl ElementPropertyInspectionOrigin {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Effective => "effective",
+            Self::Animation => "animation",
+            Self::Local => "local",
+            Self::Cascade => "cascade",
+            Self::Theme => "theme",
+            Self::Inherited => "inherited",
+            Self::Default => "default",
         }
     }
 }

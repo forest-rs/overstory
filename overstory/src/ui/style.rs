@@ -97,6 +97,25 @@ impl Ui {
         )
     }
 
+    /// Resolves `property` for `element` and reports which source supplied the
+    /// value. Element-based sibling of [`Self::explain_property`].
+    pub(crate) fn explain_value_for<T: Clone + 'static>(
+        &self,
+        element: &Element,
+        property: Property<T>,
+    ) -> Resolved<T> {
+        ResolveCx::new(
+            &self.registry,
+            self.style.theme(),
+            UiResolveLookup::new(self),
+        )
+        .explain_value(
+            element,
+            property,
+            Some((self.style.cascade(), self.match_state(element.id()))),
+        )
+    }
+
     /// Reads the effective resolved value of `property` on `id`.
     ///
     /// Resolves through the full precedence chain — animation, local layers,
@@ -307,6 +326,29 @@ mod provenance_tests {
         assert!(
             described.contains("Local override"),
             "described source was {described:?}",
+        );
+    }
+
+    #[test]
+    fn inspection_snapshot_reports_property_origin() {
+        use crate::inspection::ElementPropertyInspectionOrigin;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Hi"));
+        let font_size = ui.properties().font_size;
+        ui.set_local(button, font_size, 22.0);
+
+        let snapshot = ui.inspection_snapshot();
+        let row = snapshot
+            .elements
+            .iter()
+            .find(|row| row.id == button)
+            .expect("button should appear in the snapshot");
+        let origins: alloc::vec::Vec<_> = row.properties.iter().map(|p| p.origin).collect();
+        assert!(
+            origins.contains(&ElementPropertyInspectionOrigin::Local),
+            "locally set font size should report a Local origin, got {origins:?}",
         );
     }
 }
