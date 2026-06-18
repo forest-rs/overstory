@@ -231,6 +231,21 @@ impl Ui {
         self.bindings.mark_endpoint_changed(source.endpoint().key())
     }
 
+    /// Returns a typed binding endpoint for `property` on `id`.
+    ///
+    /// Use this when app code wants a dependency property on one retained
+    /// element to drive a dependency property on another retained element.
+    /// The returned endpoints can be passed to [`Self::bind`] or
+    /// [`Self::bind_map`], for example to map a slider's numeric value into
+    /// another element's property without rebuilding the view.
+    #[must_use]
+    pub const fn element_endpoint<T>(
+        id: ElementId,
+        property: Property<T>,
+    ) -> PropertyEndpoint<BindingOwner, T> {
+        PropertyEndpoint::new(BindingOwner::element(id), property)
+    }
+
     /// Registers a template-precedence one-way binding from `source` to
     /// `target`. Both endpoints' value types must match. Returns the new
     /// [`BindingId`] or a [`BindingError`] if the registration would self-loop

@@ -236,6 +236,7 @@ pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, Ui};
+pub use understory_property_binding::PropertyEndpoint;
 pub use view::View;
 pub use widget::{
     AppendSpec, ContentSlotSpec, ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt,
@@ -256,11 +257,12 @@ pub mod prelude {
         CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
         ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
-        PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey, ScrollArea, ScrollBar,
-        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, Spinner, Splitter,
-        StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, Text,
-        TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
-        TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
+        PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
+        ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
+        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
+        SurfaceStyleExt, Text, TextInput, TextInputSubmitEvent, TextSpecExt, TimerDuration,
+        ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View,
+        Viewport,
     };
 }
 

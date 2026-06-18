@@ -3499,6 +3499,33 @@ fn flush_bindings_propagates_template_binding() {
 }
 
 #[test]
+fn element_endpoint_supports_app_element_bind_map() {
+    use crate::{PropertyEndpoint, Text};
+    use alloc::format;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let source = ui.append(root, Text::new("source"));
+    let target = ui.append(root, Text::new(""));
+
+    let text_prop = ui.properties().text;
+    let source_endpoint: PropertyEndpoint<BindingOwner, String> =
+        Ui::element_endpoint(source, text_prop);
+    ui.bind_map(
+        source_endpoint,
+        Ui::element_endpoint(target, text_prop),
+        |value| format!("value: {value}"),
+    )
+    .expect("element binding registers");
+
+    ui.set_local(source, text_prop, String::from("42"));
+    ui.flush_bindings();
+
+    let target_text = ui.resolve_value_for(ui.get(target).unwrap(), text_prop);
+    assert_eq!(target_text, "value: 42");
+}
+
+#[test]
 fn flush_bindings_respects_local_precedence() {
     // If the target has a user `Local` value, the binding's
     // `TemplateBinding` write should be shadowed — `Local` outranks

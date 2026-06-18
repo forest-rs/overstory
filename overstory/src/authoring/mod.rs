@@ -22,6 +22,7 @@
 
 /// Binding sources and binding append-spec helpers.
 pub mod binding {
+    pub use crate::PropertyEndpoint;
     pub use crate::binding::{
         BindingSpecExt, BoundSpec, ExternalSource, ExternalSourceId, LocalState, LocalStateId,
         ValueBinding,
@@ -77,7 +78,7 @@ pub mod tree {
 
 pub use binding::{
     BindingSpecExt, BoundSpec, ExternalSource, ExternalSourceId, LocalState, LocalStateId,
-    ValueBinding,
+    PropertyEndpoint, ValueBinding,
 };
 pub use element::{ElementRef, ElementRefSpecExt, ElementSpec, ElementSpecExt, ReferencedSpec};
 pub use range::RangeSpecExt;
