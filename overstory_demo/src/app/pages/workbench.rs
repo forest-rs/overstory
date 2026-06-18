@@ -42,9 +42,10 @@ impl View for WorkbenchPage {
         stage.with_child(
             Panel::new().layout(
                 Layout::row(24.0)
-                    .wrap()
                     .fill_width()
-                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Start)),
+                    .size(LayoutSize::new().min_height(LayoutDimension::Logical(0.0)))
+                    .flex_grow(1.0)
+                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
             ),
             |row| {
                 let subject = build_stage(row);
@@ -122,128 +123,162 @@ fn specimen(states: &mut ChildUi<'_>, label: &str, pseudo: Option<PseudoClassId>
 /// theme. Each section dogfoods one system end to end.
 fn build_inspector(row: &mut ChildUi<'_>, subject: ElementId, shell: Rc<DemoShellState>) {
     row.with_child(
-        Panel::column(18.0)
+        Panel::column(12.0)
             .class(CLASS_DEMO_CARD)
             .padding_all(18.0)
             .layout(
-                Layout::column(18.0)
-                    .size(LayoutSize::new().width(LayoutDimension::Logical(INSPECTOR_WIDTH)))
+                Layout::column(12.0)
+                    .size(
+                        LayoutSize::new()
+                            .width(LayoutDimension::Logical(INSPECTOR_WIDTH))
+                            .height(LayoutDimension::Percent(1.0))
+                            .min_height(LayoutDimension::Logical(0.0)),
+                    )
                     .flex_shrink(0.0),
             ),
-        |inspector| {
-            inspector.add(card_title("INSPECTOR"));
+        |card| {
+            card.add(card_title("INSPECTOR"));
+            // Sections scroll when they exceed the inspector height.
+            card.with_child(
+                ScrollView::new().layout(
+                    Layout::column(0.0)
+                        .size(LayoutSize::new().min_height(LayoutDimension::Logical(0.0)))
+                        .flex_grow(1.0)
+                        .flex_shrink(1.0),
+                ),
+                |scroll| {
+                    scroll.with_child(
+                        Panel::column(18.0).layout(Layout::column(18.0).fill_width()),
+                        |inspector| {
+                            // Geometry: live property writes through set_local +
+                            // transitions, driven by real sliders.
+                            section(inspector, "GEOMETRY", |geometry| {
+                                slider_row(
+                                    geometry,
+                                    subject,
+                                    "Corner radius",
+                                    INITIAL_CORNER_RADIUS,
+                                    (0.0, 24.0),
+                                    1.0,
+                                    "px",
+                                    Rc::new(apply_corner_radius),
+                                );
+                                slider_row(
+                                    geometry,
+                                    subject,
+                                    "Border width",
+                                    INITIAL_BORDER_WIDTH,
+                                    (0.0, 8.0),
+                                    0.5,
+                                    "px",
+                                    Rc::new(apply_border_width),
+                                );
+                                slider_row(
+                                    geometry,
+                                    subject,
+                                    "Font size",
+                                    HERO_FONT_SIZE,
+                                    (11.0, 28.0),
+                                    1.0,
+                                    "pt",
+                                    Rc::new(apply_font_size),
+                                );
+                            });
 
-            // Geometry: live property writes through set_local + transitions,
-            // driven by real sliders reporting through on_value_changed.
-            section(inspector, "GEOMETRY", |geometry| {
-                slider_row(
-                    geometry,
-                    subject,
-                    "Corner radius",
-                    INITIAL_CORNER_RADIUS,
-                    (0.0, 24.0),
-                    1.0,
-                    "px",
-                    Rc::new(apply_corner_radius),
-                );
-                slider_row(
-                    geometry,
-                    subject,
-                    "Border width",
-                    INITIAL_BORDER_WIDTH,
-                    (0.0, 8.0),
-                    0.5,
-                    "px",
-                    Rc::new(apply_border_width),
-                );
-                slider_row(
-                    geometry,
-                    subject,
-                    "Font size",
-                    HERO_FONT_SIZE,
-                    (11.0, 28.0),
-                    1.0,
-                    "pt",
-                    Rc::new(apply_font_size),
-                );
-            });
+                            // Content: semantic owner content projected by the template.
+                            section(inspector, "CONTENT", |content| {
+                                content.add(
+                                    SegmentedControl::new()
+                                        .options([
+                                            ChoiceOption::new("Deploy"),
+                                            ChoiceOption::new("Save changes"),
+                                            ChoiceOption::new("Continue"),
+                                        ])
+                                        .selected_index(0)
+                                        .on_selection_changed(move |ui, event| {
+                                            if let Some(item) = event.selected_item {
+                                                let content_prop = ui.properties().content;
+                                                ui.set_local(subject, content_prop, item);
+                                            }
+                                        }),
+                                );
+                            });
 
-            // Content: semantic owner content projected by the template.
-            section(inspector, "CONTENT", |content| {
-                content.add(
-                    SegmentedControl::new()
-                        .options([
-                            ChoiceOption::new("Deploy"),
-                            ChoiceOption::new("Save changes"),
-                            ChoiceOption::new("Continue"),
-                        ])
-                        .selected_index(0)
-                        .on_selection_changed(move |ui, event| {
-                            if let Some(item) = event.selected_item {
-                                let content_prop = ui.properties().content;
-                                ui.set_local(subject, content_prop, item);
-                            }
-                        }),
-                );
-            });
-
-            // Template: same behavior, replaceable visual structure. "Default"
-            // clears the local override so the theme template re-expands.
-            section(inspector, "TEMPLATE", |template| {
-                template.add(
-                    SegmentedControl::new()
-                        .options([ChoiceOption::new("Default"), ChoiceOption::new("Framed")])
-                        .selected_index(0)
-                        .on_selection_changed(move |ui, event| {
-                            let template_prop = ui.properties().control_template;
-                            match event.selected_item.as_deref() {
-                                Some("Framed") => {
-                                    ui.set_local(
-                                        subject,
-                                        template_prop,
-                                        Some(framed_button_template().into()),
-                                    );
-                                }
-                                _ => {
-                                    ui.clear_local(subject, template_prop);
-                                }
-                            }
-                        }),
-                );
-                template.add(
+                            // Template: same behavior, replaceable visual structure. "Default"
+                            // clears the local override so the theme template re-expands.
+                            section(inspector, "TEMPLATE", |template| {
+                                template.add(
+                                    SegmentedControl::new()
+                                        .options([
+                                            ChoiceOption::new("Default"),
+                                            ChoiceOption::new("Framed"),
+                                        ])
+                                        .selected_index(0)
+                                        .on_selection_changed(move |ui, event| {
+                                            let template_prop = ui.properties().control_template;
+                                            let background = ui.properties().surface.background;
+                                            match event.selected_item.as_deref() {
+                                                Some("Framed") => {
+                                                    ui.set_local(
+                                                        subject,
+                                                        template_prop,
+                                                        Some(framed_button_template().into()),
+                                                    );
+                                                    // Hide the subject's own fill so only the
+                                                    // template frame shows, like the Inputs sample.
+                                                    ui.set_local(
+                                                        subject,
+                                                        background,
+                                                        None::<Brush>,
+                                                    );
+                                                }
+                                                _ => {
+                                                    ui.clear_local(subject, template_prop);
+                                                    ui.clear_local(subject, background);
+                                                }
+                                            }
+                                        }),
+                                );
+                                template.add(
                     caption(
                         "\"Default\" clears the local override back to the theme template; \
                          \"Framed\" wraps the content presenter in a themed double surface.",
                     )
                     .wrap(),
                 );
-            });
+                            });
 
-            // Theme: the headline. Rebuild the theme with a new accent token
-            // and re-apply it; the whole gallery re-skins.
-            section(inspector, "ACCENT TOKEN", |accent| {
-                let initial = accent_index(shell.accent());
-                let shell_for_accent = Rc::clone(&shell);
-                accent.add(
-                    SegmentedControl::new()
-                        .options(DemoAccent::ALL.map(|a| ChoiceOption::new(a.label())))
-                        .selected_index(initial)
-                        .on_selection_changed(move |ui, event| {
-                            if let Some(item) = event.selected_item
-                                && let Some(accent) = accent_from_label(&item)
-                            {
-                                shell_for_accent.set_accent(accent);
-                                apply_demo_theme(ui, &shell_for_accent);
-                            }
-                        }),
-                );
-                accent.add(
+                            // Theme: the headline. Rebuild the theme with a new accent token
+                            // and re-apply it; the whole gallery re-skins.
+                            section(inspector, "ACCENT TOKEN", |accent| {
+                                let initial = accent_index(shell.accent());
+                                let shell_for_accent = Rc::clone(&shell);
+                                accent.add(
+                                    SegmentedControl::new()
+                                        .options(
+                                            DemoAccent::ALL.map(|a| ChoiceOption::new(a.label())),
+                                        )
+                                        .selected_index(initial)
+                                        .on_selection_changed(move |ui, event| {
+                                            if let Some(item) = event.selected_item
+                                                && let Some(accent) = accent_from_label(&item)
+                                            {
+                                                shell_for_accent.set_accent(accent);
+                                                apply_demo_theme(ui, &shell_for_accent);
+                                            }
+                                        }),
+                                );
+                                accent.add(
                     caption("Rebuilds the theme and re-applies it; the whole gallery re-skins.")
                         .wrap(),
                 );
-            });
+                            });
 
-            append_provenance_section(inspector, subject);
+                            append_provenance_section(inspector, subject);
+                        },
+                    );
+                },
+            );
         },
     );
 }
@@ -294,7 +329,7 @@ fn slider_row(
                     .range(range.0, range.1)
                     .step(step)
                     .value(initial)
-                    .layout(Layout::new().fill_width())
+                    .fill_width()
                     .on_value_changed(move |ui, event| {
                         apply_for_cb(ui, subject, event.value);
                         let text_prop = ui.properties().text;
