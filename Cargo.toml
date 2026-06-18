@@ -36,6 +36,7 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 
 # Core data deps
 accesskit = { default-features = false, version = "0.24.0" }
+accesskit_macos = { version = "0.26.1" }
 frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
 frameclock_apple = { default-features = false, features = [
     "ca-display-link",

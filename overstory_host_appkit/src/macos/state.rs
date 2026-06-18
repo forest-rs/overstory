@@ -39,6 +39,7 @@ use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use ui_events_appkit::AppKitInputResponder;
 
+use super::accessibility::AccessKitState;
 use super::blit::BlitState;
 use super::cursor::set_cursor;
 use super::input::install_input_responder;
@@ -105,6 +106,16 @@ pub(crate) fn start_display_link() {
     });
 }
 
+pub(crate) fn update_accessibility_focus(is_focused: bool) {
+    with_window_state_cell(|cell| {
+        let mut state = cell.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        state.update_accessibility_focus(is_focused);
+    });
+}
+
 pub(crate) fn resize_window() {
     with_window_state_cell(|cell| {
         let mut state = cell.borrow_mut();
@@ -129,6 +140,7 @@ pub(crate) fn handle_display_tick(tick: FrameTick) {
 }
 
 pub(crate) struct WindowState {
+    accesskit: AccessKitState,
     renderer: VelloRenderer,
     blit: BlitState,
     surface: wgpu::Surface<'static>,
@@ -182,6 +194,18 @@ impl WindowState {
         self.time_map
     }
 
+    pub(crate) fn accesskit_tree_update(&self) -> accesskit::TreeUpdate {
+        self.host.accesskit_tree_update(self.scale_factor())
+    }
+
+    pub(crate) fn dispatch_accesskit_action(&mut self, request: &accesskit::ActionRequest) {
+        let result = self.host.handle_accesskit_action(request);
+        if result.needs_redraw {
+            self.request_frame(result.frame_demand);
+        }
+        self.sync_cursor();
+    }
+
     fn start_display_link(&mut self) {
         if self.display_link_started {
             return;
@@ -212,6 +236,17 @@ impl WindowState {
         if let Some(next) = self.host.cursor_update() {
             set_cursor(next);
         }
+    }
+
+    fn sync_accessibility(&mut self) {
+        let scale_factor = self.scale_factor();
+        let host = &self.host;
+        self.accesskit
+            .update_if_active(|| host.accesskit_tree_update(scale_factor));
+    }
+
+    fn update_accessibility_focus(&mut self, is_focused: bool) {
+        self.accesskit.update_view_focus_state(is_focused);
     }
 
     fn handle_display_tick(&mut self, tick: FrameTick) -> HostResult<()> {
@@ -328,6 +363,7 @@ impl WindowState {
             return Err(err.into());
         }
         let scene_to_texture = phase_start.elapsed();
+        self.sync_accessibility();
 
         let phase_start = web_time::Instant::now();
         let output = match self.surface.get_current_texture() {
@@ -472,6 +508,7 @@ where
     let window_delegate = WindowDelegate::new(mtm);
     window.setDelegate(Some(ProtocolObject::from_ref(&*window_delegate)));
     let input_responder = install_input_responder(mtm, &window, &content_view);
+    let accesskit = AccessKitState::new(&content_view);
 
     let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
     let blit = BlitState::new(&device, surface_config.format);
@@ -480,6 +517,7 @@ where
     let display_link = DisplayLink::new(handle_display_tick, OutputId(0), mtm);
 
     Ok(WindowState {
+        accesskit,
         renderer,
         blit,
         surface,

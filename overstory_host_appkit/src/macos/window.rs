@@ -15,7 +15,9 @@ use objc2_core_foundation::{CGPoint, CGRect};
 use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol};
 use objc2_quartz_core::{CALayer, CAMetalLayer};
 
-use super::state::{resize_window, shutdown_window_state, start_display_link};
+use super::state::{
+    resize_window, shutdown_window_state, start_display_link, update_accessibility_focus,
+};
 
 define_class! {
     #[unsafe(super(NSObject))]
@@ -89,7 +91,13 @@ define_class! {
     unsafe impl NSWindowDelegate for WindowDelegate {
         #[unsafe(method(windowDidBecomeKey:))]
         fn window_did_become_key(&self, _notification: &NSNotification) {
+            update_accessibility_focus(true);
             start_display_link();
+        }
+
+        #[unsafe(method(windowDidResignKey:))]
+        fn window_did_resign_key(&self, _notification: &NSNotification) {
+            update_accessibility_focus(false);
         }
 
         #[unsafe(method(windowDidResize:))]

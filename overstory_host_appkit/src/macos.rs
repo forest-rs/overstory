@@ -12,6 +12,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindow};
 use overstory::Ui;
 
+mod accessibility;
 mod blit;
 mod cursor;
 mod input;

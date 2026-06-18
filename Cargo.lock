@@ -2253,6 +2253,8 @@ dependencies = [
 name = "overstory_host_appkit"
 version = "0.0.1"
 dependencies = [
+ "accesskit",
+ "accesskit_macos",
  "frameclock",
  "frameclock_apple",
  "imaging_vello",
