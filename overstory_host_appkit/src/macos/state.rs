@@ -541,10 +541,30 @@ fn appkit_scheduler_config() -> SchedulerConfig {
     // This host uses the display-link callback itself as the frame-start wake.
     // Keep planning fixed at one frame so `WaitUntil` does not require an
     // additional AppKit timer before the input/event adapter exists.
+    // TODO(overstory_host_appkit): Add an AppKit wake/timer path for
+    // `UiHost::pending_frame_start` so predictive scheduling can use a small
+    // refresh-rate-agnostic margin instead of treating the next display-link
+    // tick as the only possible frame-start wake.
     config.min_depth = 1;
     config.max_depth = 1;
     config.initial_depth = 1;
     config.degradation_policy = DegradationPolicy::Fixed;
     config.minimum_frame_start_margin = FALLBACK_REFRESH_INTERVAL;
     config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appkit_scheduler_uses_display_link_tick_as_frame_start_wake() {
+        let config = appkit_scheduler_config();
+
+        assert_eq!(config.minimum_frame_start_margin, FALLBACK_REFRESH_INTERVAL);
+        assert_eq!(config.min_depth, 1);
+        assert_eq!(config.max_depth, 1);
+        assert_eq!(config.initial_depth, 1);
+        assert_eq!(config.degradation_policy, DegradationPolicy::Fixed);
+    }
 }

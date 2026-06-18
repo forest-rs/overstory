@@ -9,7 +9,7 @@ use core::error::Error;
 use accesskit_winit::{
     Adapter as AccessKitAdapter, Event as AccessKitEvent, WindowEvent as AccessKitWindowEvent,
 };
-use frameclock::FrameDemand;
+use frameclock::{Duration as FrameDuration, FrameDemand};
 use imaging_vello::VelloRenderer;
 use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use overstory::{Ui, UiRendererTimings};
@@ -177,7 +177,7 @@ impl WindowState {
         self.blit.ensure_offscreen(&self.device, width, height);
 
         let viewport = FrameViewport::from_physical_size(width, height, self.window.scale_factor());
-        let timing = HostFrameTiming::pacing_only(self.host.frame_now());
+        let timing = self.host_frame_timing();
         let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
             if !self.host.pending_frame_demand().is_empty() {
                 self.window.request_redraw();
@@ -247,6 +247,51 @@ impl WindowState {
             self.window.request_redraw();
         }
         Ok(())
+    }
+
+    fn host_frame_timing(&self) -> HostFrameTiming {
+        let now = self.host.frame_now();
+        // TODO(overstory_host_winit): This is only a nominal pacing hint.
+        // Plain winit does not expose presentation timing or vsync feedback,
+        // so a stronger timing model would need platform-specific host support
+        // rather than more information from this adapter.
+        self.window
+            .current_monitor()
+            .and_then(|monitor| monitor.refresh_rate_millihertz())
+            .and_then(refresh_interval_from_millihertz)
+            .map_or_else(
+                || HostFrameTiming::pacing_only(now),
+                |interval| HostFrameTiming::pacing_only_with_refresh_interval(now, interval),
+            )
+    }
+}
+
+fn refresh_interval_from_millihertz(millihertz: u32) -> Option<FrameDuration> {
+    if millihertz == 0 {
+        return None;
+    }
+
+    let millihertz = u64::from(millihertz);
+    Some(FrameDuration(
+        (1_000_000_000_000_u64 + millihertz / 2) / millihertz,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_interval_from_millihertz_rounds_to_nanosecond_ticks() {
+        assert_eq!(
+            refresh_interval_from_millihertz(120_000),
+            Some(FrameDuration(8_333_333))
+        );
+        assert_eq!(
+            refresh_interval_from_millihertz(60_000),
+            Some(FrameDuration(16_666_667))
+        );
+        assert_eq!(refresh_interval_from_millihertz(0), None);
     }
 }
 

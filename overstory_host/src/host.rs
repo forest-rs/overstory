@@ -46,13 +46,25 @@ impl HostFrameTiming {
     /// presentation timestamps.
     #[must_use]
     pub fn pacing_only(now: HostTime) -> Self {
+        Self::pacing_only_with_refresh_interval(now, DEFAULT_FRAME_INTERVAL)
+    }
+
+    /// Creates pacing-only timing facts with a host-supplied refresh interval.
+    ///
+    /// Use this when the backend does not expose predicted presentation
+    /// timestamps, but can still report the target display cadence.
+    #[must_use]
+    pub fn pacing_only_with_refresh_interval(
+        now: HostTime,
+        refresh_interval: FrameDuration,
+    ) -> Self {
         Self {
             now,
             predicted_present: None,
-            refresh_interval: Some(DEFAULT_FRAME_INTERVAL.ticks()),
+            refresh_interval: Some(refresh_interval.ticks()),
             prev_actual_present: None,
-            hints: PresentHints::pacing_only(now + DEFAULT_FRAME_INTERVAL),
-            display_timing: DisplayTiming::fixed(DEFAULT_FRAME_INTERVAL),
+            hints: PresentHints::pacing_only(now + refresh_interval),
+            display_timing: DisplayTiming::fixed(refresh_interval),
         }
     }
 
@@ -750,6 +762,23 @@ mod tests {
         assert_eq!(summary.actual_present, None);
         assert_eq!(host.last_frame_diagnostics().frame_timing, Some(summary));
         assert_eq!(host.ui().frame_stats().frame_timing, Some(summary));
+    }
+
+    #[test]
+    fn pacing_only_timing_can_use_reported_refresh_interval() {
+        let timing = HostFrameTiming::pacing_only_with_refresh_interval(
+            HostTime(10),
+            FrameDuration(8_333_333),
+        );
+
+        assert_eq!(timing.now, HostTime(10));
+        assert_eq!(timing.predicted_present, None);
+        assert_eq!(timing.refresh_interval, Some(8_333_333));
+        assert_eq!(timing.hints.latest_commit(), HostTime(8_333_343));
+        assert_eq!(
+            timing.display_timing,
+            DisplayTiming::fixed(FrameDuration(8_333_333))
+        );
     }
 
     #[test]
