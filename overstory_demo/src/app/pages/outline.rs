@@ -10,7 +10,7 @@ impl View for OutlinePage {
         stage.with_child(
             Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
             |row| {
-                row.demo_card("PIPELINE OUTLINE", PAGE_CARD_WIDTH, 374.0, |tree| {
+                row.demo_responsive_card("PIPELINE OUTLINE", PAGE_CARD_WIDTH, |tree| {
                     tree.add(page_heading("Expandable retained rows"));
                     tree.add(body_text(
                         "Click a parent row or use Left/Right, Enter, and Space to expand and collapse.",
@@ -33,14 +33,14 @@ impl View for OutlinePage {
                     )
                 });
 
-                row.demo_card("NODE DETAIL", PAGE_CARD_WIDTH, 374.0, |detail| {
-                    detail.add(page_heading("Motion"));
+                row.demo_responsive_card("ABOUT THE OUTLINE", PAGE_CARD_WIDTH, |detail| {
+                    detail.add(page_heading("Virtualized tree"));
                     detail.add(body_text(
-                        "The selected branch represents scheduled presentation work: implicit transitions, timeline cues, and compositor-ready offsets.",
+                        "Only the visible rows are realized. The control owns keyed expansion state, while scroll metrics come from the shared scroll-target registry.",
                     ));
-                    detail.add(control_label("Row behavior"));
+                    detail.add(control_label("Keyboard"));
                     detail.add(body_text(
-                        "Expansion state is held by the outline control; scroll metrics still come from the shared scroll target registry.",
+                        "Left and Right collapse and expand, Up and Down move the focused row, and Enter or Space toggles it.",
                     ));
                 });
             },
