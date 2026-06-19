@@ -254,7 +254,9 @@ fn append_composer(
                             &submit_stream,
                             event.text(),
                         ) {
-                            event.clear_after_submit();
+                            TextInputSubmitAction::Clear
+                        } else {
+                            TextInputSubmitAction::Keep
                         }
                     }),
             );

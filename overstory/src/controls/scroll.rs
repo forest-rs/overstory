@@ -26,8 +26,8 @@ use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::channels::ARRANGE;
 use crate::controls::support::{
-    ElementSlot, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt, action_numeric_value,
-    action_scroll_unit, f32_from_logical, is_initial_drag_move,
+    CallbackSlot, ElementSlot, EventHandler, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt,
+    action_numeric_value, action_scroll_unit, f32_from_logical, is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -63,10 +63,40 @@ pub(crate) fn normalize_scroll_offset_y(offset_y: f64) -> f64 {
     normalize_scroll_axis(offset_y)
 }
 
+type ScrollOffsetChangedHandler = EventHandler<ScrollOffsetChangedEvent>;
+type ScrollOffsetChangedSlot = CallbackSlot<ScrollOffsetChangedEvent>;
+
+/// Source of a scroll offset change.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScrollOffsetChangeSource {
+    /// Offset changed through pointer wheel or touchpad scrolling.
+    Wheel,
+    /// Offset changed through a scrollbar click or drag.
+    ScrollBar,
+    /// Offset changed through an accessibility action.
+    Accessibility,
+    /// Offset changed through [`set_scroll_view_offset_y`] or [`set_scroll_offset_y`].
+    Programmatic,
+}
+
+/// Event delivered after a scrollable viewport offset changes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollOffsetChangedEvent {
+    /// The scroll viewport whose offset changed.
+    pub scroll_view: ElementId,
+    /// Offset before the change.
+    pub previous_offset: Vec2,
+    /// Offset after the change.
+    pub offset: Vec2,
+    /// Where the change came from.
+    pub source: ScrollOffsetChangeSource,
+}
+
 /// Builder + spec for a clipped scroll viewport.
 pub struct ScrollView {
     size: Option<(f32, f32)>,
     state: ScrollState,
+    on_offset_changed: Option<ScrollOffsetChangedHandler>,
     element: ElementConfig,
 }
 
@@ -75,6 +105,10 @@ impl core::fmt::Debug for ScrollView {
         f.debug_struct("ScrollView")
             .field("size", &self.size)
             .field("state", &self.state)
+            .field(
+                "has_offset_changed_handler",
+                &self.on_offset_changed.is_some(),
+            )
             .field("element", &self.element)
             .finish()
     }
@@ -89,6 +123,7 @@ impl ScrollView {
         Self {
             size: None,
             state: ScrollState::new(),
+            on_offset_changed: None,
             element,
         }
     }
@@ -104,6 +139,24 @@ impl ScrollView {
     #[must_use]
     pub fn scroll_offset_y(self, offset: f64) -> Self {
         self.state.set_offset_y_raw(offset);
+        self
+    }
+
+    /// Registers a handler for scroll offset changes.
+    ///
+    /// The handler is notified for wheel/touchpad scrolling, accessibility
+    /// scroll actions, programmatic offset writes, and bound scrollbar changes.
+    #[must_use]
+    pub fn on_offset_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, ScrollOffsetChangedEvent) + 'static,
+    {
+        self.on_offset_changed = Some(Box::new(handler));
+        self
+    }
+
+    fn on_offset_changed_option(mut self, handler: Option<ScrollOffsetChangedHandler>) -> Self {
+        self.on_offset_changed = handler;
         self
     }
 
@@ -135,6 +188,7 @@ impl AppendSpec for ScrollView {
             parent,
             Box::new(ScrollViewWidget {
                 state: state.clone(),
+                offset_changed: ScrollOffsetChangedSlot::new(self.on_offset_changed),
             }),
         );
 
@@ -156,9 +210,21 @@ impl ElementSpec for ScrollView {
 }
 
 /// Per-element widget for `ScrollView`.
-#[derive(Clone, Debug)]
 pub(crate) struct ScrollViewWidget {
     state: ScrollState,
+    offset_changed: ScrollOffsetChangedSlot,
+}
+
+impl core::fmt::Debug for ScrollViewWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ScrollViewWidget")
+            .field("state", &self.state)
+            .field(
+                "has_offset_changed_handler",
+                &self.offset_changed.has_handler(),
+            )
+            .finish()
+    }
 }
 
 impl Widget for ScrollViewWidget {
@@ -220,7 +286,13 @@ impl Widget for ScrollViewWidget {
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
         let viewport = ctx.id();
-        handle_wheel_scroll(ctx, viewport, &self.state, event);
+        let Some(delta) = wheel_scroll_delta(ctx, viewport, event) else {
+            return;
+        };
+        if let Some(change) = scroll_by(ctx, viewport, &self.state, delta) {
+            self.dispatch_offset_changed(ctx, viewport, change, ScrollOffsetChangeSource::Wheel);
+        }
+        event.mark_handled();
     }
 
     fn handle_accessibility_action(
@@ -232,7 +304,7 @@ impl Widget for ScrollViewWidget {
         if !ctx.is_enabled(viewport) {
             return false;
         }
-        match request.action {
+        let change = match request.action {
             accesskit::Action::ScrollLeft => scroll_by_accessibility_action(
                 ctx,
                 viewport,
@@ -270,10 +342,41 @@ impl Widget for ScrollViewWidget {
                 else {
                     return false;
                 };
-                set_scroll_offset(ctx, viewport, &self.state, Vec2::new(point.x, point.y))
+                set_scroll_offset_raw(ctx, viewport, &self.state, Vec2::new(point.x, point.y))
             }
-            _ => false,
+            _ => return false,
+        };
+        if let Some(change) = change {
+            self.dispatch_offset_changed(
+                ctx,
+                viewport,
+                change,
+                ScrollOffsetChangeSource::Accessibility,
+            );
+            true
+        } else {
+            false
         }
+    }
+}
+
+impl ScrollViewWidget {
+    fn dispatch_offset_changed(
+        &self,
+        ui: &mut Ui,
+        scroll_view: ElementId,
+        change: ScrollOffsetChange,
+        source: ScrollOffsetChangeSource,
+    ) {
+        self.offset_changed.dispatch(
+            ui,
+            ScrollOffsetChangedEvent {
+                scroll_view,
+                previous_offset: change.previous,
+                offset: change.offset,
+                source,
+            },
+        );
     }
 }
 
@@ -289,6 +392,7 @@ pub struct ScrollArea {
     scrollbar_thickness: f32,
     thumb_extent: f32,
     scroll_offset_y: f64,
+    on_offset_changed: Option<ScrollOffsetChangedHandler>,
     element: ElementConfig,
 }
 
@@ -302,6 +406,10 @@ impl core::fmt::Debug for ScrollArea {
             .field("scrollbar_thickness", &self.scrollbar_thickness)
             .field("thumb_extent", &self.thumb_extent)
             .field("scroll_offset_y", &self.scroll_offset_y)
+            .field(
+                "has_offset_changed_handler",
+                &self.on_offset_changed.is_some(),
+            )
             .field("element", &self.element)
             .finish()
     }
@@ -321,6 +429,7 @@ impl ScrollArea {
             scrollbar_thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
             scroll_offset_y: 0.0,
+            on_offset_changed: None,
             element,
         }
     }
@@ -374,6 +483,16 @@ impl ScrollArea {
         self
     }
 
+    /// Registers a handler for the internal viewport's scroll offset changes.
+    #[must_use]
+    pub fn on_offset_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, ScrollOffsetChangedEvent) + 'static,
+    {
+        self.on_offset_changed = Some(Box::new(handler));
+        self
+    }
+
     /// Sets whether the area starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
@@ -405,6 +524,7 @@ impl AppendSpec for ScrollArea {
             scrollbar_thickness,
             thumb_extent,
             scroll_offset_y,
+            on_offset_changed,
             element,
         } = self;
         let control_state = element
@@ -454,6 +574,7 @@ impl AppendSpec for ScrollArea {
             ScrollView::new()
                 .size(metrics.viewport_width, metrics.viewport_height)
                 .scroll_offset_y(scroll_offset_y)
+                .on_offset_changed_option(on_offset_changed)
                 .enabled(control_state.enabled),
         );
         if horizontal_scrollbar {
@@ -907,7 +1028,14 @@ impl Widget for ScrollBarWidget {
         } else {
             current + page
         };
-        set_axis_scroll_offset(ctx, self.viewport, &self.state, self.axis, next);
+        set_axis_scroll_offset(
+            ctx,
+            self.viewport,
+            &self.state,
+            self.axis,
+            next,
+            ScrollOffsetChangeSource::ScrollBar,
+        );
         event.mark_handled();
     }
 
@@ -950,7 +1078,14 @@ impl Widget for ScrollBarWidget {
             }
             _ => return false,
         };
-        set_axis_scroll_offset(ctx, self.viewport, &self.state, self.axis, next)
+        set_axis_scroll_offset(
+            ctx,
+            self.viewport,
+            &self.state,
+            self.axis,
+            next,
+            ScrollOffsetChangeSource::Accessibility,
+        )
     }
 }
 
@@ -999,19 +1134,6 @@ pub fn set_scroll_offset_y(ui: &mut Ui, target: ElementId, offset: f64) -> bool 
     set_scroll_state_offset_y(ui, target, &state, offset)
 }
 
-pub(crate) fn handle_wheel_scroll(
-    ui: &mut Ui,
-    viewport: ElementId,
-    state: &ScrollState,
-    event: ScrollEvent<'_>,
-) {
-    let Some(delta) = wheel_scroll_delta(ui, viewport, event) else {
-        return;
-    };
-    scroll_by(ui, viewport, state, delta);
-    event.mark_handled();
-}
-
 pub(crate) fn wheel_scroll_delta(
     ui: &Ui,
     viewport: ElementId,
@@ -1043,21 +1165,17 @@ fn scroll_by_accessibility_action(
     axis: Axis,
     direction: f64,
     request: &accesskit::ActionRequest,
-) -> bool {
-    let Some(unit) = action_scroll_unit(request) else {
-        return false;
-    };
+) -> Option<ScrollOffsetChange> {
+    let unit = action_scroll_unit(request)?;
     let amount = match unit {
         accesskit::ScrollUnit::Item => DEFAULT_SCROLL_LINE_Y,
         accesskit::ScrollUnit::Page => state.viewport_size().along(axis).max(DEFAULT_SCROLL_LINE_Y),
     };
-    set_axis_scroll_offset(
-        ui,
-        viewport,
-        state,
-        axis,
+    let next = axis.pack_vec2(
         state_axis_scroll_offset(state, axis) + (amount * direction),
-    )
+        state.offset().along(axis.cross()),
+    );
+    set_scroll_offset_raw(ui, viewport, state, next)
 }
 
 pub(crate) fn set_scroll_state_offset_y(
@@ -1066,7 +1184,13 @@ pub(crate) fn set_scroll_state_offset_y(
     state: &ScrollState,
     offset: f64,
 ) -> bool {
-    set_scroll_offset(ui, viewport, state, Vec2::new(state.offset().x, offset))
+    set_scroll_offset(
+        ui,
+        viewport,
+        state,
+        Vec2::new(state.offset().x, offset),
+        ScrollOffsetChangeSource::Programmatic,
+    )
 }
 
 pub(crate) fn state_scroll_offset_y(state: &ScrollState) -> f64 {
@@ -1137,29 +1261,90 @@ impl ScrollBarDragState {
         }
         let max = axis_scroll_offset(widget.state.max_offset(), widget.axis);
         let next = (thumb_position / travel).clamp(0.0, 1.0) * max;
-        set_axis_scroll_offset(ui, widget.viewport, &widget.state, widget.axis, next);
+        set_axis_scroll_offset(
+            ui,
+            widget.viewport,
+            &widget.state,
+            widget.axis,
+            next,
+            ScrollOffsetChangeSource::ScrollBar,
+        );
     }
 }
 
-fn scroll_by(ui: &mut Ui, viewport: ElementId, state: &ScrollState, delta: Vec2) -> bool {
-    set_scroll_offset(ui, viewport, state, state.offset() + delta)
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScrollOffsetChange {
+    previous: Vec2,
+    offset: Vec2,
 }
 
-fn set_scroll_offset(ui: &mut Ui, viewport: ElementId, state: &ScrollState, offset: Vec2) -> bool {
+fn scroll_by(
+    ui: &mut Ui,
+    viewport: ElementId,
+    state: &ScrollState,
+    delta: Vec2,
+) -> Option<ScrollOffsetChange> {
+    set_scroll_offset_raw(ui, viewport, state, state.offset() + delta)
+}
+
+fn set_scroll_offset(
+    ui: &mut Ui,
+    viewport: ElementId,
+    state: &ScrollState,
+    offset: Vec2,
+    source: ScrollOffsetChangeSource,
+) -> bool {
+    let Some(change) = set_scroll_offset_raw(ui, viewport, state, offset) else {
+        return false;
+    };
+    dispatch_scroll_offset_changed(ui, viewport, change, source);
+    true
+}
+
+fn set_scroll_offset_raw(
+    ui: &mut Ui,
+    viewport: ElementId,
+    state: &ScrollState,
+    offset: Vec2,
+) -> Option<ScrollOffsetChange> {
+    let previous = state.offset();
     let max = max_scroll_offset(ui, viewport, state);
     let clamped = Vec2::new(
         normalize_scroll_axis(offset.x).min(max.x),
         normalize_scroll_axis(offset.y).min(max.y),
     );
     if !state.set_offset_raw(clamped) {
-        return true;
+        return None;
     }
     let channels = ui
         .scroll_target(viewport)
         .map(|target| target.offset_channels())
         .unwrap_or_else(|| ARRANGE.into());
     ui.mark_channels(viewport, channels);
-    true
+    Some(ScrollOffsetChange {
+        previous,
+        offset: clamped,
+    })
+}
+
+fn dispatch_scroll_offset_changed(
+    ui: &mut Ui,
+    scroll_view: ElementId,
+    change: ScrollOffsetChange,
+    source: ScrollOffsetChangeSource,
+) {
+    let event = ScrollOffsetChangedEvent {
+        scroll_view,
+        previous_offset: change.previous,
+        offset: change.offset,
+        source,
+    };
+    ui.with_widget_mut(scroll_view, |widget, ui| {
+        let Some(widget) = widget.downcast_mut::<ScrollViewWidget>() else {
+            return;
+        };
+        widget.offset_changed.dispatch(ui, event);
+    });
 }
 
 fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 {
@@ -1313,9 +1498,10 @@ fn set_axis_scroll_offset(
     state: &ScrollState,
     axis: Axis,
     offset: f64,
+    source: ScrollOffsetChangeSource,
 ) -> bool {
     let next = axis.pack_vec2(offset, state.offset().along(axis.cross()));
-    set_scroll_offset(ui, viewport, state, next)
+    set_scroll_offset(ui, viewport, state, next, source)
 }
 
 fn state_axis_scroll_offset(state: &ScrollState, axis: Axis) -> f64 {
@@ -1349,6 +1535,10 @@ fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use alloc::rc::Rc;
+    use alloc::vec::Vec;
+    use core::cell::RefCell;
+
     use super::*;
     use crate::accessibility::accesskit_node_id;
     use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
@@ -1682,10 +1872,20 @@ mod tests {
 
     #[test]
     fn scroll_bar_track_click_pages_viewport() {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let seen = events.clone();
+
         let mut ui = Ui::new();
         let root = ui.root();
         ui.set_layout(root, Layout::row(8.0).logical_size(180.0, 80.0));
-        let scroll = ui.append(root, ScrollView::new().size(100.0, 48.0));
+        let scroll = ui.append(
+            root,
+            ScrollView::new()
+                .size(100.0, 48.0)
+                .on_offset_changed(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
         for _ in 0..4 {
             append_scroll_test_child(&mut ui, scroll);
         }
@@ -1704,6 +1904,11 @@ mod tests {
 
         assert!(result.handled);
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+        assert_eq!(events.borrow().len(), 1);
+        assert_eq!(
+            events.borrow()[0].source,
+            ScrollOffsetChangeSource::ScrollBar
+        );
     }
 
     #[test]
@@ -1764,6 +1969,73 @@ mod tests {
         );
 
         assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
+    }
+
+    #[test]
+    fn scroll_view_offset_changed_reports_programmatic_source() {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let seen = events.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 100.0));
+        let scroll = ui.append(
+            root,
+            ScrollView::new()
+                .size(120.0, 48.0)
+                .on_offset_changed(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 100.0));
+        assert!(set_scroll_view_offset_y(&mut ui, scroll, 12.0));
+        assert!(!set_scroll_view_offset_y(&mut ui, scroll, 12.0));
+
+        assert_eq!(
+            events.borrow().as_slice(),
+            [ScrollOffsetChangedEvent {
+                scroll_view: scroll,
+                previous_offset: Vec2::ZERO,
+                offset: Vec2::new(0.0, 12.0),
+                source: ScrollOffsetChangeSource::Programmatic,
+            }]
+        );
+    }
+
+    #[test]
+    fn scroll_view_offset_changed_reports_wheel_source() {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let seen = events.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 120.0));
+        let scroll = ui.append(
+            root,
+            ScrollView::new()
+                .size(120.0, 48.0)
+                .on_offset_changed(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
+        for _ in 0..4 {
+            append_scroll_test_child(&mut ui, scroll);
+        }
+
+        ui.compute_layout(Size::new(180.0, 120.0));
+        let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
+
+        assert!(result.handled);
+        assert_eq!(events.borrow().len(), 1);
+        let event = events.borrow()[0];
+        assert_eq!(event.scroll_view, scroll);
+        assert_eq!(event.previous_offset, Vec2::ZERO);
+        assert!(event.offset.y > 0.0);
+        assert_eq!(event.source, ScrollOffsetChangeSource::Wheel);
     }
 
     #[test]

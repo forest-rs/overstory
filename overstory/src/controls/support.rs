@@ -79,6 +79,10 @@ impl<E> CallbackSlot<E> {
         }
     }
 
+    pub(crate) fn has_handler(&self) -> bool {
+        self.handler.borrow().is_some()
+    }
+
     pub(crate) fn dispatch(&self, ui: &mut Ui, event: E) {
         let Some(mut callback) = self.handler.borrow_mut().take() else {
             return;

@@ -163,10 +163,10 @@ pub use controls::radio::{
     set_radio_button_checked, set_radio_group_selected_index,
 };
 pub use controls::scroll::{
-    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollView,
-    TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_area_horizontal_bar,
-    scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y, scroll_view_offset_y,
-    set_scroll_offset_y, set_scroll_view_offset_y,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollOffsetChangeSource,
+    ScrollOffsetChangedEvent, ScrollView, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
+    scroll_area_horizontal_bar, scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y,
+    scroll_view_offset_y, set_scroll_offset_y, set_scroll_view_offset_y,
 };
 pub use controls::segmented::{
     EFFECT_SEGMENTED_ACTIVATION_DENIED, PART_SEGMENTED_ITEM_LABEL,
@@ -195,7 +195,10 @@ pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET,
     SLOT_TEXT_INPUT_SELECTION, SLOT_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT, TextInput,
-    TextInputSubmitEvent, set_text_input_read_only, set_text_input_text, text_input_text,
+    TextInputEditCommitReason, TextInputEditCommittedEvent, TextInputEditRejectReason,
+    TextInputEditRejectedEvent, TextInputSubmitAction, TextInputSubmitEvent,
+    TextInputTextChangeSource, TextInputTextChangedEvent, set_text_input_read_only,
+    set_text_input_text, text_input_text,
 };
 pub use controls::toggle::{
     PART_TOGGLE_THUMB, SLOT_TOGGLE_THUMB, TYPE_TOGGLE, ToggleSwitch, toggle_checked,
@@ -258,11 +261,14 @@ pub mod prelude {
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
         ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
         PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
-        ScrollArea, ScrollBar, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
-        SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter, StyleClass,
-        StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, Text, TextInput,
-        TextInputSubmitEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip, TooltipSpecExt,
-        TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
+        ScrollArea, ScrollBar, ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState,
+        ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
+        SliderValueChangedEvent, Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary,
+        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason,
+        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
+        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
+        TextInputTextChangedEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
+        TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }
 

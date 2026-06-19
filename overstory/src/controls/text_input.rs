@@ -25,11 +25,10 @@ use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::control_size;
-use crate::controls::support::f32_from_logical;
+use crate::controls::support::{CallbackSlot, EventHandler, control_size, f32_from_logical};
 use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
-use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
+use crate::event_runtime::{ClickEvent, DragEvent, FocusEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutPlacement, LayoutSize};
 use crate::pseudos::PSEUDO_PLACEHOLDER_SHOWN;
 use crate::template::{
@@ -61,18 +60,64 @@ const TEXT_INPUT_HEIGHT: f32 = 40.0;
 const TEXT_INPUT_PADDING_X: f32 = 12.0;
 const DEFAULT_FONT_SIZE: f32 = 15.0;
 
-type TextInputSubmitHandler = Box<dyn FnMut(&mut Ui, &mut TextInputSubmitEvent)>;
+type TextInputSubmitHandler =
+    Box<dyn FnMut(&mut Ui, TextInputSubmitEvent) -> TextInputSubmitAction>;
+type TextInputTextChangedHandler = EventHandler<TextInputTextChangedEvent>;
+type TextInputTextChangedSlot = CallbackSlot<TextInputTextChangedEvent>;
+type TextInputEditCommittedHandler = EventHandler<TextInputEditCommittedEvent>;
+type TextInputEditCommittedSlot = CallbackSlot<TextInputEditCommittedEvent>;
+type TextInputEditRejectedHandler = EventHandler<TextInputEditRejectedEvent>;
+type TextInputEditRejectedSlot = CallbackSlot<TextInputEditRejectedEvent>;
+
+/// Action returned by a [`TextInput::on_submit`] handler.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum TextInputSubmitAction {
+    /// Leave the editable text unchanged.
+    #[default]
+    Keep,
+    /// Clear the editable text after the submit handler returns.
+    Clear,
+    /// Replace the editable text after the submit handler returns.
+    Replace(String),
+}
+
+/// Source of a text change reported by [`TextInput::on_text_changed`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextInputTextChangeSource {
+    /// Text changed through keyboard editing.
+    Keyboard,
+    /// Text changed through an accessibility action.
+    Accessibility,
+    /// Text changed through [`set_text_input_text`].
+    Programmatic,
+    /// Text changed by the action returned from [`TextInput::on_submit`].
+    SubmitAction,
+    /// Text changed because the current edit session was rejected.
+    Reject,
+}
+
+/// Reason an edit session was committed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextInputEditCommitReason {
+    /// Focus moved away from the text input.
+    FocusLost,
+}
+
+/// Reason an edit session was rejected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextInputEditRejectReason {
+    /// Escape was pressed while the text input had focus.
+    Escape,
+}
 
 /// Submit event emitted by a single-line [`TextInput`].
 ///
 /// The event carries a snapshot of the editable text at the moment Enter was
-/// pressed. Handlers that implement composer-style behavior can call
-/// [`Self::clear_after_submit`] to ask the widget to clear its editor after the
-/// handler returns.
+/// pressed. Return a [`TextInputSubmitAction`] from the handler to keep, clear,
+/// or replace the editor content after the handler runs.
 pub struct TextInputSubmitEvent {
     input: ElementId,
     text: String,
-    clear_after_submit: bool,
 }
 
 impl TextInputSubmitEvent {
@@ -80,7 +125,6 @@ impl TextInputSubmitEvent {
         Self {
             input,
             text: String::from(text),
-            clear_after_submit: false,
         }
     }
 
@@ -95,15 +139,6 @@ impl TextInputSubmitEvent {
     pub fn text(&self) -> &str {
         self.text.as_str()
     }
-
-    /// Requests that the input clear itself after the submit handler returns.
-    pub const fn clear_after_submit(&mut self) {
-        self.clear_after_submit = true;
-    }
-
-    fn should_clear_after_submit(&self) -> bool {
-        self.clear_after_submit
-    }
 }
 
 impl core::fmt::Debug for TextInputSubmitEvent {
@@ -111,8 +146,62 @@ impl core::fmt::Debug for TextInputSubmitEvent {
         f.debug_struct("TextInputSubmitEvent")
             .field("input", &self.input)
             .field("text_len", &self.text.len())
-            .field("clear_after_submit", &self.clear_after_submit)
             .finish()
+    }
+}
+
+/// Event delivered after a [`TextInput`] changes text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextInputTextChangedEvent {
+    /// The text input whose content changed.
+    pub input: ElementId,
+    /// The editable text before the change.
+    pub previous_text: String,
+    /// The editable text after the change.
+    pub text: String,
+    /// Where the change came from.
+    pub source: TextInputTextChangeSource,
+}
+
+/// Event delivered when a [`TextInput`] commits an edit session without submit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextInputEditCommittedEvent {
+    /// The text input whose edit session was committed.
+    pub input: ElementId,
+    /// The editable text when the edit session started.
+    pub previous_text: String,
+    /// The text committed by the edit session.
+    pub text: String,
+    /// Why the edit session committed.
+    pub reason: TextInputEditCommitReason,
+}
+
+/// Event delivered when a [`TextInput`] rejects an edit session.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextInputEditRejectedEvent {
+    /// The text input whose edit session was rejected.
+    pub input: ElementId,
+    /// The text restored by the rejection.
+    pub restored_text: String,
+    /// The text discarded by the rejection.
+    pub rejected_text: String,
+    /// Why the edit session was rejected.
+    pub reason: TextInputEditRejectReason,
+}
+
+impl TextInputTextChangedEvent {
+    fn new(
+        input: ElementId,
+        previous_text: String,
+        text: String,
+        source: TextInputTextChangeSource,
+    ) -> Self {
+        Self {
+            input,
+            previous_text,
+            text,
+            source,
+        }
     }
 }
 
@@ -123,6 +212,9 @@ pub struct TextInput {
     font_size: Option<f64>,
     read_only: bool,
     on_submit: Option<TextInputSubmitHandler>,
+    on_text_changed: Option<TextInputTextChangedHandler>,
+    on_edit_committed: Option<TextInputEditCommittedHandler>,
+    on_edit_rejected: Option<TextInputEditRejectedHandler>,
     element: ElementConfig,
 }
 
@@ -132,6 +224,15 @@ impl core::fmt::Debug for TextInput {
             .field("text_len", &self.text.len())
             .field("placeholder", &self.placeholder)
             .field("has_submit_handler", &self.on_submit.is_some())
+            .field("has_text_changed_handler", &self.on_text_changed.is_some())
+            .field(
+                "has_edit_committed_handler",
+                &self.on_edit_committed.is_some(),
+            )
+            .field(
+                "has_edit_rejected_handler",
+                &self.on_edit_rejected.is_some(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -149,6 +250,9 @@ impl TextInput {
             font_size: None,
             read_only: false,
             on_submit: None,
+            on_text_changed: None,
+            on_edit_committed: None,
+            on_edit_rejected: None,
             element,
         }
     }
@@ -205,13 +309,54 @@ impl TextInput {
     ///
     /// This is intentionally a text-input affordance, not a general command or
     /// form-submit system. The handler receives the submitted text snapshot and
-    /// may request clearing through [`TextInputSubmitEvent::clear_after_submit`].
+    /// returns a [`TextInputSubmitAction`] that decides whether the editor keeps,
+    /// clears, or replaces its content after the handler runs.
     #[must_use]
     pub fn on_submit<F>(mut self, handler: F) -> Self
     where
-        F: FnMut(&mut Ui, &mut TextInputSubmitEvent) + 'static,
+        F: FnMut(&mut Ui, TextInputSubmitEvent) -> TextInputSubmitAction + 'static,
     {
         self.on_submit = Some(Box::new(handler));
+        self
+    }
+
+    /// Runs `handler` after the editable text changes.
+    ///
+    /// The event reports both previous and current text and identifies whether
+    /// the change came from keyboard editing, accessibility, a programmatic
+    /// write, submit post-processing, or edit rejection.
+    #[must_use]
+    pub fn on_text_changed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, TextInputTextChangedEvent) + 'static,
+    {
+        self.on_text_changed = Some(Box::new(handler));
+        self
+    }
+
+    /// Runs `handler` when the current edit session commits without submit.
+    ///
+    /// Pressing Enter is reported through [`Self::on_submit`]. This callback is
+    /// for session-level acceptance such as moving focus away after editing.
+    #[must_use]
+    pub fn on_edit_committed<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, TextInputEditCommittedEvent) + 'static,
+    {
+        self.on_edit_committed = Some(Box::new(handler));
+        self
+    }
+
+    /// Runs `handler` when the current edit session is rejected.
+    ///
+    /// Today this happens when Escape restores the text that was present when
+    /// the text input gained focus.
+    #[must_use]
+    pub fn on_edit_rejected<F>(mut self, handler: F) -> Self
+    where
+        F: FnMut(&mut Ui, TextInputEditRejectedEvent) + 'static,
+    {
+        self.on_edit_rejected = Some(Box::new(handler));
         self
     }
 
@@ -259,6 +404,9 @@ impl AppendSpec for TextInput {
             font_size,
             read_only,
             on_submit,
+            on_text_changed,
+            on_edit_committed,
+            on_edit_rejected,
             element,
         } = self;
         let mut edit = TextInputEditState::new(
@@ -270,7 +418,11 @@ impl AppendSpec for TextInput {
             placeholder,
             edit,
             pointer: TextInputPointerState::default(),
+            edit_session_start: text.clone(),
             on_submit,
+            text_changed: TextInputTextChangedSlot::new(on_text_changed),
+            edit_committed: TextInputEditCommittedSlot::new(on_edit_committed),
+            edit_rejected: TextInputEditRejectedSlot::new(on_edit_rejected),
         };
         let id = ui.append_widget_deferred_template(parent, Box::new(input_widget));
         let content_prop = ui.properties().content;
@@ -312,7 +464,11 @@ pub(crate) struct TextInputWidget {
     placeholder: Option<String>,
     edit: TextInputEditState,
     pointer: TextInputPointerState,
+    edit_session_start: String,
     on_submit: Option<TextInputSubmitHandler>,
+    text_changed: TextInputTextChangedSlot,
+    edit_committed: TextInputEditCommittedSlot,
+    edit_rejected: TextInputEditRejectedSlot,
 }
 
 impl core::fmt::Debug for TextInputWidget {
@@ -320,6 +476,15 @@ impl core::fmt::Debug for TextInputWidget {
         f.debug_struct("TextInputWidget")
             .field("placeholder", &self.placeholder)
             .field("has_submit_handler", &self.on_submit.is_some())
+            .field("has_text_changed_handler", &self.text_changed.has_handler())
+            .field(
+                "has_edit_committed_handler",
+                &self.edit_committed.has_handler(),
+            )
+            .field(
+                "has_edit_rejected_handler",
+                &self.edit_rejected.has_handler(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -401,6 +566,16 @@ impl Widget for TextInputWidget {
         self.refresh_parts(ui, input);
     }
 
+    fn handle_focus(&mut self, ctx: &mut WidgetEventContext<'_>, event: FocusEvent<'_>) {
+        let input = ctx.id();
+        if event.focused == Some(input) {
+            self.edit_session_start = String::from(self.edit.text());
+        }
+        if event.previous == Some(input) && event.focused != Some(input) {
+            self.commit_edit_session(ctx, input, TextInputEditCommitReason::FocusLost);
+        }
+    }
+
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let input = ctx.id();
         if !event.is_semantic_target() {
@@ -470,16 +645,27 @@ impl Widget for TextInputWidget {
             event.mark_handled();
             return;
         }
+        if matches!(event.key.key, Key::Named(NamedKey::Escape)) {
+            self.reject_edit_session(ctx, input, TextInputEditRejectReason::Escape);
+            event.mark_handled();
+            return;
+        }
         let Some(element) = ctx.element() else {
             return;
         };
         let style = text_style(element, ctx);
         let read_only = read_only_from_ctx(ctx);
         self.edit.sync_style(&style);
+        let previous_text = String::from(self.edit.text());
         let edit = self.edit.edit_from_key(ctx, event.key, read_only);
         if edit.handled {
             if edit.changed {
-                self.commit_content(ctx, input);
+                self.commit_content_changed(
+                    ctx,
+                    input,
+                    previous_text,
+                    TextInputTextChangeSource::Keyboard,
+                );
             }
             self.refresh_parts(ctx, input);
             event.mark_handled();
@@ -519,10 +705,16 @@ impl Widget for TextInputWidget {
                 let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
                     return false;
                 };
+                let previous_text = String::from(self.edit.text());
                 ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                     driver.insert_or_replace_selection(value);
                 });
-                self.commit_content(ctx, input);
+                self.commit_content_changed(
+                    ctx,
+                    input,
+                    previous_text,
+                    TextInputTextChangeSource::Accessibility,
+                );
             }
             accesskit::Action::SetValue => {
                 if read_only_from_ctx(ctx) {
@@ -531,11 +723,17 @@ impl Widget for TextInputWidget {
                 let Some(accesskit::ActionData::Value(value)) = request.data.as_ref() else {
                     return false;
                 };
+                let previous_text = String::from(self.edit.text());
                 ctx.with_plain_editor(&mut self.edit.editor, |driver| {
                     driver.editor.set_text(value);
                     driver.move_to_text_end();
                 });
-                self.commit_content(ctx, input);
+                self.commit_content_changed(
+                    ctx,
+                    input,
+                    previous_text,
+                    TextInputTextChangeSource::Accessibility,
+                );
             }
             _ => return false,
         }
@@ -658,23 +856,135 @@ fn text_word_starts(text: &str) -> Vec<u8> {
 
 impl TextInputWidget {
     fn submit(&mut self, ctx: &mut WidgetEventContext<'_>, input: ElementId) {
-        let mut submit = TextInputSubmitEvent::new(input, self.edit.text());
-        if let Some(handler) = self.on_submit.as_mut() {
-            handler(ctx.ui_mut(), &mut submit);
-        }
-        if submit.should_clear_after_submit() && !read_only_from_ctx(ctx) {
-            self.edit.editor.set_text("");
-            ctx.with_plain_editor(&mut self.edit.editor, |driver| {
-                driver.move_to_text_end();
-            });
-            self.commit_content(ctx, input);
-        }
+        let submit = TextInputSubmitEvent::new(input, self.edit.text());
+        let action = self
+            .on_submit
+            .as_mut()
+            .map(|handler| handler(ctx.ui_mut(), submit))
+            .unwrap_or_default();
+        self.apply_submit_action(ctx, input, action);
+        self.edit_session_start = String::from(self.edit.text());
         self.refresh_parts(ctx, input);
     }
 
     fn commit_content(&self, ui: &mut Ui, input: ElementId) {
         let content = ui.properties().content;
         ui.set_local(input, content, String::from(self.edit.text()));
+    }
+
+    fn commit_content_changed(
+        &self,
+        ui: &mut Ui,
+        input: ElementId,
+        previous_text: String,
+        source: TextInputTextChangeSource,
+    ) -> bool {
+        let text = String::from(self.edit.text());
+        if text == previous_text {
+            return false;
+        }
+        self.commit_content(ui, input);
+        self.text_changed.dispatch(
+            ui,
+            TextInputTextChangedEvent::new(input, previous_text, text, source),
+        );
+        true
+    }
+
+    fn replace_text(
+        &mut self,
+        ui: &mut Ui,
+        input: ElementId,
+        text: String,
+        source: TextInputTextChangeSource,
+    ) -> bool {
+        let previous_text = String::from(self.edit.text());
+        if previous_text == text {
+            return false;
+        }
+        self.edit.editor.set_text(&text);
+        ui.with_plain_editor(&mut self.edit.editor, |driver| {
+            driver.move_to_text_end();
+        });
+        self.commit_content_changed(ui, input, previous_text, source)
+    }
+
+    fn apply_submit_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        input: ElementId,
+        action: TextInputSubmitAction,
+    ) {
+        if read_only_from_ctx(ctx) {
+            return;
+        }
+        match action {
+            TextInputSubmitAction::Keep => {}
+            TextInputSubmitAction::Clear => {
+                self.replace_text(
+                    ctx,
+                    input,
+                    String::new(),
+                    TextInputTextChangeSource::SubmitAction,
+                );
+            }
+            TextInputSubmitAction::Replace(text) => {
+                self.replace_text(ctx, input, text, TextInputTextChangeSource::SubmitAction);
+            }
+        }
+    }
+
+    fn commit_edit_session(
+        &mut self,
+        ui: &mut Ui,
+        input: ElementId,
+        reason: TextInputEditCommitReason,
+    ) {
+        if self.edit_session_start == self.edit.text() {
+            return;
+        }
+        let previous_text = self.edit_session_start.clone();
+        let text = String::from(self.edit.text());
+        self.edit_session_start = text.clone();
+        self.edit_committed.dispatch(
+            ui,
+            TextInputEditCommittedEvent {
+                input,
+                previous_text,
+                text,
+                reason,
+            },
+        );
+    }
+
+    fn reject_edit_session(
+        &mut self,
+        ui: &mut Ui,
+        input: ElementId,
+        reason: TextInputEditRejectReason,
+    ) {
+        let restored_text = self.edit_session_start.clone();
+        let rejected_text = String::from(self.edit.text());
+        if restored_text == rejected_text {
+            return;
+        }
+        self.replace_text(
+            ui,
+            input,
+            restored_text.clone(),
+            TextInputTextChangeSource::Reject,
+        );
+        self.edit_session_start = restored_text.clone();
+        self.edit_rejected.dispatch(
+            ui,
+            TextInputEditRejectedEvent {
+                input,
+                restored_text,
+                rejected_text,
+                reason,
+            },
+        );
+        self.refresh_parts(ui, input);
     }
 
     fn refresh_parts(&mut self, ui: &mut Ui, input: ElementId) {
@@ -1137,11 +1447,8 @@ pub fn set_text_input_text(ui: &mut Ui, input: ElementId, text: impl Into<String
         if widget.edit.text() == text {
             return;
         }
-        widget.edit.editor.set_text(&text);
-        ui.with_plain_editor(&mut widget.edit.editor, |driver| {
-            driver.move_to_text_end();
-        });
-        widget.commit_content(ui, input);
+        widget.replace_text(ui, input, text, TextInputTextChangeSource::Programmatic);
+        widget.edit_session_start = String::from(widget.edit.text());
         widget.refresh_parts(ui, input);
         changed = true;
     });
@@ -1206,7 +1513,7 @@ mod tests {
                 .text("send me")
                 .on_submit(move |_ui, event| {
                     seen.borrow_mut().push(String::from(event.text()));
-                    event.clear_after_submit();
+                    TextInputSubmitAction::Clear
                 }),
         );
         ui.set_focus(Some(input));
@@ -1217,6 +1524,141 @@ mod tests {
         assert!(result.handled);
         assert_eq!(submitted.borrow().as_slice(), ["send me"]);
         assert_eq!(text_input_text(&ui, input).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn text_input_text_changed_reports_old_new_and_source() {
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let seen = changes.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new().on_text_changed(move |_ui, event| {
+                seen.borrow_mut().push(event);
+            }),
+        );
+        ui.set_focus(Some(input));
+
+        let key = KeyboardEvent::key_down(Key::Character(String::from("a")), Code::KeyA);
+        assert!(ui.dispatch_key(&key).handled);
+
+        assert_eq!(
+            changes.borrow().as_slice(),
+            [TextInputTextChangedEvent {
+                input,
+                previous_text: String::new(),
+                text: String::from("a"),
+                source: TextInputTextChangeSource::Keyboard,
+            }]
+        );
+    }
+
+    #[test]
+    fn text_input_text_changed_reports_programmatic_and_accessibility_sources() {
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let seen = changes.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new()
+                .text("old")
+                .on_text_changed(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
+
+        assert!(set_text_input_text(&mut ui, input, "new"));
+        assert!(ui.handle_accesskit_action(&text_action(input, Action::SetValue, "final")));
+
+        assert_eq!(
+            changes.borrow().as_slice(),
+            [
+                TextInputTextChangedEvent {
+                    input,
+                    previous_text: String::from("old"),
+                    text: String::from("new"),
+                    source: TextInputTextChangeSource::Programmatic,
+                },
+                TextInputTextChangedEvent {
+                    input,
+                    previous_text: String::from("new"),
+                    text: String::from("final"),
+                    source: TextInputTextChangeSource::Accessibility,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn text_input_escape_rejects_edit_session() {
+        let rejected = Rc::new(RefCell::new(Vec::new()));
+        let seen = rejected.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new()
+                .text("draft")
+                .on_edit_rejected(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
+        ui.set_focus(Some(input));
+
+        let key = KeyboardEvent::key_down(Key::Character(String::from("x")), Code::KeyX);
+        assert!(ui.dispatch_key(&key).handled);
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some("draftx"));
+
+        let escape = KeyboardEvent::key_down(Key::Named(NamedKey::Escape), Code::Escape);
+        assert!(ui.dispatch_key(&escape).handled);
+
+        assert_eq!(text_input_text(&ui, input).as_deref(), Some("draft"));
+        assert_eq!(
+            rejected.borrow().as_slice(),
+            [TextInputEditRejectedEvent {
+                input,
+                restored_text: String::from("draft"),
+                rejected_text: String::from("draftx"),
+                reason: TextInputEditRejectReason::Escape,
+            }]
+        );
+    }
+
+    #[test]
+    fn text_input_focus_loss_commits_edit_session() {
+        let committed = Rc::new(RefCell::new(Vec::new()));
+        let seen = committed.clone();
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let input = ui.append(
+            root,
+            TextInput::new()
+                .text("draft")
+                .on_edit_committed(move |_ui, event| {
+                    seen.borrow_mut().push(event);
+                }),
+        );
+        ui.set_focus(Some(input));
+
+        let key = KeyboardEvent::key_down(Key::Character(String::from("x")), Code::KeyX);
+        assert!(ui.dispatch_key(&key).handled);
+        assert!(ui.set_focus(None));
+
+        assert_eq!(
+            committed.borrow().as_slice(),
+            [TextInputEditCommittedEvent {
+                input,
+                previous_text: String::from("draft"),
+                text: String::from("draftx"),
+                reason: TextInputEditCommitReason::FocusLost,
+            }]
+        );
     }
 
     #[test]
