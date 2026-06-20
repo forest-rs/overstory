@@ -34,6 +34,19 @@ use understory_presentation::{TextLineHeight, TextStyle as PresentationTextStyle
 const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
 const MAX_ADVANCE_COMPATIBILITY_EPSILON: f32 = 0.01;
 
+/// Lowers an Overstory logical scalar to Parley's `f32` coordinate space.
+///
+/// Keep Parley precision choices inside the text module so controls can work
+/// in Overstory's logical `f64` space until they call into text editing or
+/// shaping APIs.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Parley stores text coordinates and font sizes as f32"
+)]
+pub(crate) fn parley_scalar(value: f64) -> f32 {
+    value as f32
+}
+
 /// Shared font discovery and source-cache state for text engines.
 ///
 /// Hosts that create many [`crate::Ui`] instances should keep one
@@ -435,16 +448,12 @@ impl ScalarKey {
 /// through `f64` bounds before painting. A text run measured at its natural
 /// width can otherwise be re-shaped against a maximum advance that is a hair
 /// smaller than Parley's own line width and wrap spuriously.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "UI logical text widths fit parley's f32 coordinates"
-)]
 fn parley_max_advance(wrap_width: Option<f64>) -> Option<f32> {
     const WRAP_WIDTH_TOLERANCE: f32 = 0.5;
 
     let width = wrap_width?;
     if width.is_finite() && width > 0.0 {
-        Some(width as f32 + WRAP_WIDTH_TOLERANCE)
+        Some(parley_scalar(width) + WRAP_WIDTH_TOLERANCE)
     } else {
         None
     }

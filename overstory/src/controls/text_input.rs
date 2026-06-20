@@ -34,6 +34,7 @@ use crate::pseudos::PSEUDO_PLACEHOLDER_SHOWN;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
+use crate::text::parley_scalar;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
@@ -1408,14 +1409,6 @@ fn editor_font_features(style: &TextStyle) -> FontFeatures<'static> {
 
 fn text_top(font_size: f32) -> f64 {
     (TEXT_INPUT_HEIGHT - f64::from(font_size) * 1.35) * 0.5
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "Parley stores editor coordinates and font sizes as f32"
-)]
-fn parley_scalar(value: f64) -> f32 {
-    value as f32
 }
 
 /// Sets whether `input` is read-only.

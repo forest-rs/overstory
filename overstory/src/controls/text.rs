@@ -33,6 +33,7 @@ use crate::behavior::{MeasureConstraints, MeasureContext, PresentContext, Widget
 use crate::element::{Element, ElementId};
 use crate::properties::BuiltInProperties;
 use crate::style_class::StyleClass;
+use crate::text::parley_scalar;
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -399,23 +400,20 @@ impl ResolvedPropertySource for Ui {
 
 fn text_style_from_source(element: &Element, source: &impl ResolvedPropertySource) -> TextStyle {
     let properties = source.properties();
-    let mut style = TextStyle::default();
-    #[expect(clippy::cast_possible_truncation, reason = "font size fits f32")]
-    {
-        style.font_size = source.resolve_value::<f64>(element, properties.font_size) as f32;
+    TextStyle {
+        font_size: parley_scalar(source.resolve_value::<f64>(element, properties.font_size)),
+        font_family: source.resolve_value(element, properties.font_family),
+        font_width: source.resolve_value(element, properties.font_width),
+        font_weight: source.resolve_value(element, properties.font_weight),
+        font_style: source.resolve_value(element, properties.font_style),
+        font_variations: source.resolve_value(element, properties.font_variations),
+        font_features: source.resolve_value(element, properties.font_features),
+        language: source.resolve_value(element, properties.text_language),
+        line_height: source.resolve_value(element, properties.line_height),
+        letter_spacing: source.resolve_value(element, properties.letter_spacing),
+        word_spacing: source.resolve_value(element, properties.word_spacing),
+        word_break: source.resolve_value(element, properties.word_break),
+        overflow_wrap: source.resolve_value(element, properties.overflow_wrap),
+        text_wrap_mode: source.resolve_value(element, properties.text_wrap_mode),
     }
-    style.font_family = source.resolve_value(element, properties.font_family);
-    style.font_width = source.resolve_value(element, properties.font_width);
-    style.font_weight = source.resolve_value(element, properties.font_weight);
-    style.font_style = source.resolve_value(element, properties.font_style);
-    style.font_variations = source.resolve_value(element, properties.font_variations);
-    style.font_features = source.resolve_value(element, properties.font_features);
-    style.language = source.resolve_value(element, properties.text_language);
-    style.line_height = source.resolve_value(element, properties.line_height);
-    style.letter_spacing = source.resolve_value(element, properties.letter_spacing);
-    style.word_spacing = source.resolve_value(element, properties.word_spacing);
-    style.word_break = source.resolve_value(element, properties.word_break);
-    style.overflow_wrap = source.resolve_value(element, properties.overflow_wrap);
-    style.text_wrap_mode = source.resolve_value(element, properties.text_wrap_mode);
-    style
 }
