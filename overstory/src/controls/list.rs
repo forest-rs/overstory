@@ -66,13 +66,13 @@ pub const PART_LIST_ITEM_LABEL: PartTag = PartTag(2);
 pub const SLOT_LIST_ITEM_CONTENT: TemplateSlot =
     TemplateSlot::new("content").with_part_tag(PART_LIST_ITEM_LABEL);
 
-const DEFAULT_LIST_BOX_WIDTH: f32 = 220.0;
-const DEFAULT_LIST_BOX_HEIGHT: f32 = 160.0;
+const DEFAULT_LIST_BOX_WIDTH: f64 = 220.0;
+const DEFAULT_LIST_BOX_HEIGHT: f64 = 160.0;
 const DEFAULT_LIST_ITEM_EXTENT: f64 = 28.0;
 const DEFAULT_LIST_OVERSCAN: f64 = 56.0;
-const DEFAULT_LIST_BOX_SCROLLBAR_GAP: f32 = 8.0;
-const DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS: f32 = 10.0;
-const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_GAP: f64 = 8.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_THICKNESS: f64 = 10.0;
+const DEFAULT_LIST_BOX_SCROLLBAR_THUMB_EXTENT: f64 = 30.0;
 
 type ListSelectionChangedHandler = EventHandler<ListSelectionChangedEvent>;
 type ListSelectionChangedSlot = CallbackSlot<ListSelectionChangedEvent>;
@@ -172,7 +172,7 @@ impl<'a> ListItemContext<'a> {
 pub struct ListBox {
     options: Vec<ChoiceOption>,
     item_template: Option<SharedListItemTemplate>,
-    size: Option<(f32, f32)>,
+    size: Option<(f64, f64)>,
     fill_width: bool,
     item_extent: f64,
     overscan: f64,
@@ -284,7 +284,7 @@ impl ListBox {
 
     /// Sets the list's fixed logical-pixel size.
     #[must_use]
-    pub fn size(mut self, width: f32, height: f32) -> Self {
+    pub fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Some((width, height));
         self
     }
@@ -292,7 +292,7 @@ impl ListBox {
     /// Stretches the list to fill its container width, with a fixed logical
     /// height, instead of the fixed pixel width set by [`Self::size`].
     #[must_use]
-    pub fn fill_width(mut self, height: f32) -> Self {
+    pub fn fill_width(mut self, height: f64) -> Self {
         self.fill_width = true;
         self.size = Some((DEFAULT_LIST_BOX_WIDTH, height));
         self
@@ -449,9 +449,9 @@ impl ElementSpec for ListBox {
 /// Builder + spec for a [`ListBox`] with a reserved vertical scrollbar.
 pub struct ListBoxScrollArea {
     list: ListBox,
-    gap: f32,
-    scrollbar_thickness: f32,
-    thumb_extent: f32,
+    gap: f64,
+    scrollbar_thickness: f64,
+    thumb_extent: f64,
     element: ElementConfig,
 }
 
@@ -482,21 +482,21 @@ impl ListBoxScrollArea {
 
     /// Sets the gap between the list viewport and the reserved scrollbar.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap.max(0.0);
         self
     }
 
     /// Sets the reserved scrollbar thickness.
     #[must_use]
-    pub fn scrollbar_thickness(mut self, thickness: f32) -> Self {
+    pub fn scrollbar_thickness(mut self, thickness: f64) -> Self {
         self.scrollbar_thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the fixed scrollbar thumb extent.
     #[must_use]
-    pub fn thumb_extent(mut self, extent: f32) -> Self {
+    pub fn thumb_extent(mut self, extent: f64) -> Self {
         self.thumb_extent = extent.max(1.0);
         self
     }

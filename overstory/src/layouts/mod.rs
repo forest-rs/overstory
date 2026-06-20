@@ -41,6 +41,14 @@ mod longhands;
 mod placement;
 mod shorthand;
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "layout backend lowering is the f64-to-f32 boundary"
+)]
+pub(crate) fn taffy_scalar(value: f64) -> f32 {
+    value as f32
+}
+
 pub use dimension::LayoutDimension;
 pub use longhands::{
     LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutDisplay, LayoutEdges,

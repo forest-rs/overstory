@@ -5,8 +5,9 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub(crate) fn scalar_summary(value: f32) -> String {
-    if value.fract().abs() < f32::EPSILON {
+pub(crate) fn scalar_summary(value: impl Into<f64>) -> String {
+    let value = value.into();
+    if value.fract().abs() < f64::EPSILON {
         format!("{value:.0}")
     } else {
         format!("{value:.3}")

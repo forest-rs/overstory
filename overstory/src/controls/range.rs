@@ -61,14 +61,6 @@ impl ScalarRange {
     }
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "unit fractions fit f32 precisely enough for layout percentages"
-)]
-pub(crate) fn f32_from_unit_fraction(fraction: f64) -> f32 {
-    fraction.clamp(0.0, 1.0) as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

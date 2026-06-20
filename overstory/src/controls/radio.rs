@@ -64,7 +64,7 @@ pub const SLOT_RADIO_BUTTON_DOT: TemplateSlot =
 pub const SLOT_RADIO_BUTTON_LABEL: TemplateSlot =
     TemplateSlot::new("radio-label").with_part_tag(PART_RADIO_BUTTON_LABEL);
 
-const DEFAULT_RADIO_GROUP_GAP: f32 = 8.0;
+const DEFAULT_RADIO_GROUP_GAP: f64 = 8.0;
 
 type RadioSelectionChangedHandler = EventHandler<RadioSelectionChangedEvent>;
 type RadioSelectionChangedSlot = CallbackSlot<RadioSelectionChangedEvent>;
@@ -204,7 +204,7 @@ impl ElementSpec for RadioButton {
 pub struct RadioGroup {
     options: Vec<ChoiceOption>,
     selected_index: Option<usize>,
-    gap: f32,
+    gap: f64,
     horizontal: bool,
     element: ElementConfig,
     on_selection_changed: Option<RadioSelectionChangedHandler>,
@@ -297,7 +297,7 @@ impl RadioGroup {
 
     /// Sets the gap between radio buttons.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap.max(0.0);
         self.sync_layout();
         self

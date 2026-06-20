@@ -10,7 +10,7 @@ use understory_axis::{
     AxisSubdivisionPolicy, AxisTickKind,
 };
 
-use crate::controls::support::{f32_from_logical, read_local_or};
+use crate::controls::support::read_local_or;
 use crate::layouts::{LayoutPlacement, LayoutSize};
 use crate::template::{Template, TemplateContext, TemplateItemKey};
 use crate::ui::Ui;
@@ -90,14 +90,14 @@ impl Template for SliderTemplate {
 }
 
 fn slider_ruler(min: f64, max: f64) -> AxisRuler1D {
-    let mapping = AxisMapping1D::linear(0.0..f64::from(SLIDER_WIDTH), min..max);
+    let mapping = AxisMapping1D::linear(0.0..SLIDER_WIDTH, min..max);
     let scale = AxisScale1D::from_mapping(&mapping, slider_scale_options());
     AxisRuler1D::from_mapping(&mapping, &scale, slider_ruler_options())
 }
 
 fn slider_scale_options() -> AxisScaleOptions {
     AxisScaleOptions {
-        target_major_spacing_px: f64::from(SLIDER_WIDTH) / 2.0,
+        target_major_spacing_px: SLIDER_WIDTH / 2.0,
         medium_label_min_spacing_px: 0.0,
         subdivision_policy: AxisSubdivisionPolicy::Fixed(2),
         ..AxisScaleOptions::default()
@@ -106,9 +106,9 @@ fn slider_scale_options() -> AxisScaleOptions {
 
 fn slider_ruler_options() -> AxisRulerOptions {
     AxisRulerOptions {
-        major_mark_extent: f64::from(MAJOR_TICK_HEIGHT),
-        medium_mark_extent: f64::from(MINOR_TICK_HEIGHT),
-        minor_mark_extent: f64::from(MINOR_TICK_HEIGHT),
+        major_mark_extent: MAJOR_TICK_HEIGHT,
+        medium_mark_extent: MINOR_TICK_HEIGHT,
+        minor_mark_extent: MINOR_TICK_HEIGHT,
     }
 }
 
@@ -123,7 +123,7 @@ fn tick_placement(mark: AxisRulerMark) -> LayoutPlacement {
 }
 
 fn tick_size(mark: AxisRulerMark) -> LayoutSize {
-    LayoutSize::logical(TICK_WIDTH, f32_from_logical(mark.mark_extent))
+    LayoutSize::logical(TICK_WIDTH, mark.mark_extent)
 }
 
 fn tick_label_placement(mark: AxisRulerMark, label: &str) -> LayoutPlacement {
@@ -135,13 +135,13 @@ fn tick_label_size(label: &str) -> LayoutSize {
     LayoutSize::logical(label_width(label), SLIDER_HEIGHT - LABEL_TOP)
 }
 
-fn label_width(label: &str) -> f32 {
+fn label_width(label: &str) -> f64 {
     let chars = u16::try_from(label.chars().count()).unwrap_or(u16::MAX);
-    (f32::from(chars) * LABEL_CHAR_WIDTH).max(LABEL_MIN_WIDTH)
+    (f64::from(chars) * LABEL_CHAR_WIDTH).max(LABEL_MIN_WIDTH)
 }
 
-fn tick_left(view_position: f64, width: f32) -> f32 {
-    (f32_from_logical(view_position) - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
+fn tick_left(view_position: f64, width: f64) -> f64 {
+    (view_position - width / 2.0).clamp(0.0, SLIDER_WIDTH - width)
 }
 
 fn tick_class(kind: AxisTickKind) -> understory_style::ClassId {

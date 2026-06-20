@@ -15,7 +15,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::f32::consts::FRAC_1_SQRT_2 as FRAC_1_SQRT_2_F32;
+use core::f64::consts::FRAC_1_SQRT_2;
 
 use peniko::{Brush, Color};
 use understory_style::TypeTag;
@@ -31,21 +31,21 @@ use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 /// Selector identity for `Spinner`.
 pub const TYPE_SPINNER: TypeTag = TypeTag(5);
 
-const SPINNER_SIZE: f32 = 36.0;
-const DOT_DIAMETER: f32 = 7.0;
-const RING_RADIUS: f32 = (SPINNER_SIZE - DOT_DIAMETER) / 2.0;
-const DOT_INSET_CENTER: f32 = SPINNER_SIZE / 2.0 - DOT_DIAMETER / 2.0;
+const SPINNER_SIZE: f64 = 36.0;
+const DOT_DIAMETER: f64 = 7.0;
+const RING_RADIUS: f64 = (SPINNER_SIZE - DOT_DIAMETER) / 2.0;
+const DOT_INSET_CENTER: f64 = SPINNER_SIZE / 2.0 - DOT_DIAMETER / 2.0;
 const STEP_INTERVAL: TimerDuration = millis(90);
 const DOT_COUNT: usize = 8;
-const DOT_VECTORS: [(f32, f32); DOT_COUNT] = [
+const DOT_VECTORS: [(f64, f64); DOT_COUNT] = [
     (0.0, -1.0),
-    (FRAC_1_SQRT_2_F32, -FRAC_1_SQRT_2_F32),
+    (FRAC_1_SQRT_2, -FRAC_1_SQRT_2),
     (1.0, 0.0),
-    (FRAC_1_SQRT_2_F32, FRAC_1_SQRT_2_F32),
+    (FRAC_1_SQRT_2, FRAC_1_SQRT_2),
     (0.0, 1.0),
-    (-FRAC_1_SQRT_2_F32, FRAC_1_SQRT_2_F32),
+    (-FRAC_1_SQRT_2, FRAC_1_SQRT_2),
     (-1.0, 0.0),
-    (-FRAC_1_SQRT_2_F32, -FRAC_1_SQRT_2_F32),
+    (-FRAC_1_SQRT_2, -FRAC_1_SQRT_2),
 ];
 const DOT_ALPHAS: [u8; DOT_COUNT] = [255, 208, 168, 132, 100, 72, 48, 28];
 
@@ -95,9 +95,8 @@ impl AppendSpec for Spinner {
                         .logical_size(DOT_DIAMETER, DOT_DIAMETER),
                 ),
             );
-            let radius = understory_presentation_properties::CornerRadius::circular(f64::from(
-                DOT_DIAMETER * 0.5,
-            ));
+            let radius =
+                understory_presentation_properties::CornerRadius::circular(DOT_DIAMETER * 0.5);
             ui.set_local(dot, corner_prop.top_left, radius);
             ui.set_local(dot, corner_prop.top_right, radius);
             ui.set_local(dot, corner_prop.bottom_right, radius);

@@ -21,7 +21,7 @@ use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{ArrangeContext, ArrangeResult};
-use crate::controls::range::{ScalarRange, f32_from_unit_fraction};
+use crate::controls::range::ScalarRange;
 use crate::controls::support::control_size;
 use crate::controls::support::read_local_or;
 use crate::element::{Element, ElementId};
@@ -45,8 +45,8 @@ pub const SLOT_PROGRESS_BAR_FILL: TemplateSlot =
 pub const SLOT_PROGRESS_BAR_LABEL: TemplateSlot =
     TemplateSlot::new("progress-label").with_part_tag(PART_PROGRESS_BAR_LABEL);
 
-const DEFAULT_WIDTH: f32 = 260.0;
-const DEFAULT_HEIGHT: f32 = 18.0;
+const DEFAULT_WIDTH: f64 = 260.0;
+const DEFAULT_HEIGHT: f64 = 18.0;
 
 /// Builder + spec for a determinate progress bar.
 pub struct ProgressBar {
@@ -107,7 +107,7 @@ impl ProgressBar {
 
     /// Sets the fixed logical size.
     #[must_use]
-    pub fn size(mut self, width: f32, height: f32) -> Self {
+    pub fn size(mut self, width: f64, height: f64) -> Self {
         self.element.set_layout(progress_layout(width, height));
         self
     }
@@ -115,7 +115,7 @@ impl ProgressBar {
     /// Stretches the bar to fill its container width, with a fixed logical
     /// height, instead of the fixed pixel size set by [`Self::size`].
     #[must_use]
-    pub fn fill_width(mut self, height: f32) -> Self {
+    pub fn fill_width(mut self, height: f64) -> Self {
         self.element.set_layout(progress_fill_layout(height));
         self
     }
@@ -175,7 +175,7 @@ impl ElementSpec for ProgressBar {
     }
 }
 
-fn progress_layout(width: f32, height: f32) -> Layout {
+fn progress_layout(width: f64, height: f64) -> Layout {
     Layout::row(0.0)
         .relative()
         .justify_center()
@@ -183,7 +183,7 @@ fn progress_layout(width: f32, height: f32) -> Layout {
         .logical_size(width.max(1.0), height.max(1.0))
 }
 
-fn progress_fill_layout(height: f32) -> Layout {
+fn progress_fill_layout(height: f64) -> Layout {
     Layout::row(0.0)
         .relative()
         .justify_center()
@@ -298,7 +298,7 @@ fn sync_progress_parts(ui: &mut Ui, progress: ElementId, show_label: Option<bool
 
     let fraction = range.fraction(clamped);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
-        let size = LayoutSize::percent(f32_from_unit_fraction(fraction), 1.0);
+        let size = LayoutSize::percent(fraction.clamp(0.0, 1.0), 1.0);
         let size_changed = ui
             .get(fill)
             .and_then(|element| element.get_local_value(ui.properties().layout_size))

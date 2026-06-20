@@ -48,7 +48,7 @@ pub const PART_SEGMENTED_ITEM_LABEL: PartTag = PartTag(1);
 pub const SLOT_SEGMENTED_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("segmented-label").with_part_tag(PART_SEGMENTED_ITEM_LABEL);
 
-const DEFAULT_SEGMENTED_GAP: f32 = 2.0;
+const DEFAULT_SEGMENTED_GAP: f64 = 2.0;
 
 /// Semantic effect trigger emitted when activation is rejected.
 pub const EFFECT_SEGMENTED_ACTIVATION_DENIED: EffectTriggerId = EffectTriggerId::new(26_001);
@@ -73,7 +73,7 @@ pub struct SegmentedSelectionChangedEvent {
 pub struct SegmentedControl {
     options: Vec<ChoiceOption>,
     selected_index: Option<usize>,
-    gap: f32,
+    gap: f64,
     element: ElementConfig,
     on_selection_changed: Option<SegmentedSelectionChangedHandler>,
 }
@@ -151,7 +151,7 @@ impl SegmentedControl {
 
     /// Sets the gap between segment items.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap.max(0.0);
         self.sync_layout();
         self
@@ -534,12 +534,12 @@ fn sync_segmented_indicator_layout(
         return false;
     }
 
-    let left = layout_f32(desired.x0 - segmented_bounds.x0);
-    let top = layout_f32(desired.y0 - segmented_bounds.y0);
+    let left = desired.x0 - segmented_bounds.x0;
+    let top = desired.y0 - segmented_bounds.y0;
     ui.set_layout_placement(indicator, LayoutPlacement::absolute_at(left, top));
     ui.set_layout_size(
         indicator,
-        LayoutSize::logical(layout_f32(desired.width()), layout_f32(desired.height())),
+        LayoutSize::logical(desired.width(), desired.height()),
     );
     true
 }
@@ -553,14 +553,6 @@ fn rect_close(a: kurbo::Rect, b: kurbo::Rect) -> bool {
 
 fn scalar_close(a: f64, b: f64) -> bool {
     (a - b).abs() <= f64::EPSILON
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "layout dimensions are finite logical pixels and Taffy takes f32"
-)]
-fn layout_f32(value: f64) -> f32 {
-    value.clamp(0.0, f64::from(f32::MAX)) as f32
 }
 
 fn set_segmented_item_selected(ui: &mut Ui, segment: ElementId, selected: bool) {

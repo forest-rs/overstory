@@ -27,7 +27,7 @@ fn gallery_shell_fills_window_content_and_nav_accent() {
 
     let nav_bounds = ui.effective_bounds(nav);
     let stage_bounds = ui.effective_bounds(stage);
-    let expected_content_height = f64::from(INITIAL_SIZE.1) - (2.0 * f64::from(ROOT_PADDING));
+    let expected_content_height = f64::from(INITIAL_SIZE.1) - (2.0 * ROOT_PADDING);
     assert_close(nav_bounds.height(), expected_content_height, "nav height");
     assert_close(
         stage_bounds.height(),
@@ -42,7 +42,7 @@ fn gallery_shell_fills_window_content_and_nav_accent() {
         .expect("nav marker should be third child");
     assert_close(
         ui.effective_bounds(marker).width(),
-        f64::from(NAV_CONTENT_WIDTH),
+        NAV_CONTENT_WIDTH,
         "nav marker width",
     );
 }

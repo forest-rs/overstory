@@ -358,12 +358,8 @@ fn read_change_or(
     range.change_or_fraction(configured, default_fraction)
 }
 
-pub(super) fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f32 {
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "ratio is clamped to 0..=1, fits f32 with room to spare"
-    )]
-    let t = ScalarRange::new(min, max).fraction(value) as f32;
+pub(super) fn thumb_left_for_value(value: f64, min: f64, max: f64) -> f64 {
+    let t = ScalarRange::new(min, max).fraction(value);
     let travel = SLIDER_WIDTH - THUMB_DIAMETER;
     t * travel
 }
@@ -428,8 +424,8 @@ fn set_value_from_center_position(
         return None;
     }
     let track_width = SLIDER_WIDTH - THUMB_DIAMETER;
-    let usable_origin = bounds.origin().x + f64::from(THUMB_DIAMETER) / 2.0;
-    let t = ((center_x - usable_origin) / f64::from(track_width)).clamp(0.0, 1.0);
+    let usable_origin = bounds.origin().x + THUMB_DIAMETER / 2.0;
+    let t = ((center_x - usable_origin) / track_width).clamp(0.0, 1.0);
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let value = ScalarRange::new(min, max).value_at_fraction(t);

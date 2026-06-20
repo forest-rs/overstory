@@ -55,15 +55,15 @@ pub(super) trait DemoChildUiExt {
     fn demo_auto_card<R>(
         &mut self,
         title: &str,
-        width: f32,
+        width: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R;
 
     fn demo_card<R>(
         &mut self,
         title: &str,
-        width: f32,
-        height: f32,
+        width: f64,
+        height: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R;
 
@@ -74,7 +74,7 @@ pub(super) trait DemoChildUiExt {
     fn demo_responsive_card<R>(
         &mut self,
         title: &str,
-        min_width: f32,
+        min_width: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R;
 }
@@ -83,7 +83,7 @@ impl DemoChildUiExt for ChildUi<'_> {
     fn demo_auto_card<R>(
         &mut self,
         title: &str,
-        width: f32,
+        width: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(
@@ -107,8 +107,8 @@ impl DemoChildUiExt for ChildUi<'_> {
     fn demo_card<R>(
         &mut self,
         title: &str,
-        width: f32,
-        height: f32,
+        width: f64,
+        height: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(
@@ -126,7 +126,7 @@ impl DemoChildUiExt for ChildUi<'_> {
     fn demo_responsive_card<R>(
         &mut self,
         title: &str,
-        min_width: f32,
+        min_width: f64,
         f: impl FnOnce(&mut ChildUi<'_>) -> R,
     ) -> R {
         self.with_child(

@@ -9,6 +9,7 @@ use understory_presentation::Edges;
 
 use super::LayoutDimension;
 use super::inspection::{join_summary_parts, push_labeled_summary_part, scalar_summary};
+use super::taffy_scalar;
 
 /// Child layout strategy for an element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -316,8 +317,8 @@ pub struct LayoutSize {
     max_width: Option<LayoutDimension>,
     max_height: Option<LayoutDimension>,
     flex_basis: Option<LayoutDimension>,
-    flex_grow: Option<f32>,
-    flex_shrink: Option<f32>,
+    flex_grow: Option<f64>,
+    flex_shrink: Option<f64>,
 }
 
 impl LayoutSize {
@@ -339,7 +340,7 @@ impl LayoutSize {
 
     /// Creates a fixed logical-pixel size contribution.
     #[must_use]
-    pub const fn logical(width: f32, height: f32) -> Self {
+    pub const fn logical(width: f64, height: f64) -> Self {
         Self::new()
             .width(LayoutDimension::Logical(width))
             .height(LayoutDimension::Logical(height))
@@ -347,7 +348,7 @@ impl LayoutSize {
 
     /// Creates a percent-of-containing-block size contribution.
     #[must_use]
-    pub const fn percent(width: f32, height: f32) -> Self {
+    pub const fn percent(width: f64, height: f64) -> Self {
         Self::new()
             .width(LayoutDimension::Percent(width))
             .height(LayoutDimension::Percent(height))
@@ -355,7 +356,7 @@ impl LayoutSize {
 
     /// Creates a fixed logical-pixel minimum-size contribution.
     #[must_use]
-    pub const fn min_logical(width: f32, height: f32) -> Self {
+    pub const fn min_logical(width: f64, height: f64) -> Self {
         Self::new()
             .min_width(LayoutDimension::Logical(width))
             .min_height(LayoutDimension::Logical(height))
@@ -363,7 +364,7 @@ impl LayoutSize {
 
     /// Creates a fixed logical-pixel maximum-size contribution.
     #[must_use]
-    pub const fn max_logical(width: f32, height: f32) -> Self {
+    pub const fn max_logical(width: f64, height: f64) -> Self {
         Self::new()
             .max_width(LayoutDimension::Logical(width))
             .max_height(LayoutDimension::Logical(height))
@@ -420,14 +421,14 @@ impl LayoutSize {
 
     /// Sets the flex grow factor contribution.
     #[must_use]
-    pub const fn flex_grow(mut self, grow: f32) -> Self {
+    pub const fn flex_grow(mut self, grow: f64) -> Self {
         self.flex_grow = Some(grow);
         self
     }
 
     /// Sets the flex shrink factor contribution.
     #[must_use]
-    pub const fn flex_shrink(mut self, shrink: f32) -> Self {
+    pub const fn flex_shrink(mut self, shrink: f64) -> Self {
         self.flex_shrink = Some(shrink);
         self
     }
@@ -553,10 +554,10 @@ impl LayoutSize {
             style.flex_basis = flex_basis.to_taffy();
         }
         if let Some(flex_grow) = self.flex_grow {
-            style.flex_grow = flex_grow;
+            style.flex_grow = taffy_scalar(flex_grow);
         }
         if let Some(flex_shrink) = self.flex_shrink {
-            style.flex_shrink = flex_shrink;
+            style.flex_shrink = taffy_scalar(flex_shrink);
         }
     }
 }
@@ -564,16 +565,16 @@ impl LayoutSize {
 /// Logical rectangle edge values.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutEdges {
-    left: f32,
-    right: f32,
-    top: f32,
-    bottom: f32,
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
 }
 
 impl LayoutEdges {
     /// Creates edge values with every side set to `value`.
     #[must_use]
-    pub const fn all(value: f32) -> Self {
+    pub const fn all(value: f64) -> Self {
         Self {
             left: value,
             right: value,
@@ -584,7 +585,7 @@ impl LayoutEdges {
 
     /// Creates edge values from horizontal and vertical pairs.
     #[must_use]
-    pub const fn xy(horizontal: f32, vertical: f32) -> Self {
+    pub const fn xy(horizontal: f64, vertical: f64) -> Self {
         Self {
             left: horizontal,
             right: horizontal,
@@ -593,7 +594,7 @@ impl LayoutEdges {
         }
     }
 
-    const fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
+    const fn new(top: f64, right: f64, bottom: f64, left: f64) -> Self {
         Self {
             left,
             right,
@@ -603,12 +604,7 @@ impl LayoutEdges {
     }
 
     pub(crate) fn from_surface_edges(edges: Edges<f64>) -> Self {
-        Self::new(
-            f32_from_logical_edge(edges.top),
-            f32_from_logical_edge(edges.right),
-            f32_from_logical_edge(edges.bottom),
-            f32_from_logical_edge(edges.left),
-        )
+        Self::new(edges.top, edges.right, edges.bottom, edges.left)
     }
 
     pub(crate) fn is_zero(&self) -> bool {
@@ -617,19 +613,19 @@ impl LayoutEdges {
 
     fn to_taffy_length_percentage(self) -> taffy::Rect<taffy::LengthPercentage> {
         taffy::Rect {
-            left: taffy::LengthPercentage::length(self.left),
-            right: taffy::LengthPercentage::length(self.right),
-            top: taffy::LengthPercentage::length(self.top),
-            bottom: taffy::LengthPercentage::length(self.bottom),
+            left: taffy::LengthPercentage::length(taffy_scalar(self.left)),
+            right: taffy::LengthPercentage::length(taffy_scalar(self.right)),
+            top: taffy::LengthPercentage::length(taffy_scalar(self.top)),
+            bottom: taffy::LengthPercentage::length(taffy_scalar(self.bottom)),
         }
     }
 
     fn to_taffy_length_percentage_auto(self) -> taffy::Rect<taffy::LengthPercentageAuto> {
         taffy::Rect {
-            left: taffy::LengthPercentageAuto::length(self.left),
-            right: taffy::LengthPercentageAuto::length(self.right),
-            top: taffy::LengthPercentageAuto::length(self.top),
-            bottom: taffy::LengthPercentageAuto::length(self.bottom),
+            left: taffy::LengthPercentageAuto::length(taffy_scalar(self.left)),
+            right: taffy::LengthPercentageAuto::length(taffy_scalar(self.right)),
+            top: taffy::LengthPercentageAuto::length(taffy_scalar(self.top)),
+            bottom: taffy::LengthPercentageAuto::length(taffy_scalar(self.bottom)),
         }
     }
 
@@ -654,24 +650,17 @@ impl LayoutEdges {
     }
 }
 
-fn f32_from_logical_edge(value: f64) -> f32 {
-    #[expect(clippy::cast_possible_truncation, reason = "layout edges fit f32")]
-    {
-        value as f32
-    }
-}
-
 /// Row and column gap contribution.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutGap {
-    horizontal: f32,
-    vertical: f32,
+    horizontal: f64,
+    vertical: f64,
 }
 
 impl LayoutGap {
     /// Creates equal horizontal and vertical gaps.
     #[must_use]
-    pub const fn all(value: f32) -> Self {
+    pub const fn all(value: f64) -> Self {
         Self {
             horizontal: value,
             vertical: value,
@@ -680,8 +669,8 @@ impl LayoutGap {
 
     fn to_taffy(self) -> taffy::Size<taffy::LengthPercentage> {
         taffy::Size {
-            width: taffy::LengthPercentage::length(self.horizontal),
-            height: taffy::LengthPercentage::length(self.vertical),
+            width: taffy::LengthPercentage::length(taffy_scalar(self.horizontal)),
+            height: taffy::LengthPercentage::length(taffy_scalar(self.vertical)),
         }
     }
 
@@ -722,19 +711,19 @@ impl LayoutSpacing {
 
     /// Creates a uniform margin contribution.
     #[must_use]
-    pub const fn margin_all(value: f32) -> Self {
+    pub const fn margin_all(value: f64) -> Self {
         Self::new().margin(LayoutEdges::all(value))
     }
 
     /// Creates a horizontal/vertical margin contribution.
     #[must_use]
-    pub const fn margin_xy(horizontal: f32, vertical: f32) -> Self {
+    pub const fn margin_xy(horizontal: f64, vertical: f64) -> Self {
         Self::new().margin(LayoutEdges::xy(horizontal, vertical))
     }
 
     /// Creates a uniform child-gap contribution.
     #[must_use]
-    pub const fn gap(value: f32) -> Self {
+    pub const fn gap(value: f64) -> Self {
         Self::new().with_gap(LayoutGap::all(value))
     }
 

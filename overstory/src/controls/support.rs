@@ -27,7 +27,7 @@ use crate::widget::{AppendSpec, Widget};
 /// fill-width size with a fixed logical height. Controls swap only the width
 /// dimension so they keep their own layout flavor (relative positioning,
 /// centered rows) while stretching to fill their container.
-pub(crate) fn control_size(fill_width: bool, width: f32, height: f32) -> LayoutSize {
+pub(crate) fn control_size(fill_width: bool, width: f64, height: f64) -> LayoutSize {
     if fill_width {
         LayoutSize::new()
             .width(LayoutDimension::Percent(1.0))
@@ -146,17 +146,9 @@ pub(crate) fn read_local_or<T: Clone + 'static>(
         .unwrap_or(default)
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "control-local logical coordinates fit f32"
-)]
-pub(crate) fn f32_from_logical(value: f64) -> f32 {
-    value as f32
-}
-
-pub(crate) fn box_padding_xy(horizontal: f32, vertical: f32) -> Edges<f64> {
-    let horizontal = f64::from(horizontal.max(0.0));
-    let vertical = f64::from(vertical.max(0.0));
+pub(crate) fn box_padding_xy(horizontal: f64, vertical: f64) -> Edges<f64> {
+    let horizontal = horizontal.max(0.0);
+    let vertical = vertical.max(0.0);
     Edges::new(vertical, horizontal, vertical, horizontal)
 }
 
@@ -218,12 +210,12 @@ pub(crate) fn fixed_virtual_accessibility_scroll_delta(
 pub(crate) struct ReservedScrollFrameWidget {
     target: ElementSlot,
     scrollbar: ElementSlot,
-    gap: f32,
-    scrollbar_thickness: f32,
+    gap: f64,
+    scrollbar_thickness: f64,
 }
 
 impl ReservedScrollFrameWidget {
-    const fn new(gap: f32, scrollbar_thickness: f32) -> Self {
+    const fn new(gap: f64, scrollbar_thickness: f64) -> Self {
         Self {
             target: ElementSlot::new(),
             scrollbar: ElementSlot::new(),
@@ -259,8 +251,8 @@ impl Widget for ReservedScrollFrameWidget {
         let Some(bounds) = ctx.effective_bounds(ctx.id()) else {
             return ArrangeResult::UNCHANGED;
         };
-        let height = f32_from_logical(bounds.height()).max(1.0);
-        let width = f32_from_logical(bounds.width()).max(1.0);
+        let height = bounds.height().max(1.0);
+        let width = bounds.width().max(1.0);
         let target_width = (width - self.gap - self.scrollbar_thickness).max(1.0);
 
         let mut changed = false;
@@ -285,11 +277,11 @@ impl Widget for ReservedScrollFrameWidget {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ReservedVerticalScrollArea {
-    pub(crate) width: f32,
-    pub(crate) height: f32,
-    pub(crate) gap: f32,
-    pub(crate) scrollbar_thickness: f32,
-    pub(crate) thumb_extent: f32,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) gap: f64,
+    pub(crate) scrollbar_thickness: f64,
+    pub(crate) thumb_extent: f64,
     pub(crate) enabled: bool,
 }
 
@@ -397,10 +389,10 @@ pub(crate) fn layout_fixed_virtual_rows<'a>(
     viewport: Size,
 ) -> bool {
     let mut changed = false;
-    let width = f32_from_logical(viewport.width);
-    let height = f32_from_logical(item_extent);
+    let width = viewport.width;
+    let height = item_extent;
     for (index, element) in rows {
-        let top = f32_from_logical(virtualizer.offset_of(index));
+        let top = virtualizer.offset_of(index);
         let size = LayoutSize::logical(width, height);
         let placement = LayoutPlacement::absolute_at(0.0, top);
         let size_changed = ui

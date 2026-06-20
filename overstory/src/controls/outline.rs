@@ -64,15 +64,15 @@ pub const SLOT_OUTLINE_ITEM_DISCLOSURE: TemplateSlot =
 pub const SLOT_OUTLINE_ITEM_LABEL: TemplateSlot =
     TemplateSlot::new("label").with_part_tag(PART_OUTLINE_ITEM_LABEL);
 
-const DEFAULT_OUTLINE_WIDTH: f32 = 220.0;
-const DEFAULT_OUTLINE_HEIGHT: f32 = 160.0;
+const DEFAULT_OUTLINE_WIDTH: f64 = 220.0;
+const DEFAULT_OUTLINE_HEIGHT: f64 = 160.0;
 const DEFAULT_OUTLINE_ITEM_EXTENT: f64 = 30.0;
 const DEFAULT_OUTLINE_OVERSCAN: f64 = 60.0;
-const DEFAULT_OUTLINE_SCROLLBAR_GAP: f32 = 8.0;
-const DEFAULT_OUTLINE_SCROLLBAR_THICKNESS: f32 = 10.0;
-const DEFAULT_OUTLINE_SCROLLBAR_THUMB_EXTENT: f32 = 30.0;
-const OUTLINE_INDENT_PER_DEPTH: f32 = 18.0;
-const OUTLINE_DISCLOSURE_WIDTH: f32 = 26.0;
+const DEFAULT_OUTLINE_SCROLLBAR_GAP: f64 = 8.0;
+const DEFAULT_OUTLINE_SCROLLBAR_THICKNESS: f64 = 10.0;
+const DEFAULT_OUTLINE_SCROLLBAR_THUMB_EXTENT: f64 = 30.0;
+const OUTLINE_INDENT_PER_DEPTH: f64 = 18.0;
+const OUTLINE_DISCLOSURE_WIDTH: f64 = 26.0;
 
 type OutlineSelectionChangedHandler = EventHandler<OutlineSelectionChangedEvent>;
 type OutlineSelectionChangedSlot = CallbackSlot<OutlineSelectionChangedEvent>;
@@ -201,7 +201,7 @@ pub struct OutlineView {
     nodes: Vec<OutlineViewNode>,
     first_root: Option<OutlineNodeKey>,
     expanded: Vec<OutlineNodeKey>,
-    size: Option<(f32, f32)>,
+    size: Option<(f64, f64)>,
     item_extent: f64,
     overscan: f64,
     selected_key: Option<OutlineNodeKey>,
@@ -275,7 +275,7 @@ impl OutlineView {
 
     /// Sets the outline's fixed logical-pixel size.
     #[must_use]
-    pub fn size(mut self, width: f32, height: f32) -> Self {
+    pub fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Some((width, height));
         self
     }
@@ -423,9 +423,9 @@ impl ElementSpec for OutlineView {
 /// Builder + spec for an [`OutlineView`] with a reserved vertical scrollbar.
 pub struct OutlineViewScrollArea {
     outline: OutlineView,
-    gap: f32,
-    scrollbar_thickness: f32,
-    thumb_extent: f32,
+    gap: f64,
+    scrollbar_thickness: f64,
+    thumb_extent: f64,
     element: ElementConfig,
 }
 
@@ -456,21 +456,21 @@ impl OutlineViewScrollArea {
 
     /// Sets the gap between the outline viewport and the reserved scrollbar.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap.max(0.0);
         self
     }
 
     /// Sets the reserved scrollbar thickness.
     #[must_use]
-    pub fn scrollbar_thickness(mut self, thickness: f32) -> Self {
+    pub fn scrollbar_thickness(mut self, thickness: f64) -> Self {
         self.scrollbar_thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the fixed scrollbar thumb extent.
     #[must_use]
-    pub fn thumb_extent(mut self, extent: f32) -> Self {
+    pub fn thumb_extent(mut self, extent: f64) -> Self {
         self.thumb_extent = extent.max(1.0);
         self
     }
@@ -1466,13 +1466,13 @@ fn disclosure_text(depth: usize, has_children: bool, is_expanded: bool) -> Strin
     text
 }
 
-fn disclosure_width(depth: usize) -> f32 {
+fn disclosure_width(depth: usize) -> f64 {
     #[expect(
         clippy::cast_precision_loss,
         reason = "outline depth is UI-local and intentionally maps to logical pixels"
     )]
     {
-        OUTLINE_DISCLOSURE_WIDTH + ((depth as f32) * OUTLINE_INDENT_PER_DEPTH)
+        OUTLINE_DISCLOSURE_WIDTH + ((depth as f64) * OUTLINE_INDENT_PER_DEPTH)
     }
 }
 

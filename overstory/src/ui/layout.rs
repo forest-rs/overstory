@@ -14,7 +14,7 @@ use crate::channels::{ARRANGE, LAYOUT};
 use crate::element::{Element, ElementId};
 use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
-    LayoutSize, LayoutSpacing,
+    LayoutSize, LayoutSpacing, taffy_scalar,
 };
 use crate::motion::{PresentationSlot, PresentationTarget};
 
@@ -276,10 +276,8 @@ impl Ui {
             return false;
         };
         let available = taffy::Size {
-            #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
-            width: taffy::AvailableSpace::Definite(viewport.width as f32),
-            #[expect(clippy::cast_possible_truncation, reason = "viewport size fits f32")]
-            height: taffy::AvailableSpace::Definite(viewport.height as f32),
+            width: taffy::AvailableSpace::Definite(taffy_scalar(viewport.width)),
+            height: taffy::AvailableSpace::Definite(taffy_scalar(viewport.height)),
         };
 
         // Run taffy with a measure callback that dispatches to the elements'
@@ -330,13 +328,9 @@ impl Ui {
                         },
                     };
                     match widget.measure(element, &measure_ctx, constraints) {
-                        #[expect(
-                            clippy::cast_possible_truncation,
-                            reason = "measured size fits f32"
-                        )]
                         Some(size) => taffy::Size {
-                            width: size.width as f32,
-                            height: size.height as f32,
+                            width: taffy_scalar(size.width),
+                            height: taffy_scalar(size.height),
                         },
                         None => taffy::Size::ZERO,
                     }

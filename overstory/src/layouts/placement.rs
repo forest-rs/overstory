@@ -6,6 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::inspection::scalar_summary;
+use super::taffy_scalar;
 
 /// Placement contribution for an element.
 ///
@@ -28,9 +29,9 @@ pub enum LayoutPlacement {
     /// Removed from normal flow and placed by its top-left corner.
     AbsoluteAt {
         /// Left inset in logical pixels.
-        left: f32,
+        left: f64,
         /// Top inset in logical pixels.
-        top: f32,
+        top: f64,
     },
 }
 
@@ -49,7 +50,7 @@ impl LayoutPlacement {
 
     /// Creates absolute placement with a fixed top-left inset.
     #[must_use]
-    pub const fn absolute_at(left: f32, top: f32) -> Self {
+    pub const fn absolute_at(left: f64, top: f64) -> Self {
         Self::AbsoluteAt { left, top }
     }
 
@@ -97,8 +98,8 @@ impl LayoutPlacement {
             Self::AbsoluteAt { left, top } => {
                 style.position = taffy::Position::Absolute;
                 style.inset = taffy::Rect {
-                    left: taffy::LengthPercentageAuto::length(left),
-                    top: taffy::LengthPercentageAuto::length(top),
+                    left: taffy::LengthPercentageAuto::length(taffy_scalar(left)),
+                    top: taffy::LengthPercentageAuto::length(taffy_scalar(top)),
                     right: taffy::LengthPercentageAuto::auto(),
                     bottom: taffy::LengthPercentageAuto::auto(),
                 };

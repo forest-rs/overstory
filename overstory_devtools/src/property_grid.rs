@@ -508,11 +508,11 @@ pub(crate) fn append_property_grid_sections(
     }
 }
 
-const GRID_LABEL_WIDTH: f32 = 118.0;
-const GRID_ROW_INDENT: f32 = 16.0;
-const GRID_ROW_PADDING_X: f32 = 8.0;
-const GRID_ROW_PADDING_Y: f32 = 5.0;
-const GRID_SECTION_GAP: f32 = 6.0;
+const GRID_LABEL_WIDTH: f64 = 118.0;
+const GRID_ROW_INDENT: f64 = 16.0;
+const GRID_ROW_PADDING_X: f64 = 8.0;
+const GRID_ROW_PADDING_Y: f64 = 5.0;
+const GRID_SECTION_GAP: f64 = 6.0;
 const GRID_FONT_SIZE: f64 = 12.0;
 const GRID_SECTION_FONT_SIZE: f64 = 11.0;
 const GRID_SECTION_COUNT_FONT_SIZE: f64 = 10.0;
@@ -535,13 +535,11 @@ fn append_property_grid_section(
     set_grid_surface(ui, section_id, control_bg(ui), control_border(ui), 6.0);
     let header = ui.append(
         section_id,
-        Panel::row(6.0)
-            .padding_xy(f64::from(GRID_ROW_PADDING_X), 6.0)
-            .layout(
-                Layout::row(6.0)
-                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center))
-                    .fill_width(),
-            ),
+        Panel::row(6.0).padding_xy(GRID_ROW_PADDING_X, 6.0).layout(
+            Layout::row(6.0)
+                .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center))
+                .fill_width(),
+        ),
     );
     set_grid_surface(ui, header, control_hover_bg(ui), None, 5.0);
     append_grid_text(
@@ -579,8 +577,8 @@ fn append_property_grid_row(
         parent,
         Panel::row(8.0)
             .padding_xy(
-                f64::from(GRID_ROW_PADDING_X + ((depth as f32) * GRID_ROW_INDENT)),
-                f64::from(GRID_ROW_PADDING_Y),
+                GRID_ROW_PADDING_X + (depth as f64) * GRID_ROW_INDENT,
+                GRID_ROW_PADDING_Y,
             )
             .layout(
                 Layout::row(8.0)
@@ -626,8 +624,8 @@ fn row_and_descendant_count(row: &PropertyGridRow) -> usize {
     clippy::cast_precision_loss,
     reason = "property-grid nesting is UI depth and maps directly to logical pixels"
 )]
-fn label_layout_width(depth: usize) -> f32 {
-    (GRID_LABEL_WIDTH - ((depth as f32) * GRID_ROW_INDENT)).max(72.0)
+fn label_layout_width(depth: usize) -> f64 {
+    (GRID_LABEL_WIDTH - ((depth as f64) * GRID_ROW_INDENT)).max(72.0)
 }
 
 fn append_grid_text(
@@ -636,7 +634,7 @@ fn append_grid_text(
     content: impl Into<String>,
     brush: Brush,
     font_size: f64,
-    width: Option<f32>,
+    width: Option<f64>,
     grow: bool,
 ) -> ElementId {
     let text = ui.append(

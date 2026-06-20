@@ -14,8 +14,8 @@ use overstory::pseudos::PSEUDO_HOVER;
 
 use super::super::*;
 
-const STAGE_WIDTH: f32 = 404.0;
-const INSPECTOR_WIDTH: f32 = 372.0;
+const STAGE_WIDTH: f64 = 404.0;
+const INSPECTOR_WIDTH: f64 = 372.0;
 const HERO_FONT_SIZE: f64 = 16.0;
 const INITIAL_CORNER_RADIUS: f64 = 10.0;
 const INITIAL_BORDER_WIDTH: f64 = 1.0;

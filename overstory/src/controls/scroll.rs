@@ -27,7 +27,7 @@ use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::channels::ARRANGE;
 use crate::controls::support::{
     CallbackSlot, ElementSlot, EventHandler, PointAxisExt, RectAxisExt, SizeAxisExt, Vec2AxisExt,
-    action_numeric_value, action_scroll_unit, f32_from_logical, is_initial_drag_move,
+    action_numeric_value, action_scroll_unit, is_initial_drag_move,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, ScrollEvent};
@@ -52,12 +52,12 @@ pub const SLOT_SCROLL_BAR_THUMB: TemplateSlot =
     TemplateSlot::new("scrollbar-thumb").with_part_tag(PART_SCROLL_BAR_THUMB);
 
 pub(crate) const DEFAULT_SCROLL_LINE_Y: f64 = 36.0;
-const DEFAULT_SCROLL_AREA_WIDTH: f32 = 220.0;
-const DEFAULT_SCROLL_AREA_HEIGHT: f32 = 160.0;
-const DEFAULT_SCROLL_AREA_GAP: f32 = 8.0;
-const DEFAULT_SCROLL_BAR_LENGTH: f32 = 146.0;
-const DEFAULT_SCROLL_BAR_THICKNESS: f32 = 10.0;
-const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f32 = 30.0;
+const DEFAULT_SCROLL_AREA_WIDTH: f64 = 220.0;
+const DEFAULT_SCROLL_AREA_HEIGHT: f64 = 160.0;
+const DEFAULT_SCROLL_AREA_GAP: f64 = 8.0;
+const DEFAULT_SCROLL_BAR_LENGTH: f64 = 146.0;
+const DEFAULT_SCROLL_BAR_THICKNESS: f64 = 10.0;
+const DEFAULT_SCROLL_BAR_THUMB_EXTENT: f64 = 30.0;
 
 pub(crate) fn normalize_scroll_offset_y(offset_y: f64) -> f64 {
     normalize_scroll_axis(offset_y)
@@ -94,7 +94,7 @@ pub struct ScrollOffsetChangedEvent {
 
 /// Builder + spec for a clipped scroll viewport.
 pub struct ScrollView {
-    size: Option<(f32, f32)>,
+    size: Option<(f64, f64)>,
     state: ScrollState,
     on_offset_changed: Option<ScrollOffsetChangedHandler>,
     element: ElementConfig,
@@ -130,7 +130,7 @@ impl ScrollView {
 
     /// Sets the viewport's fixed logical-pixel size.
     #[must_use]
-    pub fn size(mut self, width: f32, height: f32) -> Self {
+    pub fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Some((width, height));
         self
     }
@@ -385,12 +385,12 @@ impl ScrollViewWidget {
 /// `ScrollArea` owns the scroll viewport and scrollbar elements. Append
 /// content to [`scroll_area_viewport`] after inserting the area.
 pub struct ScrollArea {
-    size: Option<(f32, f32)>,
+    size: Option<(f64, f64)>,
     vertical_scrollbar: bool,
     horizontal_scrollbar: bool,
-    gap: f32,
-    scrollbar_thickness: f32,
-    thumb_extent: f32,
+    gap: f64,
+    scrollbar_thickness: f64,
+    thumb_extent: f64,
     scroll_offset_y: f64,
     on_offset_changed: Option<ScrollOffsetChangedHandler>,
     element: ElementConfig,
@@ -436,7 +436,7 @@ impl ScrollArea {
 
     /// Sets the total fixed logical-pixel size of the area.
     #[must_use]
-    pub fn size(mut self, width: f32, height: f32) -> Self {
+    pub fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Some((width.max(1.0), height.max(1.0)));
         self
     }
@@ -457,21 +457,21 @@ impl ScrollArea {
 
     /// Sets the gap between the viewport and any reserved scrollbars.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap.max(0.0);
         self
     }
 
     /// Sets the reserved scrollbar thickness.
     #[must_use]
-    pub fn scrollbar_thickness(mut self, thickness: f32) -> Self {
+    pub fn scrollbar_thickness(mut self, thickness: f64) -> Self {
         self.scrollbar_thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the fixed scrollbar thumb extent.
     #[must_use]
-    pub fn thumb_extent(mut self, extent: f32) -> Self {
+    pub fn thumb_extent(mut self, extent: f64) -> Self {
         self.thumb_extent = extent.max(1.0);
         self
     }
@@ -613,8 +613,8 @@ impl ElementSpec for ScrollArea {
 /// Per-element widget for `ScrollArea`.
 #[derive(Debug, Default)]
 pub(crate) struct ScrollAreaWidget {
-    gap: f32,
-    scrollbar_thickness: f32,
+    gap: f64,
+    scrollbar_thickness: f64,
     viewport: ElementSlot,
     body: ElementSlot,
     vertical_bar: ElementSlot,
@@ -639,8 +639,8 @@ impl Widget for ScrollAreaWidget {
             return ArrangeResult::UNCHANGED;
         };
         let metrics = ScrollAreaMetrics::new(
-            f32_from_logical(bounds.width()).max(1.0),
-            f32_from_logical(bounds.height()).max(1.0),
+            bounds.width().max(1.0),
+            bounds.height().max(1.0),
             self.gap,
             self.scrollbar_thickness,
             self.vertical_bar.get().is_some(),
@@ -696,17 +696,17 @@ impl Widget for ScrollAreaBodyWidget {}
 
 #[derive(Copy, Clone, Debug)]
 struct ScrollAreaMetrics {
-    viewport_width: f32,
-    viewport_height: f32,
-    body_height: f32,
+    viewport_width: f64,
+    viewport_height: f64,
+    body_height: f64,
 }
 
 impl ScrollAreaMetrics {
     fn new(
-        width: f32,
-        height: f32,
-        gap: f32,
-        thickness: f32,
+        width: f64,
+        height: f64,
+        gap: f64,
+        thickness: f64,
         vertical_scrollbar: bool,
         horizontal_scrollbar: bool,
     ) -> Self {
@@ -722,12 +722,12 @@ impl ScrollAreaMetrics {
     }
 }
 
-fn scrollbar_gutter(enabled: bool, gap: f32, thickness: f32) -> f32 {
+fn scrollbar_gutter(enabled: bool, gap: f64, thickness: f64) -> f64 {
     if enabled { gap + thickness } else { 0.0 }
 }
 
-fn f32_nearly_equal(a: f32, b: f32) -> bool {
-    (a - b).abs() <= f32::EPSILON
+fn f64_nearly_equal(a: f64, b: f64) -> bool {
+    (a - b).abs() <= f64::EPSILON
 }
 
 fn set_scroll_area_viewport(ui: &Ui, area: ElementId, viewport: ElementId) {
@@ -795,9 +795,9 @@ pub fn scroll_area_horizontal_bar(ui: &Ui, area: ElementId) -> Option<ElementId>
 pub struct ScrollBar {
     axis: Axis,
     viewport: ElementId,
-    length: f32,
-    thickness: f32,
-    thumb_extent: f32,
+    length: f64,
+    thickness: f64,
+    thumb_extent: f64,
     element: ElementConfig,
 }
 
@@ -844,7 +844,7 @@ impl ScrollBar {
 
     /// Sets the track length in logical pixels.
     #[must_use]
-    pub fn length(mut self, length: f32) -> Self {
+    pub fn length(mut self, length: f64) -> Self {
         self.length = length.max(1.0);
         self.thumb_extent = self.thumb_extent.min(self.length);
         self
@@ -852,14 +852,14 @@ impl ScrollBar {
 
     /// Sets the track thickness in logical pixels.
     #[must_use]
-    pub fn thickness(mut self, thickness: f32) -> Self {
+    pub fn thickness(mut self, thickness: f64) -> Self {
         self.thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the fixed thumb extent in logical pixels.
     #[must_use]
-    pub fn thumb_extent(mut self, extent: f32) -> Self {
+    pub fn thumb_extent(mut self, extent: f64) -> Self {
         self.thumb_extent = extent.clamp(1.0, self.length.max(1.0));
         self
     }
@@ -928,9 +928,9 @@ pub(crate) struct ScrollBarWidget {
     // scrollbars by target element; the scrollbar keeps this handle only so
     // layout and accessibility hooks can read offset/metrics without a Ui.
     state: ScrollState,
-    length: f32,
-    thickness: f32,
-    thumb_extent: f32,
+    length: f64,
+    thickness: f64,
+    thumb_extent: f64,
     drag: ScrollBarDragState,
 }
 
@@ -985,13 +985,13 @@ impl Widget for ScrollBarWidget {
             return ArrangeResult::UNCHANGED;
         };
         let size = bounds.size();
-        let length = f32_from_logical(size.along(self.axis)).max(1.0);
-        let thickness = f32_from_logical(size.along(self.axis.cross())).max(1.0);
+        let length = size.along(self.axis).max(1.0);
+        let thickness = size.along(self.axis.cross()).max(1.0);
         let thumb_extent = self.thumb_extent.clamp(1.0, length);
 
-        let changed = !f32_nearly_equal(self.length, length)
-            || !f32_nearly_equal(self.thickness, thickness)
-            || !f32_nearly_equal(self.thumb_extent, thumb_extent);
+        let changed = !f64_nearly_equal(self.length, length)
+            || !f64_nearly_equal(self.thickness, thickness)
+            || !f64_nearly_equal(self.thumb_extent, thumb_extent);
         if changed {
             self.length = length;
             self.thickness = thickness;
@@ -1202,9 +1202,9 @@ struct ScrollBarSnapshot {
     axis: Axis,
     viewport: ElementId,
     state: ScrollState,
-    length: f32,
-    thickness: f32,
-    thumb_extent: f32,
+    length: f64,
+    thickness: f64,
+    thumb_extent: f64,
 }
 
 impl From<&ScrollBarWidget> for ScrollBarSnapshot {
@@ -1249,13 +1249,13 @@ impl ScrollBarDragState {
             if is_scroll_bar_thumb(ui, scroll_bar, source) {
                 self.offset_from_thumb_start = press_position.along(widget.axis) - thumb_start;
             } else {
-                self.offset_from_thumb_start = f64::from(widget.thumb_extent) / 2.0;
+                self.offset_from_thumb_start = widget.thumb_extent / 2.0;
             }
         }
         let track_start = bar_origin.along(widget.axis);
         let thumb_position =
             position.along(widget.axis) - track_start - self.offset_from_thumb_start;
-        let travel = f64::from((widget.length - widget.thumb_extent).max(0.0));
+        let travel = (widget.length - widget.thumb_extent).max(0.0);
         if travel <= f64::EPSILON {
             return;
         }
@@ -1428,20 +1428,20 @@ fn scroll_bar_widget(ui: &Ui, scroll_bar: ElementId) -> Option<ScrollBarSnapshot
         .map(ScrollBarSnapshot::from)
 }
 
-fn scroll_bar_layout(axis: Axis, length: f32, thickness: f32) -> Layout {
+fn scroll_bar_layout(axis: Axis, length: f64, thickness: f64) -> Layout {
     Layout::new()
         .relative()
         .size(scroll_bar_size(axis, length, thickness))
 }
 
-fn scroll_bar_size(axis: Axis, length: f32, thickness: f32) -> LayoutSize {
+fn scroll_bar_size(axis: Axis, length: f64, thickness: f64) -> LayoutSize {
     match axis {
         Axis::Horizontal => LayoutSize::logical(length, thickness),
         Axis::Vertical => LayoutSize::logical(thickness, length),
     }
 }
 
-fn scroll_bar_thumb_size(axis: Axis, thickness: f32, extent: f32) -> LayoutSize {
+fn scroll_bar_thumb_size(axis: Axis, thickness: f64, extent: f64) -> LayoutSize {
     match axis {
         Axis::Horizontal => LayoutSize::logical(extent, thickness),
         Axis::Vertical => LayoutSize::logical(thickness, extent),
@@ -1465,14 +1465,14 @@ fn sync_scroll_bar_thumb_size(ui: &mut Ui, scroll_bar: ElementId) -> bool {
 fn scroll_bar_thumb_offset(
     axis: Axis,
     state: &ScrollState,
-    length: f32,
-    thumb_extent: f32,
+    length: f64,
+    thumb_extent: f64,
 ) -> Vec2 {
     let max = axis_scroll_offset(state.max_offset(), axis);
     if max <= f64::EPSILON {
         return Vec2::ZERO;
     }
-    let travel = f64::from((length - thumb_extent).max(0.0));
+    let travel = (length - thumb_extent).max(0.0);
     let offset = (state_axis_scroll_offset(state, axis) / max).clamp(0.0, 1.0) * travel;
     axis.pack_vec2(offset, 0.0)
 }
@@ -1517,12 +1517,12 @@ fn axis_thumb_start(
     track_origin: Point,
     offset: Vec2,
     max: Vec2,
-    length: f32,
-    thumb_extent: f32,
+    length: f64,
+    thumb_extent: f64,
 ) -> f64 {
     track_origin.along(axis)
         + axis_scroll_fraction(offset.along(axis), max.along(axis))
-            * f64::from((length - thumb_extent).max(0.0))
+            * (length - thumb_extent).max(0.0)
 }
 
 fn axis_scroll_fraction(offset: f64, max: f64) -> f64 {
@@ -1764,7 +1764,7 @@ mod tests {
 
         assert_eq!(
             viewport_bounds.width(),
-            120.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+            120.0 - DEFAULT_SCROLL_AREA_GAP - DEFAULT_SCROLL_BAR_THICKNESS
         );
         assert_eq!(viewport_bounds.height(), 80.0);
         assert!(bar_bounds.x0 > viewport_bounds.x1);
@@ -1803,7 +1803,7 @@ mod tests {
         assert_eq!(bar_bounds.height(), 140.0);
         assert_eq!(
             viewport_bounds.width(),
-            120.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+            120.0 - DEFAULT_SCROLL_AREA_GAP - DEFAULT_SCROLL_BAR_THICKNESS
         );
         assert!(
             scroll_offset_y(&ui, viewport).is_some(),
@@ -1836,7 +1836,7 @@ mod tests {
         assert_eq!(viewport_bounds.width(), 120.0);
         assert_eq!(
             viewport_bounds.height(),
-            80.0 - DEFAULT_SCROLL_AREA_GAP as f64 - DEFAULT_SCROLL_BAR_THICKNESS as f64
+            80.0 - DEFAULT_SCROLL_AREA_GAP - DEFAULT_SCROLL_BAR_THICKNESS
         );
         assert!(bar_bounds.y0 > viewport_bounds.y1);
     }

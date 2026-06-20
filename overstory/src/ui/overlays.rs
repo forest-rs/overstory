@@ -39,17 +39,10 @@ impl Ui {
             if same_origin(overlay_bounds.origin(), origin) {
                 continue;
             }
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "overlay coordinates fit the layout engine"
-            )]
-            let left = origin.x as f32;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "overlay coordinates fit the layout engine"
-            )]
-            let top = origin.y as f32;
-            self.set_layout_placement(entry.element, LayoutPlacement::absolute_at(left, top));
+            self.set_layout_placement(
+                entry.element,
+                LayoutPlacement::absolute_at(origin.x, origin.y),
+            );
             changed = true;
         }
         changed

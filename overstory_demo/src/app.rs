@@ -41,27 +41,27 @@ use understory_style::{
 use understory_view2d::{ClampMode, FitMode, Viewport2D};
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
-const ROOT_GAP: f32 = 24.0;
-const ROOT_PADDING: f32 = 28.0;
-const NAV_WIDTH: f32 = 276.0;
-const NAV_PADDING: f32 = 20.0;
-const NAV_CONTENT_WIDTH: f32 = NAV_WIDTH - (NAV_PADDING * 2.0);
-const PAGE_HEADER_HEIGHT: f32 = 92.0;
-const OVERVIEW_CARD_WIDTH: f32 = 256.0;
-const PAGE_CARD_WIDTH: f32 = 390.0;
-const PAGE_CONTROL_WIDTH: f32 = 328.0;
-const PAGE_LIST_WIDTH: f32 = 316.0;
-const SPLIT_PANE_WIDTH: f32 = 148.0;
-const SPLIT_PANE_HEIGHT: f32 = 142.0;
-const DEVTOOLS_INSPECTOR_WIDTH: f32 = 600.0;
+const ROOT_GAP: f64 = 24.0;
+const ROOT_PADDING: f64 = 28.0;
+const NAV_WIDTH: f64 = 276.0;
+const NAV_PADDING: f64 = 20.0;
+const NAV_CONTENT_WIDTH: f64 = NAV_WIDTH - (NAV_PADDING * 2.0);
+const PAGE_HEADER_HEIGHT: f64 = 92.0;
+const OVERVIEW_CARD_WIDTH: f64 = 256.0;
+const PAGE_CARD_WIDTH: f64 = 390.0;
+const PAGE_CONTROL_WIDTH: f64 = 328.0;
+const PAGE_LIST_WIDTH: f64 = 316.0;
+const SPLIT_PANE_WIDTH: f64 = 148.0;
+const SPLIT_PANE_HEIGHT: f64 = 142.0;
+const DEVTOOLS_INSPECTOR_WIDTH: f64 = 600.0;
 const DEVTOOLS_REFRESH_INTERVAL_MS: u64 = 500;
-const SVG_PAGE_WIDTH: f32 = 824.0;
-const SVG_INFO_HEIGHT: f32 = 132.0;
-const SVG_TIGER_CARD_WIDTH: f32 = 548.0;
-const SVG_TIGER_CARD_HEIGHT: f32 = 500.0;
-const SVG_INSPECTOR_CARD_WIDTH: f32 = 258.0;
-const SVG_VIEWPORT_WIDTH: f32 = 500.0;
-const SVG_VIEWPORT_HEIGHT: f32 = 328.0;
+const SVG_PAGE_WIDTH: f64 = 824.0;
+const SVG_INFO_HEIGHT: f64 = 132.0;
+const SVG_TIGER_CARD_WIDTH: f64 = 548.0;
+const SVG_TIGER_CARD_HEIGHT: f64 = 500.0;
+const SVG_INSPECTOR_CARD_WIDTH: f64 = 258.0;
+const SVG_VIEWPORT_WIDTH: f64 = 500.0;
+const SVG_VIEWPORT_HEIGHT: f64 = 328.0;
 const SVG_ZOOM_SENSITIVITY: f64 = 0.0015;
 const SVG_GRID_LIMIT: usize = 140;
 const SVG_SELECTION_WOBBLE_UP_MS: u64 = 135;
@@ -294,7 +294,7 @@ fn build_ui() -> Ui {
             .percent_size(1.0, 1.0)
             .alignment(LayoutAlignment::new().align_items(LayoutAlign::Stretch)),
     );
-    ui.set_box_padding(root, Edges::all(f64::from(ROOT_PADDING)));
+    ui.set_box_padding(root, Edges::all(ROOT_PADDING));
 
     let (nav_chrome, nav_rows, stage) = ui.with_children(root, |root| {
         let (nav_chrome, nav_rows) = root.with_child(
@@ -309,7 +309,7 @@ fn build_ui() -> Ui {
                         )
                         .flex_shrink(0.0),
                 )
-                .padding_all(f64::from(NAV_PADDING)),
+                .padding_all(NAV_PADDING),
             |nav| {
                 let nav_chrome = build_nav(nav);
                 let nav_rows = build_nav_rows(nav);

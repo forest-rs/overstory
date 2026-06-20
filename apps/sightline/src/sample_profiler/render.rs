@@ -25,14 +25,14 @@ use super::{
     format_duration_us, format_time_us, timestamp_from_world_x,
 };
 
-const CALLOUT_WIDTH: f32 = 172.0;
-const CALLOUT_HEIGHT: f32 = 86.0;
-const CALLOUT_GAP: f32 = 12.0;
-const CALLOUT_TOP: f32 = 38.0;
-const HIDDEN_CALLOUT_X: f32 = -256.0;
-const HIDDEN_CALLOUT_Y: f32 = -256.0;
-const HIDDEN_SPAN_X: f32 = -512.0;
-const HIDDEN_SPAN_Y: f32 = -512.0;
+const CALLOUT_WIDTH: f64 = 172.0;
+const CALLOUT_HEIGHT: f64 = 86.0;
+const CALLOUT_GAP: f64 = 12.0;
+const CALLOUT_TOP: f64 = 38.0;
+const HIDDEN_CALLOUT_X: f64 = -256.0;
+const HIDDEN_CALLOUT_Y: f64 = -256.0;
+const HIDDEN_SPAN_X: f64 = -512.0;
+const HIDDEN_SPAN_Y: f64 = -512.0;
 const OVERVIEW_WINDOW_BG: Color = Color::from_rgba8(0x60, 0xa5, 0xfa, 0x29);
 
 pub(super) fn render(ui: &mut Ui, view: &SampleProfilerView, state: &SampleProfilerState) {
@@ -76,10 +76,9 @@ pub(super) fn render(ui: &mut Ui, view: &SampleProfilerView, state: &SampleProfi
 
         let x0 = overview_plot_x(state, bucket.start as f64);
         let x1 = overview_plot_x(state, bucket.end as f64).max(x0 + 1.0);
-        let height = snap_plot_extent(
-            (max / state.data.peak_ms).clamp(0.0, 1.0) * f64::from(OVERVIEW_BAR_MAX_HEIGHT),
-        )
-        .max(1.0);
+        let height =
+            snap_plot_extent((max / state.data.peak_ms).clamp(0.0, 1.0) * OVERVIEW_BAR_MAX_HEIGHT)
+                .max(1.0);
         let y = OVERVIEW_BAR_BASELINE_Y - height;
 
         ui.set_layout(
@@ -119,7 +118,7 @@ pub(super) fn render(ui: &mut Ui, view: &SampleProfilerView, state: &SampleProfi
 
 fn render_ticks(ui: &mut Ui, view: &SampleProfilerView, viewport: &Viewport1D) {
     let visible = viewport.visible_world_range();
-    let mapping = AxisMapping1D::linear(0.0..f64::from(TIME_VIEW_WIDTH), visible);
+    let mapping = AxisMapping1D::linear(0.0..TIME_VIEW_WIDTH, visible);
     let scale = AxisScale1D::from_mapping(
         &mapping,
         AxisScaleOptions {
@@ -136,8 +135,8 @@ fn render_ticks(ui: &mut Ui, view: &SampleProfilerView, viewport: &Viewport1D) {
         &mapping,
         &scale,
         AxisRulerOptions {
-            major_mark_extent: f64::from(PLOT_HEIGHT - AXIS_HEIGHT),
-            medium_mark_extent: f64::from(PLOT_HEIGHT - AXIS_HEIGHT),
+            major_mark_extent: PLOT_HEIGHT - AXIS_HEIGHT,
+            medium_mark_extent: PLOT_HEIGHT - AXIS_HEIGHT,
             minor_mark_extent: 0.0,
         },
     );
@@ -158,10 +157,7 @@ fn render_ticks(ui: &mut Ui, view: &SampleProfilerView, viewport: &Viewport1D) {
                 .logical_size(1.0, snap_plot_extent(mark.mark_extent)),
         );
         if mark.labeled {
-            let label_x = snap_plot_x(
-                (f64::from(x) - 24.0)
-                    .clamp(f64::from(TRACK_LABEL_WIDTH), f64::from(PLOT_WIDTH) - 48.0),
-            );
+            let label_x = snap_plot_x((x - 24.0).clamp(TRACK_LABEL_WIDTH, PLOT_WIDTH - 48.0));
             ui.set_layout(
                 tick.label,
                 Layout::new()
@@ -230,7 +226,7 @@ fn render_overview_window(
     );
 }
 
-fn render_lane_rule(ui: &mut Ui, lane: TimelineLaneView, label: &str, y: f32, height: f32) {
+fn render_lane_rule(ui: &mut Ui, lane: TimelineLaneView, label: &str, y: f64, height: f64) {
     ui.set_layout(
         lane.label,
         Layout::new()
@@ -418,38 +414,38 @@ fn render_selection(
     );
 }
 
-fn snap_plot_x(value: f64) -> f32 {
+fn snap_plot_x(value: f64) -> f64 {
     snap_logical_px(value).clamp(0.0, PLOT_WIDTH)
 }
 
-fn time_plot_x(view_x: f64) -> f32 {
-    snap_plot_x(f64::from(TRACK_LABEL_WIDTH) + view_x.clamp(0.0, f64::from(TIME_VIEW_WIDTH)))
+fn time_plot_x(view_x: f64) -> f64 {
+    snap_plot_x(TRACK_LABEL_WIDTH + view_x.clamp(0.0, TIME_VIEW_WIDTH))
 }
 
-fn world_plot_x(viewport: &Viewport1D, time: f64) -> f32 {
+fn world_plot_x(viewport: &Viewport1D, time: f64) -> f64 {
     time_plot_x(viewport.world_to_view_x(time))
 }
 
-fn overview_plot_x(state: &SampleProfilerState, time: f64) -> f32 {
+fn overview_plot_x(state: &SampleProfilerState, time: f64) -> f64 {
     let range = &state.data.time_range;
     let duration = range.end.saturating_sub(range.start).max(1) as f64;
     let normalized = ((time - range.start as f64) / duration).clamp(0.0, 1.0);
-    time_plot_x(normalized * f64::from(TIME_VIEW_WIDTH))
+    time_plot_x(normalized * TIME_VIEW_WIDTH)
 }
 
-fn snap_plot_extent(value: f64) -> f32 {
+fn snap_plot_extent(value: f64) -> f64 {
     snap_logical_px(value).clamp(0.0, PLOT_HEIGHT)
 }
 
-fn lane_y(lane: LaneId) -> f32 {
-    TIMELINE_LANE_Y + lane.index() as f32 * TIMELINE_LANE_HEIGHT
+fn lane_y(lane: LaneId) -> f64 {
+    TIMELINE_LANE_Y + lane.index() as f64 * TIMELINE_LANE_HEIGHT
 }
 
-fn span_y(span: &TimelineSpan) -> f32 {
-    lane_y(span.lane) + 12.0 + span.depth as f32 * TIMELINE_SPAN_DEPTH_OFFSET
+fn span_y(span: &TimelineSpan) -> f64 {
+    lane_y(span.lane) + 12.0 + span.depth as f64 * TIMELINE_SPAN_DEPTH_OFFSET
 }
 
-fn marker_geometry(marker: &TimelineMarker) -> (f32, f32, f32) {
+fn marker_geometry(marker: &TimelineMarker) -> (f64, f64, f64) {
     if let Some(lane) = marker.lane {
         let y = lane_y(lane);
         return (y, TIMELINE_LANE_HEIGHT, y + 4.0);
@@ -481,13 +477,9 @@ fn marker_color(index: usize) -> Color {
     COLORS[index % COLORS.len()]
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "plot geometry is clamped to small finite logical-pixel coordinates"
-)]
-fn snap_logical_px(value: f64) -> f32 {
+fn snap_logical_px(value: f64) -> f64 {
     if value.is_finite() {
-        value.round().clamp(-16_384.0, 16_384.0) as f32
+        value.round().clamp(-16_384.0, 16_384.0)
     } else {
         0.0
     }
@@ -538,7 +530,7 @@ fn hide_selection(ui: &mut Ui, view: &SampleProfilerView) {
 fn show_callout(
     ui: &mut Ui,
     callout: SampleCallout,
-    marker_x: f32,
+    marker_x: f64,
     timestamp: u64,
     duration_ms: f64,
     peak_ms: f64,
@@ -585,7 +577,7 @@ fn hide_callout(ui: &mut Ui, callout: SampleCallout) {
     ui.set_local(callout.peak, ui.properties().text, String::new());
 }
 
-fn callout_x(marker_x: f32) -> f32 {
+fn callout_x(marker_x: f64) -> f64 {
     let right_x = marker_x + CALLOUT_GAP;
     if right_x + CALLOUT_WIDTH <= PLOT_WIDTH {
         return right_x;

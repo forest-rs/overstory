@@ -54,7 +54,7 @@ impl Layout {
 
     /// Creates a horizontal flex row with a uniform child gap.
     #[must_use]
-    pub fn row(gap: f32) -> Self {
+    pub fn row(gap: f64) -> Self {
         Self::new()
             .container(LayoutContainer::row())
             .spacing(LayoutSpacing::gap(gap))
@@ -62,7 +62,7 @@ impl Layout {
 
     /// Creates a vertical flex column with a uniform child gap.
     #[must_use]
-    pub fn column(gap: f32) -> Self {
+    pub fn column(gap: f64) -> Self {
         Self::new()
             .container(LayoutContainer::column())
             .spacing(LayoutSpacing::gap(gap))
@@ -84,21 +84,21 @@ impl Layout {
 
     /// Removes this element from normal flow and places its top-left corner.
     #[must_use]
-    pub fn absolute_at(mut self, left: f32, top: f32) -> Self {
+    pub fn absolute_at(mut self, left: f64, top: f64) -> Self {
         self.placement = LayoutPlacement::AbsoluteAt { left, top };
         self
     }
 
     /// Sets a fixed logical-pixel width and height.
     #[must_use]
-    pub fn logical_size(mut self, width: f32, height: f32) -> Self {
+    pub fn logical_size(mut self, width: f64, height: f64) -> Self {
         self.size.merge_from(LayoutSize::logical(width, height));
         self
     }
 
     /// Sets a width and height as fractions of the containing block.
     #[must_use]
-    pub fn percent_size(mut self, width: f32, height: f32) -> Self {
+    pub fn percent_size(mut self, width: f64, height: f64) -> Self {
         self.size.merge_from(LayoutSize::percent(width, height));
         self
     }
@@ -143,14 +143,14 @@ impl Layout {
 
     /// Sets a fixed logical-pixel minimum width and height.
     #[must_use]
-    pub fn min_logical_size(mut self, width: f32, height: f32) -> Self {
+    pub fn min_logical_size(mut self, width: f64, height: f64) -> Self {
         self.size.merge_from(LayoutSize::min_logical(width, height));
         self
     }
 
     /// Sets a fixed logical-pixel maximum width and height.
     #[must_use]
-    pub fn max_logical_size(mut self, width: f32, height: f32) -> Self {
+    pub fn max_logical_size(mut self, width: f64, height: f64) -> Self {
         self.size.merge_from(LayoutSize::max_logical(width, height));
         self
     }
@@ -164,14 +164,14 @@ impl Layout {
 
     /// Sets equal margins on all four sides.
     #[must_use]
-    pub fn margin_all(mut self, value: f32) -> Self {
+    pub fn margin_all(mut self, value: f64) -> Self {
         self.spacing.merge_from(LayoutSpacing::margin_all(value));
         self
     }
 
     /// Sets horizontal and vertical margins.
     #[must_use]
-    pub fn margin_xy(mut self, horizontal: f32, vertical: f32) -> Self {
+    pub fn margin_xy(mut self, horizontal: f64, vertical: f64) -> Self {
         self.spacing
             .merge_from(LayoutSpacing::margin_xy(horizontal, vertical));
         self
@@ -219,7 +219,7 @@ impl Layout {
 
     /// Sets the flex grow factor.
     #[must_use]
-    pub fn flex_grow(mut self, grow: f32) -> Self {
+    pub fn flex_grow(mut self, grow: f64) -> Self {
         self.size.merge_from(LayoutSize::new().flex_grow(grow));
         self
     }
@@ -229,7 +229,7 @@ impl Layout {
     /// Use `0.0` for fixed-size content that should overflow a smaller
     /// viewport instead of being compressed by flex layout.
     #[must_use]
-    pub fn flex_shrink(mut self, shrink: f32) -> Self {
+    pub fn flex_shrink(mut self, shrink: f64) -> Self {
         self.size.merge_from(LayoutSize::new().flex_shrink(shrink));
         self
     }
@@ -405,13 +405,13 @@ pub(crate) struct LayoutParts {
 
 /// Returns a horizontal flex row with a uniform child gap.
 #[must_use]
-pub fn row_with_gap(gap: f32) -> Layout {
+pub fn row_with_gap(gap: f64) -> Layout {
     Layout::row(gap)
 }
 
 /// Returns a vertical flex column with a uniform child gap.
 #[must_use]
-pub fn column_with_gap(gap: f32) -> Layout {
+pub fn column_with_gap(gap: f64) -> Layout {
     Layout::column(gap)
 }
 

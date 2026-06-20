@@ -30,8 +30,8 @@ pub const TYPE_DIVIDER: TypeTag = TypeTag(4);
 #[derive(Clone, Debug)]
 pub struct Divider {
     axis: Axis,
-    thickness: f32,
-    length: Option<f32>,
+    thickness: f64,
+    length: Option<f64>,
     element: ElementConfig,
 }
 
@@ -77,14 +77,14 @@ impl Divider {
 
     /// Sets the divider thickness in logical pixels.
     #[must_use]
-    pub fn thickness(mut self, thickness: f32) -> Self {
+    pub fn thickness(mut self, thickness: f64) -> Self {
         self.thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the divider's main-axis length in logical pixels.
     #[must_use]
-    pub fn length(mut self, length: f32) -> Self {
+    pub fn length(mut self, length: f64) -> Self {
         self.length = Some(length.max(1.0));
         self
     }

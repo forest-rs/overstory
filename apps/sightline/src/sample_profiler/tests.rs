@@ -12,7 +12,7 @@ use crate::style::{SightlineStyleTokens, sightline_cascade, sightline_theme};
 #[test]
 fn viewport_selection_uses_chronostore_nearest_sample() {
     let state = SampleProfilerState::new();
-    state.select_at_view_x(f64::from(PLOT_WIDTH) * 0.5);
+    state.select_at_view_x(PLOT_WIDTH * 0.5);
     let selected = state
         .selected_entry()
         .expect("selection should map to a retained sample");
@@ -93,7 +93,7 @@ fn sample_callout_stays_inside_plot() {
 
     app_state
         .sample_profiler()
-        .select_at_view_x(f64::from(PLOT_WIDTH) - 1.0);
+        .select_at_view_x(PLOT_WIDTH - 1.0);
     render::render(&mut ui, &view, app_state.sample_profiler());
     ui.compute_layout(Size::new(1_100.0, 520.0));
 
@@ -158,7 +158,7 @@ fn timeline_model_lanes_render_below_sample_lane() {
 fn visible_timeline_model_spans_render_in_time_region() {
     let (ui, view) = build_test_profiler();
     let plot = ui.effective_bounds(view.plot);
-    let time_region_x0 = plot.x0 + f64::from(TRACK_LABEL_WIDTH);
+    let time_region_x0 = plot.x0 + TRACK_LABEL_WIDTH;
 
     let visible_spans = view
         .spans
@@ -201,7 +201,7 @@ fn visible_timeline_model_spans_render_in_time_region() {
 fn visible_sample_bars_share_one_pixel_aligned_baseline() {
     let (ui, view) = build_test_profiler();
     let plot = ui.effective_bounds(view.plot);
-    let expected_baseline = plot.y0 + f64::from(OVERVIEW_BAR_BASELINE_Y);
+    let expected_baseline = plot.y0 + OVERVIEW_BAR_BASELINE_Y;
 
     let mut checked = 0;
     for bar in &view.bars {

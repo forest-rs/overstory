@@ -17,7 +17,7 @@ use overstory_transcript::{
 
 use super::*;
 
-const DEVTOOLS_EVENT_LOG_HEIGHT: f32 = 112.0;
+const DEVTOOLS_EVENT_LOG_HEIGHT: f64 = 112.0;
 
 pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
     let open_dock = Rc::new(Cell::new(None));

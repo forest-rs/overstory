@@ -61,8 +61,8 @@ impl From<usvg::Error> for SvgImportError {
 /// Imported SVG document ready to append into an Overstory [`Ui`].
 #[derive(Clone, Debug)]
 pub struct SvgElementTree {
-    width: f32,
-    height: f32,
+    width: f64,
+    height: f64,
     paths: Vec<SvgPathElement>,
 }
 
@@ -88,21 +88,21 @@ impl SvgElementTree {
         let mut paths = Vec::new();
         collect_group_paths(tree.root(), 1.0, &mut paths);
         Ok(Self {
-            width,
-            height,
+            width: f64::from(width),
+            height: f64::from(height),
             paths,
         })
     }
 
     /// Returns the SVG viewport width in logical pixels.
     #[must_use]
-    pub fn width(&self) -> f32 {
+    pub fn width(&self) -> f64 {
         self.width
     }
 
     /// Returns the SVG viewport height in logical pixels.
     #[must_use]
-    pub fn height(&self) -> f32 {
+    pub fn height(&self) -> f64 {
         self.height
     }
 
@@ -339,29 +339,24 @@ impl SvgPathHit {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct SvgBounds {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 }
 
 impl SvgBounds {
     fn from_usvg(rect: usvg::Rect) -> Self {
         Self {
-            x: rect.left(),
-            y: rect.top(),
-            width: rect.width(),
-            height: rect.height(),
+            x: f64::from(rect.left()),
+            y: f64::from(rect.top()),
+            width: f64::from(rect.width()),
+            height: f64::from(rect.height()),
         }
     }
 
     fn to_rect(self) -> Rect {
-        Rect::new(
-            f64::from(self.x),
-            f64::from(self.y),
-            f64::from(self.x + self.width),
-            f64::from(self.y + self.height),
-        )
+        Rect::new(self.x, self.y, self.x + self.width, self.y + self.height)
     }
 }
 
@@ -394,8 +389,8 @@ fn import_path(path: &usvg::Path, inherited_opacity: f32) -> Option<SvgPathEleme
         return None;
     }
 
-    let transform = Affine::translate((-f64::from(bounds.x), -f64::from(bounds.y)))
-        * affine_from_usvg(path.abs_transform());
+    let transform =
+        Affine::translate((-bounds.x, -bounds.y)) * affine_from_usvg(path.abs_transform());
     let mut primitive = PathPrimitive::new(bez_path_from_usvg(path.data()))
         .transform(transform)
         .paint_order(paint_order_from_usvg(path.paint_order()));

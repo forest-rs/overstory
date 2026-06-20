@@ -25,7 +25,7 @@ use understory_presentation::{TextLineHeight, TextStyle};
 use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::{CallbackSlot, EventHandler, control_size, f32_from_logical};
+use crate::controls::support::{CallbackSlot, EventHandler, control_size};
 use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, FocusEvent, KeyEvent};
@@ -55,9 +55,9 @@ pub const SLOT_TEXT_INPUT_CARET: TemplateSlot =
 pub const SLOT_TEXT_INPUT_SELECTION: TemplateSlot =
     TemplateSlot::new("text-input-selection").with_part_tag(PART_TEXT_INPUT_SELECTION);
 
-const TEXT_INPUT_WIDTH: f32 = 280.0;
-const TEXT_INPUT_HEIGHT: f32 = 40.0;
-const TEXT_INPUT_PADDING_X: f32 = 12.0;
+const TEXT_INPUT_WIDTH: f64 = 280.0;
+const TEXT_INPUT_HEIGHT: f64 = 40.0;
+const TEXT_INPUT_PADDING_X: f64 = 12.0;
 const DEFAULT_FONT_SIZE: f32 = 15.0;
 
 type TextInputSubmitHandler =
@@ -273,7 +273,7 @@ impl TextInput {
 
     /// Sets the fixed logical width.
     #[must_use]
-    pub fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f64) -> Self {
         self.element.set_layout(text_input_layout(width));
         self
     }
@@ -447,7 +447,7 @@ impl ElementSpec for TextInput {
     }
 }
 
-fn text_input_layout(width: f32) -> Layout {
+fn text_input_layout(width: f64) -> Layout {
     Layout::new()
         .relative()
         .logical_size(width.max(1.0), TEXT_INPUT_HEIGHT)
@@ -765,12 +765,12 @@ fn text_input_text_run_node(
     let mut node = accesskit::Node::new(accesskit::Role::TextRun);
     let style = text_style(element, ctx);
     let bounds = ctx.bounds(element.id());
-    let y0 = bounds.y0 + f64::from(text_top(style.font_size));
+    let y0 = bounds.y0 + text_top(style.font_size);
     node.set_bounds(accesskit::Rect {
-        x0: bounds.x0 + f64::from(TEXT_INPUT_PADDING_X),
+        x0: bounds.x0 + TEXT_INPUT_PADDING_X,
         y0,
         x1: bounds.x1,
-        y1: y0 + f64::from(style.font_size * 1.35),
+        y1: y0 + f64::from(style.font_size) * 1.35,
     });
     node.set_value(String::from(text));
     node.set_character_lengths(text_character_lengths(text));
@@ -1031,22 +1031,16 @@ fn text_input_template_spec() -> TemplateSpec {
 
 fn text_input_selection_layout() -> Layout {
     Layout::new()
-        .absolute_at(
-            TEXT_INPUT_PADDING_X,
-            f32_from_logical(f64::from(text_top(DEFAULT_FONT_SIZE))),
-        )
+        .absolute_at(TEXT_INPUT_PADDING_X, text_top(DEFAULT_FONT_SIZE))
         .size(LayoutSize::logical(0.0, 0.0))
 }
 
 fn text_input_caret_layout() -> Layout {
     Layout::new()
-        .absolute_at(
-            TEXT_INPUT_PADDING_X,
-            f32_from_logical(f64::from(text_top(DEFAULT_FONT_SIZE))),
-        )
+        .absolute_at(TEXT_INPUT_PADDING_X, text_top(DEFAULT_FONT_SIZE))
         .size(LayoutSize::logical(
             1.5,
-            f32_from_logical(f64::from(DEFAULT_FONT_SIZE) * 1.25),
+            f64::from(DEFAULT_FONT_SIZE) * 1.25,
         ))
 }
 
@@ -1307,9 +1301,9 @@ fn editor_local_point(
     style: &TextStyle,
 ) -> (f32, f32) {
     let bounds = ui.effective_bounds(input);
-    let local_x = (position.x - bounds.x0 - f64::from(TEXT_INPUT_PADDING_X)).max(0.0);
-    let local_y = (position.y - bounds.y0 - f64::from(text_top(style.font_size))).max(0.0);
-    (f32_from_logical(local_x), f32_from_logical(local_y))
+    let local_x = (position.x - bounds.x0 - TEXT_INPUT_PADDING_X).max(0.0);
+    let local_y = (position.y - bounds.y0 - text_top(style.font_size)).max(0.0);
+    (parley_scalar(local_x), parley_scalar(local_y))
 }
 
 fn caret_layout(
@@ -1358,13 +1352,10 @@ fn rect_from_bounding_box(bounds: parley::BoundingBox) -> Rect {
 fn editor_rect_parts(rect: Rect, font_size: f32) -> (LayoutPlacement, LayoutSize) {
     (
         LayoutPlacement::absolute_at(
-            f32_from_logical(f64::from(TEXT_INPUT_PADDING_X) + rect.x0),
-            f32_from_logical(f64::from(text_top(font_size)) + rect.y0),
+            TEXT_INPUT_PADDING_X + rect.x0,
+            text_top(font_size) + rect.y0,
         ),
-        LayoutSize::logical(
-            f32_from_logical(rect.width()),
-            f32_from_logical(rect.height()),
-        ),
+        LayoutSize::logical(rect.width(), rect.height()),
     )
 }
 
@@ -1393,7 +1384,7 @@ fn apply_editor_style(editor: &mut PlainEditor<Brush>, style: &TextStyle) {
 
 fn initial_text_input_style(font_size: f64) -> TextStyle {
     TextStyle {
-        font_size: f32_from_logical(font_size),
+        font_size: parley_scalar(font_size),
         line_height: TextLineHeight::FontSizeRelative(1.2),
         ..TextStyle::default()
     }
@@ -1415,8 +1406,16 @@ fn editor_font_features(style: &TextStyle) -> FontFeatures<'static> {
     }
 }
 
-fn text_top(font_size: f32) -> f32 {
-    (TEXT_INPUT_HEIGHT - font_size * 1.35) * 0.5
+fn text_top(font_size: f32) -> f64 {
+    (TEXT_INPUT_HEIGHT - f64::from(font_size) * 1.35) * 0.5
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Parley stores editor coordinates and font sizes as f32"
+)]
+fn parley_scalar(value: f64) -> f32 {
+    value as f32
 }
 
 /// Sets whether `input` is read-only.

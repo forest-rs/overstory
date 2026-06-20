@@ -10,14 +10,9 @@ struct SvgViewportDemo {
 }
 
 impl SvgViewportDemo {
-    fn new(svg: &SvgElementTree, view_width: f32, view_height: f32) -> Self {
-        let world_bounds = Rect::new(0.0, 0.0, f64::from(svg.width()), f64::from(svg.height()));
-        let mut viewport = Viewport2D::new(Rect::new(
-            0.0,
-            0.0,
-            f64::from(view_width),
-            f64::from(view_height),
-        ));
+    fn new(svg: &SvgElementTree, view_width: f64, view_height: f64) -> Self {
+        let world_bounds = Rect::new(0.0, 0.0, svg.width(), svg.height());
+        let mut viewport = Viewport2D::new(Rect::new(0.0, 0.0, view_width, view_height));
         viewport.set_fit_mode(FitMode::Center);
         viewport.set_clamp_mode(ClampMode::KeepSomeVisible);
         viewport.set_zoom_limits(0.12, 18.0);
@@ -343,7 +338,7 @@ fn append_svg_inspector_row_with_height_to(
     parent: &mut ChildUi<'_>,
     label: &str,
     value: &str,
-    height: f32,
+    height: f64,
 ) -> ElementId {
     parent.with_child(
         Panel::row(8.0).layout(
@@ -460,10 +455,11 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
     let world_bounds = state.world_bounds;
     let content = ui.append(
         host,
-        Panel::new().layout(Layout::new().absolute_at(0.0, 0.0).logical_size(
-            f32_coord(world_bounds.width()),
-            f32_coord(world_bounds.height()),
-        )),
+        Panel::new().layout(
+            Layout::new()
+                .absolute_at(0.0, 0.0)
+                .logical_size(world_bounds.width(), world_bounds.height()),
+        ),
     );
     let svg_root = ui.append(content, (*tree).clone());
     let path_elements: Rc<[ElementId]> = Rc::from(
@@ -730,11 +726,8 @@ fn update_svg_selection_overlay(ui: &mut Ui, viewer: &SvgViewer, state: &SvgView
     ui.set_layout(
         viewer.selection,
         Layout::new()
-            .absolute_at(f32_coord(view_bounds.x0), f32_coord(view_bounds.y0))
-            .logical_size(
-                f32_coord(view_bounds.width().max(0.0)),
-                f32_coord(view_bounds.height().max(0.0)),
-            ),
+            .absolute_at(view_bounds.x0, view_bounds.y0)
+            .logical_size(view_bounds.width().max(0.0), view_bounds.height().max(0.0)),
     );
 }
 
@@ -809,8 +802,8 @@ fn append_svg_grid_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color
         parent,
         Panel::new().class(CLASS_SVG_GRID_LINE).layout(
             Layout::new()
-                .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
-                .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
+                .absolute_at(rect.x0, rect.y0)
+                .logical_size(rect.width(), rect.height()),
         ),
     );
     ui.set_local(
@@ -830,14 +823,6 @@ fn padded_svg_bounds(bounds: Rect) -> Rect {
 fn local_point(ui: &Ui, parent: ElementId, position: Point) -> Point {
     let bounds = ui.effective_bounds(parent);
     Point::new(position.x - bounds.x0, position.y - bounds.y0)
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "demo logical coordinates fit f32 layout values"
-)]
-fn f32_coord(value: f64) -> f32 {
-    value as f32
 }
 
 #[cfg(test)]

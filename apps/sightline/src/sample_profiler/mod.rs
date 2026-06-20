@@ -31,19 +31,19 @@ mod view;
 
 pub(crate) use view::SampleProfilerView;
 
-pub(super) const PLOT_WIDTH: f32 = 920.0;
-pub(super) const PLOT_HEIGHT: f32 = 410.0;
-pub(super) const TRACK_LABEL_WIDTH: f32 = 106.0;
-pub(super) const TIME_VIEW_WIDTH: f32 = PLOT_WIDTH - TRACK_LABEL_WIDTH;
-pub(super) const AXIS_HEIGHT: f32 = 34.0;
-pub(super) const OVERVIEW_Y: f32 = AXIS_HEIGHT;
-pub(super) const OVERVIEW_HEIGHT: f32 = 78.0;
-pub(super) const OVERVIEW_BAR_BASELINE_Y: f32 = OVERVIEW_Y + OVERVIEW_HEIGHT - 12.0;
-pub(super) const OVERVIEW_BAR_MAX_HEIGHT: f32 = OVERVIEW_HEIGHT - 22.0;
-pub(super) const TIMELINE_LANE_Y: f32 = OVERVIEW_Y + OVERVIEW_HEIGHT + 18.0;
-pub(super) const TIMELINE_LANE_HEIGHT: f32 = 48.0;
-pub(super) const TIMELINE_SPAN_HEIGHT: f32 = 22.0;
-pub(super) const TIMELINE_SPAN_DEPTH_OFFSET: f32 = 12.0;
+pub(super) const PLOT_WIDTH: f64 = 920.0;
+pub(super) const PLOT_HEIGHT: f64 = 410.0;
+pub(super) const TRACK_LABEL_WIDTH: f64 = 106.0;
+pub(super) const TIME_VIEW_WIDTH: f64 = PLOT_WIDTH - TRACK_LABEL_WIDTH;
+pub(super) const AXIS_HEIGHT: f64 = 34.0;
+pub(super) const OVERVIEW_Y: f64 = AXIS_HEIGHT;
+pub(super) const OVERVIEW_HEIGHT: f64 = 78.0;
+pub(super) const OVERVIEW_BAR_BASELINE_Y: f64 = OVERVIEW_Y + OVERVIEW_HEIGHT - 12.0;
+pub(super) const OVERVIEW_BAR_MAX_HEIGHT: f64 = OVERVIEW_HEIGHT - 22.0;
+pub(super) const TIMELINE_LANE_Y: f64 = OVERVIEW_Y + OVERVIEW_HEIGHT + 18.0;
+pub(super) const TIMELINE_LANE_HEIGHT: f64 = 48.0;
+pub(super) const TIMELINE_SPAN_HEIGHT: f64 = 22.0;
+pub(super) const TIMELINE_SPAN_DEPTH_OFFSET: f64 = 12.0;
 pub(super) const BAR_COUNT: usize = 184;
 pub(super) const TICK_COUNT: usize = 24;
 pub(super) const TIMELINE_LANE_COUNT: usize = 4;
@@ -66,13 +66,13 @@ impl SampleProfilerState {
     pub(crate) fn new() -> Self {
         let data = data::SampleProfilerData::seed();
         let timeline = timeline::seed_timeline_doc();
-        let mut viewport = Viewport1D::new(0.0..f64::from(TIME_VIEW_WIDTH));
+        let mut viewport = Viewport1D::new(0.0..TIME_VIEW_WIDTH);
         viewport.set_world_bounds(Some(data.time_range_f64()));
         viewport.set_clamp_mode(ClampMode::KeepSomeVisible);
         viewport.set_fit_mode(FitMode::AlignMin);
         viewport.set_zoom_limits(
-            f64::from(TIME_VIEW_WIDTH) / data.duration_us().max(1) as f64,
-            f64::from(TIME_VIEW_WIDTH) / MIN_VISIBLE_US as f64,
+            TIME_VIEW_WIDTH / data.duration_us().max(1) as f64,
+            TIME_VIEW_WIDTH / MIN_VISIBLE_US as f64,
         );
         viewport.set_visible_world_range(data.initial_range_f64());
 
@@ -87,7 +87,7 @@ impl SampleProfilerState {
     fn zoom_about_center(&self, factor: f64) {
         self.viewport
             .borrow_mut()
-            .zoom_about_view_point(f64::from(TIME_VIEW_WIDTH) * 0.5, factor);
+            .zoom_about_view_point(TIME_VIEW_WIDTH * 0.5, factor);
     }
 
     fn fit(&self) {
@@ -168,7 +168,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
     ui.events(scroll_view.plot).scroll(move |ui, event| {
         let delta = event.logical_delta(
             Vec2::new(24.0, 24.0),
-            Vec2::new(f64::from(TIME_VIEW_WIDTH), f64::from(PLOT_HEIGHT)),
+            Vec2::new(TIME_VIEW_WIDTH, PLOT_HEIGHT),
         );
         if delta.y == 0.0 {
             return;
@@ -188,7 +188,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
 
 fn local_plot_x(ui: &Ui, plot: overstory::ElementId, position: Point) -> f64 {
     let bounds = ui.effective_bounds(plot);
-    (position.x - bounds.x0 - f64::from(TRACK_LABEL_WIDTH)).clamp(0.0, f64::from(TIME_VIEW_WIDTH))
+    (position.x - bounds.x0 - TRACK_LABEL_WIDTH).clamp(0.0, TIME_VIEW_WIDTH)
 }
 
 fn timestamp_from_world_x(world_x: f64) -> u64 {

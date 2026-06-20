@@ -57,7 +57,7 @@ pub(super) fn build_nav(nav: &mut ChildUi<'_>) -> NavChrome {
 }
 
 pub(super) fn build_nav_rows(nav: &mut ChildUi<'_>) -> Rc<[ElementId]> {
-    let row_count = DemoPage::ALL.len() as f32;
+    let row_count = DemoPage::ALL.len() as f64;
     let stack_height = (row_count * 40.0) + ((row_count - 1.0) * 4.0);
     let mut rows = Vec::with_capacity(DemoPage::ALL.len());
     // Put the row stack inside a scroll viewport that fills the remaining nav

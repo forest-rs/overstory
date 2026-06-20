@@ -49,13 +49,13 @@ impl Panel {
 
     /// Shortcut for a horizontal flex row with the given gap.
     #[must_use]
-    pub fn row(gap: f32) -> Self {
+    pub fn row(gap: f64) -> Self {
         Self::new().layout(layouts::row_with_gap(gap))
     }
 
     /// Shortcut for a vertical flex column with the given gap.
     #[must_use]
-    pub fn column(gap: f32) -> Self {
+    pub fn column(gap: f64) -> Self {
         Self::new().layout(layouts::column_with_gap(gap))
     }
 
@@ -73,11 +73,11 @@ impl Panel {
     /// container. Padding itself is authored as canonical surface padding, not
     /// as layout spacing.
     #[must_use]
-    pub fn padding(mut self, value: f32) -> Self {
+    pub fn padding(mut self, value: f64) -> Self {
         if self.element.layout().is_none() {
             self.element.set_layout(Layout::flex());
         }
-        SurfaceSpecExt::padding_all(self, f64::from(value))
+        SurfaceSpecExt::padding_all(self, value)
     }
 
     /// Sets the cross-axis alignment to centered.

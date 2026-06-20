@@ -41,16 +41,16 @@ pub const CLASS_SLIDER_MAJOR_TICK: ClassId = ClassId(1);
 /// Class applied to minor slider tick marks and labels.
 pub const CLASS_SLIDER_MINOR_TICK: ClassId = ClassId(2);
 
-pub(super) const SLIDER_WIDTH: f32 = 220.0;
-pub(super) const SLIDER_HEIGHT: f32 = 52.0;
-pub(super) const TRACK_HEIGHT: f32 = 6.0;
-pub(super) const THUMB_DIAMETER: f32 = 22.0;
-pub(super) const TICK_WIDTH: f32 = 2.0;
-pub(super) const MAJOR_TICK_HEIGHT: f32 = 10.0;
-pub(super) const MINOR_TICK_HEIGHT: f32 = 6.0;
-pub(super) const TICK_TOP: f32 = 28.0;
-pub(super) const LABEL_TOP: f32 = 38.0;
-pub(super) const LABEL_CHAR_WIDTH: f32 = 6.0;
-pub(super) const LABEL_MIN_WIDTH: f32 = 6.0;
+pub(super) const SLIDER_WIDTH: f64 = 220.0;
+pub(super) const SLIDER_HEIGHT: f64 = 52.0;
+pub(super) const TRACK_HEIGHT: f64 = 6.0;
+pub(super) const THUMB_DIAMETER: f64 = 22.0;
+pub(super) const TICK_WIDTH: f64 = 2.0;
+pub(super) const MAJOR_TICK_HEIGHT: f64 = 10.0;
+pub(super) const MINOR_TICK_HEIGHT: f64 = 6.0;
+pub(super) const TICK_TOP: f64 = 28.0;
+pub(super) const LABEL_TOP: f64 = 38.0;
+pub(super) const LABEL_CHAR_WIDTH: f64 = 6.0;
+pub(super) const LABEL_MIN_WIDTH: f64 = 6.0;
 pub(super) const DEFAULT_SMALL_CHANGE_FRACTION: f64 = 0.05;
 pub(super) const DEFAULT_LARGE_CHANGE_FRACTION: f64 = 0.20;

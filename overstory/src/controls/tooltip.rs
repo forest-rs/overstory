@@ -87,14 +87,14 @@ impl Tooltip {
 
     /// Offsets the tooltip from the placed edge of the target element.
     #[must_use]
-    pub fn offset(mut self, x: f32, y: f32) -> Self {
-        self.offset = Vec2::new(f64::from(x), f64::from(y));
+    pub fn offset(mut self, x: f64, y: f64) -> Self {
+        self.offset = Vec2::new(x, y);
         self
     }
 
     /// Sets the tooltip's horizontal and vertical padding.
     #[must_use]
-    pub fn padding(mut self, horizontal: f32, vertical: f32) -> Self {
+    pub fn padding(mut self, horizontal: f64, vertical: f64) -> Self {
         self.padding = box_padding_xy(horizontal, vertical);
         self
     }
@@ -118,17 +118,9 @@ impl Tooltip {
     }
 
     pub(crate) fn layout_for(&self, origin: Point) -> Layout {
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "tooltip coordinates fit the layout engine"
-        )]
-        let left = origin.x as f32;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "tooltip coordinates fit the layout engine"
-        )]
-        let top = origin.y as f32;
-        Layout::row(0.0).align_center().absolute_at(left, top)
+        Layout::row(0.0)
+            .align_center()
+            .absolute_at(origin.x, origin.y)
     }
 }
 

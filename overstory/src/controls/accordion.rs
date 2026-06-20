@@ -86,7 +86,7 @@ pub struct AccordionExpandedChangedEvent {
 /// Builder + spec for a coordinated collection of expandable sections.
 pub struct Accordion {
     mode: AccordionMode,
-    gap: f32,
+    gap: f64,
     element: ElementConfig,
 }
 
@@ -137,7 +137,7 @@ impl Accordion {
 
     /// Sets the vertical gap between section roots.
     #[must_use]
-    pub fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f64) -> Self {
         self.gap = gap;
         self
     }

@@ -54,9 +54,9 @@ pub const SLOT_SELECT_LABEL: TemplateSlot =
 pub const SLOT_SELECT_INDICATOR: TemplateSlot =
     TemplateSlot::new("select-indicator").with_part_tag(PART_SELECT_INDICATOR);
 
-const DEFAULT_SELECT_WIDTH: f32 = 220.0;
-const DEFAULT_SELECT_HEIGHT: f32 = 38.0;
-const DEFAULT_SELECT_POPUP_HEIGHT: f32 = 180.0;
+const DEFAULT_SELECT_WIDTH: f64 = 220.0;
+const DEFAULT_SELECT_HEIGHT: f64 = 38.0;
+const DEFAULT_SELECT_POPUP_HEIGHT: f64 = 180.0;
 const DEFAULT_SELECT_ITEM_EXTENT: f64 = 30.0;
 const DEFAULT_SELECT_PLACEHOLDER: &str = "Select...";
 const SELECT_INDICATOR: &str = "▾";
@@ -81,8 +81,8 @@ pub struct Select {
     item_template: Option<SharedListItemTemplate>,
     selected_index: Option<usize>,
     placeholder: String,
-    width: Option<f32>,
-    popup_height: f32,
+    width: Option<f64>,
+    popup_height: f64,
     item_extent: f64,
     element: ElementConfig,
     on_selection_changed: Option<SelectSelectionChangedHandler>,
@@ -188,14 +188,14 @@ impl Select {
 
     /// Sets the collapsed select width.
     #[must_use]
-    pub fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f64) -> Self {
         self.width = Some(width.max(1.0));
         self
     }
 
     /// Sets the maximum popup list height.
     #[must_use]
-    pub fn popup_height(mut self, height: f32) -> Self {
+    pub fn popup_height(mut self, height: f64) -> Self {
         self.popup_height = height.max(1.0);
         self
     }
@@ -293,7 +293,7 @@ pub(crate) struct SelectWidget {
     selected_index: Option<usize>,
     placeholder: String,
     popup: ElementSlot,
-    popup_height: f32,
+    popup_height: f64,
     item_extent: f64,
     selection_changed: SharedSelectSelectionChangedHandler,
 }
@@ -536,15 +536,9 @@ impl SelectWidget {
         true
     }
 
-    fn popup_list_height(&self) -> f32 {
+    fn popup_list_height(&self) -> f64 {
         if self.options.is_empty() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "normalized list item extent is used only as a fallback f32 height"
-            )]
-            {
-                return self.item_extent as f32;
-            }
+            return self.item_extent;
         }
         #[expect(
             clippy::cast_precision_loss,
@@ -552,25 +546,13 @@ impl SelectWidget {
         )]
         let item_count = self.options.len() as f64;
         let content_height = self.item_extent * item_count;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "popup list height is clamped to the configured f32 size"
-        )]
-        {
-            content_height.min(f64::from(self.popup_height)).max(1.0) as f32
-        }
+        content_height.min(self.popup_height).max(1.0)
     }
 
-    fn popup_width(&self, ui: &Ui, select: ElementId) -> f32 {
+    fn popup_width(&self, ui: &Ui, select: ElementId) -> f64 {
         let width = ui.effective_bounds(select).width();
         if width.is_finite() && width > 0.0 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "select bounds are layout-space f64 values that fit f32 style inputs"
-            )]
-            {
-                width as f32
-            }
+            width
         } else {
             DEFAULT_SELECT_WIDTH
         }

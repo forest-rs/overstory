@@ -22,7 +22,7 @@ use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt, f32_from_logical};
+use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutSize};
@@ -32,8 +32,8 @@ use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 /// Selector identity for `Splitter`.
 pub const TYPE_SPLITTER: TypeTag = TypeTag(10);
 
-const DEFAULT_THICKNESS: f32 = 8.0;
-const DEFAULT_LENGTH: f32 = 160.0;
+const DEFAULT_THICKNESS: f64 = 8.0;
+const DEFAULT_LENGTH: f64 = 160.0;
 const DEFAULT_KEYBOARD_STEP: f64 = 8.0;
 const DEFAULT_KEYBOARD_LARGE_STEP: f64 = 24.0;
 
@@ -104,8 +104,8 @@ type SplitterResizeHandler = Box<dyn FnMut(&mut Ui, SplitterResizeEvent)>;
 /// Builder + spec for a draggable splitter.
 pub struct Splitter {
     orientation: SplitterOrientation,
-    thickness: f32,
-    length: f32,
+    thickness: f64,
+    length: f64,
     keyboard_step: f64,
     keyboard_large_step: f64,
     element: ElementConfig,
@@ -155,14 +155,14 @@ impl Splitter {
 
     /// Sets the splitter thickness in logical pixels.
     #[must_use]
-    pub fn thickness(mut self, thickness: f32) -> Self {
+    pub fn thickness(mut self, thickness: f64) -> Self {
         self.thickness = thickness.max(1.0);
         self
     }
 
     /// Sets the splitter's main-axis length in logical pixels.
     #[must_use]
-    pub fn length(mut self, length: f32) -> Self {
+    pub fn length(mut self, length: f64) -> Self {
         self.length = length.max(1.0);
         self
     }
@@ -467,14 +467,8 @@ fn resized_layout_size(
     movement_size: f64,
 ) -> LayoutSize {
     match orientation {
-        SplitterOrientation::Horizontal => LayoutSize::logical(
-            f32_from_logical(bounds.width()),
-            f32_from_logical(movement_size),
-        ),
-        SplitterOrientation::Vertical => LayoutSize::logical(
-            f32_from_logical(movement_size),
-            f32_from_logical(bounds.height()),
-        ),
+        SplitterOrientation::Horizontal => LayoutSize::logical(bounds.width(), movement_size),
+        SplitterOrientation::Vertical => LayoutSize::logical(movement_size, bounds.height()),
     }
 }
 

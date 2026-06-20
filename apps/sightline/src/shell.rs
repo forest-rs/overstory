@@ -19,8 +19,8 @@ use crate::app::AppState;
 use crate::sample_profiler::{self, SampleProfilerView};
 use crate::style::{SightlineTokens, sightline_theme};
 
-const SHELL_PADDING: f32 = 18.0;
-const TOP_BAR_HEIGHT: f32 = 60.0;
+const SHELL_PADDING: f64 = 18.0;
+const TOP_BAR_HEIGHT: f64 = 60.0;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Shell {

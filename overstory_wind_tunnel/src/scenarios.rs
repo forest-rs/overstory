@@ -24,7 +24,7 @@ pub const LIST_ITEMS: usize = 10_000;
 pub const REPEATED_TEXT_LABELS: usize = 512;
 
 /// Default viewport width used by dashboard scenarios.
-pub const VIEWPORT_WIDTH: f32 = 960.0;
+pub const VIEWPORT_WIDTH: f64 = 960.0;
 
 /// Default viewport size used by UI pipeline scenarios.
 pub const VIEWPORT: Size = Size::new(960.0, 720.0);
@@ -52,7 +52,7 @@ pub fn build_dashboard(rows: usize) -> Ui {
     let rows = u16::try_from(rows).expect("dashboard row count fits in u16");
     ui.set_layout(
         root,
-        Layout::column(8.0).logical_size(VIEWPORT_WIDTH, (f32::from(rows) * 56.0) + 24.0),
+        Layout::column(8.0).logical_size(VIEWPORT_WIDTH, (f64::from(rows) * 56.0) + 24.0),
     );
     ui.set_box_padding(root, Edges::all(12.0));
 
@@ -119,7 +119,7 @@ pub fn build_repeated_text_labels(labels: usize) -> Ui {
     let labels = u16::try_from(labels).expect("label count fits in u16");
     ui.set_layout(
         root,
-        Layout::column(2.0).logical_size(260.0, (f32::from(labels) * 20.0) + 16.0),
+        Layout::column(2.0).logical_size(260.0, (f64::from(labels) * 20.0) + 16.0),
     );
     ui.set_box_padding(root, Edges::all(8.0));
 

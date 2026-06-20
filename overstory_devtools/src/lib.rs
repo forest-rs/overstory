@@ -818,11 +818,11 @@ pub struct DevtoolsViewElements {
 }
 
 const MAX_RELATIONSHIP_CHILDREN: usize = 8;
-const INSPECTOR_OUTLINE_WIDTH: f32 = 220.0;
-const INSPECTOR_DETAILS_WIDTH: f32 = 300.0;
-const INSPECTOR_VIEW_HEIGHT: f32 = 420.0;
-const INSPECTOR_PADDING: f32 = 8.0;
-const INSPECTOR_GAP: f32 = 12.0;
+const INSPECTOR_OUTLINE_WIDTH: f64 = 220.0;
+const INSPECTOR_DETAILS_WIDTH: f64 = 300.0;
+const INSPECTOR_VIEW_HEIGHT: f64 = 420.0;
+const INSPECTOR_PADDING: f64 = 8.0;
+const INSPECTOR_GAP: f64 = 12.0;
 
 /// Appends a simple inspector view for `snapshot`.
 ///
@@ -858,7 +858,7 @@ pub fn append_session_view(
     let root = ui.append(
         parent,
         Panel::row(INSPECTOR_GAP)
-            .padding_all(f64::from(INSPECTOR_PADDING))
+            .padding_all(INSPECTOR_PADDING)
             .layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
@@ -1048,7 +1048,7 @@ pub fn append_session_view(
     let root = ui.append(
         parent,
         Panel::row(INSPECTOR_GAP)
-            .padding_all(f64::from(INSPECTOR_PADDING))
+            .padding_all(INSPECTOR_PADDING)
             .layout(inspector_root_layout()),
     );
     if let Some(foreground) = ui.theme().get::<overstory::Brush>(theme::ON_SURFACE_FG) {
@@ -1153,7 +1153,7 @@ fn inspector_root_layout() -> Layout {
         .flex_shrink(1.0)
 }
 
-fn inspector_pane_layout(width: f32) -> Layout {
+fn inspector_pane_layout(width: f64) -> Layout {
     Layout::new()
         .logical_size(width, INSPECTOR_VIEW_HEIGHT)
         .fill_height()
@@ -2711,7 +2711,7 @@ mod tests {
 
         inspector.compute_layout(overstory::Size::new(640.0, 600.0));
 
-        let expected_pane_height = 600.0 - f64::from(INSPECTOR_PADDING * 2.0);
+        let expected_pane_height = 600.0 - INSPECTOR_PADDING * 2.0;
         assert_eq!(inspector.effective_bounds(elements.root).height(), 600.0);
         assert_eq!(
             inspector.effective_bounds(elements.outline).height(),
@@ -2726,8 +2726,7 @@ mod tests {
             expected_pane_height
         );
         assert!(
-            inspector.effective_bounds(elements.details).height()
-                > f64::from(INSPECTOR_VIEW_HEIGHT),
+            inspector.effective_bounds(elements.details).height() > INSPECTOR_VIEW_HEIGHT,
             "details should fill the available inspector height, not stay fixed at the bootstrap height"
         );
     }

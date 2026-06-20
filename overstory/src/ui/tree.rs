@@ -203,12 +203,12 @@ impl<'a> ChildUi<'a> {
     }
 
     /// Adds a horizontal flex row with `gap` and scopes `f` to its children.
-    pub fn row<R>(&mut self, gap: f32, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
+    pub fn row<R>(&mut self, gap: f64, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
         self.panel(Panel::row(gap), f)
     }
 
     /// Adds a vertical flex column with `gap` and scopes `f` to its children.
-    pub fn column<R>(&mut self, gap: f32, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
+    pub fn column<R>(&mut self, gap: f64, f: impl FnOnce(&mut ChildUi<'_>) -> R) -> (ElementId, R) {
         self.panel(Panel::column(gap), f)
     }
 

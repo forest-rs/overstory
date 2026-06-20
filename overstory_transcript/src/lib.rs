@@ -63,14 +63,14 @@ pub use understory_transcript::{
 };
 use understory_virtual_list::{PrefixSumExtentModel, TailAnchoredExtentModel, VirtualList};
 
-const DEFAULT_ROW_GAP: f32 = 12.0;
+const DEFAULT_ROW_GAP: f64 = 12.0;
 const DEFAULT_ROW_EXTENT: f64 = 132.0;
 const DEFAULT_OVERSCAN: f64 = 264.0;
-const DEFAULT_SCROLLBAR_GAP: f32 = 10.0;
-const DEFAULT_SCROLLBAR_THICKNESS: f32 = 10.0;
-const DEFAULT_SCROLLBAR_THUMB_EXTENT: f32 = 42.0;
-const DEFAULT_WIDTH: f32 = 640.0;
-const DEFAULT_HEIGHT: f32 = 360.0;
+const DEFAULT_SCROLLBAR_GAP: f64 = 10.0;
+const DEFAULT_SCROLLBAR_THICKNESS: f64 = 10.0;
+const DEFAULT_SCROLLBAR_THUMB_EXTENT: f64 = 42.0;
+const DEFAULT_WIDTH: f64 = 640.0;
+const DEFAULT_HEIGHT: f64 = 360.0;
 const SCROLL_LINE: f64 = 48.0;
 
 type TranscriptVirtualList = VirtualList<TailAnchoredExtentModel<PrefixSumExtentModel<f64>>>;
@@ -282,10 +282,10 @@ impl TranscriptSession<EntryBody> {
 pub struct TranscriptView<P = EntryBody> {
     session: TranscriptSession<P>,
     entry_template: EntryTemplate<P>,
-    row_gap: f32,
+    row_gap: f64,
     estimated_entry_extent: Rc<EstimatedEntryExtentFn<P>>,
     overscan: f64,
-    size: Option<(f32, f32)>,
+    size: Option<(f64, f64)>,
     scroll_offset_y: f64,
     tail_anchored: bool,
     element: ElementConfig,
@@ -353,7 +353,7 @@ impl<P> TranscriptView<P> {
 
     /// Sets the gap between realized transcript rows.
     #[must_use]
-    pub const fn row_gap(mut self, gap: f32) -> Self {
+    pub const fn row_gap(mut self, gap: f64) -> Self {
         self.row_gap = gap;
         self
     }
@@ -396,7 +396,7 @@ impl<P> TranscriptView<P> {
 
     /// Sets the fixed logical-pixel size of the scroll viewport.
     #[must_use]
-    pub const fn size(mut self, width: f32, height: f32) -> Self {
+    pub const fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Some((width, height));
         self
     }
@@ -508,7 +508,7 @@ struct TranscriptViewportWidget<P = EntryBody> {
     estimated_entry_extent: Rc<EstimatedEntryExtentFn<P>>,
     scroll_state: ScrollState,
     virtual_list: TranscriptVirtualList,
-    row_gap: f32,
+    row_gap: f64,
     overscan: f64,
     tail_anchored: bool,
     did_initial_tail_anchor: bool,
@@ -537,7 +537,7 @@ impl<P> TranscriptViewportWidget<P> {
         entry_template: EntryTemplate<P>,
         estimated_entry_extent: Rc<EstimatedEntryExtentFn<P>>,
         scroll_state: ScrollState,
-        row_gap: f32,
+        row_gap: f64,
         overscan: f64,
         tail_anchored: bool,
     ) -> Self {
@@ -692,7 +692,7 @@ impl<P: 'static> TranscriptViewportWidget<P> {
             if bounds.height() <= 0.0 {
                 continue;
             }
-            let measured = normalize_extent(bounds.height() + f64::from(self.row_gap));
+            let measured = normalize_extent(bounds.height() + self.row_gap);
             if (self.virtual_list.extent_of(row.index) - measured).abs() > f64::EPSILON {
                 updates.push((row.index, measured));
             }
@@ -817,11 +817,6 @@ impl<P: 'static> TranscriptViewportWidget<P> {
         let mut changed = false;
         for row in &self.realized {
             let y = self.virtual_list.offset_of(row.index);
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "row offsets are logical layout coordinates"
-            )]
-            let y = y as f32;
             let layout = Layout::new()
                 .absolute_at(0.0, y)
                 .fill_width()
@@ -1130,7 +1125,7 @@ mod tests {
         let first = ui.effective_bounds(children[0]);
         let second = ui.effective_bounds(children[1]);
         assert!(
-            second.y0 >= first.y1 + f64::from(DEFAULT_ROW_GAP),
+            second.y0 >= first.y1 + DEFAULT_ROW_GAP,
             "second row should be laid out after the measured first row, got first={first:?}, second={second:?}",
         );
     }

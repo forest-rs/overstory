@@ -182,10 +182,7 @@ fn build_ui() -> Ui {
         Layout::new()
             .relative()
             .absolute_at(36.0, 128.0)
-            .logical_size(
-                f32_coord(GRAPH_VIEW.width()),
-                f32_coord(GRAPH_VIEW.height()),
-            ),
+            .logical_size(GRAPH_VIEW.width(), GRAPH_VIEW.height()),
     );
     style_surface(
         &mut ui,
@@ -705,8 +702,8 @@ fn append_graph_nodes(
             parent,
             Panel::column(8.0).padding_all(14.0).layout(
                 Layout::column(8.0)
-                    .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
-                    .logical_size(f32_coord(rect.width()), f32_coord(rect.height())),
+                    .absolute_at(rect.x0, rect.y0)
+                    .logical_size(rect.width(), rect.height()),
             ),
         );
         style_node(ui, node_element, meta.accent, selected);
@@ -1015,11 +1012,8 @@ fn append_rect(ui: &mut Ui, parent: ElementId, rect: Rect, color: Color, radius:
         parent,
         Panel::new().layout(
             Layout::new()
-                .absolute_at(f32_coord(rect.x0), f32_coord(rect.y0))
-                .logical_size(
-                    f32_coord(rect.width().max(1.0)),
-                    f32_coord(rect.height().max(1.0)),
-                ),
+                .absolute_at(rect.x0, rect.y0)
+                .logical_size(rect.width().max(1.0), rect.height().max(1.0)),
         ),
     );
     style_surface(ui, element, Some(color), None, 0.0, radius);
@@ -1073,12 +1067,4 @@ fn projection_bounds(projection: &DemoProjection) -> Rect {
         });
     }
     bounds.unwrap_or(Rect::new(0.0, 0.0, 1.0, 1.0))
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "demo logical coordinates fit f32 layout values"
-)]
-fn f32_coord(value: f64) -> f32 {
-    value as f32
 }

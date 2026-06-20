@@ -6,10 +6,10 @@ use overstory_transcript::{
 
 use super::super::*;
 
-const TRANSCRIPT_CARD_WIDTH: f32 = 758.0;
-const TRANSCRIPT_VIEW_WIDTH: f32 = 704.0;
-const TRANSCRIPT_VIEW_HEIGHT: f32 = 420.0;
-const TRANSCRIPT_COMPOSER_WIDTH: f32 = 594.0;
+const TRANSCRIPT_CARD_WIDTH: f64 = 758.0;
+const TRANSCRIPT_VIEW_WIDTH: f64 = 704.0;
+const TRANSCRIPT_VIEW_HEIGHT: f64 = 420.0;
+const TRANSCRIPT_COMPOSER_WIDTH: f64 = 594.0;
 const AGENT_GREEN: (u8, u8, u8) = (0x69, 0xd2, 0x9b);
 const AGENT_BLUE: (u8, u8, u8) = (0x81, 0x9b, 0xff);
 const AGENT_PURPLE: (u8, u8, u8) = (0xbd, 0x91, 0xff);

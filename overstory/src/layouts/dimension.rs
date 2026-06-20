@@ -5,6 +5,7 @@ use alloc::format;
 use alloc::string::String;
 
 use super::inspection::scalar_summary;
+use super::taffy_scalar;
 
 /// Two-dimensional layout dimension.
 ///
@@ -15,9 +16,9 @@ pub enum LayoutDimension {
     /// Let the layout engine choose the dimension.
     Auto,
     /// Fixed logical-pixel dimension.
-    Logical(f32),
+    Logical(f64),
     /// Fraction of the containing block, where `1.0` means 100%.
-    Percent(f32),
+    Percent(f64),
 }
 
 impl LayoutDimension {
@@ -32,8 +33,8 @@ impl LayoutDimension {
     pub(super) fn to_taffy(self) -> taffy::Dimension {
         match self {
             Self::Auto => taffy::Dimension::auto(),
-            Self::Logical(value) => taffy::Dimension::length(value),
-            Self::Percent(value) => taffy::Dimension::percent(value),
+            Self::Logical(value) => taffy::Dimension::length(taffy_scalar(value)),
+            Self::Percent(value) => taffy::Dimension::percent(taffy_scalar(value)),
         }
     }
 }
