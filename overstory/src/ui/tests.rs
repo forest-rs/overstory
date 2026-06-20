@@ -2166,7 +2166,7 @@ fn assert_close(actual: f64, expected: f64) {
     );
 }
 
-fn thumb_timing(from: f64, to: f64, t: f32) -> f64 {
+fn thumb_timing(from: f64, to: f64, t: f64) -> f64 {
     let timing = TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
     from.interpolate(to, timing.sample(t))
 }

@@ -31,7 +31,7 @@ pub trait Interpolate: Copy {
     ///
     /// Most transitions pass values in the inclusive `0.0..=1.0` range, but
     /// timing functions may intentionally overshoot for future motion styles.
-    fn interpolate(self, to: Self, t: f32) -> Self;
+    fn interpolate(self, to: Self, t: f64) -> Self;
 }
 
 /// Value suitable for timeline sampling.
@@ -41,8 +41,8 @@ pub trait Animatable: Interpolate + PartialEq {
 }
 
 impl Interpolate for f32 {
-    fn interpolate(self, to: Self, t: f32) -> Self {
-        self + ((to - self) * t)
+    fn interpolate(self, to: Self, t: f64) -> Self {
+        self + ((to - self) * f32_progress(t))
     }
 }
 
@@ -53,8 +53,8 @@ impl Animatable for f32 {
 }
 
 impl Interpolate for f64 {
-    fn interpolate(self, to: Self, t: f32) -> Self {
-        self + ((to - self) * Self::from(t))
+    fn interpolate(self, to: Self, t: f64) -> Self {
+        self + ((to - self) * t)
     }
 }
 
@@ -65,8 +65,7 @@ impl Animatable for f64 {
 }
 
 impl Interpolate for Vec2 {
-    fn interpolate(self, to: Self, t: f32) -> Self {
-        let t = f64::from(t);
+    fn interpolate(self, to: Self, t: f64) -> Self {
         self + ((to - self) * t)
     }
 }
@@ -95,7 +94,7 @@ impl TimingFunction {
     /// should be finite values in `0.0..=1.0` so the curve can be inverted from
     /// input progress to output progress.
     #[must_use]
-    pub const fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> Self {
+    pub const fn cubic_bezier(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
         Self {
             kind: TimingFunctionKind::CubicBezier(CubicBezierTimingFunction { x1, y1, x2, y2 }),
         }
@@ -103,7 +102,7 @@ impl TimingFunction {
 
     /// Samples the timing function at normalized input progress `t`.
     #[must_use]
-    pub fn sample(self, t: f32) -> f32 {
+    pub fn sample(self, t: f64) -> f64 {
         match self.kind {
             TimingFunctionKind::Linear => t.clamp(0.0, 1.0),
             TimingFunctionKind::CubicBezier(curve) => curve.sample(t),
@@ -125,14 +124,14 @@ enum TimingFunctionKind {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CubicBezierTimingFunction {
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
 }
 
 impl CubicBezierTimingFunction {
-    fn sample(self, t: f32) -> f32 {
+    fn sample(self, t: f64) -> f64 {
         let t = t.clamp(0.0, 1.0);
         if t <= 0.0 || t >= 1.0 {
             return t;
@@ -140,8 +139,8 @@ impl CubicBezierTimingFunction {
         cubic_value(self.solve_x(t), self.y1, self.y2)
     }
 
-    fn solve_x(self, x: f32) -> f32 {
-        const DERIVATIVE_EPSILON: f32 = 1.0e-6;
+    fn solve_x(self, x: f64) -> f64 {
+        const DERIVATIVE_EPSILON: f64 = 1.0e-6;
         const NEWTON_STEPS: usize = 8;
         const BISECTION_STEPS: usize = 12;
 
@@ -177,12 +176,12 @@ impl CubicBezierTimingFunction {
     }
 }
 
-fn cubic_value(t: f32, p1: f32, p2: f32) -> f32 {
+fn cubic_value(t: f64, p1: f64, p2: f64) -> f64 {
     let inverse = 1.0 - t;
     (3.0 * inverse * inverse * t * p1) + (3.0 * inverse * t * t * p2) + (t * t * t)
 }
 
-fn cubic_derivative(t: f32, p1: f32, p2: f32) -> f32 {
+fn cubic_derivative(t: f64, p1: f64, p2: f64) -> f64 {
     let inverse = 1.0 - t;
     (3.0 * inverse * inverse * p1) + (6.0 * inverse * t * (p2 - p1)) + (3.0 * t * t * (1.0 - p2))
 }
@@ -711,11 +710,7 @@ impl EffectClip {
             let to = pair[1];
             if elapsed <= to.offset {
                 let span = to.offset.saturating_sub(from.offset);
-                let progress = if span == 0 {
-                    1.0
-                } else {
-                    (elapsed.saturating_sub(from.offset) as f32 / span as f32).clamp(0.0, 1.0)
-                };
+                let progress = duration_progress(elapsed.saturating_sub(from.offset), span);
                 return interpolate_presentation_value(from.value, to.value, progress);
             }
         }
@@ -1134,7 +1129,7 @@ impl PartialEq for ColorTransition {
 fn interpolate_presentation_value(
     from: PresentationValue,
     to: PresentationValue,
-    progress: f32,
+    progress: f64,
 ) -> PresentationValue {
     match (from, to) {
         (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
@@ -1165,8 +1160,8 @@ fn interpolate_presentation_value(
     clippy::cast_possible_truncation,
     reason = "effect progress is clamped to 0..=1 before conversion to the fixed sample span"
 )]
-fn progress_timer_instant(progress: f32) -> TimerInstant {
-    (f64::from(progress.clamp(0.0, 1.0)) * 1_000_000.0).round() as TimerInstant
+fn progress_timer_instant(progress: f64) -> TimerInstant {
+    (progress.clamp(0.0, 1.0) * 1_000_000.0).round() as TimerInstant
 }
 
 #[derive(Clone, Copy)]
@@ -1195,7 +1190,8 @@ impl ColorRamp {
         }
     }
 
-    fn sample(self, t: f32) -> Color {
+    fn sample(self, t: f64) -> Color {
+        let t = f32_progress(t);
         match self {
             Self::Premultiplied(ramp) => ramp.eval(t),
             Self::Unpremultiplied(ramp) => ramp.eval(t),
@@ -1210,21 +1206,28 @@ pub fn normalized_progress(
     now: TimerInstant,
     started_at: TimerInstant,
     duration: TimerDuration,
-) -> f32 {
+) -> f64 {
     if duration == 0 {
         return 1.0;
     }
     let elapsed = now.saturating_sub(started_at);
-    if elapsed >= duration {
-        return 1.0;
+    duration_progress(elapsed, duration)
+}
+
+fn duration_progress(elapsed: TimerDuration, duration: TimerDuration) -> f64 {
+    if duration == 0 || elapsed >= duration {
+        1.0
+    } else {
+        elapsed as f64 / duration as f64
     }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "transition progress is a bounded f32 sample"
-    )]
-    {
-        elapsed as f32 / duration as f32
-    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "color ramps and f32-valued properties require f32 progress"
+)]
+fn f32_progress(progress: f64) -> f32 {
+    progress as f32
 }
 
 #[cfg(test)]
