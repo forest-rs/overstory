@@ -8,7 +8,6 @@ use alloc::boxed::Box;
 use crate::binding::BindingOwner;
 use crate::controls::text::TextWidget;
 use crate::element::ElementId;
-use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
     LayoutSpacing,
@@ -306,29 +305,5 @@ impl<'a> TemplateContext<'a> {
             PropertyEndpoint::new(BindingOwner::element(self.owner), owner_property),
             PropertyEndpoint::new(BindingOwner::element(part), part_property),
         )
-    }
-
-    /// Registers a click handler on `id`.
-    pub fn on_click<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
-    {
-        self.ui.on_control_click(id, handler);
-    }
-
-    /// Registers a drag handler on `id`.
-    pub fn on_drag<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Ui, DragEvent<'_>) + 'static,
-    {
-        self.ui.on_control_drag(id, handler);
-    }
-
-    /// Registers a key handler on `id`.
-    pub fn on_key<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Ui, KeyEvent<'_>) + 'static,
-    {
-        self.ui.on_control_key(id, handler);
     }
 }

@@ -70,7 +70,7 @@ impl View for InputsPage {
                                     .border_brush(None::<Brush>)
                                     .border_width(0.0)
                                     .corner_radius(0.0)
-                                    .on_click(cycling_click_handler(activations))
+                                    .on_activate(cycling_activation_handler(activations))
                                     .tooltip("Same button behavior, replacement template"),
                                 |content| {
                                     content.with_child(Panel::row(8.0).align_center(), |label| {
@@ -80,13 +80,11 @@ impl View for InputsPage {
                                                 .background(solid(0x9d, 0xf8, 0xb0, 0xff))
                                                 .corner_radius(4.0),
                                         );
-                                        label.add(
-                                            Text::new("").font_size(15.0).bind_text(
-                                                activations.map(|count| {
-                                                    cycling_click_label("Deploy", *count)
-                                                }),
-                                            ),
-                                        );
+                                        label.add(Text::new("").font_size(15.0).bind_text(
+                                            activations.map(|count| {
+                                                cycling_activation_label("Deploy", *count)
+                                            }),
+                                        ));
                                     });
                                 },
                             );
@@ -95,7 +93,7 @@ impl View for InputsPage {
                             buttons.add(
                                 Button::new("Popup")
                                     .font_size(15.0)
-                                    .on_click(popup_click_handler())
+                                    .on_activate(popup_activation_handler())
                                     .tooltip("Anchored popup"),
                             );
                         },

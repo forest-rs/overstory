@@ -377,24 +377,26 @@ fn install_viewport_interaction(
     runtime: Rc<GraphDemoRuntime>,
 ) {
     let drag_runtime = Rc::clone(&runtime);
-    ui.on_drag(graph_host, move |ui, event| {
+    ui.events(graph_host).drag(move |ui, event| {
         drag_graph_view(ui, event, graph_host, sidebar, Rc::clone(&drag_runtime));
     });
 
     let scroll_runtime = Rc::clone(&runtime);
-    ui.on_scroll(graph_host, move |ui, event| {
+    ui.events(graph_host).scroll(move |ui, event| {
         zoom_graph_view(ui, event, graph_host, sidebar, Rc::clone(&scroll_runtime));
     });
 
     let up_runtime = Rc::clone(&runtime);
-    ui.on_pointer(graph_host, PointerEventKind::Up, move |ui, event| {
-        finish_graph_gesture(ui, event, graph_host, sidebar, Rc::clone(&up_runtime));
-    });
+    ui.events(graph_host)
+        .pointer(PointerEventKind::Up, move |ui, event| {
+            finish_graph_gesture(ui, event, graph_host, sidebar, Rc::clone(&up_runtime));
+        });
 
     let cancel_runtime = Rc::clone(&runtime);
-    ui.on_pointer(graph_host, PointerEventKind::Cancel, move |ui, event| {
-        cancel_graph_gesture(ui, event, graph_host, sidebar, Rc::clone(&cancel_runtime));
-    });
+    ui.events(graph_host)
+        .pointer(PointerEventKind::Cancel, move |ui, event| {
+            cancel_graph_gesture(ui, event, graph_host, sidebar, Rc::clone(&cancel_runtime));
+        });
 }
 
 fn refresh_graph_view(
@@ -716,19 +718,20 @@ fn append_graph_nodes(
             Tooltip::new(format!("GraphDoc node: {}", meta.title)),
         );
         let runtime_for_handler = Rc::clone(&runtime);
-        ui.on_pointer(node_element, PointerEventKind::Down, move |ui, event| {
-            start_node_drag(
-                ui,
-                event,
-                parent,
-                sidebar,
-                node,
-                meta.accent,
-                Rc::clone(&runtime_for_handler),
-            );
-        });
+        ui.events(node_element)
+            .pointer(PointerEventKind::Down, move |ui, event| {
+                start_node_drag(
+                    ui,
+                    event,
+                    parent,
+                    sidebar,
+                    node,
+                    meta.accent,
+                    Rc::clone(&runtime_for_handler),
+                );
+            });
         let runtime_for_handler = Rc::clone(&runtime);
-        ui.on_click(node_element, move |ui, event| {
+        ui.events(node_element).click(move |ui, event| {
             select_node(
                 ui,
                 event,
@@ -795,16 +798,17 @@ fn append_graph_ports(
         );
         if matches!(direction, PortDirection::Output) {
             let runtime_for_handler = Rc::clone(&runtime);
-            ui.on_pointer(port_element, PointerEventKind::Down, move |ui, event| {
-                start_port_drag(
-                    ui,
-                    event,
-                    parent,
-                    sidebar,
-                    port,
-                    Rc::clone(&runtime_for_handler),
-                );
-            });
+            ui.events(port_element)
+                .pointer(PointerEventKind::Down, move |ui, event| {
+                    start_port_drag(
+                        ui,
+                        event,
+                        parent,
+                        sidebar,
+                        port,
+                        Rc::clone(&runtime_for_handler),
+                    );
+                });
         }
     }
 }

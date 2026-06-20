@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Routed input dispatch and host event synthesis for `Ui`.
+//!
+//! Event authoring has three layers:
+//!
+//! - Controls expose semantic callbacks such as `Button::on_activate` and
+//!   `Slider::on_value_changed`. App code should use these when responding to
+//!   control intent.
+//! - [`Ui::events`] exposes advanced raw routed input for app code that needs
+//!   route phases, handled-event observation, pointer capture, or custom
+//!   gestures.
+//! - [`Widget`](crate::Widget) hooks implement toolkit-side control behavior.
+//!   Built-in controls translate raw routed input into semantic state changes
+//!   there, rather than registering a second hidden raw-handler lane.
 
 use alloc::{boxed::Box, vec::Vec};
 
@@ -18,14 +30,15 @@ use understory_responder::router::Router;
 use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
 use understory_timing::TimerInstant;
 
+use crate::activation::{ActivationDeniedEvent, ActivationDeniedReason, ActivationSource};
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{
     ClickEvent, ClickHandlers, DragEvent, DragHandlers, FocusChangeReason, FocusEvent,
-    FocusHandlers, HandlerFamily, HandlerLane, KeyDispatchResult, KeyEvent, KeyHandlers,
-    PointerDispatchResult, PointerEventKind, PointerHandlers, PointerRoutedEvent,
-    RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedEventState,
-    RoutedHandlerOptions, RoutedHandlerScope, ScrollEvent, ScrollHandlers,
+    FocusHandlers, HandlerFamily, KeyDispatchResult, KeyEvent, KeyHandlers, PointerDispatchResult,
+    PointerEventKind, PointerHandlers, PointerRoutedEvent, RoutedDispatchResult,
+    RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedEventState, RoutedHandlerOptions,
+    RoutedHandlerScope, ScrollEvent, ScrollHandlers,
 };
 use crate::widget::Widget;
 
@@ -134,6 +147,181 @@ fn focus_navigation_for_key(event: &KeyboardEvent) -> Option<Navigation> {
     })
 }
 
+/// Advanced raw routed-event registration for one element.
+///
+/// This is the escape hatch for app code that needs pointer, key, focus,
+/// scroll, click, or drag routing directly. Prefer semantic control callbacks
+/// such as `Button::on_activate`, `Slider::on_value_changed`, or
+/// `TextInput::on_submit` when the code is responding to control intent rather
+/// than low-level input.
+pub struct RoutedEvents<'a> {
+    ui: &'a mut Ui,
+    id: ElementId,
+}
+
+impl core::fmt::Debug for RoutedEvents<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RoutedEvents")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RoutedEvents<'_> {
+    /// Registers a key handler on this element.
+    pub fn key<F>(self, handler: F)
+    where
+        F: FnMut(&mut Ui, KeyEvent<'_>) + 'static,
+    {
+        self.key_with_options(RoutedHandlerOptions::default(), handler);
+    }
+
+    /// Registers a key handler with explicit routed handler options.
+    pub fn key_with_options<F>(self, options: RoutedHandlerOptions, handler: F)
+    where
+        F: FnMut(&mut Ui, KeyEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_key_with_options(self.id, options, Box::new(handler));
+    }
+
+    /// Removes the key handler previously registered on this element.
+    pub fn remove_key(self) {
+        self.ui.events.remove_key(self.id);
+    }
+
+    /// Registers a focus handler on this element.
+    ///
+    /// The handler receives both focus gained and focus lost events; inspect
+    /// `event.kind` to distinguish them.
+    pub fn focus<F>(self, handler: F)
+    where
+        F: FnMut(&mut Ui, FocusEvent<'_>) + 'static,
+    {
+        self.focus_with_options(RoutedHandlerOptions::default(), handler);
+    }
+
+    /// Registers a focus handler with explicit routed handler options.
+    pub fn focus_with_options<F>(self, options: RoutedHandlerOptions, handler: F)
+    where
+        F: FnMut(&mut Ui, FocusEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_focus_with_options(self.id, options, Box::new(handler));
+    }
+
+    /// Removes the focus handler previously registered on this element.
+    pub fn remove_focus(self) {
+        self.ui.events.remove_focus(self.id);
+    }
+
+    /// Registers a pointer handler for `kind` on this element.
+    pub fn pointer<F>(self, kind: PointerEventKind, handler: F)
+    where
+        F: FnMut(&mut Ui, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.pointer_with_options(kind, RoutedHandlerOptions::default(), handler);
+    }
+
+    /// Registers a pointer handler with explicit routed handler options.
+    pub fn pointer_with_options<F>(
+        self,
+        kind: PointerEventKind,
+        options: RoutedHandlerOptions,
+        handler: F,
+    ) where
+        F: FnMut(&mut Ui, PointerRoutedEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_pointer_with_options(kind, self.id, options, Box::new(handler));
+    }
+
+    /// Removes the pointer handler for `kind` on this element.
+    pub fn remove_pointer(self, kind: PointerEventKind) {
+        self.ui.events.remove_pointer(kind, self.id);
+    }
+
+    /// Registers a click handler on this element.
+    ///
+    /// The default scope is target-or-bubble: capture is skipped, but parents
+    /// still observe clicks from ordinary descendants. Use
+    /// [`Self::click_with_options`] for capture-only observation, handled
+    /// events, or other explicit routed-event policies.
+    pub fn click<F>(self, handler: F)
+    where
+        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
+    {
+        self.click_with_options(
+            RoutedHandlerOptions::new().scope(RoutedHandlerScope::TargetOrBubble),
+            handler,
+        );
+    }
+
+    /// Registers a click handler with explicit routed handler options.
+    pub fn click_with_options<F>(self, options: RoutedHandlerOptions, handler: F)
+    where
+        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_click_with_options(self.id, options, Box::new(handler));
+    }
+
+    /// Removes the click handler previously registered on this element.
+    pub fn remove_click(self) {
+        self.ui.events.remove_click(self.id);
+    }
+
+    /// Registers a drag handler on this element.
+    pub fn drag<F>(self, handler: F)
+    where
+        F: FnMut(&mut Ui, DragEvent<'_>) + 'static,
+    {
+        self.drag_with_options(RoutedHandlerOptions::default(), handler);
+    }
+
+    /// Registers a drag handler with explicit routed handler options.
+    pub fn drag_with_options<F>(self, options: RoutedHandlerOptions, handler: F)
+    where
+        F: FnMut(&mut Ui, DragEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_drag_with_options(self.id, options, Box::new(handler));
+    }
+
+    /// Removes the drag handler previously registered on this element.
+    pub fn remove_drag(self) {
+        self.ui.events.remove_drag(self.id);
+    }
+
+    /// Registers a scroll handler on this element.
+    pub fn scroll<F>(self, handler: F)
+    where
+        F: FnMut(&mut Ui, ScrollEvent<'_>) + 'static,
+    {
+        self.scroll_with_options(RoutedHandlerOptions::default(), handler);
+    }
+
+    /// Registers a scroll handler with explicit routed handler options.
+    pub fn scroll_with_options<F>(self, options: RoutedHandlerOptions, handler: F)
+    where
+        F: FnMut(&mut Ui, ScrollEvent<'_>) + 'static,
+    {
+        self.ui
+            .events
+            .on_scroll_with_options(self.id, options, Box::new(handler));
+    }
+
+    /// Removes the scroll handler previously registered on this element.
+    pub fn remove_scroll(self) {
+        self.ui.events.remove_scroll(self.id);
+    }
+}
+
 impl Ui {
     /// Moves focus per `direction` (e.g. [`Navigation::Next`] for
     /// Tab, [`Navigation::Prev`] for Shift+Tab). Uses
@@ -153,102 +341,13 @@ impl Ui {
         new_element
     }
 
-    /// Registers a key handler on `id`. The handler runs along the
-    /// responder capture → target → bubble sequence rooted at the
-    /// currently focused element when [`Self::dispatch_key`] is
-    /// called. One handler per element for now; subsequent calls
-    /// replace the previous handler.
-    pub fn on_key<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
-    {
-        self.events.on_key(id, Box::new(handler));
-    }
-
-    /// Registers a key handler with explicit routed handler options.
-    pub fn on_key_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
-    {
-        self.events
-            .on_key_with_options(id, options, Box::new(handler));
-    }
-
-    pub(crate) fn on_control_key<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, KeyEvent<'_>) + 'static,
-    {
-        self.events.on_control_key(id, Box::new(handler));
-    }
-
-    /// Removes a key handler previously registered with
-    /// [`Self::on_key`]. No-op if none is registered.
-    pub fn remove_key_handler(&mut self, id: ElementId) {
-        self.events.remove_key(id);
-    }
-
-    /// Registers a focus handler on `id`.
+    /// Returns advanced raw routed-event registration for `id`.
     ///
-    /// The handler receives both focus gained and focus lost events; inspect
-    /// `event.kind` to distinguish them.
-    pub fn on_focus<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, FocusEvent<'_>) + 'static,
-    {
-        self.events.on_focus(id, Box::new(handler));
-    }
-
-    /// Registers a focus handler with explicit routed handler options.
-    pub fn on_focus_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, FocusEvent<'_>) + 'static,
-    {
-        self.events
-            .on_focus_with_options(id, options, Box::new(handler));
-    }
-
-    /// Removes a focus handler previously registered with [`Self::on_focus`].
-    pub fn remove_focus_handler(&mut self, id: ElementId) {
-        self.events.remove_focus(id);
-    }
-
-    /// Registers a pointer handler on `id`.
-    ///
-    /// Pointer handlers are keyed by [`PointerEventKind`] rather than separate
-    /// method names so shared setup code can register multiple pointer phases
-    /// without duplicating wrapper logic.
-    pub fn on_pointer<F>(&mut self, id: ElementId, kind: PointerEventKind, handler: F)
-    where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.events.on_pointer(kind, id, Box::new(handler));
-    }
-
-    /// Registers a pointer handler with explicit routed handler options.
-    pub fn on_pointer_with_options<F>(
-        &mut self,
-        id: ElementId,
-        kind: PointerEventKind,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, PointerRoutedEvent<'_>) + 'static,
-    {
-        self.events
-            .on_pointer_with_options(kind, id, options, Box::new(handler));
-    }
-
-    /// Removes a pointer handler previously registered with [`Self::on_pointer`].
-    pub fn remove_pointer_handler(&mut self, id: ElementId, kind: PointerEventKind) {
-        self.events.remove_pointer(kind, id);
+    /// This is for app code that needs direct routed input. Ordinary control
+    /// authoring should prefer semantic callbacks on the control builders.
+    #[must_use]
+    pub fn events(&mut self, id: ElementId) -> RoutedEvents<'_> {
+        RoutedEvents { ui: self, id }
     }
 
     /// Runs `dispatch_current` across the responder route for `source`.
@@ -313,7 +412,6 @@ impl Ui {
     fn dispatch_handler_registration<E, F>(
         &mut self,
         node: ElementId,
-        lane: HandlerLane,
         family: F,
         route: RoutedEventContext<'_>,
         event: E,
@@ -321,41 +419,34 @@ impl Ui {
         F: HandlerFamily,
         F::Handler: FnMut(&mut Self, E),
     {
-        let Some(mut registration) =
-            self.events
-                .take_handler(family, lane, node, route.is_handled())
+        let Some(mut registration) = self.events.take_handler(family, node, route.is_handled())
         else {
             return;
         };
         if !registration.options.scope.matches(route) {
             self.events
-                .insert_handler_if_absent(family, lane, node, registration);
+                .insert_handler_if_absent(family, node, registration);
             return;
         }
 
-        self.events.begin_handler(family, lane, node);
+        self.events.begin_handler(family, node);
         (registration.handler)(self, event);
-        self.events.end_handler(family, lane, node);
+        self.events.end_handler(family, node);
 
-        let handler_removed = self.events.handler_removed(family, lane, node);
-        if self.get(node).is_some()
-            && !handler_removed
-            && !self.events.has_handler(family, lane, node)
-        {
+        let handler_removed = self.events.handler_removed(family, node);
+        if self.get(node).is_some() && !handler_removed && !self.events.has_handler(family, node) {
             self.events
-                .insert_handler_if_absent(family, lane, node, registration);
+                .insert_handler_if_absent(family, node, registration);
         }
     }
 
     fn dispatch_key_handler_lane<'a>(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'a>,
         event: &'a KeyboardEvent,
     ) {
         self.dispatch_handler_registration(
             route.current,
-            lane,
             KeyHandlers,
             route,
             KeyEvent { route, key: event },
@@ -372,7 +463,6 @@ impl Ui {
 
     fn dispatch_click_handler_lane(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'_>,
         position: Point,
         modifiers: Modifiers,
@@ -382,7 +472,7 @@ impl Ui {
             position,
             modifiers,
         };
-        self.dispatch_handler_registration(route.current, lane, ClickHandlers, route, event);
+        self.dispatch_handler_registration(route.current, ClickHandlers, route, event);
     }
 
     fn dispatch_widget_click(
@@ -407,7 +497,6 @@ impl Ui {
 
     fn dispatch_drag_handler_lane(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'_>,
         position: Point,
         press_position: Point,
@@ -419,7 +508,7 @@ impl Ui {
             press_position,
             delta,
         };
-        self.dispatch_handler_registration(route.current, lane, DragHandlers, route, event);
+        self.dispatch_handler_registration(route.current, DragHandlers, route, event);
     }
 
     fn dispatch_widget_drag(
@@ -446,7 +535,6 @@ impl Ui {
 
     fn dispatch_scroll_handler_lane(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'_>,
         position: Point,
         delta: ScrollDelta,
@@ -458,7 +546,7 @@ impl Ui {
             delta,
             modifiers,
         };
-        self.dispatch_handler_registration(route.current, lane, ScrollHandlers, route, event);
+        self.dispatch_handler_registration(route.current, ScrollHandlers, route, event);
     }
 
     fn dispatch_widget_scroll(
@@ -485,7 +573,6 @@ impl Ui {
 
     fn dispatch_focus_handler_lane(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'_>,
         previous: Option<ElementId>,
         focused: Option<ElementId>,
@@ -499,7 +586,7 @@ impl Ui {
             focus_visible,
             reason,
         };
-        self.dispatch_handler_registration(route.current, lane, FocusHandlers, route, event);
+        self.dispatch_handler_registration(route.current, FocusHandlers, route, event);
     }
 
     fn dispatch_widget_focus(
@@ -528,7 +615,6 @@ impl Ui {
 
     fn dispatch_pointer_handler_lane(
         &mut self,
-        lane: HandlerLane,
         route: RoutedEventContext<'_>,
         data: PointerRouteData<'_>,
     ) {
@@ -536,7 +622,7 @@ impl Ui {
         let kind = PointerEventKind::from_routed(route.kind)
             .expect("pointer dispatch route must use a pointer event kind");
         let event = data.event(route);
-        self.dispatch_handler_registration(node, lane, PointerHandlers::new(kind), route, event);
+        self.dispatch_handler_registration(node, PointerHandlers::new(kind), route, event);
     }
 
     fn dispatch_widget_pointer(
@@ -551,14 +637,21 @@ impl Ui {
         });
     }
 
-    fn dispatch_widget_disabled_pointer_down(
+    fn dispatch_widget_activation_denied(
         &mut self,
         visual: ElementId,
         disabled_target: ElementId,
+        source: ActivationSource,
     ) {
+        let event = ActivationDeniedEvent {
+            target: visual,
+            disabled_target,
+            source,
+            reason: ActivationDeniedReason::Disabled,
+        };
         self.with_widget_mut(visual, |widget, ui| {
             let mut ctx = WidgetEventContext::new(visual, ui);
-            widget.handle_disabled_pointer_down(&mut ctx, disabled_target);
+            widget.handle_activation_denied(&mut ctx, event);
         });
     }
 
@@ -569,12 +662,9 @@ impl Ui {
         data: PointerRouteData<'_>,
     ) -> RoutedDispatchResult {
         self.dispatch_routed(kind, source, |ui, route| {
-            ui.dispatch_pointer_handler_lane(HandlerLane::User, route, data);
+            ui.dispatch_pointer_handler_lane(route, data);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_pointer(route, data);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_pointer_handler_lane(HandlerLane::Control, route, data);
             }
         })
     }
@@ -589,26 +679,9 @@ impl Ui {
         reason: FocusChangeReason,
     ) -> RoutedDispatchResult {
         self.dispatch_routed(kind, source, |ui, route| {
-            ui.dispatch_focus_handler_lane(
-                HandlerLane::User,
-                route,
-                previous,
-                focused,
-                focus_visible,
-                reason,
-            );
+            ui.dispatch_focus_handler_lane(route, previous, focused, focus_visible, reason);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_focus(route, previous, focused, focus_visible, reason);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_focus_handler_lane(
-                    HandlerLane::Control,
-                    route,
-                    previous,
-                    focused,
-                    focus_visible,
-                    reason,
-                );
             }
         })
     }
@@ -691,12 +764,9 @@ impl Ui {
             return KeyDispatchResult::default();
         };
         let routed = self.dispatch_routed(RoutedEventKind::Key, focused, |ui, route| {
-            ui.dispatch_key_handler_lane(HandlerLane::User, route, event);
+            ui.dispatch_key_handler_lane(route, event);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_key(route, event);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_key_handler_lane(HandlerLane::Control, route, event);
             }
         });
 
@@ -706,121 +776,6 @@ impl Ui {
             focus_changed: previous_focus != self.focus.focused(),
             focused: self.focus.focused(),
         }
-    }
-
-    /// Registers a click handler on `id`.
-    ///
-    /// The handler runs when `id` is the clicked element or the click bubbles
-    /// through `id`. It deliberately skips capture so app handlers do not see
-    /// an early pre-target click before the control or template part that was
-    /// actually activated.
-    ///
-    /// For templated controls, a click on generated or presented template
-    /// content bubbles through the owning control as the semantic target. Use
-    /// [`Self::on_click_with_options`] for capture-only observation, handled
-    /// events, or other explicit routed-event policies.
-    pub fn on_click<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
-    {
-        self.on_click_with_options(
-            id,
-            RoutedHandlerOptions::new().scope(RoutedHandlerScope::TargetOrBubble),
-            handler,
-        );
-    }
-
-    /// Registers a click handler with explicit routed handler options.
-    pub fn on_click_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
-    {
-        self.events
-            .on_click_with_options(id, options, Box::new(handler));
-    }
-
-    pub(crate) fn on_control_click<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, ClickEvent<'_>) + 'static,
-    {
-        self.events.on_control_click(id, Box::new(handler));
-    }
-
-    /// Removes a click handler previously registered with
-    /// [`Self::on_click`]. No-op if no handler is registered.
-    pub fn remove_click_handler(&mut self, id: ElementId) {
-        self.events.remove_click(id);
-    }
-
-    /// Registers a drag handler on `id`. Fires on every
-    /// primary-button `Move` while the press is active, along the
-    /// responder capture → target → bubble path rooted at the
-    /// press target. Useful for sliders, resizers, draggable
-    /// items. One handler per element; subsequent calls replace.
-    pub fn on_drag<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
-    {
-        self.events.on_drag(id, Box::new(handler));
-    }
-
-    /// Registers a drag handler with explicit routed handler options.
-    pub fn on_drag_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
-    {
-        self.events
-            .on_drag_with_options(id, options, Box::new(handler));
-    }
-
-    pub(crate) fn on_control_drag<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, DragEvent<'_>) + 'static,
-    {
-        self.events.on_control_drag(id, Box::new(handler));
-    }
-
-    /// Removes a drag handler previously registered with
-    /// [`Self::on_drag`]. No-op if no handler is registered.
-    pub fn remove_drag_handler(&mut self, id: ElementId) {
-        self.events.remove_drag(id);
-    }
-
-    /// Registers a scroll handler on `id`. The handler runs along the
-    /// responder capture → target → bubble sequence rooted at the element
-    /// under the pointer when a scroll event arrives.
-    pub fn on_scroll<F>(&mut self, id: ElementId, handler: F)
-    where
-        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
-    {
-        self.events.on_scroll(id, Box::new(handler));
-    }
-
-    /// Registers a scroll handler with explicit routed handler options.
-    pub fn on_scroll_with_options<F>(
-        &mut self,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: F,
-    ) where
-        F: FnMut(&mut Self, ScrollEvent<'_>) + 'static,
-    {
-        self.events
-            .on_scroll_with_options(id, options, Box::new(handler));
-    }
-
-    /// Removes a scroll handler previously registered with [`Self::on_scroll`].
-    /// No-op if no handler is registered.
-    pub fn remove_scroll_handler(&mut self, id: ElementId) {
-        self.events.remove_scroll(id);
     }
 
     /// Builds the responder dispatch sequence for the current
@@ -839,32 +794,18 @@ impl Ui {
         self.events.set_last_drag_position(position);
 
         self.dispatch_routed(RoutedEventKind::Drag, source, |ui, route| {
-            ui.dispatch_drag_handler_lane(
-                HandlerLane::User,
-                route,
-                position,
-                press_position,
-                delta,
-            );
+            ui.dispatch_drag_handler_lane(route, position, press_position, delta);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_drag(route, position, press_position, delta);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_drag_handler_lane(
-                    HandlerLane::Control,
-                    route,
-                    position,
-                    press_position,
-                    delta,
-                );
             }
         })
     }
 
-    /// Programmatically synthesize a click on `target` at
-    /// `position`. Used by widgets that translate non-pointer input
-    /// (e.g. Button's Space / Enter key activation) into the same
-    /// click dispatch the pointer pipeline would produce.
+    /// Programmatically synthesize a routed click on `target` at `position`.
+    ///
+    /// This is useful for tests and bridges that need raw click routing without
+    /// constructing a full pointer down/up sequence. Semantic control
+    /// activation should use control-specific callbacks instead.
     pub fn synthesize_click(&mut self, target: ElementId, position: Point) -> RoutedDispatchResult {
         self.dispatch_click(target, position)
     }
@@ -903,12 +844,9 @@ impl Ui {
         }
 
         self.dispatch_routed(RoutedEventKind::Click, target, |ui, route| {
-            ui.dispatch_click_handler_lane(HandlerLane::User, route, position, modifiers);
+            ui.dispatch_click_handler_lane(route, position, modifiers);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_click(route, position, modifiers);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_click_handler_lane(HandlerLane::Control, route, position, modifiers);
             }
         })
     }
@@ -935,18 +873,9 @@ impl Ui {
         }
 
         self.dispatch_routed(RoutedEventKind::Scroll, target, |ui, route| {
-            ui.dispatch_scroll_handler_lane(HandlerLane::User, route, position, delta, modifiers);
+            ui.dispatch_scroll_handler_lane(route, position, delta, modifiers);
             if !route.is_handled() && !route.is_propagation_stopped() {
                 ui.dispatch_widget_scroll(route, position, delta, modifiers);
-            }
-            if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_scroll_handler_lane(
-                    HandlerLane::Control,
-                    route,
-                    position,
-                    delta,
-                    modifiers,
-                );
             }
         })
     }
@@ -1029,7 +958,11 @@ impl Ui {
                 if let Some(target) = self.hit_test(pos) {
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
-                        self.dispatch_widget_disabled_pointer_down(visual, target);
+                        self.dispatch_widget_activation_denied(
+                            visual,
+                            target,
+                            ActivationSource::Pointer,
+                        );
                         self.events.cancel_click();
                         result.press_changed = self.set_press_target(None);
                         result.capture_changed = self.set_pointer_capture(None);

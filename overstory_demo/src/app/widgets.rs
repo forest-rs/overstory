@@ -151,22 +151,16 @@ impl DemoChildUiExt for ChildUi<'_> {
     }
 }
 
-/// Builds a click handler that cycles the button's label each time it fires.
-pub(super) fn cycling_click_handler(
+/// Builds an activation handler that cycles the button's label each time it fires.
+pub(super) fn cycling_activation_handler(
     activations: LocalState<u32>,
-) -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
-    move |ui: &mut Ui, event| {
-        if !matches!(
-            event.phase,
-            overstory::Phase::Target | overstory::Phase::Bubble
-        ) {
-            return;
-        }
+) -> impl FnMut(&mut Ui, overstory::ButtonActivatedEvent) + 'static {
+    move |ui: &mut Ui, _event| {
         activations.update(ui, |count| *count += 1);
     }
 }
 
-pub(super) fn cycling_click_label(initial: &str, activations: u32) -> String {
+pub(super) fn cycling_activation_label(initial: &str, activations: u32) -> String {
     if activations == 0 {
         initial.to_owned()
     } else if activations == 1 {
@@ -176,22 +170,17 @@ pub(super) fn cycling_click_label(initial: &str, activations: u32) -> String {
     }
 }
 
-pub(super) fn popup_click_handler() -> impl FnMut(&mut Ui, overstory::ClickEvent<'_>) + 'static {
+pub(super) fn popup_activation_handler()
+-> impl FnMut(&mut Ui, overstory::ButtonActivatedEvent) + 'static {
     let open_popup = Cell::new(None);
     move |ui: &mut Ui, event| {
-        if !matches!(
-            event.phase,
-            overstory::Phase::Target | overstory::Phase::Bubble
-        ) {
-            return;
-        }
         if let Some(popup) = open_popup.get()
             && ui.close_popup(popup)
         {
             open_popup.set(None);
             return;
         }
-        let popup = ui.open_popup(event.current, Popup::new(), |ui, popup| {
+        let popup = ui.open_popup(event.element, Popup::new(), |ui, popup| {
             ui.with_children(popup, |popup| {
                 popup.add(Text::new("Review queue").font_size(13.0));
                 popup.add(Text::new("3 items pending").font_size(13.0));

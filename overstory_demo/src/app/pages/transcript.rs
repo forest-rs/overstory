@@ -263,7 +263,7 @@ fn append_composer(
             composer.add(
                 Button::new("Send")
                     .font_size(13.0)
-                    .on_click(move |ui, _event| {
+                    .on_activate(move |ui, _event| {
                         let text = text_input_text(ui, input).unwrap_or_default();
                         let prompt = text.trim();
                         if prompt.is_empty() {

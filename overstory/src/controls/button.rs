@@ -10,7 +10,7 @@
 //!     parent,
 //!     Button::new("Click me")
 //!         .font_size(22.0)
-//!         .on_click(|_, _| {}),
+//!         .on_activate(|_, _| {}),
 //! );
 //! ```
 //!
@@ -18,6 +18,10 @@
 //! - Keep `Button` as an activatable content control: the widget owns input,
 //!   command-like activation, focus, and enabled semantics; templates own the
 //!   visual tree.
+//! - Keep activation semantic. Pointer clicks, keyboard activation, and
+//!   accessibility click actions all dispatch [`ButtonActivatedEvent`]; app code
+//!   that needs raw route phases should use [`Ui::events`] instead of
+//!   `Button` builder callbacks.
 //! - Move from string-only labels toward arbitrary content while preserving the
 //!   simple `Button::new("Label")` path for common cases.
 //! - Add mature activation affordances: default / cancel buttons, access keys,
@@ -34,9 +38,11 @@ use alloc::string::String;
 use peniko::Brush;
 use understory_style::{PartTag, TypeTag};
 
+use crate::activation::ActivationSource;
 use crate::behavior::WidgetEventContext;
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
-use crate::event_runtime::{ClickEvent, KeyEvent, RoutedHandlerOptions, RoutedHandlerScope};
+use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -61,12 +67,20 @@ pub struct Button {
     font_size: Option<f64>,
     foreground: Option<Brush>,
     element: ElementConfig,
-    on_click: Option<BoxedClickHandler>,
-    on_key: Option<BoxedKeyHandler>,
+    on_activate: Option<ButtonActivatedHandler>,
 }
 
-type BoxedClickHandler = Box<dyn FnMut(&mut Ui, ClickEvent<'_>) + 'static>;
-type BoxedKeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>) + 'static>;
+type ButtonActivatedHandler = EventHandler<ButtonActivatedEvent>;
+type ButtonActivatedSlot = CallbackSlot<ButtonActivatedEvent>;
+
+/// Event delivered when a button is semantically activated.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ButtonActivatedEvent {
+    /// Button element that was activated.
+    pub element: ElementId,
+    /// Input path that requested activation.
+    pub source: ActivationSource,
+}
 
 impl core::fmt::Debug for Button {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -87,8 +101,7 @@ impl Button {
             font_size: None,
             foreground: None,
             element,
-            on_click: None,
-            on_key: None,
+            on_activate: None,
         }
     }
 
@@ -141,36 +154,26 @@ impl Button {
         self
     }
 
-    /// Registers a click handler. Fires on pointer click and on
-    /// keyboard activation (Space / Enter while focused). The
-    /// closure receives the standard [`ClickEvent`] payload at the button's
-    /// semantic target: the button itself for direct clicks, or the button as
-    /// owner when a generated template part was clicked.
+    /// Registers a semantic activation handler.
+    ///
+    /// Activation fires for pointer clicks, keyboard activation (Space / Enter
+    /// while focused), and supported accessibility actions. Use
+    /// [`Ui::events`](crate::Ui::events) when an app needs raw routed pointer
+    /// or key data instead of button intent.
     #[must_use]
-    pub fn on_click<F>(mut self, handler: F) -> Self
+    pub fn on_activate<F>(mut self, handler: F) -> Self
     where
-        F: FnMut(&mut Ui, ClickEvent<'_>) + 'static,
+        F: FnMut(&mut Ui, ButtonActivatedEvent) + 'static,
     {
-        self.on_click = Some(Box::new(handler));
-        self
-    }
-
-    /// Registers a custom key handler. App handlers run before the built-in
-    /// Space / Enter-to-click bridge; call [`KeyEvent::mark_handled`] to
-    /// suppress the default activation behavior for a given event.
-    #[must_use]
-    pub fn on_key<F>(mut self, handler: F) -> Self
-    where
-        F: FnMut(&mut Ui, KeyEvent<'_>) + 'static,
-    {
-        self.on_key = Some(Box::new(handler));
+        self.on_activate = Some(Box::new(handler));
         self
     }
 }
 
 impl AppendSpec for Button {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let id = ui.append_widget_deferred_template(parent, Box::new(ButtonWidget));
+        let id = ui
+            .append_widget_deferred_template(parent, Box::new(ButtonWidget::new(self.on_activate)));
         let content_prop = ui.properties().content;
         let font_size_prop = ui.properties().font_size;
         let fg_prop = ui.properties().foreground;
@@ -183,21 +186,6 @@ impl AppendSpec for Button {
         }
         self.element.apply_to(ui, id);
         ui.expand_resolved_template(id);
-        if let Some(handler) = self.on_click {
-            let mut handler = handler;
-            ui.on_click_with_options(
-                id,
-                RoutedHandlerOptions::new().scope(RoutedHandlerScope::SemanticTarget),
-                move |ui, event| {
-                    if button_enabled(ui, id) {
-                        handler(ui, event);
-                    }
-                },
-            );
-        }
-        if let Some(handler) = self.on_key {
-            ui.on_key(id, handler);
-        }
         id
     }
 }
@@ -214,12 +202,34 @@ impl ElementSpec for Button {
     }
 }
 
-/// Per-element widget for `Button`. Carries no per-instance state —
-/// the button's runtime configuration lives in properties + the
-/// registered handlers. The unit struct is enough to attach
-/// behavior via `Widget`.
-#[derive(Debug, Default)]
-pub(crate) struct ButtonWidget;
+/// Per-element widget for `Button`.
+pub(crate) struct ButtonWidget {
+    activated: ButtonActivatedSlot,
+}
+
+impl ButtonWidget {
+    fn new(handler: Option<ButtonActivatedHandler>) -> Self {
+        Self {
+            activated: ButtonActivatedSlot::new(handler),
+        }
+    }
+
+    fn activate(&self, ui: &mut Ui, button: ElementId, source: ActivationSource) {
+        self.activated.dispatch(
+            ui,
+            ButtonActivatedEvent {
+                element: button,
+                source,
+            },
+        );
+    }
+}
+
+impl core::fmt::Debug for ButtonWidget {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ButtonWidget").finish_non_exhaustive()
+    }
+}
 
 impl Widget for ButtonWidget {
     fn type_tag(&self) -> Option<TypeTag> {
@@ -256,7 +266,7 @@ impl Widget for ButtonWidget {
         if event.key.state != KeyState::Down {
             return;
         }
-        if !button_enabled(ctx, button) {
+        if !ctx.is_enabled(button) {
             return;
         }
         let activate = match &event.key.key {
@@ -265,13 +275,34 @@ impl Widget for ButtonWidget {
             _ => false,
         };
         if activate {
-            // Synthesize a click. We use the focused element's world-
-            // bounds origin so click handlers that care about position
-            // get a sensible value.
-            let pos = ctx.effective_bounds(button).origin();
-            ctx.synthesize_click_with_modifiers(button, pos, event.key.modifiers);
+            self.activate(ctx, button, ActivationSource::Keyboard);
             event.mark_handled();
         }
+    }
+
+    fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
+        let button = ctx.id();
+        if !event.is_semantic_target() {
+            return;
+        }
+        if !ctx.is_enabled(button) {
+            return;
+        }
+        self.activate(ctx, button, ActivationSource::Pointer);
+        event.mark_handled();
+    }
+
+    fn handle_accessibility_action(
+        &mut self,
+        ctx: &mut WidgetEventContext<'_>,
+        request: &accesskit::ActionRequest,
+    ) -> bool {
+        let button = ctx.id();
+        if request.action != accesskit::Action::Click || !ctx.is_enabled(button) {
+            return false;
+        }
+        self.activate(ctx, button, ActivationSource::Accessibility);
+        true
     }
 }
 
@@ -287,6 +318,57 @@ fn button_template_spec() -> TemplateSpec {
     TemplateSpec::from_nodes([TemplateNode::content_presenter(SLOT_BUTTON_CONTENT)])
 }
 
-fn button_enabled(ui: &Ui, button: ElementId) -> bool {
-    ui.is_enabled(button)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use accesskit::{Action, ActionRequest, TreeId};
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    #[test]
+    fn keyboard_activation_reports_keyboard_source() {
+        let observed = Rc::new(Cell::new(None));
+        let observed_for_handler = Rc::clone(&observed);
+        let mut ui = Ui::new();
+        let button = ui.append(
+            ui.root(),
+            Button::new("Run").on_activate(move |_ui, event| {
+                observed_for_handler.set(Some((event.element, event.source)));
+            }),
+        );
+        ui.set_focus(Some(button));
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert_eq!(observed.get(), Some((button, ActivationSource::Keyboard)));
+    }
+
+    #[test]
+    fn accessibility_activation_reports_accessibility_source() {
+        let observed = Rc::new(Cell::new(None));
+        let observed_for_handler = Rc::clone(&observed);
+        let mut ui = Ui::new();
+        let button = ui.append(
+            ui.root(),
+            Button::new("Run").on_activate(move |_ui, event| {
+                observed_for_handler.set(Some((event.element, event.source)));
+            }),
+        );
+
+        let handled = ui.handle_accesskit_action(&ActionRequest {
+            action: Action::Click,
+            target_node: crate::accessibility::accesskit_node_id(button),
+            target_tree: TreeId::ROOT,
+            data: None,
+        });
+
+        assert!(handled);
+        assert_eq!(
+            observed.get(),
+            Some((button, ActivationSource::Accessibility))
+        );
+    }
 }

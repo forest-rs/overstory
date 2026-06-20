@@ -15,7 +15,7 @@
 //! ```ignore
 //! ui.with_child(root, Panel::column(12.0), |ui| {
 //!     ui.add(Text::new("Inputs"));
-//!     ui.add(Button::new("Apply").on_click(|_, _| {}));
+//!     ui.add(Button::new("Apply").on_activate(|_, _| {}));
 //!     ui.with_child(Panel::row(8.0), |row| {
 //!         row.add(ToggleSwitch::new().checked(true));
 //!         row.add(Text::new("Live rendering"));
@@ -45,8 +45,8 @@
 //! - Make diagnostics first-class: invalidation, layout, text shaping,
 //!   composition, timers, and event dispatch should all become measurable.
 //! - Preserve one obvious path for app authors: construct controls, bind or
-//!   style properties, handle routed events, and let the frame pipeline do the
-//!   rest.
+//!   style properties, handle semantic control callbacks, and use raw routed
+//!   events only when custom input behavior needs them.
 //!
 //! Detailed roadmap tickets live under `.tickets/`; see epic `ove-p3tl`.
 
@@ -57,6 +57,7 @@ extern crate std;
 extern crate alloc;
 
 pub mod accessibility;
+mod activation;
 pub mod authoring;
 mod behavior;
 mod binding;
@@ -102,6 +103,7 @@ mod widget;
 
 pub use accessibility::AccessibilityContext;
 pub use accesskit;
+pub use activation::{ActivationDeniedEvent, ActivationDeniedReason, ActivationSource};
 pub use behavior::{
     ArrangeContext, ArrangeResult, ElementRealizeContext, ElementRealizeResult, KnownDimensions,
     MeasureConstraints, MeasureContext, PresentContext, WidgetEventContext,
@@ -119,7 +121,9 @@ pub use controls::accordion::{
     TYPE_ACCORDION, TYPE_ACCORDION_SECTION, accordion_section_content, accordion_section_expanded,
     set_accordion_section_expanded, toggle_accordion_section,
 };
-pub use controls::button::{Button, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON};
+pub use controls::button::{
+    Button, ButtonActivatedEvent, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
+};
 pub use controls::checkbox::{
     CheckBox, PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, SLOT_CHECK_BOX_BOX,
     SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK, TYPE_CHECK_BOX, set_check_box_checked,
@@ -238,7 +242,7 @@ pub use template::{
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
 pub use timeline_runtime::{TimelineCue, TimelineCueId};
 pub use timer_runtime::TimerEvent;
-pub use ui::{ChildUi, ControlState, Ui};
+pub use ui::{ChildUi, ControlState, RoutedEvents, Ui};
 pub use understory_property_binding::PropertyEndpoint;
 pub use view::View;
 pub use widget::{
@@ -254,15 +258,16 @@ pub use widget::{
 /// element configuration methods available.
 pub mod prelude {
     pub use crate::{
-        Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, AppendSpec,
-        BindingSpecExt, Button, CheckBox, ChildUi, ClassId, Color, ContentSlotSpec,
+        Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, ActivationDeniedEvent,
+        ActivationDeniedReason, ActivationSource, AppendSpec, BindingSpecExt, Button,
+        ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color, ContentSlotSpec,
         ControlStateSpecExt, ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt,
         CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
         ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
         PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
-        ScrollArea, ScrollBar, ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState,
-        ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
+        RoutedEvents, ScrollArea, ScrollBar, ScrollOffsetChangeSource, ScrollOffsetChangedEvent,
+        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
         SliderValueChangedEvent, Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary,
         SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason,
         TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,

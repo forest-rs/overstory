@@ -14,7 +14,7 @@
 //! is always:
 //!
 //! ```ignore
-//! ui.append(parent, Button::new("Click me").font_size(22.0).on_click(|ui, _| {
+//! ui.append(parent, Button::new("Click me").font_size(22.0).on_activate(|ui, _| {
 //!     // …
 //! }));
 //! ```
@@ -26,13 +26,19 @@
 //! controls whose template structure depends on initial builder state can use
 //! Overstory's crate-internal deferred expansion path.
 //!
+//! Widget input methods are toolkit-side behavior hooks. They are where a
+//! control turns routed pointer/key/focus/scroll events into semantic state
+//! changes and callbacks. App code that needs raw routed input uses
+//! [`Ui::events`](crate::Ui::events); ordinary app code uses semantic builder
+//! callbacks such as [`Button::on_activate`](crate::Button::on_activate).
+//!
 //! Roadmap:
 //! - Keep `Widget` small: identity, presentation, optional measure/layout hooks,
 //!   template contract, cursor policy, hit testing, and input callbacks.
 //! - Let widgets describe their accessibility role and semantic state directly;
 //!   selector type tags are for styling, not for accessibility lowering.
-//! - Prefer routed events, properties, templates, and runtimes over adding a
-//!   hook for every new behavior.
+//! - Prefer semantic control callbacks, properties, templates, and runtimes
+//!   over adding a public raw-input hook for every new behavior.
 //! - Keep visual output going through presentation primitives rather than
 //!   direct renderer paint callbacks.
 //! - Make the content-control and item-control patterns obvious without forcing
@@ -53,6 +59,7 @@ use understory_property::{ErasedValue, Property, PropertyId};
 use understory_style::TypeTag;
 
 use crate::accessibility::AccessibilityContext;
+use crate::activation::ActivationDeniedEvent;
 use crate::behavior::{
     ArrangeContext, ArrangeResult, ElementRealizeContext, ElementRealizeResult, MeasureConstraints,
     MeasureContext, PresentContext, WidgetEventContext,
@@ -320,17 +327,16 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
     ) {
     }
 
-    /// Handles a primary pointer press that was denied because the hit visual
-    /// target is disabled.
+    /// Handles a semantic activation attempt denied before raw click dispatch.
     ///
     /// This is intentionally not a routed event and it does not re-enable
     /// disabled controls. Widgets use it only for local denial affordances,
     /// such as a segmented control shaking when the user tries to choose a
     /// disabled segment.
-    fn handle_disabled_pointer_down(
+    fn handle_activation_denied(
         &mut self,
         _ctx: &mut WidgetEventContext<'_>,
-        _disabled_target: ElementId,
+        _event: ActivationDeniedEvent,
     ) {
     }
 

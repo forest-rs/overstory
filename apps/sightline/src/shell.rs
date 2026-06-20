@@ -70,7 +70,7 @@ pub(crate) fn build(
 
 pub(crate) fn wire(ui: &mut Ui, shell: Shell, tokens: SightlineTokens, state: Rc<AppState>) {
     let theme_state = Rc::clone(&state);
-    ui.on_click(shell.theme_button, move |ui, event| {
+    ui.events(shell.theme_button).click(move |ui, event| {
         let next = theme_state.toggle_theme();
         ui.set_theme(sightline_theme(next, tokens));
         ui.set_local(

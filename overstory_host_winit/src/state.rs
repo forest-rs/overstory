@@ -277,24 +277,6 @@ fn refresh_interval_from_millihertz(millihertz: u32) -> Option<FrameDuration> {
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn refresh_interval_from_millihertz_rounds_to_nanosecond_ticks() {
-        assert_eq!(
-            refresh_interval_from_millihertz(120_000),
-            Some(FrameDuration(8_333_333))
-        );
-        assert_eq!(
-            refresh_interval_from_millihertz(60_000),
-            Some(FrameDuration(16_666_667))
-        );
-        assert_eq!(refresh_interval_from_millihertz(0), None);
-    }
-}
-
 pub(crate) fn init_window<F>(
     event_loop: &ActiveEventLoop,
     options: &WindowOptions,
@@ -377,4 +359,22 @@ where
         host,
         event_reducer: WindowEventReducer::default(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_interval_from_millihertz_rounds_to_nanosecond_ticks() {
+        assert_eq!(
+            refresh_interval_from_millihertz(120_000),
+            Some(FrameDuration(8_333_333))
+        );
+        assert_eq!(
+            refresh_interval_from_millihertz(60_000),
+            Some(FrameDuration(16_666_667))
+        );
+        assert_eq!(refresh_interval_from_millihertz(0), None);
+    }
 }

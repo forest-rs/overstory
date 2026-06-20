@@ -46,7 +46,7 @@
 //!
 //!             card.with_child(Panel::row(10.0).align_center(), |actions| {
 //!                 actions.add(
-//!                     Button::new("Deploy").on_click(move |ui, _event| {
+//!                     Button::new("Deploy").on_activate(move |ui, _event| {
 //!                         deploy_count.update(ui, |count| *count += 1);
 //!                     }),
 //!                 )

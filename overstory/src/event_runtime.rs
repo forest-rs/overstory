@@ -4,15 +4,15 @@
 //! Routed input event state and handler storage.
 //!
 //! Roadmap:
-//! - Make routed events the first-class event system for controls: pointer,
-//!   keyboard, focus, scroll, text input, composition, and command-style events
-//!   should share routing, handled state, and handler options. See ticket
-//!   `ove-b3av`.
+//! - Keep routed events as the raw input substrate: pointer, keyboard, focus,
+//!   scroll, click, and drag share routing, handled state, and handler options.
+//!   Controls then expose semantic callbacks from widget behavior instead of
+//!   making app code speak raw routes for ordinary use.
 //! - Keep raw host event translation outside this runtime. This module should
 //!   work with normalized `ui-events` payloads and Overstory element ids.
 //! - Use `understory_responder` for route shape and phase semantics while
-//!   Overstory owns handler lanes, pointer capture, hover, click, and drag
-//!   state.
+//!   Overstory owns app handler storage, pointer capture, hover, click, and
+//!   drag state.
 //! - Add capture/release diagnostics, event tracing, and input-modality state
 //!   so focus-visible, tooltips, menus, and gestures remain explainable.
 //! - Push reusable low-level helpers down to `ui-events` or `understory_*`
@@ -45,7 +45,7 @@ pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>
 pub(crate) trait HandlerFamily: Copy {
     type Handler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler>;
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler>;
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -54,7 +54,7 @@ pub(crate) struct ClickHandlers;
 impl HandlerFamily for ClickHandlers {
     type Handler = ClickHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         &mut runtime.click
     }
 }
@@ -65,7 +65,7 @@ pub(crate) struct DragHandlers;
 impl HandlerFamily for DragHandlers {
     type Handler = DragHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         &mut runtime.drag
     }
 }
@@ -76,7 +76,7 @@ pub(crate) struct ScrollHandlers;
 impl HandlerFamily for ScrollHandlers {
     type Handler = ScrollHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         &mut runtime.scroll
     }
 }
@@ -87,7 +87,7 @@ pub(crate) struct KeyHandlers;
 impl HandlerFamily for KeyHandlers {
     type Handler = KeyHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         &mut runtime.key
     }
 }
@@ -98,7 +98,7 @@ pub(crate) struct FocusHandlers;
 impl HandlerFamily for FocusHandlers {
     type Handler = FocusHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         &mut runtime.focus
     }
 }
@@ -117,22 +117,9 @@ impl PointerHandlers {
 impl HandlerFamily for PointerHandlers {
     type Handler = PointerHandler;
 
-    fn pair(self, runtime: &mut EventRuntime) -> &mut HandlerPair<Self::Handler> {
+    fn store(self, runtime: &mut EventRuntime) -> &mut HandlerStore<Self::Handler> {
         runtime.pointer_pair_mut(self.kind)
     }
-}
-
-/// Handler ownership lane.
-///
-/// Control handlers implement built-in widget behavior; user handlers are
-/// registered through public `Ui::on_*` APIs. Dispatch can run both lanes while
-/// preserving separate removal/replacement state.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum HandlerLane {
-    /// Application-supplied handler registered through public APIs.
-    User,
-    /// Framework/control behavior handler installed by built-in widgets.
-    Control,
 }
 
 /// Options controlling how a routed handler participates in dispatch.
@@ -879,18 +866,18 @@ impl ScrollEvent<'_> {
 
 /// Routed event handler stores and in-flight removal tracking.
 pub(crate) struct EventRuntime {
-    /// User/control click handlers keyed by current route element.
-    click: HandlerPair<ClickHandler>,
-    /// User/control drag handlers keyed by current route element.
-    drag: HandlerPair<DragHandler>,
+    /// App raw click handlers keyed by current route element.
+    click: HandlerStore<ClickHandler>,
+    /// App raw drag handlers keyed by current route element.
+    drag: HandlerStore<DragHandler>,
     /// User scroll handlers keyed by current route element.
-    scroll: HandlerPair<ScrollHandler>,
-    /// User/control keyboard handlers keyed by current route element.
-    key: HandlerPair<KeyHandler>,
+    scroll: HandlerStore<ScrollHandler>,
+    /// App raw keyboard handlers keyed by current route element.
+    key: HandlerStore<KeyHandler>,
     /// Focus gained/lost handlers keyed by current route element.
-    focus: HandlerPair<FocusHandler>,
+    focus: HandlerStore<FocusHandler>,
     /// Pointer handlers keyed first by routed pointer event kind, then route element.
-    pointer: [HandlerPair<PointerHandler>; PointerEventKind::COUNT],
+    pointer: [HandlerStore<PointerHandler>; PointerEventKind::COUNT],
     /// Last hover path, used to synthesize pointer enter/leave routes.
     hover: HoverState<ElementId>,
     /// Click recognizer state derived from pointer press/move/up events.
@@ -908,12 +895,12 @@ pub(crate) struct EventRuntime {
 impl EventRuntime {
     pub(crate) fn new() -> Self {
         Self {
-            click: HandlerPair::new(),
-            drag: HandlerPair::new(),
-            scroll: HandlerPair::new(),
-            key: HandlerPair::new(),
-            focus: HandlerPair::new(),
-            pointer: core::array::from_fn(|_| HandlerPair::new()),
+            click: HandlerStore::new(),
+            drag: HandlerStore::new(),
+            scroll: HandlerStore::new(),
+            key: HandlerStore::new(),
+            focus: HandlerStore::new(),
+            pointer: core::array::from_fn(|_| HandlerStore::new()),
             hover: HoverState::new(),
             clicks: ClickState::new(),
             press_target: None,
@@ -929,24 +916,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: ClickHandler,
     ) {
-        self.click.insert(HandlerLane::User, id, options, handler);
-    }
-
-    pub(crate) fn on_control_click(&mut self, id: ElementId, handler: ClickHandler) {
-        self.click.insert(
-            HandlerLane::Control,
-            id,
-            RoutedHandlerOptions::default(),
-            handler,
-        );
+        self.click.insert(id, options, handler);
     }
 
     pub(crate) fn remove_click(&mut self, id: ElementId) {
-        self.click.remove(HandlerLane::User, id);
-    }
-
-    pub(crate) fn on_drag(&mut self, id: ElementId, handler: DragHandler) {
-        self.on_drag_with_options(id, RoutedHandlerOptions::default(), handler);
+        self.click.remove(id);
     }
 
     pub(crate) fn on_drag_with_options(
@@ -955,24 +929,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: DragHandler,
     ) {
-        self.drag.insert(HandlerLane::User, id, options, handler);
-    }
-
-    pub(crate) fn on_control_drag(&mut self, id: ElementId, handler: DragHandler) {
-        self.drag.insert(
-            HandlerLane::Control,
-            id,
-            RoutedHandlerOptions::default(),
-            handler,
-        );
+        self.drag.insert(id, options, handler);
     }
 
     pub(crate) fn remove_drag(&mut self, id: ElementId) {
-        self.drag.remove(HandlerLane::User, id);
-    }
-
-    pub(crate) fn on_scroll(&mut self, id: ElementId, handler: ScrollHandler) {
-        self.on_scroll_with_options(id, RoutedHandlerOptions::default(), handler);
+        self.drag.remove(id);
     }
 
     pub(crate) fn on_scroll_with_options(
@@ -981,15 +942,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: ScrollHandler,
     ) {
-        self.scroll.insert(HandlerLane::User, id, options, handler);
+        self.scroll.insert(id, options, handler);
     }
 
     pub(crate) fn remove_scroll(&mut self, id: ElementId) {
-        self.scroll.remove(HandlerLane::User, id);
-    }
-
-    pub(crate) fn on_key(&mut self, id: ElementId, handler: KeyHandler) {
-        self.on_key_with_options(id, RoutedHandlerOptions::default(), handler);
+        self.scroll.remove(id);
     }
 
     pub(crate) fn on_key_with_options(
@@ -998,24 +955,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: KeyHandler,
     ) {
-        self.key.insert(HandlerLane::User, id, options, handler);
-    }
-
-    pub(crate) fn on_control_key(&mut self, id: ElementId, handler: KeyHandler) {
-        self.key.insert(
-            HandlerLane::Control,
-            id,
-            RoutedHandlerOptions::default(),
-            handler,
-        );
+        self.key.insert(id, options, handler);
     }
 
     pub(crate) fn remove_key(&mut self, id: ElementId) {
-        self.key.remove(HandlerLane::User, id);
-    }
-
-    pub(crate) fn on_focus(&mut self, id: ElementId, handler: FocusHandler) {
-        self.on_focus_with_options(id, RoutedHandlerOptions::default(), handler);
+        self.key.remove(id);
     }
 
     pub(crate) fn on_focus_with_options(
@@ -1024,20 +968,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: FocusHandler,
     ) {
-        self.focus.insert(HandlerLane::User, id, options, handler);
+        self.focus.insert(id, options, handler);
     }
 
     pub(crate) fn remove_focus(&mut self, id: ElementId) {
-        self.focus.remove(HandlerLane::User, id);
-    }
-
-    pub(crate) fn on_pointer(
-        &mut self,
-        kind: PointerEventKind,
-        id: ElementId,
-        handler: PointerHandler,
-    ) {
-        self.on_pointer_with_options(kind, id, RoutedHandlerOptions::default(), handler);
+        self.focus.remove(id);
     }
 
     pub(crate) fn on_pointer_with_options(
@@ -1047,12 +982,11 @@ impl EventRuntime {
         options: RoutedHandlerOptions,
         handler: PointerHandler,
     ) {
-        self.pointer_pair_mut(kind)
-            .insert(HandlerLane::User, id, options, handler);
+        self.pointer_pair_mut(kind).insert(id, options, handler);
     }
 
     pub(crate) fn remove_pointer(&mut self, kind: PointerEventKind, id: ElementId) {
-        self.pointer_pair_mut(kind).remove(HandlerLane::User, id);
+        self.pointer_pair_mut(kind).remove(id);
     }
 
     pub(crate) fn remove_target(&mut self, id: ElementId) {
@@ -1077,54 +1011,52 @@ impl EventRuntime {
     pub(crate) fn take_handler<F>(
         &mut self,
         family: F,
-        lane: HandlerLane,
         id: ElementId,
         handled: bool,
     ) -> Option<HandlerRegistration<F::Handler>>
     where
         F: HandlerFamily,
     {
-        family.pair(self).take(lane, id, handled)
+        family.store(self).take(id, handled)
     }
 
-    pub(crate) fn begin_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId)
+    pub(crate) fn begin_handler<F>(&mut self, family: F, id: ElementId)
     where
         F: HandlerFamily,
     {
-        family.pair(self).begin(lane, id);
+        family.store(self).begin(id);
     }
 
-    pub(crate) fn end_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId)
+    pub(crate) fn end_handler<F>(&mut self, family: F, id: ElementId)
     where
         F: HandlerFamily,
     {
-        family.pair(self).end(lane, id);
+        family.store(self).end(id);
     }
 
-    pub(crate) fn handler_removed<F>(&mut self, family: F, lane: HandlerLane, id: ElementId) -> bool
+    pub(crate) fn handler_removed<F>(&mut self, family: F, id: ElementId) -> bool
     where
         F: HandlerFamily,
     {
-        family.pair(self).take_removed(lane, id)
+        family.store(self).take_removed(id)
     }
 
     pub(crate) fn insert_handler_if_absent<F>(
         &mut self,
         family: F,
-        lane: HandlerLane,
         id: ElementId,
         handler: HandlerRegistration<F::Handler>,
     ) where
         F: HandlerFamily,
     {
-        family.pair(self).insert_if_absent(lane, id, handler);
+        family.store(self).insert_if_absent(id, handler);
     }
 
-    pub(crate) fn has_handler<F>(&mut self, family: F, lane: HandlerLane, id: ElementId) -> bool
+    pub(crate) fn has_handler<F>(&mut self, family: F, id: ElementId) -> bool
     where
         F: HandlerFamily,
     {
-        family.pair(self).has(lane, id)
+        family.store(self).has(id)
     }
 
     pub(crate) fn hovered(&self) -> Option<ElementId> {
@@ -1198,110 +1130,19 @@ impl EventRuntime {
         self.last_drag_position = Some(position);
     }
 
-    fn pointer_pair_mut(&mut self, kind: PointerEventKind) -> &mut HandlerPair<PointerHandler> {
+    fn pointer_pair_mut(&mut self, kind: PointerEventKind) -> &mut HandlerStore<PointerHandler> {
         &mut self.pointer[kind.index()]
     }
 }
 
-pub(crate) struct HandlerPair<H> {
-    /// Host-registered application handler slot.
-    user: HandlerSlot<H>,
-    /// Built-in control behavior handler slot.
-    control: HandlerSlot<H>,
-}
-
-impl<H> HandlerPair<H> {
-    fn new() -> Self {
-        Self {
-            user: HandlerSlot::new(),
-            control: HandlerSlot::new(),
-        }
-    }
-
-    fn insert(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        options: RoutedHandlerOptions,
-        handler: H,
-    ) {
-        self.slot_mut(lane).insert(id, options, handler);
-    }
-
-    fn remove(&mut self, lane: HandlerLane, id: ElementId) {
-        self.slot_mut(lane).remove(id);
-    }
-
-    fn remove_target(&mut self, id: ElementId) {
-        self.user.remove(id);
-        self.control.remove(id);
-    }
-
-    fn take(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handled: bool,
-    ) -> Option<HandlerRegistration<H>> {
-        self.slot_mut(lane).take(id, handled)
-    }
-
-    fn begin(&mut self, lane: HandlerLane, id: ElementId) {
-        self.slot_mut(lane).begin(id);
-    }
-
-    fn end(&mut self, lane: HandlerLane, id: ElementId) {
-        self.slot_mut(lane).end(id);
-    }
-
-    fn take_removed(&mut self, lane: HandlerLane, id: ElementId) -> bool {
-        self.slot_mut(lane).take_removed(id)
-    }
-
-    fn insert_if_absent(
-        &mut self,
-        lane: HandlerLane,
-        id: ElementId,
-        handler: HandlerRegistration<H>,
-    ) {
-        self.slot_mut(lane).insert_if_absent(id, handler);
-    }
-
-    fn has(&self, lane: HandlerLane, id: ElementId) -> bool {
-        self.slot(lane).has(id)
-    }
-
-    fn slot(&self, lane: HandlerLane) -> &HandlerSlot<H> {
-        match lane {
-            HandlerLane::User => &self.user,
-            HandlerLane::Control => &self.control,
-        }
-    }
-
-    fn slot_mut(&mut self, lane: HandlerLane) -> &mut HandlerSlot<H> {
-        match lane {
-            HandlerLane::User => &mut self.user,
-            HandlerLane::Control => &mut self.control,
-        }
-    }
-}
-
-struct HandlerSlot<H> {
+pub(crate) struct HandlerStore<H> {
     /// Registered handlers keyed by element id.
     handlers: HashMap<ElementId, HandlerRegistration<H>>,
     /// Tracks removals while a handler is temporarily taken for dispatch.
     dispatch: HandlerDispatchTracker,
 }
 
-/// Handler plus dispatch options.
-pub(crate) struct HandlerRegistration<H> {
-    /// Dispatch options for this handler.
-    pub(crate) options: RoutedHandlerOptions,
-    /// Callback body.
-    pub(crate) handler: H,
-}
-
-impl<H> HandlerSlot<H> {
+impl<H> HandlerStore<H> {
     fn new() -> Self {
         Self {
             handlers: HashMap::new(),
@@ -1317,6 +1158,10 @@ impl<H> HandlerSlot<H> {
     fn remove(&mut self, id: ElementId) {
         self.handlers.remove(&id);
         self.dispatch.note_removal(id);
+    }
+
+    fn remove_target(&mut self, id: ElementId) {
+        self.remove(id);
     }
 
     fn take(&mut self, id: ElementId, handled: bool) -> Option<HandlerRegistration<H>> {
@@ -1350,6 +1195,14 @@ impl<H> HandlerSlot<H> {
     fn has(&self, id: ElementId) -> bool {
         self.handlers.contains_key(&id)
     }
+}
+
+/// Handler plus dispatch options.
+pub(crate) struct HandlerRegistration<H> {
+    /// Dispatch options for this handler.
+    pub(crate) options: RoutedHandlerOptions,
+    /// Callback body.
+    pub(crate) handler: H,
 }
 
 #[derive(Default)]

@@ -18,10 +18,10 @@ impl View for OverviewPage {
                         actions.add(
                             Button::new("")
                                 .font_size(15.0)
-                                .on_click(cycling_click_handler(deploy_clicks))
+                                .on_activate(cycling_activation_handler(deploy_clicks))
                                 .bind_content(
                                     deploy_clicks
-                                        .map(|count| cycling_click_label("Deploy", *count)),
+                                        .map(|count| cycling_activation_label("Deploy", *count)),
                                 )
                                 .tooltip("Button content is template-bound"),
                         );

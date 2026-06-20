@@ -77,6 +77,7 @@ mod transition_planner;
 mod tree;
 mod visual;
 
+pub use events::RoutedEvents;
 pub use tree::ChildUi;
 
 use transition_planner::MotionPolicy;
@@ -88,7 +89,10 @@ mod tests;
 ///
 /// `Ui` keeps the app-facing API concentrated in one object while delegating
 /// narrow responsibilities to internal runtimes such as `ElementStore` and
-/// `TemplateRuntime`.
+/// `TemplateRuntime`. Normal app code builds controls and handles semantic
+/// callbacks on those controls. [`Ui::events`] is the explicit advanced path
+/// for raw routed input such as custom gestures, capture-phase observation, or
+/// handled-event diagnostics.
 pub struct Ui {
     /// Retained element tree and per-element widget/property storage.
     elements: ElementStore,

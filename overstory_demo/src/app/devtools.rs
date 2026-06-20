@@ -22,7 +22,7 @@ const DEVTOOLS_EVENT_LOG_HEIGHT: f32 = 112.0;
 pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
     let open_dock = Rc::new(Cell::new(None));
     let open_dock_for_click = Rc::clone(&open_dock);
-    ui.on_click(button, move |ui, event| {
+    ui.events(button).click(move |ui, event| {
         if !matches!(
             event.phase,
             overstory::Phase::Target | overstory::Phase::Bubble
@@ -308,7 +308,7 @@ fn open_in_process_devtools(
 }
 
 fn wire_refresh_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShell) {
-    ui.on_click(button, move |ui, event| {
+    ui.events(button).click(move |ui, event| {
         if !matches!(
             event.phase,
             overstory::Phase::Target | overstory::Phase::Bubble
@@ -321,7 +321,7 @@ fn wire_refresh_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsS
 }
 
 fn wire_close_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShell) {
-    ui.on_click(button, move |ui, event| {
+    ui.events(button).click(move |ui, event| {
         if !matches!(
             event.phase,
             overstory::Phase::Target | overstory::Phase::Bubble

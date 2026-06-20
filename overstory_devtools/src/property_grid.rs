@@ -940,7 +940,7 @@ fn wire_element_link(
     if actions.outline_key_for_element(target).is_none() {
         return;
     }
-    ui.on_click(source, move |ui, event| {
+    ui.events(source).click(move |ui, event| {
         let key = actions.outline_key_for_element(target);
         if let Some(key) = key {
             let _ = select_outline_key(ui, actions.outline, key);

@@ -17,6 +17,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
+use crate::ActivationDeniedEvent;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, first_enabled_index,
@@ -445,10 +446,10 @@ impl Widget for SegmentedItemWidget {
         }
     }
 
-    fn handle_disabled_pointer_down(
+    fn handle_activation_denied(
         &mut self,
         ctx: &mut WidgetEventContext<'_>,
-        _disabled_target: ElementId,
+        _event: ActivationDeniedEvent,
     ) {
         let Some(segmented) = segmented_parent(ctx, ctx.id()) else {
             return;

@@ -499,10 +499,8 @@ fn append_svg_viewer(ui: &mut Ui, parent: ElementId, bytes: &[u8]) -> Result<Svg
 
 fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     let pick_viewer = viewer.clone();
-    ui.on_pointer(
-        viewer.host,
-        overstory::PointerEventKind::Down,
-        move |ui, event| {
+    ui.events(viewer.host)
+        .pointer(overstory::PointerEventKind::Down, move |ui, event| {
             if !matches!(
                 event.phase,
                 overstory::Phase::Capture | overstory::Phase::Target
@@ -514,11 +512,10 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
             };
             let view_point = local_point(ui, pick_viewer.host, position);
             select_svg_path_at_view_point(ui, &pick_viewer, view_point);
-        },
-    );
+        });
 
     let drag_viewer = viewer.clone();
-    ui.on_drag(viewer.host, move |ui, event| {
+    ui.events(viewer.host).drag(move |ui, event| {
         if !matches!(
             event.phase,
             overstory::Phase::Capture | overstory::Phase::Target
@@ -538,7 +535,7 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     });
 
     let scroll_viewer = viewer.clone();
-    ui.on_scroll(viewer.host, move |ui, event| {
+    ui.events(viewer.host).scroll(move |ui, event| {
         if !matches!(
             event.phase,
             overstory::Phase::Capture | overstory::Phase::Target
@@ -698,16 +695,9 @@ fn append_svg_view_button(
     parent.add(
         Button::new(label)
             .font_size(13.0)
-            .on_click(move |ui, event| {
-                if !matches!(
-                    event.phase,
-                    overstory::Phase::Target | overstory::Phase::Bubble
-                ) {
-                    return;
-                }
+            .on_activate(move |ui, _event| {
                 action(&mut viewer.runtime.state.borrow_mut());
                 refresh_svg_viewer(ui, &viewer);
-                event.mark_handled();
             })
             .tooltip("Adjust the SVG viewport"),
     );

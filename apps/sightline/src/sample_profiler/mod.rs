@@ -131,7 +131,7 @@ pub(crate) fn build(
 pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
     let zoom_in_view = view.clone();
     let zoom_in_state = Rc::clone(&state);
-    ui.on_click(view.zoom_in, move |ui, event| {
+    ui.events(view.zoom_in).click(move |ui, event| {
         event.mark_handled();
         zoom_in_state.sample_profiler().zoom_about_center(1.45);
         render::render(ui, &zoom_in_view, zoom_in_state.sample_profiler());
@@ -139,7 +139,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
 
     let zoom_out_view = view.clone();
     let zoom_out_state = Rc::clone(&state);
-    ui.on_click(view.zoom_out, move |ui, event| {
+    ui.events(view.zoom_out).click(move |ui, event| {
         event.mark_handled();
         zoom_out_state
             .sample_profiler()
@@ -149,7 +149,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
 
     let fit_view = view.clone();
     let fit_state = Rc::clone(&state);
-    ui.on_click(view.fit, move |ui, event| {
+    ui.events(view.fit).click(move |ui, event| {
         event.mark_handled();
         fit_state.sample_profiler().fit();
         render::render(ui, &fit_view, fit_state.sample_profiler());
@@ -157,7 +157,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
 
     let select_view = view.clone();
     let select_state = Rc::clone(&state);
-    ui.on_click(view.plot, move |ui, event| {
+    ui.events(view.plot).click(move |ui, event| {
         event.mark_handled();
         let local_x = local_plot_x(ui, select_view.plot, event.position);
         select_state.sample_profiler().select_at_view_x(local_x);
@@ -165,7 +165,7 @@ pub(crate) fn wire(ui: &mut Ui, view: SampleProfilerView, state: Rc<AppState>) {
     });
 
     let scroll_view = view;
-    ui.on_scroll(scroll_view.plot, move |ui, event| {
+    ui.events(scroll_view.plot).scroll(move |ui, event| {
         let delta = event.logical_delta(
             Vec2::new(24.0, 24.0),
             Vec2::new(f64::from(TIME_VIEW_WIDTH), f64::from(PLOT_HEIGHT)),

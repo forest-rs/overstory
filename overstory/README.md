@@ -31,7 +31,7 @@ preserving the same retained tree machinery:
 ```rust
 ui.children(root, Panel::column(12.0), |ui| {
     ui.add(Text::new("Inputs"));
-    ui.add(Button::new("Apply").on_click(|_, _| {}));
+    ui.add(Button::new("Apply").on_activate(|_, _| {}));
     ui.children(Panel::row(8.0), |row| {
         row.add(ToggleSwitch::new().checked(true));
         row.add(Text::new("Live rendering"));

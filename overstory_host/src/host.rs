@@ -1015,7 +1015,7 @@ mod tests {
         let root = ui.root();
         let button = ui.append(
             root,
-            Button::new("Deploy").on_click(move |_ui, _event| {
+            Button::new("Deploy").on_activate(move |_ui, _event| {
                 clicks_for_handler.set(clicks_for_handler.get() + 1);
             }),
         );

@@ -233,9 +233,11 @@ fn authoring_view_example_builds_and_binds_with_real_api() {
 
                     let deploy =
                         card.with_child(crate::Panel::row(10.0).align_center(), |actions| {
-                            actions.add(crate::Button::new("Deploy").on_click(move |ui, _event| {
-                                deploy_count.update(ui, |count| *count += 1);
-                            }))
+                            actions.add(crate::Button::new("Deploy").on_activate(
+                                move |ui, _event| {
+                                    deploy_count.update(ui, |count| *count += 1);
+                                },
+                            ))
                         });
 
                     (deploy, deploy_count, count_label)
@@ -5446,7 +5448,7 @@ fn outside_pointer_down_closes_popup_without_consuming_click() {
     );
     let clicked = Rc::new(Cell::new(false));
     let clicked_for_handler = Rc::clone(&clicked);
-    ui.on_click(outside, move |_ui, _event| {
+    ui.events(outside).click(move |_ui, _event| {
         clicked_for_handler.set(true);
     });
     ui.compute_layout(Size::new(320.0, 120.0));
@@ -5548,7 +5550,7 @@ fn disabled_button_carries_state_and_ignores_builder_click() {
         root,
         Button::new("No")
             .disabled()
-            .on_click(move |_ui, _event| fired_for_handler.set(true)),
+            .on_activate(move |_ui, _event| fired_for_handler.set(true)),
     );
 
     assert!(!ui.is_enabled(button));
@@ -5662,7 +5664,8 @@ fn disabled_toggle_and_slider_share_control_state_policy() {
     let fired = Rc::new(Cell::new(false));
     let fired_for_handler = Rc::clone(&fired);
     let slider = ui.append(root, Slider::new().disabled());
-    ui.on_click(slider, move |_ui, _event| fired_for_handler.set(true));
+    ui.events(slider)
+        .click(move |_ui, _event| fired_for_handler.set(true));
     assert!(!ui.is_enabled(slider));
     assert!(!ui.is_focusable(slider));
     assert!(ui.get(slider).unwrap().pseudos().contains(&PSEUDO_DISABLED));
