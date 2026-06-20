@@ -27,8 +27,7 @@ use ui_events::pointer::{
 use understory_event_state::click::ClickResult;
 use understory_focus::Navigation;
 use understory_responder::dispatcher;
-use understory_responder::router::Router;
-use understory_responder::types::{Dispatch, Outcome, ParentLookup, WidgetLookup};
+use understory_responder::types::Outcome;
 use understory_timing::TimerInstant;
 
 use crate::activation::{ActivationDeniedEvent, ActivationDeniedReason, ActivationSource};
@@ -44,6 +43,7 @@ use crate::event_runtime::{
 use crate::widget::Widget;
 
 use super::Ui;
+use super::responder::{ResponderHit, UiDispatchStep};
 
 #[derive(Copy, Clone)]
 pub(in crate::ui) struct PointerRouteData<'a> {
@@ -362,11 +362,21 @@ impl Ui {
         &mut self,
         kind: RoutedEventKind,
         source: ElementId,
+        dispatch_current: impl FnMut(&mut Self, RoutedEventContext<'_>),
+    ) -> RoutedDispatchResult {
+        let dispatch = self.responder().dispatch_for(source);
+        self.dispatch_responder_sequence(kind, source, dispatch, dispatch_current)
+    }
+
+    fn dispatch_responder_sequence(
+        &mut self,
+        kind: RoutedEventKind,
+        source: ElementId,
+        dispatch: Vec<UiDispatchStep>,
         mut dispatch_current: impl FnMut(&mut Self, RoutedEventContext<'_>),
     ) -> RoutedDispatchResult {
         let state = RoutedEventState::new();
         let origin = self.routed_event_origin(source);
-        let dispatch = self.responder_dispatch(source);
         let _ = dispatcher::run(&dispatch, self, |step, ui| {
             let route = RoutedEventContext::new(kind, origin, step, &state);
             dispatch_current(ui, route);
@@ -667,6 +677,20 @@ impl Ui {
         })
     }
 
+    fn dispatch_routed_pointer_hit(
+        &mut self,
+        kind: RoutedEventKind,
+        hit: ResponderHit,
+        data: PointerRouteData<'_>,
+    ) -> RoutedDispatchResult {
+        self.dispatch_responder_sequence(kind, hit.target, hit.dispatch, |ui, route| {
+            ui.dispatch_pointer_handler_lane(route, data);
+            if !route.is_handled() && !route.is_propagation_stopped() {
+                ui.dispatch_widget_pointer(route, data);
+            }
+        })
+    }
+
     fn dispatch_focus_event(
         &mut self,
         kind: RoutedEventKind,
@@ -715,14 +739,6 @@ impl Ui {
                 reason,
             );
         }
-    }
-
-    fn responder_dispatch(&self, source: ElementId) -> Vec<Dispatch<ElementId, ElementId, ()>> {
-        let lookup = UiWidgetLookup;
-        let parent = UiParentLookup { ui: self };
-        let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
-            Router::with_parent(lookup, parent);
-        router.dispatch_for::<()>(source)
     }
 
     /// Routes `event` through the framework keyboard policy and,
@@ -874,6 +890,45 @@ impl Ui {
         })
     }
 
+    fn dispatch_scroll_hit_with_modifiers(
+        &mut self,
+        hit: ResponderHit,
+        position: Point,
+        delta: ScrollDelta,
+        modifiers: Modifiers,
+    ) -> RoutedDispatchResult {
+        if !self.is_enabled(self.press_visual_target(hit.target)) {
+            return RoutedDispatchResult::default();
+        }
+
+        self.dispatch_responder_sequence(
+            RoutedEventKind::Scroll,
+            hit.target,
+            hit.dispatch,
+            |ui, route| {
+                ui.dispatch_scroll_handler_lane(route, position, delta, modifiers);
+                if !route.is_handled() && !route.is_propagation_stopped() {
+                    ui.dispatch_widget_scroll(route, position, delta, modifiers);
+                }
+            },
+        )
+    }
+
+    fn dispatch_pointer_hit(
+        &mut self,
+        kind: RoutedEventKind,
+        pos: Point,
+        data: PointerRouteData<'_>,
+    ) -> RoutedDispatchResult {
+        let Some(hit) = self.responder().hit_dispatch(pos) else {
+            return RoutedDispatchResult::default();
+        };
+        if !self.is_enabled(self.press_visual_target(hit.target)) {
+            return RoutedDispatchResult::default();
+        }
+        self.dispatch_routed_pointer_hit(kind, hit, data)
+    }
+
     /// Dispatches a normalized pointer event.
     ///
     /// Handles routed pointer down/move/up/enter/leave/cancel, hover,
@@ -909,17 +964,19 @@ impl Ui {
                 let pos = update.current.logical_point();
                 let mut result = PointerDispatchResult::default();
                 self.update_hover_at_with_pointer(pos, data, &mut result);
-                let source = self.events.pointer_capture().or_else(|| self.hit_test(pos));
-                let pointer_move = source
-                    .filter(|source| self.is_enabled(self.press_visual_target(*source)))
-                    .map(|source| {
+                let pointer_move = if let Some(source) = self.events.pointer_capture() {
+                    if self.is_enabled(self.press_visual_target(source)) {
                         self.dispatch_routed_pointer_event(
                             RoutedEventKind::PointerMove,
                             source,
                             data,
                         )
-                    })
-                    .unwrap_or_default();
+                    } else {
+                        RoutedDispatchResult::default()
+                    }
+                } else {
+                    self.dispatch_pointer_hit(RoutedEventKind::PointerMove, pos, data)
+                };
                 result.include_routed(pointer_move);
                 // If a primary press is captured, fan the move out to drag
                 // handlers along the captured source's responder path after
@@ -938,7 +995,7 @@ impl Ui {
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
                 if button_event.button == Some(PointerButton::Primary) {
-                    let hit_before_dismissal = self.hit_test(pos);
+                    let hit_before_dismissal = self.responder().hit_test(pos);
                     result.overlay_changed |=
                         self.dismiss_popups_for_pointer_down(hit_before_dismissal);
                     if result.overlay_changed {
@@ -949,7 +1006,8 @@ impl Ui {
                 // platforms; refresh hover first so any newly-entered
                 // path is set up before we press.
                 self.update_hover_at_with_pointer(pos, data, &mut result);
-                if let Some(target) = self.hit_test(pos) {
+                if let Some(hit) = self.responder().hit_dispatch(pos) {
+                    let target = hit.target;
                     let visual = self.press_visual_target(target);
                     if !self.is_enabled(visual) {
                         self.dispatch_widget_activation_denied(
@@ -965,9 +1023,9 @@ impl Ui {
                         if self.is_focusable(visual) {
                             result.focus_changed = self.set_pointer_focus(Some(visual));
                         }
-                        let pointer_down = self.dispatch_routed_pointer_event(
+                        let pointer_down = self.dispatch_routed_pointer_hit(
                             RoutedEventKind::PointerDown,
-                            target,
+                            hit,
                             data,
                         );
                         result.include_routed(pointer_down);
@@ -994,14 +1052,23 @@ impl Ui {
                 let data = pointer_route_data_for_button(event, button_event);
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
-                let hit = self.hit_test(pos);
-                let source = self.events.pointer_capture().or(hit);
-                let pointer_up = source
-                    .filter(|source| self.is_enabled(self.press_visual_target(*source)))
-                    .map(|source| {
+                let hit = self.responder().hit_dispatch(pos);
+                let hit_target = hit.as_ref().map(|hit| hit.target);
+                let pointer_up = if let Some(source) = self.events.pointer_capture() {
+                    if self.is_enabled(self.press_visual_target(source)) {
                         self.dispatch_routed_pointer_event(RoutedEventKind::PointerUp, source, data)
-                    })
-                    .unwrap_or_default();
+                    } else {
+                        RoutedDispatchResult::default()
+                    }
+                } else if let Some(hit) = hit {
+                    if self.is_enabled(self.press_visual_target(hit.target)) {
+                        self.dispatch_routed_pointer_hit(RoutedEventKind::PointerUp, hit, data)
+                    } else {
+                        RoutedDispatchResult::default()
+                    }
+                } else {
+                    RoutedDispatchResult::default()
+                };
                 let mut result = PointerDispatchResult::default();
                 result.include_routed(pointer_up);
                 if button_event.button == Some(PointerButton::Primary) {
@@ -1013,7 +1080,7 @@ impl Ui {
                         self.events.cancel_click();
                         ClickResult::Suppressed(None)
                     } else {
-                        match hit {
+                        match hit_target {
                             Some(target) => self.events.click_up(&target, pos, time_ms),
                             None => {
                                 // Up off any element — cancel any open press
@@ -1043,10 +1110,11 @@ impl Ui {
                 let mut result = PointerDispatchResult::default();
                 self.update_hover_at_with_pointer(pos, data, &mut result);
                 let routed = self
-                    .hit_test(pos)
-                    .map(|target| {
-                        self.dispatch_scroll_with_modifiers(
-                            target,
+                    .responder()
+                    .hit_dispatch(pos)
+                    .map(|hit| {
+                        self.dispatch_scroll_hit_with_modifiers(
+                            hit,
                             pos,
                             scroll_event.delta,
                             scroll_event.state.modifiers,
@@ -1087,24 +1155,5 @@ impl Ui {
         result.capture_changed |= capture_before != self.events.pointer_capture();
         result.hover_changed |= self.refresh_tooltip_from_pointer();
         result
-    }
-}
-
-struct UiWidgetLookup;
-
-impl WidgetLookup<ElementId> for UiWidgetLookup {
-    type WidgetId = ElementId;
-    fn widget_of(&self, node: &ElementId) -> Option<ElementId> {
-        Some(*node)
-    }
-}
-
-struct UiParentLookup<'a> {
-    ui: &'a Ui,
-}
-
-impl<'a> ParentLookup<ElementId> for UiParentLookup<'a> {
-    fn parent_of(&self, node: &ElementId) -> Option<ElementId> {
-        self.ui.get(*node).and_then(Element::parent)
     }
 }

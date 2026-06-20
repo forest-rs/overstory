@@ -66,6 +66,7 @@ mod overlays;
 mod paint;
 mod popups;
 mod property_changes;
+mod responder;
 mod scroll;
 mod state;
 mod style;

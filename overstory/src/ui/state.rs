@@ -416,16 +416,7 @@ impl Ui {
     /// it to the event runtime, applying its `Enter`/`Leave` events to
     /// pseudoclass state.
     pub(in crate::ui) fn update_hover_at(&mut self, pos: Point) -> bool {
-        let path: Vec<ElementId> = self
-            .geometry
-            .hit_test(pos)
-            .map(|hit| {
-                hit.path
-                    .into_iter()
-                    .filter_map(|n| self.node_to_element(n))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let path: Vec<ElementId> = self.responder().hit_path(pos);
         let events = self.events.update_hover_path(&path);
         self.apply_hover_events(events)
     }

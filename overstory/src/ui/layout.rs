@@ -145,8 +145,7 @@ impl Ui {
     /// write nothing first.
     #[must_use]
     pub fn hit_test(&self, point: Point) -> Option<ElementId> {
-        let hit = self.geometry.hit_test(point)?;
-        self.node_to_element(hit.node)
+        self.responder().hit_test(point)
     }
 
     /// Returns the element that owns a given `NodeId`, if any. Helper
