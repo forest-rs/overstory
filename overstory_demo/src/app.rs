@@ -40,7 +40,12 @@ use understory_style::{
 };
 use understory_view2d::{ClampMode, FitMode, Viewport2D};
 
-const INITIAL_SIZE: (u32, u32) = (1480, 820);
+const INITIAL_WINDOW_SIZE: (u32, u32) = (1480, 820);
+#[cfg(test)]
+const INITIAL_VIEWPORT_SIZE: kurbo::Size = kurbo::Size {
+    width: 1480.0,
+    height: 820.0,
+};
 const ROOT_GAP: f64 = 24.0;
 const ROOT_PADDING: f64 = 28.0;
 const NAV_WIDTH: f64 = 276.0;
@@ -85,7 +90,8 @@ use widgets::*;
 
 pub(crate) fn run() -> overstory_app::HostResult<()> {
     overstory_app::run(
-        WindowOptions::new("overstory_demo").initial_size(INITIAL_SIZE.0, INITIAL_SIZE.1),
+        WindowOptions::new("overstory_demo")
+            .initial_size(INITIAL_WINDOW_SIZE.0, INITIAL_WINDOW_SIZE.1),
         build_ui,
     )
 }

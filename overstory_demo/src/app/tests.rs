@@ -14,10 +14,7 @@ fn assert_close(actual: f64, expected: f64, label: &str) {
 #[test]
 fn gallery_shell_fills_window_content_and_nav_accent() {
     let mut ui = build_ui();
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let root = ui.root();
     let root_children = ui.get(root).expect("root should exist").children();
@@ -27,7 +24,7 @@ fn gallery_shell_fills_window_content_and_nav_accent() {
 
     let nav_bounds = ui.effective_bounds(nav);
     let stage_bounds = ui.effective_bounds(stage);
-    let expected_content_height = f64::from(INITIAL_SIZE.1) - (2.0 * ROOT_PADDING);
+    let expected_content_height = INITIAL_VIEWPORT_SIZE.height - (2.0 * ROOT_PADDING);
     assert_close(nav_bounds.height(), expected_content_height, "nav height");
     assert_close(
         stage_bounds.height(),
@@ -277,10 +274,7 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
     let stage = stage_element(&ui);
     let button = devtools_button(&ui);
     assert!(ui.synthesize_click(button, Point::ZERO).handled);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let status = find_by_class(&ui, ui.root(), CLASS_DEVTOOLS_STATUS)
         .expect("devtools dock should contain status text");
@@ -298,10 +292,7 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
 
     show_demo_page(&mut ui, stage, DemoPage::Svg);
     ui.pump_timers(millis(DEVTOOLS_REFRESH_INTERVAL_MS));
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let refreshed_status = text_content(&ui, status);
     let refreshed_count =
@@ -340,10 +331,7 @@ fn gallery_devtools_dock_refreshes_running_gallery_tree() {
     );
 
     ui.pump_timers(millis(DEVTOOLS_REFRESH_INTERVAL_MS));
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
     assert!(
         !subtree_contains_text_fragment(&ui, event_log, "refresh 2:"),
         "frame-only or empty refreshes should not append event-log rows"
@@ -356,12 +344,9 @@ fn gallery_pages_stay_inside_initial_window_width() {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, page);
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
-        assert_subtree_inside_width(&ui, ui.root(), f64::from(INITIAL_SIZE.0));
+        assert_subtree_inside_width(&ui, ui.root(), INITIAL_VIEWPORT_SIZE.width);
     }
 }
 
@@ -373,7 +358,7 @@ fn gallery_pages_stay_inside_narrow_window_width() {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, page);
-        ui.compute_layout(Size::new(NARROW_WIDTH, f64::from(INITIAL_SIZE.1)));
+        ui.compute_layout(Size::new(NARROW_WIDTH, INITIAL_VIEWPORT_SIZE.height));
 
         assert_subtree_inside_width(&ui, ui.root(), NARROW_WIDTH);
     }
@@ -390,7 +375,7 @@ fn gallery_pages_keep_primary_cards_on_one_line_at_narrow_width() {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, page);
-        ui.compute_layout(Size::new(NARROW_WIDTH, f64::from(INITIAL_SIZE.1)));
+        ui.compute_layout(Size::new(NARROW_WIDTH, INITIAL_VIEWPORT_SIZE.height));
 
         let row = page_row(&ui, stage);
         let row_children = ui
@@ -417,10 +402,7 @@ fn inputs_page_groups_input_and_choice_cards_without_card_spill() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Inputs);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let stage_children = ui
         .get(stage)
@@ -464,10 +446,7 @@ fn inputs_page_custom_button_template_frames_retained_content() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Inputs);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let outer = find_by_class(&ui, stage, CLASS_DEMO_TEMPLATE_BUTTON_OUTER)
         .expect("inputs page should render the custom template outer frame");
@@ -544,10 +523,7 @@ fn inputs_page_custom_checkbox_template_keeps_checked_behavior() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Inputs);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let check_box_box = find_by_class(&ui, stage, CLASS_DEMO_TEMPLATE_CHECK_BOX_BOX)
         .expect("inputs page should render the custom checkbox box part");
@@ -579,10 +555,7 @@ fn systems_page_custom_slider_template_keeps_value_behavior() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Systems);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     assert_eq!(
         count_type(&ui, stage, overstory::TYPE_SLIDER),
@@ -615,10 +588,7 @@ fn disclosure_page_keeps_expander_and_accordion_cards_together() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);
     show_demo_page(&mut ui, stage, DemoPage::Disclosure);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
     let stage_children = ui
         .get(stage)
@@ -756,20 +726,14 @@ fn mode_toggle(ui: &Ui) -> ElementId {
 
 fn assert_selected_page_title(ui: &mut Ui, page: DemoPage, label: &str) {
     let stage = stage_element(ui);
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
     let title = find_by_class(ui, stage, CLASS_DEMO_PAGE_HEADING)
         .expect("page header should contain a title");
     assert_eq!(text_content(ui, title), page.title(), "{label}");
 }
 
 fn nav_row_activation_point(ui: &mut Ui, row: ElementId) -> Point {
-    ui.compute_layout(Size::new(
-        f64::from(INITIAL_SIZE.0),
-        f64::from(INITIAL_SIZE.1),
-    ));
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
     let bounds = ui.effective_bounds(row);
     Point::new(bounds.x1 - 8.0, bounds.center().y)
 }

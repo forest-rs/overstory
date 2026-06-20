@@ -197,27 +197,19 @@ fn set_pseudo(ui: &mut Ui, target: ElementId, pseudo: PseudoClassId, active: boo
 mod tests {
     use super::*;
     use crate::app::pages::show_demo_page;
-    use peniko::kurbo::Size;
-
     #[test]
     fn motion_page_mover_timer_updates_layout_target() {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, DemoPage::Motion);
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
         let mover = find_by_class(&ui, ui.root(), CLASS_MOVER_SWATCH)
             .expect("motion page should contain the offset specimen");
         let start = ui.effective_bounds(mover);
 
         ui.pump_timers(millis(1_250));
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
         let after = ui.effective_bounds(mover);
         assert!(
@@ -231,10 +223,7 @@ mod tests {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, DemoPage::Motion);
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
         let foreground = find_by_class(&ui, ui.root(), CLASS_FOREGROUND_SWATCH)
             .expect("motion page should contain the foreground specimen");
@@ -247,10 +236,7 @@ mod tests {
         );
 
         ui.pump_timers(millis(2_600));
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
         assert!(
             ui.get(foreground)

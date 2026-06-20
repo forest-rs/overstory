@@ -1012,10 +1012,7 @@ mod tests {
         let mut ui = build_ui();
         let stage = stage_element(&ui);
         show_demo_page(&mut ui, stage, DemoPage::Svg);
-        ui.compute_layout(Size::new(
-            f64::from(INITIAL_SIZE.0),
-            f64::from(INITIAL_SIZE.1),
-        ));
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
 
         let info = find_by_class(&ui, stage, CLASS_SVG_INFO_CARD)
             .expect("SVG page should contain an import summary card");
