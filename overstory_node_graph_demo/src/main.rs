@@ -444,7 +444,7 @@ fn drag_graph_view(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Capture | Phase::Target) {
+    if !matches!(event.phase(), Phase::Capture | Phase::Target) {
         return;
     }
     if event.delta.hypot() <= 0.0 {
@@ -494,7 +494,7 @@ fn zoom_graph_view(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Capture | Phase::Target) {
+    if !matches!(event.phase(), Phase::Capture | Phase::Target) {
         return;
     }
     if runtime.active_gesture.get().is_some() {
@@ -536,7 +536,7 @@ fn finish_graph_gesture(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Target) {
+    if !matches!(event.phase(), Phase::Target) {
         return;
     }
     let Some(gesture) = runtime.active_gesture.replace(None) else {
@@ -585,7 +585,7 @@ fn cancel_graph_gesture(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Target) {
+    if !matches!(event.phase(), Phase::Target) {
         return;
     }
     if runtime.active_gesture.replace(None).is_none() {
@@ -842,7 +842,7 @@ fn start_node_drag(
     accent: Color,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+    if !matches!(event.phase(), Phase::Target | Phase::Bubble) {
         return;
     }
     let Some(position) = event.position else {
@@ -854,7 +854,7 @@ fn start_node_drag(
     let _ = ui.capture_pointer(graph_host);
 
     let previous_node = runtime.graph.borrow().selected;
-    if let Some(previous) = runtime.selected_element.replace(Some(event.current))
+    if let Some(previous) = runtime.selected_element.replace(Some(event.current()))
         && ui.get(previous).is_some()
         && let Some(previous_data) = runtime.graph.borrow().doc.node(previous_node)
     {
@@ -872,7 +872,7 @@ fn start_node_drag(
         });
         refresh_inspector(ui, sidebar, &graph);
     }
-    style_node(ui, event.current, accent, true);
+    style_node(ui, event.current(), accent, true);
 }
 
 fn start_port_drag(
@@ -883,7 +883,7 @@ fn start_port_drag(
     port: PortId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Target) {
+    if !matches!(event.phase(), Phase::Target) {
         return;
     }
     let Some(position) = event.position else {
@@ -948,11 +948,11 @@ fn select_node(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    if !matches!(event.phase, Phase::Target | Phase::Bubble) {
+    if !matches!(event.phase(), Phase::Target | Phase::Bubble) {
         return;
     }
     let previous_node = runtime.graph.borrow().selected;
-    if let Some(previous) = runtime.selected_element.replace(Some(event.current))
+    if let Some(previous) = runtime.selected_element.replace(Some(event.current()))
         && ui.get(previous).is_some()
         && let Some(previous_data) = runtime.graph.borrow().doc.node(previous_node)
     {
@@ -966,7 +966,7 @@ fn select_node(
         });
         refresh_inspector(ui, sidebar, &graph);
     }
-    style_node(ui, event.current, accent, true);
+    style_node(ui, event.current(), accent, true);
     event.mark_handled();
 }
 

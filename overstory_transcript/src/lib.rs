@@ -605,7 +605,7 @@ impl<P: 'static> Widget for TranscriptViewportWidget<P> {
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {
-        if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ctx.is_enabled(ctx.id()) {
+        if !matches!(event.phase(), Phase::Target | Phase::Bubble) || !ctx.is_enabled(ctx.id()) {
             return;
         }
         let bounds = ctx.effective_bounds(ctx.id());

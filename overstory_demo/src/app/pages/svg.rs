@@ -498,7 +498,7 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     ui.events(viewer.host)
         .pointer(overstory::PointerEventKind::Down, move |ui, event| {
             if !matches!(
-                event.phase,
+                event.phase(),
                 overstory::Phase::Capture | overstory::Phase::Target
             ) {
                 return;
@@ -513,7 +513,7 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     let drag_viewer = viewer.clone();
     ui.events(viewer.host).drag(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Capture | overstory::Phase::Target
         ) || event.delta.hypot() <= 0.0
         {
@@ -533,7 +533,7 @@ fn install_svg_viewer_interaction(ui: &mut Ui, viewer: &SvgViewer) {
     let scroll_viewer = viewer.clone();
     ui.events(viewer.host).scroll(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Capture | overstory::Phase::Target
         ) {
             return;

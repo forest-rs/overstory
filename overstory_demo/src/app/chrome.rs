@@ -119,7 +119,7 @@ pub(super) fn wire_nav_rows(
         let shell_for_click = Rc::clone(&shell);
         ui.events(row).click(move |ui, event| {
             if !matches!(
-                event.phase,
+                event.phase(),
                 overstory::Phase::Target | overstory::Phase::Bubble
             ) {
                 return;
@@ -133,7 +133,7 @@ pub(super) fn wire_nav_rows(
         let shell_for_key = Rc::clone(&shell);
         ui.events(row).key(move |ui, event| {
             if !matches!(
-                event.phase,
+                event.phase(),
                 overstory::Phase::Target | overstory::Phase::Bubble
             ) {
                 return;
@@ -159,7 +159,7 @@ pub(super) fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, shell: Rc<De
     let shell_for_click = Rc::clone(&shell);
     ui.events(nav_chrome.mode_toggle).click(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Target | overstory::Phase::Bubble
         ) {
             return;
@@ -169,7 +169,7 @@ pub(super) fn wire_theme_toggle(ui: &mut Ui, nav_chrome: NavChrome, shell: Rc<De
 
     let shell_for_key = Rc::clone(&shell);
     ui.events(nav_chrome.mode_toggle).key(move |ui, event| {
-        if !matches!(event.phase, overstory::Phase::Target) || !is_activation_key(event.key) {
+        if !matches!(event.phase(), overstory::Phase::Target) || !is_activation_key(event.key) {
             return;
         }
         switch_demo_theme(ui, &shell_for_key);

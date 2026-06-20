@@ -24,7 +24,7 @@ pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
     let open_dock_for_click = Rc::clone(&open_dock);
     ui.events(button).click(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Target | overstory::Phase::Bubble
         ) {
             return;
@@ -41,7 +41,7 @@ pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
         }
 
         if let Some(dock) =
-            open_in_process_devtools(ui, event.current, Rc::clone(&open_dock_for_click))
+            open_in_process_devtools(ui, event.current(), Rc::clone(&open_dock_for_click))
         {
             open_dock_for_click.set(Some(dock));
         }
@@ -310,7 +310,7 @@ fn open_in_process_devtools(
 fn wire_refresh_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShell) {
     ui.events(button).click(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Target | overstory::Phase::Bubble
         ) {
             return;
@@ -323,7 +323,7 @@ fn wire_refresh_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsS
 fn wire_close_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShell) {
     ui.events(button).click(move |ui, event| {
         if !matches!(
-            event.phase,
+            event.phase(),
             overstory::Phase::Target | overstory::Phase::Bubble
         ) {
             return;
