@@ -92,7 +92,6 @@ pub(super) fn build(parent: &mut ChildUi<'_>, tokens: SightlineTokens) -> Sample
                 let (summary_label, range_label, selection_label, zoom_in, zoom_out, fit) =
                     build_header(surface, tokens);
                 let (plot, plot_parts) = build_plot(surface, tokens);
-                build_status(surface, tokens);
                 SampleProfilerView {
                     plot,
                     summary_label,
@@ -372,36 +371,4 @@ fn build_callout(parent: &mut ChildUi<'_>, tokens: SightlineTokens) -> SampleCal
             },
         )
         .1
-}
-
-fn build_status(parent: &mut ChildUi<'_>, tokens: SightlineTokens) {
-    parent.with_child(
-        Panel::row(18.0)
-            .layout(
-                Layout::row(18.0)
-                    .fill_width()
-                    .alignment(LayoutAlignment::new().align_items(LayoutAlign::Center)),
-            )
-            .align_center(),
-        |status| {
-            status.add(
-                Text::new("Chronostore envelope")
-                    .font_size(13.0)
-                    .class(tokens.activity_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            status.add(
-                Text::new("Viewport1D zoom/selection")
-                    .font_size(13.0)
-                    .class(tokens.secondary_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            status.add(
-                Text::new("sampled frame durations")
-                    .font_size(13.0)
-                    .class(tokens.muted_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-        },
-    );
 }

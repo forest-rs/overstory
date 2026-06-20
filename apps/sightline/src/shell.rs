@@ -143,36 +143,23 @@ fn build_workspace(
             Panel::column(18.0)
                 .class(tokens.workspace)
                 .layout(Layout::column(18.0).fill_size()),
-            |workspace| build_stage(workspace, tokens, state),
+            |workspace| {
+                workspace.add(
+                    Text::new("Diagnostics Workspace")
+                        .font_size(34.0)
+                        .class(tokens.title_text)
+                        .layout(Layout::new().flex_shrink(0.0)),
+                );
+                workspace.add(
+                    Text::new("Local sampled frame data")
+                        .font_size(16.0)
+                        .class(tokens.secondary_text)
+                        .layout(Layout::new().flex_shrink(0.0)),
+                );
+                sample_profiler::build(workspace, tokens, state.sample_profiler())
+            },
         )
         .1
-}
-
-fn build_stage(
-    parent: &mut ChildUi<'_>,
-    tokens: SightlineTokens,
-    state: &AppState,
-) -> SampleProfilerView {
-    parent.with_child(
-        Panel::column(18.0)
-            .class(tokens.workspace)
-            .layout(Layout::column(18.0).fill_size()),
-        |stage| {
-            stage.add(
-                Text::new("Diagnostics Workspace")
-                    .font_size(34.0)
-                    .class(tokens.title_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            stage.add(
-                Text::new("Local sampled frame data")
-                    .font_size(16.0)
-                    .class(tokens.secondary_text)
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            sample_profiler::build(stage, tokens, state.sample_profiler())
-        },
-    )
 }
 
 fn theme_button_label(mode: crate::style::SightlineThemeMode) -> &'static str {
