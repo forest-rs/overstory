@@ -22,7 +22,6 @@ use kurbo::{Axis, Point, Size, Vec2};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::channels::ARRANGE;
 use crate::controls::support::{
@@ -1009,7 +1008,7 @@ impl Widget for ScrollBarWidget {
         if !event.is_semantic_target() || !ctx.is_enabled(scroll_bar) {
             return;
         }
-        if is_scroll_bar_thumb(ctx, scroll_bar, event.source) {
+        if is_scroll_bar_thumb(ctx, scroll_bar, event.source()) {
             return;
         }
         let page = scroll_bar_page(&self.state, self.axis);
@@ -1049,7 +1048,7 @@ impl Widget for ScrollBarWidget {
             ctx,
             scroll_bar,
             &snapshot,
-            event.source,
+            event.source(),
             event.press_position,
             event.position,
             event.delta,
@@ -1139,7 +1138,7 @@ pub(crate) fn wheel_scroll_delta(
     viewport: ElementId,
     event: ScrollEvent<'_>,
 ) -> Option<Vec2> {
-    if !matches!(event.phase, Phase::Target | Phase::Bubble) || !ui.is_enabled(viewport) {
+    if !(event.phase().is_target() || event.phase().is_bubble()) || !ui.is_enabled(viewport) {
         return None;
     }
     let bounds = ui.effective_bounds(viewport);

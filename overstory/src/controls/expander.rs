@@ -222,7 +222,7 @@ impl Widget for ExpanderWidget {
         if !event.is_semantic_target() || !ctx.is_enabled(expander) {
             return;
         }
-        if !click_source_is_header(ctx, expander, event.source) {
+        if !click_source_is_header(ctx, expander, event.source()) {
             return;
         }
         let _ = self.set_expanded(ctx, expander, !self.expanded);

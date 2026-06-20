@@ -26,8 +26,9 @@ use ui_events::pointer::{
 };
 use understory_event_state::click::ClickResult;
 use understory_focus::Navigation;
+use understory_responder::dispatcher;
 use understory_responder::router::Router;
-use understory_responder::types::{ParentLookup, Phase, WidgetLookup};
+use understory_responder::types::{Dispatch, Outcome, ParentLookup, WidgetLookup};
 use understory_timing::TimerInstant;
 
 use crate::activation::{ActivationDeniedEvent, ActivationDeniedReason, ActivationSource};
@@ -365,13 +366,16 @@ impl Ui {
     ) -> RoutedDispatchResult {
         let state = RoutedEventState::new();
         let origin = self.routed_event_origin(source);
-        for (phase, node) in self.responder_sequence(source) {
-            let route = RoutedEventContext::new(kind, origin, node, phase, &state);
-            dispatch_current(self, route);
+        let dispatch = self.responder_dispatch(source);
+        let _ = dispatcher::run(&dispatch, self, |step, ui| {
+            let route = RoutedEventContext::new(kind, origin, step, &state);
+            dispatch_current(ui, route);
             if state.should_stop_route() {
-                break;
+                Outcome::Stop
+            } else {
+                Outcome::Continue
             }
-        }
+        });
         RoutedDispatchResult::from_state(&state)
     }
 
@@ -411,7 +415,6 @@ impl Ui {
 
     fn dispatch_handler_registration<E, F>(
         &mut self,
-        node: ElementId,
         family: F,
         route: RoutedEventContext<'_>,
         event: E,
@@ -419,6 +422,7 @@ impl Ui {
         F: HandlerFamily,
         F::Handler: FnMut(&mut Self, E),
     {
+        let node = route.current();
         let Some(mut registration) = self.events.take_handler(family, node, route.is_handled())
         else {
             return;
@@ -445,16 +449,11 @@ impl Ui {
         route: RoutedEventContext<'a>,
         event: &'a KeyboardEvent,
     ) {
-        self.dispatch_handler_registration(
-            route.current,
-            KeyHandlers,
-            route,
-            KeyEvent { route, key: event },
-        );
+        self.dispatch_handler_registration(KeyHandlers, route, KeyEvent { route, key: event });
     }
 
     fn dispatch_widget_key<'a>(&mut self, route: RoutedEventContext<'a>, event: &'a KeyboardEvent) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_key(&mut ctx, KeyEvent { route, key: event });
@@ -472,7 +471,7 @@ impl Ui {
             position,
             modifiers,
         };
-        self.dispatch_handler_registration(route.current, ClickHandlers, route, event);
+        self.dispatch_handler_registration(ClickHandlers, route, event);
     }
 
     fn dispatch_widget_click(
@@ -481,7 +480,7 @@ impl Ui {
         position: Point,
         modifiers: Modifiers,
     ) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_click(
@@ -508,7 +507,7 @@ impl Ui {
             press_position,
             delta,
         };
-        self.dispatch_handler_registration(route.current, DragHandlers, route, event);
+        self.dispatch_handler_registration(DragHandlers, route, event);
     }
 
     fn dispatch_widget_drag(
@@ -518,7 +517,7 @@ impl Ui {
         press_position: Point,
         delta: Vec2,
     ) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_drag(
@@ -546,7 +545,7 @@ impl Ui {
             delta,
             modifiers,
         };
-        self.dispatch_handler_registration(route.current, ScrollHandlers, route, event);
+        self.dispatch_handler_registration(ScrollHandlers, route, event);
     }
 
     fn dispatch_widget_scroll(
@@ -556,7 +555,7 @@ impl Ui {
         delta: ScrollDelta,
         modifiers: Modifiers,
     ) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_scroll(
@@ -586,7 +585,7 @@ impl Ui {
             focus_visible,
             reason,
         };
-        self.dispatch_handler_registration(route.current, FocusHandlers, route, event);
+        self.dispatch_handler_registration(FocusHandlers, route, event);
     }
 
     fn dispatch_widget_focus(
@@ -597,7 +596,7 @@ impl Ui {
         focus_visible: bool,
         reason: FocusChangeReason,
     ) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_focus(
@@ -618,11 +617,10 @@ impl Ui {
         route: RoutedEventContext<'_>,
         data: PointerRouteData<'_>,
     ) {
-        let node = route.current;
         let kind = PointerEventKind::from_routed(route.kind)
             .expect("pointer dispatch route must use a pointer event kind");
         let event = data.event(route);
-        self.dispatch_handler_registration(node, PointerHandlers::new(kind), route, event);
+        self.dispatch_handler_registration(PointerHandlers::new(kind), route, event);
     }
 
     fn dispatch_widget_pointer(
@@ -630,7 +628,7 @@ impl Ui {
         route: RoutedEventContext<'_>,
         data: PointerRouteData<'_>,
     ) {
-        let node = route.current;
+        let node = route.current();
         self.with_widget_mut(node, |widget, ui| {
             let mut ctx = WidgetEventContext::new(node, ui);
             widget.handle_pointer(&mut ctx, data.event(route));
@@ -719,16 +717,12 @@ impl Ui {
         }
     }
 
-    fn responder_sequence(&self, source: ElementId) -> Vec<(Phase, ElementId)> {
+    fn responder_dispatch(&self, source: ElementId) -> Vec<Dispatch<ElementId, ElementId, ()>> {
         let lookup = UiWidgetLookup;
         let parent = UiParentLookup { ui: self };
         let router: Router<ElementId, UiWidgetLookup, UiParentLookup<'_>> =
             Router::with_parent(lookup, parent);
-        router
-            .dispatch_for::<()>(source)
-            .into_iter()
-            .map(|d| (d.phase, d.node))
-            .collect()
+        router.dispatch_for::<()>(source)
     }
 
     /// Routes `event` through the framework keyboard policy and,

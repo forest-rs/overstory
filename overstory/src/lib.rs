@@ -219,8 +219,8 @@ pub use element_ref::{ElementRef, ElementRefSpecExt, ReferencedSpec};
 pub use event_runtime::{
     ClickEvent, DragEvent, FocusChangeReason, FocusEvent, KeyDispatchResult, KeyEvent,
     PointerDispatchResult, PointerEventKind, PointerRoutedEvent, RoutedDispatchResult,
-    RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedHandlerOptions,
-    RoutedHandlerScope, ScrollEvent,
+    RoutedDispatchStep, RoutedEventContext, RoutedEventKind, RoutedEventOrigin,
+    RoutedHandlerOptions, RoutedHandlerScope, ScrollEvent,
 };
 pub use generic::present_surface;
 pub use layouts::{
@@ -278,7 +278,7 @@ pub mod prelude {
 }
 
 // Re-export the responder's `Phase` so callers can read
-// `ClickEvent::phase` / `KeyEvent::phase` etc. without depending
+// `ClickEvent::phase()` / `KeyEvent::phase()` etc. without depending
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
 pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};

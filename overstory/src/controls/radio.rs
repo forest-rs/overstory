@@ -22,7 +22,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
-use crate::Phase;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::choice::{
     ChoiceOption, ResolvedChoiceSelection, collect_options, last_enabled_index,
@@ -527,14 +526,14 @@ impl Widget for RadioGroupWidget {
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
         use ui_events::keyboard::KeyState;
-        if !matches!(event.phase, Phase::Bubble) || event.key.state != KeyState::Down {
+        if !event.phase().is_bubble() || event.key.state != KeyState::Down {
             return;
         }
         let group = ctx.id();
         if !ctx.is_enabled(group) {
             return;
         }
-        let Some(current_index) = self.radio_index(event.source) else {
+        let Some(current_index) = self.radio_index(event.source()) else {
             return;
         };
         let Some(next_index) = self.next_radio_index(&event.key.key, current_index) else {

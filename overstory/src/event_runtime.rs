@@ -30,7 +30,7 @@ use ui_events::pointer::{
 };
 use understory_event_state::click::{ClickResult, ClickState};
 use understory_event_state::hover::{HoverEvent, HoverState};
-use understory_responder::types::Phase;
+use understory_responder::types::{Dispatch, Phase};
 
 use crate::element::ElementId;
 use crate::ui::Ui;
@@ -41,6 +41,14 @@ pub(crate) type ScrollHandler = Box<dyn FnMut(&mut Ui, ScrollEvent<'_>)>;
 pub(crate) type KeyHandler = Box<dyn FnMut(&mut Ui, KeyEvent<'_>)>;
 pub(crate) type FocusHandler = Box<dyn FnMut(&mut Ui, FocusEvent<'_>)>;
 pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>;
+
+/// Responder dispatch step delivered to a routed Overstory event.
+///
+/// The step records the element currently being visited, the propagation
+/// phase, and responder metadata for the route. Most app and control code
+/// should prefer [`RoutedEventContext::source`],
+/// [`RoutedEventContext::current`], and [`RoutedEventContext::phase`].
+pub type RoutedDispatchStep = Dispatch<ElementId, ElementId, ()>;
 
 pub(crate) trait HandlerFamily: Copy {
     type Handler;
@@ -400,12 +408,7 @@ pub struct RoutedEventContext<'a> {
     pub kind: RoutedEventKind,
     /// Source classification for the route.
     pub origin: RoutedEventOrigin,
-    /// The element the route is rooted at.
-    pub source: ElementId,
-    /// The element this handler is registered on.
-    pub current: ElementId,
-    /// Current propagation phase.
-    pub phase: Phase,
+    step: &'a RoutedDispatchStep,
     state: &'a RoutedEventState,
 }
 
@@ -413,18 +416,39 @@ impl<'a> RoutedEventContext<'a> {
     pub(crate) fn new(
         kind: RoutedEventKind,
         origin: RoutedEventOrigin,
-        current: ElementId,
-        phase: Phase,
+        step: &'a RoutedDispatchStep,
         state: &'a RoutedEventState,
     ) -> Self {
         Self {
             kind,
             origin,
-            source: origin.source(),
-            current,
-            phase,
+            step,
             state,
         }
+    }
+
+    /// Returns the physical element where this route started.
+    #[must_use]
+    pub const fn source(&self) -> ElementId {
+        self.origin.source()
+    }
+
+    /// Returns the element currently being visited by the responder route.
+    #[must_use]
+    pub const fn current(&self) -> ElementId {
+        self.step.node
+    }
+
+    /// Returns the current propagation phase.
+    #[must_use]
+    pub const fn phase(&self) -> Phase {
+        self.step.phase
+    }
+
+    /// Returns the current responder dispatch step.
+    #[must_use]
+    pub const fn step(&self) -> &RoutedDispatchStep {
+        self.step
     }
 
     /// Returns the element app/control authors usually consider targeted.
@@ -439,7 +463,7 @@ impl<'a> RoutedEventContext<'a> {
     /// Returns whether this handler is running at the physical route target.
     #[must_use]
     pub fn is_target(&self) -> bool {
-        self.current == self.source && matches!(self.phase, Phase::Target)
+        self.current() == self.source() && self.step.is_target()
     }
 
     /// Returns whether this handler is running at the semantic target.
@@ -451,11 +475,9 @@ impl<'a> RoutedEventContext<'a> {
     #[must_use]
     pub fn is_semantic_target(&self) -> bool {
         match self.origin {
-            RoutedEventOrigin::Element(source) => {
-                self.current == source && matches!(self.phase, Phase::Target)
-            }
+            RoutedEventOrigin::Element(source) => self.current() == source && self.step.is_target(),
             RoutedEventOrigin::TemplateChild { owner, .. } => {
-                self.current == owner && matches!(self.phase, Phase::Bubble)
+                self.current() == owner && self.step.is_bubble()
             }
         }
     }
@@ -492,10 +514,10 @@ impl RoutedHandlerScope {
     pub fn matches(self, route: RoutedEventContext<'_>) -> bool {
         match self {
             Self::EntireRoute => true,
-            Self::Capture => matches!(route.phase, Phase::Capture),
+            Self::Capture => route.step().is_capture(),
             Self::Target => route.is_target(),
-            Self::TargetOrBubble => route.is_target() || matches!(route.phase, Phase::Bubble),
-            Self::Bubble => matches!(route.phase, Phase::Bubble),
+            Self::TargetOrBubble => route.is_target() || route.step().is_bubble(),
+            Self::Bubble => route.step().is_bubble(),
             Self::SemanticTarget => route.is_semantic_target(),
         }
     }

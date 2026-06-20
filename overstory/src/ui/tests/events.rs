@@ -245,7 +245,7 @@ fn dispatch_key_runs_target_handler() {
     let fired = Rc::new(Cell::new(false));
     let inc = fired.clone();
     ui.events(child).key(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             assert_eq!(event.kind, RoutedEventKind::Key);
             inc.set(true);
         }
@@ -293,7 +293,7 @@ fn dispatch_key_stops_route_when_handler_marks_handled() {
     let child_fired = Rc::new(Cell::new(false));
     let child_fired_for_handler = Rc::clone(&child_fired);
     ui.events(root).key(move |_ui, event| {
-        if matches!(event.phase, Phase::Capture) {
+        if event.phase().is_capture() {
             event.mark_handled();
         }
     });
@@ -326,7 +326,7 @@ fn handled_events_too_key_handler_observes_handled_route() {
     ui.set_focus(Some(child));
 
     ui.events(root).key(|_ui, event| {
-        if matches!(event.phase, Phase::Capture) {
+        if event.phase().is_capture() {
             event.mark_handled();
         }
     });
@@ -342,7 +342,7 @@ fn handled_events_too_key_handler_observes_handled_route() {
     ui.events(mid).key_with_options(
         RoutedHandlerOptions::new().handled_events_too(true),
         move |_ui, event| {
-            if matches!(event.phase, Phase::Bubble) {
+            if event.phase().is_bubble() {
                 observer_fired_for_handler.set(event.is_handled());
             }
         },
@@ -371,7 +371,7 @@ fn dispatch_key_stops_route_when_handler_stops_propagation() {
     let child_fired = Rc::new(Cell::new(false));
     let child_fired_for_handler = Rc::clone(&child_fired);
     ui.events(root).key(move |_ui, event| {
-        if matches!(event.phase, Phase::Capture) {
+        if event.phase().is_capture() {
             event.stop_propagation();
         }
     });
@@ -391,6 +391,41 @@ fn dispatch_key_stops_route_when_handler_stops_propagation() {
 }
 
 #[test]
+fn stop_propagation_prevents_handled_events_too_observers() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let mid = ui.insert_child(root);
+    let child = ui.insert_child(mid);
+    ui.set_focusable(child, true);
+    ui.set_focus(Some(child));
+
+    ui.events(root).key(|_ui, event| {
+        if event.phase().is_capture() {
+            event.stop_propagation();
+        }
+    });
+
+    let observer_fired = Rc::new(Cell::new(false));
+    let observer_fired_for_handler = Rc::clone(&observer_fired);
+    ui.events(mid).key_with_options(
+        RoutedHandlerOptions::new().handled_events_too(true),
+        move |_ui, _event| {
+            observer_fired_for_handler.set(true);
+        },
+    );
+
+    let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+    let result = ui.dispatch_key(&key);
+
+    assert!(result.propagation_stopped);
+    assert!(!observer_fired.get());
+}
+
+#[test]
 fn focus_events_route_lost_and_gained_notifications() {
     use alloc::rc::Rc;
     use core::cell::RefCell;
@@ -405,7 +440,7 @@ fn focus_events_route_lost_and_gained_notifications() {
     let seen = Rc::new(RefCell::new(Vec::new()));
     let seen_for_a = Rc::clone(&seen);
     ui.events(a).focus(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             seen_for_a.borrow_mut().push((
                 event.kind,
                 event.previous,
@@ -417,7 +452,7 @@ fn focus_events_route_lost_and_gained_notifications() {
     });
     let seen_for_b = Rc::clone(&seen);
     ui.events(b).focus(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             seen_for_b.borrow_mut().push((
                 event.kind,
                 event.previous,
@@ -612,9 +647,9 @@ fn dispatch_click_runs_target_handler() {
     let fired_with = Rc::new(Cell::new(None::<(Phase, ElementId, ElementId)>));
     let fired = fired_with.clone();
     ui.events(child).click(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             assert_eq!(event.kind, RoutedEventKind::Click);
-            fired.set(Some((event.phase, event.source, event.current)));
+            fired.set(Some((event.phase(), event.source(), event.current())));
         }
     });
 
@@ -646,7 +681,7 @@ fn dispatch_click_walks_capture_target_bubble() {
         ui.events(id).click_with_options(
             RoutedHandlerOptions::new().scope(RoutedHandlerScope::EntireRoute),
             move |_ui, event| {
-                let phase = match event.phase {
+                let phase = match event.phase() {
                     Phase::Capture => "capture",
                     Phase::Target => "target",
                     Phase::Bubble => "bubble",
@@ -720,12 +755,12 @@ fn dispatch_scroll_walks_capture_target_bubble() {
         let log = Rc::clone(&log);
         let target_delta = Rc::clone(&target_delta);
         ui.events(id).scroll(move |_ui, event| {
-            let phase = match event.phase {
+            let phase = match event.phase() {
                 Phase::Capture => "capture",
                 Phase::Target => "target",
                 Phase::Bubble => "bubble",
             };
-            if matches!(event.phase, Phase::Target) {
+            if event.phase().is_target() {
                 assert_eq!(event.kind, RoutedEventKind::Scroll);
                 *target_delta.borrow_mut() =
                     event.logical_delta(Vec2::new(16.0, 20.0), Vec2::new(160.0, 200.0));
@@ -765,8 +800,8 @@ fn pointer_scroll_hit_tests_and_routes_to_target() {
     let fired = Rc::new(Cell::new(false));
     let fired_for_handler = Rc::clone(&fired);
     ui.events(child).scroll(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
-            assert_eq!(event.source, child);
+        if event.phase().is_target() {
+            assert_eq!(event.source(), child);
             assert_eq!(event.position, Point::new(20.0, 20.0));
             fired_for_handler.set(true);
             event.mark_handled();
@@ -803,7 +838,7 @@ fn pointer_down_walks_capture_target_bubble() {
         let log = Rc::clone(&log);
         ui.events(id)
             .pointer(PointerEventKind::Down, move |_ui, event| {
-                let phase = match event.phase {
+                let phase = match event.phase() {
                     Phase::Capture => "capture",
                     Phase::Target => "target",
                     Phase::Bubble => "bubble",
@@ -843,7 +878,7 @@ fn handled_pointer_down_suppresses_derived_click() {
 
     ui.events(child)
         .pointer(PointerEventKind::Down, |_ui, event| {
-            if matches!(event.phase, Phase::Target) {
+            if event.phase().is_target() {
                 event.mark_handled();
             }
         });
@@ -851,7 +886,7 @@ fn handled_pointer_down_suppresses_derived_click() {
     let click_fired = Rc::new(Cell::new(false));
     let click_fired_for_handler = Rc::clone(&click_fired);
     ui.events(child).click(move |_ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             click_fired_for_handler.set(true);
         }
     });
@@ -878,7 +913,7 @@ fn explicit_pointer_capture_routes_move_outside_hit_target() {
 
     ui.events(root)
         .pointer(PointerEventKind::Down, move |ui, event| {
-            if matches!(event.phase, Phase::Capture) {
+            if event.phase().is_capture() {
                 assert!(ui.capture_pointer(root));
                 event.mark_handled();
             }
@@ -888,8 +923,8 @@ fn explicit_pointer_capture_routes_move_outside_hit_target() {
     let move_seen_for_handler = Rc::clone(&move_seen);
     ui.events(root)
         .pointer(PointerEventKind::Move, move |_ui, event| {
-            if matches!(event.phase, Phase::Target) {
-                move_seen_for_handler.set(Some((event.source, event.phase)));
+            if event.phase().is_target() {
+                move_seen_for_handler.set(Some((event.source(), event.phase())));
                 event.mark_handled();
             }
         });
@@ -943,19 +978,19 @@ fn pointer_hover_changes_route_enter_and_leave_from_leaf() {
         let enter_log = Rc::clone(&log);
         ui.events(id)
             .pointer(PointerEventKind::Enter, move |_ui, event| {
-                if matches!(event.phase, Phase::Target | Phase::Bubble) {
+                if event.phase().is_target() || event.phase().is_bubble() {
                     enter_log
                         .borrow_mut()
-                        .push(alloc::format!("{name}:enter:{:?}", event.phase));
+                        .push(alloc::format!("{name}:enter:{:?}", event.phase()));
                 }
             });
         let leave_log = Rc::clone(&log);
         ui.events(id)
             .pointer(PointerEventKind::Leave, move |_ui, event| {
-                if matches!(event.phase, Phase::Target | Phase::Bubble) {
+                if event.phase().is_target() || event.phase().is_bubble() {
                     leave_log
                         .borrow_mut()
-                        .push(alloc::format!("{name}:leave:{:?}", event.phase));
+                        .push(alloc::format!("{name}:leave:{:?}", event.phase()));
                 }
             });
     }
@@ -992,7 +1027,7 @@ fn dispatch_drag_stops_route_when_handler_marks_handled() {
     let child_fired = Rc::new(Cell::new(false));
     let child_fired_for_handler = Rc::clone(&child_fired);
     ui.events(root).drag(move |_ui, event| {
-        if matches!(event.phase, Phase::Capture) {
+        if event.phase().is_capture() {
             event.mark_handled();
         }
     });
@@ -1029,8 +1064,8 @@ fn pointer_capture_preserves_template_part_as_drag_source() {
     let seen = Rc::new(Cell::new(None::<(ElementId, Phase)>));
     let seen_for_handler = Rc::clone(&seen);
     ui.events(button).drag(move |_ui, event| {
-        if matches!(event.phase, Phase::Bubble) {
-            seen_for_handler.set(Some((event.source, event.phase)));
+        if event.phase().is_bubble() {
+            seen_for_handler.set(Some((event.source(), event.phase())));
             event.mark_handled();
         }
     });
@@ -1084,7 +1119,7 @@ fn click_handler_can_remove_itself_during_dispatch() {
     let count = Rc::new(Cell::new(0_u32));
     let count_for_handler = Rc::clone(&count);
     ui.events(child).click(move |ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             count_for_handler.set(count_for_handler.get() + 1);
             ui.events(child).remove_click();
         }
@@ -1111,7 +1146,7 @@ fn key_handler_can_remove_itself_during_dispatch() {
     let count = Rc::new(Cell::new(0_u32));
     let count_for_handler = Rc::clone(&count);
     ui.events(child).key(move |ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             count_for_handler.set(count_for_handler.get() + 1);
             ui.events(child).remove_key();
         }
@@ -1139,7 +1174,7 @@ fn drag_handler_can_remove_itself_during_dispatch() {
     let count = Rc::new(Cell::new(0_u32));
     let count_for_handler = Rc::clone(&count);
     ui.events(child).drag(move |ui, event| {
-        if matches!(event.phase, Phase::Target) {
+        if event.phase().is_target() {
             count_for_handler.set(count_for_handler.get() + 1);
             ui.events(child).remove_drag();
         }

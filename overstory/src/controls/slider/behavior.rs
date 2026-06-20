@@ -123,7 +123,7 @@ impl Widget for SliderWidget {
         if !ctx.is_enabled(slider) {
             return;
         }
-        if event.source == thumb {
+        if event.source() == thumb {
             return;
         }
         let value =

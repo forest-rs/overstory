@@ -376,7 +376,7 @@ impl Widget for AccordionSectionWidget {
         if !event.is_semantic_target() || !ctx.is_enabled(section) {
             return;
         }
-        if !click_source_is_section_header(ctx, section, event.source) {
+        if !click_source_is_section_header(ctx, section, event.source()) {
             return;
         }
         let _ = self.set_expanded(ctx, section, !self.expanded);

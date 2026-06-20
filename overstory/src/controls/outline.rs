@@ -1146,7 +1146,7 @@ impl Widget for OutlineItemWidget {
             return;
         };
         let _ = select_outline_key(ctx, outline, self.info.key);
-        if self.info.has_children && click_source_is_disclosure(ctx, item, event.source) {
+        if self.info.has_children && click_source_is_disclosure(ctx, item, event.source()) {
             let _ = toggle_outline_key(ctx, outline, self.info.key);
         }
         let _ = ctx.set_pointer_focus(Some(outline));
