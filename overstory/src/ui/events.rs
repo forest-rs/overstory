@@ -14,6 +14,10 @@
 //! - [`Widget`](crate::Widget) hooks implement toolkit-side control behavior.
 //!   Built-in controls translate raw routed input into semantic state changes
 //!   there, rather than registering a second hidden raw-handler lane.
+//!
+//! Route selection and capture/target/bubble sequencing are delegated to
+//! `understory_responder` through `ui::responder`; this module owns the
+//! Overstory-specific work performed at each dispatch step.
 
 use alloc::{boxed::Box, vec::Vec};
 
@@ -346,6 +350,9 @@ impl Ui {
     ///
     /// This is for app code that needs direct routed input. Ordinary control
     /// authoring should prefer semantic callbacks on the control builders.
+    /// Routed handlers receive a context with `source()`, `current()`,
+    /// `phase()`, and semantic-target helpers for cases where raw routing is
+    /// the right abstraction.
     #[must_use]
     pub fn events(&mut self, id: ElementId) -> RoutedEvents<'_> {
         RoutedEvents { ui: self, id }
@@ -353,11 +360,12 @@ impl Ui {
 
     /// Runs `dispatch_current` across the responder route for `source`.
     ///
-    /// Route construction belongs to [`understory_responder::Router`]; this
-    /// helper owns only Overstory's execution semantics: temporarily remove a
-    /// handler before invoking it, share routed event state across invocations,
-    /// skip ordinary handlers once an event is handled, and stop dispatch only
-    /// when propagation is explicitly stopped.
+    /// Route construction belongs to `understory_responder` through the
+    /// internal `ui::responder` adapter. This helper owns only Overstory's
+    /// execution semantics: temporarily remove a handler before invoking it,
+    /// share routed event state across invocations, skip ordinary handlers once
+    /// an event is handled, and stop dispatch only when propagation is
+    /// explicitly stopped.
     fn dispatch_routed(
         &mut self,
         kind: RoutedEventKind,

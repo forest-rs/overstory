@@ -10,9 +10,9 @@
 //!   making app code speak raw routes for ordinary use.
 //! - Keep raw host event translation outside this runtime. This module should
 //!   work with normalized `ui-events` payloads and Overstory element ids.
-//! - Use `understory_responder` for route shape and phase semantics while
-//!   Overstory owns app handler storage, pointer capture, hover, click, and
-//!   drag state.
+//! - Use `understory_responder` for route shape, propagation phases, and
+//!   dispatch-step metadata while Overstory owns app handler storage, semantic
+//!   target interpretation, pointer capture, hover, click, and drag state.
 //! - Add capture/release diagnostics, event tracing, and input-modality state
 //!   so focus-visible, tooltips, menus, and gestures remain explainable.
 //! - Push reusable low-level helpers down to `ui-events` or `understory_*`
@@ -47,7 +47,9 @@ pub(crate) type PointerHandler = Box<dyn FnMut(&mut Ui, PointerRoutedEvent<'_>)>
 /// The step records the element currently being visited, the propagation
 /// phase, and responder metadata for the route. Most app and control code
 /// should prefer [`RoutedEventContext::source`],
-/// [`RoutedEventContext::current`], and [`RoutedEventContext::phase`].
+/// [`RoutedEventContext::current`], and [`RoutedEventContext::phase`];
+/// [`RoutedEventContext::step`] is for advanced diagnostics or integrations
+/// that need the raw responder data.
 pub type RoutedDispatchStep = Dispatch<ElementId, ElementId, ()>;
 
 pub(crate) trait HandlerFamily: Copy {
@@ -131,6 +133,11 @@ impl HandlerFamily for PointerHandlers {
 }
 
 /// Options controlling how a routed handler participates in dispatch.
+///
+/// Handler options are the raw-input escape hatch. Ordinary app code should
+/// prefer semantic callbacks such as `Button::on_activate` or
+/// `Slider::on_value_changed`; use these options when code needs capture,
+/// bubble, handled-event observation, or custom gesture routing.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct RoutedHandlerOptions {
     /// Which part of a responder route should invoke this handler.
@@ -402,6 +409,13 @@ impl RoutedEventState {
 }
 
 /// Common route metadata attached to every routed event payload.
+///
+/// A context is a thin Overstory view over one responder dispatch step plus
+/// shared route state. Use [`Self::source`] for the physical event source,
+/// [`Self::current`] for the element currently being visited, and
+/// [`Self::phase`] for capture/target/bubble routing. Use
+/// [`Self::semantic_source`] or [`Self::is_semantic_target`] when handling
+/// control/template intent rather than raw visual parts.
 #[derive(Copy, Clone, Debug)]
 pub struct RoutedEventContext<'a> {
     /// The event family being dispatched.
@@ -428,24 +442,37 @@ impl<'a> RoutedEventContext<'a> {
     }
 
     /// Returns the physical element where this route started.
+    ///
+    /// For a templated control this can be a generated template part or
+    /// retained content hosted by a content presenter. Use
+    /// [`Self::semantic_source`] when the handler wants the owning control.
     #[must_use]
     pub const fn source(&self) -> ElementId {
         self.origin.source()
     }
 
     /// Returns the element currently being visited by the responder route.
+    ///
+    /// Handlers are registered on this element for the current dispatch step.
     #[must_use]
     pub const fn current(&self) -> ElementId {
         self.step.node
     }
 
     /// Returns the current propagation phase.
+    ///
+    /// The phase comes from `understory_responder` and follows
+    /// capture → target → bubble ordering.
     #[must_use]
     pub const fn phase(&self) -> Phase {
         self.step.phase
     }
 
     /// Returns the current responder dispatch step.
+    ///
+    /// Most app and control code should prefer the context helpers. This raw
+    /// step is exposed for diagnostics and integrations that need responder
+    /// metadata beyond the ordinary source/current/phase view.
     #[must_use]
     pub const fn step(&self) -> &RoutedDispatchStep {
         self.step
