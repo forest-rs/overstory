@@ -65,10 +65,8 @@ impl<T> ElementSideMap<T> {
 
     pub(crate) fn remove(&mut self, id: ElementId) -> Option<T> {
         let slot = self.slots.get_mut(id.slot() as usize)?;
-        let generation_matches = slot
-            .as_ref()
-            .is_some_and(|entry| entry.generation == id.generation());
-        generation_matches.then(|| slot.take().expect("slot checked as Some").value)
+        slot.take_if(|entry| entry.generation == id.generation())
+            .map(|entry| entry.value)
     }
 
     pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
