@@ -14,8 +14,9 @@
 
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    Brush, BuiltInProperties, Color, PART_SLIDER_THUMB, PART_SLIDER_TRACK, SurfaceStyleExt,
-    TYPE_BUTTON, TYPE_GENERIC, TYPE_SLIDER, TYPE_TEXT, TYPE_TEXT_INPUT, selectors,
+    Brush, BuiltInProperties, Color, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB,
+    SurfaceStyleExt, TYPE_BUTTON, TYPE_GENERIC, TYPE_POPUP, TYPE_SELECT, TYPE_SLIDER, TYPE_TEXT,
+    TYPE_TEXT_INPUT, TYPE_TOGGLE, selectors,
 };
 use understory_style::{
     ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, Style, StyleBuilder, StyleCascade,
@@ -31,7 +32,7 @@ use crate::tokens::{
 const BEVEL: f64 = 2.0;
 
 fn transparent() -> Option<Brush> {
-    Some(Brush::Solid(Color::from_rgba8(0, 0, 0, 0)))
+    Some(Brush::Solid(Color::TRANSPARENT))
 }
 
 fn type_sel(type_tag: TypeTag) -> Selector {
@@ -148,6 +149,15 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
     let slider_track = sunken(properties, TRACK_BG, r);
     let slider_thumb = raised(properties, THUMB_BG, r);
 
+    // Dropdown: a sunken white field; its popup list is a raised face panel.
+    let select_idle = sunken(properties, CONTROL_BG, r);
+    let popup = raised(properties, PANEL_BG, r);
+
+    // Toggle: a sunken track with a raised thumb (so the thumb reads against
+    // the face track instead of blending face-on-face).
+    let toggle_idle = sunken(properties, TRACK_BG, r);
+    let toggle_thumb = raised(properties, THUMB_BG, r);
+
     StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, class_sel(c.root), root)
         .push_rule(StyleOrigin::Base, class_sel(c.surface), surface)
@@ -192,6 +202,14 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
             StyleOrigin::Base,
             selectors::part(selectors::template_part(TYPE_SLIDER, PART_SLIDER_THUMB)),
             slider_thumb,
+        )
+        .push_rule(StyleOrigin::Base, type_sel(TYPE_SELECT), select_idle)
+        .push_rule(StyleOrigin::Base, type_sel(TYPE_POPUP), popup)
+        .push_rule(StyleOrigin::Base, type_sel(TYPE_TOGGLE), toggle_idle)
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(selectors::template_part(TYPE_TOGGLE, PART_TOGGLE_THUMB)),
+            toggle_thumb,
         )
         .build()
 }

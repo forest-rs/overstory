@@ -14,7 +14,7 @@
 
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    BuiltInProperties, PART_CHECK_BOX_BOX, PART_SLIDER_THUMB, PART_SLIDER_TRACK,
+    Brush, BuiltInProperties, Color, PART_CHECK_BOX_BOX, PART_SLIDER_THUMB, PART_SLIDER_TRACK,
     PART_TOGGLE_THUMB, SurfaceStyleExt, TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_GENERIC, TYPE_POPUP,
     TYPE_SELECT, TYPE_SLIDER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, selectors,
 };
@@ -30,6 +30,10 @@ use crate::tokens::{
 
 /// Rounded push-button radius; everything else is square.
 const RADIUS_BUTTON: f64 = 9.0;
+
+fn transparent() -> Option<Brush> {
+    Some(Brush::Solid(Color::TRANSPARENT))
+}
 
 fn type_sel(type_tag: TypeTag) -> Selector {
     Selector::single(SelectorStep::type_tag(type_tag))
@@ -108,14 +112,21 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         .border_width(properties, 1.0_f64)
         .build();
 
-    // Slider: a thin ink frame held constant across focus, with a framed track
-    // and a square framed thumb so both read against the paper.
+    // Slider: the outer frame is reserved transparent (so it doesn't box the
+    // whole slider including the ticks) and only inked on focus. The visible
+    // parts are the framed track and thumb.
     let slider_idle = StyleBuilder::new()
-        .border_brush_resource(properties, CONTROL_BORDER)
+        .set(properties.surface.border_brushes.top, transparent())
+        .set(properties.surface.border_brushes.right, transparent())
+        .set(properties.surface.border_brushes.bottom, transparent())
+        .set(properties.surface.border_brushes.left, transparent())
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 0.0_f64)
         .build();
-    let slider_focus = slider_idle.clone();
+    let slider_focus = StyleBuilder::new()
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .corner_radius(properties, 0.0_f64)
+        .build();
     let slider_track = framed(properties, TRACK_BG, 0.0);
     let slider_thumb = framed(properties, THUMB_BG, 0.0);
 

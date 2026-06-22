@@ -6,9 +6,9 @@ colors:
   surface: { light: "#eef0f7", dark: "#181a22" }
   panel: { light: "#ffffff", dark: "#1c1e27" }
   card: { light: "#ffffff", dark: "#222530" }
-  control: { light: "#f6f7fb", dark: "#1f2230" }
-  control-border: { light: "#c9cedd", dark: "#3a3e4d" }
-  track: { light: "#dfe3ee", dark: "#2a2d3a" }
+  control: { light: "#eaedf4", dark: "#14161d" }
+  control-border: { light: "#b7bed0", dark: "#44495b" }
+  track: { light: "#d7dce8", dark: "#12141a" }
   thumb: { light: "#ffffff", dark: "#f6f7fb" }
   on-accent: "#ffffff"
   on-surface: { light: "#1b1d27", dark: "#eceef6" }

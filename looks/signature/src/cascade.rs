@@ -22,10 +22,10 @@
 //! Every rule references a token; the only literal is a structural transparent
 //! brush used to reserve ring space.
 
-use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED};
+use overstory::pseudos::{PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED};
 use overstory::{
     Brush, BuiltInProperties, Color, LayoutSize, SurfaceStyleExt, TYPE_BUTTON, TYPE_GENERIC,
-    TYPE_SLIDER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
+    TYPE_SELECT, TYPE_SLIDER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE,
 };
 use understory_style::{
     ClassId, PseudoClassId, Selector, SelectorStep, StyleBuilder, StyleCascade,
@@ -43,7 +43,7 @@ use crate::tokens::{
 const RING_WIDTH: f64 = 2.0;
 
 fn transparent() -> Option<Brush> {
-    Some(Brush::Solid(Color::from_rgba8(0, 0, 0, 0)))
+    Some(Brush::Solid(Color::TRANSPARENT))
 }
 
 fn type_sel(type_tag: TypeTag) -> Selector {
@@ -100,7 +100,7 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
             motion::interaction(properties, tokens),
         )
         .border_width(properties, RING_WIDTH)
-        .set_resource(properties.surface.border_brushes.top, r.hairline)
+        .set(properties.surface.border_brushes.top, transparent())
         .set(properties.surface.border_brushes.right, transparent())
         .set(properties.surface.border_brushes.bottom, transparent())
         .set(properties.surface.border_brushes.left, transparent())
@@ -110,6 +110,11 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         .build();
     let button_pressed = StyleBuilder::new()
         .set(properties.opacity, 0.94_f32)
+        .build();
+    // Disabled: the framework mutes the fill/text; outline it so it still reads
+    // as a button against the card instead of a faint blob.
+    let button_disabled = StyleBuilder::new()
+        .border_brush_resource(properties, CONTROL_BORDER)
         .build();
 
     // --- Text input: constant-width ring -----------------------------------
@@ -148,9 +153,24 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         .corner_radius(properties, radius::SM)
         .build();
 
-    // --- Toggle: a little more room around the thumb -----------------------
+    // --- Select: constant-width ring, like the text input ------------------
+    let select_idle = StyleBuilder::new()
+        .set(
+            properties.transitions,
+            motion::interaction(properties, tokens),
+        )
+        .border_width(properties, RING_WIDTH)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .build();
+    let select_focus = StyleBuilder::new()
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .build();
+
+    // --- Toggle: outline the off-track so it's visible against the card -----
     let toggle_idle = StyleBuilder::new()
         .set(properties.layout_size, LayoutSize::logical(74.0, 34.0))
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
         .build();
 
     StyleCascadeBuilder::new()
@@ -174,6 +194,11 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         )
         .push_rule(
             StyleOrigin::Base,
+            type_state_sel(TYPE_BUTTON, PSEUDO_DISABLED),
+            button_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
             type_sel(TYPE_TEXT_INPUT),
             text_input_idle,
         )
@@ -181,6 +206,12 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
             StyleOrigin::Base,
             type_state_sel(TYPE_TEXT_INPUT, PSEUDO_FOCUS_VISIBLE),
             text_input_focus,
+        )
+        .push_rule(StyleOrigin::Base, type_sel(TYPE_SELECT), select_idle)
+        .push_rule(
+            StyleOrigin::Base,
+            type_state_sel(TYPE_SELECT, PSEUDO_FOCUS_VISIBLE),
+            select_focus,
         )
         .push_rule(StyleOrigin::Base, type_sel(TYPE_SLIDER), slider_idle)
         .push_rule(

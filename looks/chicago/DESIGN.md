@@ -6,7 +6,7 @@ colors:
   window: { light: "#ffffff", dark: "#1e1e1e" }
   bevel-light: { light: "#ffffff", dark: "#6a6a6a" }
   bevel-dark: { light: "#808080", dark: "#000000" }
-  accent: { light: "#000080", dark: "#283a8c" }
+  accent: { light: "#000080", dark: "#5a7fe6" }
   text: { light: "#000000", dark: "#f0f0f0" }
   muted: { light: "#808080", dark: "#a0a0a0" }
   on-accent: "#ffffff"

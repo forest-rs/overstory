@@ -9,7 +9,7 @@
 //! effectively instant.
 
 use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use overstory_look::color::rgb;
+use overstory_look::color::{lighten, rgb};
 use peniko::{Brush, Color};
 use understory_timing::TimerDuration;
 
@@ -63,7 +63,8 @@ pub fn dark_chrome_seeds() -> Seeds {
         window: rgb(0x1e, 0x1e, 0x1e),
         bevel_light: rgb(0x6a, 0x6a, 0x6a),
         bevel_dark: rgb(0x00, 0x00, 0x00),
-        accent: rgb(0x28, 0x3a, 0x8c),
+        // Navy is illegible on dark chrome; use a brighter selection blue.
+        accent: rgb(0x5a, 0x7f, 0xe6),
         text: rgb(0xf0, 0xf0, 0xf0),
         muted: rgb(0xa0, 0xa0, 0xa0),
         on_accent: rgb(0xff, 0xff, 0xff),
@@ -129,7 +130,8 @@ pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
         control_bg: solid(s.window),
         control_border: solid(s.bevel_dark),
         control_hover_border: solid(s.bevel_dark),
-        control_hover_bg: solid(s.face),
+        // A lighter face so hover reads as a distinct row, not the panel itself.
+        control_hover_bg: solid(lighten(s.face, 0.12)),
         focus_ring_border: solid(s.text),
         text_caret_bg: solid(s.text),
         text_selection_bg: solid(s.accent),

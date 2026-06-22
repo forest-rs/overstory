@@ -115,7 +115,9 @@ pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
         control_bg: solid(s.paper),
         control_border: solid(s.ink),
         control_hover_border: solid(s.ink),
-        control_hover_bg: solid(s.paper),
+        // A faint ink wash so hover reads as a row — not paper (which is near
+        // black in the dark scheme, making hover look black).
+        control_hover_bg: solid(mix(s.paper, s.ink, 0.14)),
         focus_ring_border: solid(s.ink),
         text_caret_bg: solid(s.ink),
         text_selection_bg: solid(selection),
