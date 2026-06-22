@@ -34,12 +34,17 @@ pub use tokens::{ChicagoTokens, ResolvedTokens, Scheme};
 
 use overstory::Ui;
 
-/// Installs the Chicago look on `ui` for the given [`Scheme`]: resolves the
-/// extended tokens, builds and applies the theme, and layers the Chicago
-/// cascade over the framework defaults. Returns the [`ResolvedTokens`].
+/// Installs the Chicago look on `ui` for the given [`Scheme`].
+///
+/// The theme is built from the bundled [`DESIGN.md`](design_md::DEFAULT) — the
+/// source of truth — falling back to the Rust seeds in [`palette`] only if the
+/// embedded file fails to parse. The cascade is layered over the framework
+/// defaults. Returns the [`ResolvedTokens`].
 pub fn install(ui: &mut Ui, scheme: Scheme) -> ResolvedTokens {
     let tokens = ui.style_tokens::<ChicagoTokens>();
-    ui.set_theme(theme(scheme, &tokens));
+    let palette = theme_from_design_md(design_md::DEFAULT, scheme, &tokens)
+        .unwrap_or_else(|_| theme(scheme, &tokens));
+    ui.set_theme(palette);
     let sheet = cascade(ui.properties(), &tokens);
     ui.set_cascade(sheet);
     tokens

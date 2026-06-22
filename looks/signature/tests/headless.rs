@@ -81,6 +81,26 @@ fn dark_and_light_schemes_differ() {
 }
 
 #[test]
+fn theme_is_actually_loaded_from_design_md() {
+    // Proof the values come from the file, not just the Rust seeds: an edited
+    // DESIGN.md changes the resolved theme.
+    let mut ui = Ui::new();
+    let resolved = ui.style_tokens::<SignatureTokens>();
+    let edited = "---\ncolors:\n  on-surface: { dark: \"#ff0000\" }\n---\n";
+    let from_md = theme_from_design_md(edited, Scheme::Dark, &resolved).expect("parses");
+    assert_eq!(
+        solid_rgba(&from_md, tokens::ON_SURFACE_FG),
+        Rgba8 {
+            r: 0xff,
+            g: 0,
+            b: 0,
+            a: 0xff
+        },
+        "an edited DESIGN.md should change the resolved foreground",
+    );
+}
+
+#[test]
 fn bundled_design_md_theme_matches_default_theme() {
     let mut ui = Ui::new();
     let resolved = ui.style_tokens::<SignatureTokens>();

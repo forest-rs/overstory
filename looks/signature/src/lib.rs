@@ -53,17 +53,20 @@ pub use tokens::{ResolvedTokens, Scheme, SignatureTokens};
 
 use overstory::Ui;
 
-/// Installs the Signature look on `ui` for the given [`Scheme`]: resolves the
-/// extended tokens from the `Ui` vocabulary, builds and applies the theme, and
-/// layers the Signature cascade over the framework defaults.
+/// Installs the Signature look on `ui` for the given [`Scheme`].
+///
+/// The theme is built from the bundled [`DESIGN.md`](design_md::DEFAULT) — the
+/// real source of truth — so editing that file changes the rendered look. The
+/// Rust seeds in [`palette`] are only the fallback if the embedded file somehow
+/// fails to parse. The cascade is then layered over the framework defaults.
 ///
 /// Returns the [`ResolvedTokens`] so callers can keep styling app chrome with
-/// the Signature classes and extended resources. Re-skinning later (e.g.
-/// toggling light/dark) is just another [`theme`] + `ui.set_theme` with the
-/// same tokens.
+/// the Signature classes and extended resources.
 pub fn install(ui: &mut Ui, scheme: Scheme) -> ResolvedTokens {
     let tokens = ui.style_tokens::<SignatureTokens>();
-    ui.set_theme(theme(scheme, &tokens));
+    let palette = theme_from_design_md(design_md::DEFAULT, scheme, &tokens)
+        .unwrap_or_else(|_| theme(scheme, &tokens));
+    ui.set_theme(palette);
     let sheet = cascade(ui.properties(), &tokens);
     ui.set_cascade(sheet);
     tokens
