@@ -114,8 +114,8 @@ use crate::layouts::{
     LayoutSpacing,
 };
 use crate::motion::{
-    ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules, PresentationTarget,
-    PresentationValue, TimingFunction, TransitionRule, TransitionRules, TransitionSpec, millis,
+    AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules,
+    PresentationTarget, TimingFunction, TransitionRule, TransitionRules, TransitionSpec, millis,
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -1661,27 +1661,15 @@ fn layer_offset_transition_rules(
 }
 
 fn segmented_control_effect_rules() -> EffectRules {
-    EffectRules::single(EffectRule::new(
+    EffectRules::single(EffectRule::for_target(
         EFFECT_SEGMENTED_ACTIVATION_DENIED,
-        PresentationTarget::visual_translation(),
+        AnimationTarget::visual_translation(),
         EffectClip::from_keyframes([
-            EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
-            EffectKeyframe::new(
-                DEFAULT_DENIED_SHAKE_STEP,
-                PresentationValue::Offset2d(Vec2::new(6.0, 0.0)),
-            ),
-            EffectKeyframe::new(
-                DEFAULT_DENIED_SHAKE_STEP * 2,
-                PresentationValue::Offset2d(Vec2::new(-5.0, 0.0)),
-            ),
-            EffectKeyframe::new(
-                DEFAULT_DENIED_SHAKE_STEP * 3,
-                PresentationValue::Offset2d(Vec2::new(3.0, 0.0)),
-            ),
-            EffectKeyframe::new(
-                DEFAULT_DENIED_SHAKE_STEP * 4,
-                PresentationValue::Offset2d(Vec2::ZERO),
-            ),
+            EffectKeyframe::new(0, Vec2::ZERO),
+            EffectKeyframe::new(DEFAULT_DENIED_SHAKE_STEP, Vec2::new(6.0, 0.0)),
+            EffectKeyframe::new(DEFAULT_DENIED_SHAKE_STEP * 2, Vec2::new(-5.0, 0.0)),
+            EffectKeyframe::new(DEFAULT_DENIED_SHAKE_STEP * 3, Vec2::new(3.0, 0.0)),
+            EffectKeyframe::new(DEFAULT_DENIED_SHAKE_STEP * 4, Vec2::ZERO),
         ]),
     ))
 }

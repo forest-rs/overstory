@@ -323,7 +323,7 @@ fn build_ui() -> Ui {
             },
         );
         let stage = root.add(
-            Panel::column(18.0).class(CLASS_DEMO_STAGE).layout(
+            ScrollView::new().class(CLASS_DEMO_STAGE).layout(
                 Layout::column(18.0)
                     .size(
                         LayoutSize::new()

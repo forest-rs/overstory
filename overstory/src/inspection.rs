@@ -13,12 +13,16 @@ use core::fmt;
 
 use kurbo::{Rect, Size};
 use peniko::color::Rgba8;
+use understory_animation::{AnimationPlayState, CompositeOperation, TimingSample};
 use understory_style::{ClassId, PartTag, PseudoClassId, StyleVocabulary, TypeTag};
+use understory_timing::TimerDuration;
 
 use crate::composition::{CompositionPolicy, SurfaceId};
 use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
+use crate::motion::{PresentationTarget, PresentationValueKind};
 use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
+use crate::timeline_runtime::{AnimationId, AnimationTimelineId};
 
 /// Owned snapshot of the inspectable state of one [`crate::Ui`].
 #[derive(Clone, Debug)]
@@ -510,19 +514,62 @@ pub struct UiStorageInspectionSnapshot {
     pub composition_surfaces: usize,
 }
 
-/// Timeline runtime counters for timeline-oriented devtools views.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// Timeline runtime state for timeline-oriented devtools views.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TimelineInspectionSnapshot {
     /// Targets currently retained by the timeline runtime.
     pub targets: usize,
     /// Active implicit transitions currently sampling presentation values.
     pub active_transitions: usize,
-    /// Active one-shot effects currently sampling presentation values.
+    /// Active explicit or style-triggered effects currently sampling presentation values.
     pub active_effects: usize,
     /// Transition specs waiting for a future target change.
     pub pending_transitions: usize,
     /// Scheduled cues that have not yet fired.
     pub pending_cues: usize,
+    /// Retained animation instances in stable id order.
+    pub animations: Vec<TimelineAnimationInspectionRow>,
+}
+
+/// One retained animation instance in a timeline inspection snapshot.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TimelineAnimationInspectionRow {
+    /// Stable runtime id for the animation instance.
+    pub id: AnimationId,
+    /// Element whose presentation target is animated.
+    pub element: ElementId,
+    /// Presentation target sampled by this animation.
+    pub target: PresentationTarget,
+    /// Stack layer this animation occupies.
+    pub layer: TimelineAnimationInspectionLayer,
+    /// Current playback state.
+    pub state: AnimationPlayState,
+    /// Current local animation time, when playback has one.
+    pub current_time: Option<TimerDuration>,
+    /// Current timing sample, including phase, iteration, and progress.
+    pub timing_sample: Option<TimingSample>,
+    /// Playback rate applied to the animation's timeline time.
+    pub playback_rate: f64,
+    /// How this animation layer composites with the value beneath it.
+    pub composite: CompositeOperation,
+    /// Erased presentation value kind sampled by this animation, when the
+    /// value is one of Overstory's built-in presentation sample kinds.
+    ///
+    /// Custom typed animation targets can be retained and inspectable without
+    /// mapping to a legacy erased [`PresentationValueKind`], in which case this
+    /// is `None`.
+    pub value_kind: Option<PresentationValueKind>,
+    /// Timeline source driving this animation.
+    pub timeline: AnimationTimelineId,
+}
+
+/// Stack layer occupied by a retained animation instance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TimelineAnimationInspectionLayer {
+    /// Implicit transition layer generated from a target-value change.
+    Transition,
+    /// Explicit or style-triggered effect layer.
+    Effect,
 }
 
 #[cfg(test)]

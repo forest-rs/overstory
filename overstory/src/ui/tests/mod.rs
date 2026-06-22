@@ -22,16 +22,17 @@ use imaging::record::{Command, Scene};
 use kurbo::{Affine, Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 use peniko::{Brush, Color};
-use understory_property::{DependencyObject, DependencyObjectExt};
+use understory_property::{DependencyObject, DependencyObjectExt, PropertyMetadataBuilder};
 use understory_style::{
     ClassId, PartTag, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep, StyleBuilder,
     StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
 };
 
 use crate::motion::{
-    ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules, EffectTriggerId,
-    Interpolate, PresentationSlot, PresentationTarget, PresentationValue, TimingFunction,
-    TransitionRule, TransitionRules, TransitionSpec, millis,
+    Animatable, AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule,
+    EffectRules, EffectTriggerId, Interpolate, PresentationSlot, PresentationTarget,
+    PresentationValue, PresentationValueKind, TimingFunction, TransitionRule, TransitionRules,
+    TransitionSpec, millis,
 };
 
 mod content;

@@ -229,6 +229,10 @@ pub use layouts::{
     LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
 };
 pub use lookup::{UiResolveLookup, UiStoreLookup};
+pub use motion::{
+    AnimationTarget, EffectClip, EffectKeyframe, PresentationAnimationValue, PresentationSlot,
+    PresentationTarget, PresentationValue, PresentationValueKind, TimingFunction,
+};
 pub use overlay::Placement;
 pub use properties::BuiltInProperties;
 pub use scroll_runtime::ScrollState;
@@ -240,9 +244,16 @@ pub use template::{
     TemplateSlotStatus, TemplateSpec, TemplateSpecRecipe, TemplateWidgetFactory,
 };
 pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
-pub use timeline_runtime::{TimelineCue, TimelineCueId};
+pub use timeline_runtime::{
+    AnimationEvent, AnimationEventKind, AnimationId, AnimationTimelineId, TimelineCue,
+    TimelineCueId,
+};
 pub use timer_runtime::TimerEvent;
 pub use ui::{ChildUi, ControlState, RoutedEvents, Ui};
+pub use understory_animation::{
+    AnimationPlayState, AnimationTiming, CompositeOperation, FillMode, PlaybackDirection,
+    TimingPhase, TimingSample,
+};
 pub use understory_property_binding::PropertyEndpoint;
 pub use view::View;
 pub use widget::{
@@ -259,20 +270,24 @@ pub use widget::{
 pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, ActivationDeniedEvent,
-        ActivationDeniedReason, ActivationSource, AppendSpec, BindingSpecExt, Button,
-        ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color, ContentSlotSpec,
-        ControlStateSpecExt, ControlTemplate, ControlTemplateSpec, ControlTemplateSpecExt,
-        CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED, ElementId, ElementRef,
-        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, Layout, ListBox,
-        ListItemContext, LocalState, OutlineView, Panel, PartTag, Popup, ProgressBar,
-        PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
-        RoutedEvents, ScrollArea, ScrollBar, ScrollOffsetChangeSource, ScrollOffsetChangedEvent,
-        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
-        SliderValueChangedEvent, Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary,
-        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason,
-        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
-        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
-        TextInputTextChangedEvent, TextSpecExt, TimerDuration, ToggleSwitch, Tooltip,
+        ActivationDeniedReason, ActivationSource, AnimationId, AnimationPlayState, AnimationTarget,
+        AnimationTimelineId, AnimationTiming, AppendSpec, BindingSpecExt, Button,
+        ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color, CompositeOperation,
+        ContentSlotSpec, ControlStateSpecExt, ControlTemplate, ControlTemplateSpec,
+        ControlTemplateSpecExt, CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED,
+        EffectClip, EffectKeyframe, ElementId, ElementRef, ElementRefSpecExt, ElementSpec,
+        ElementSpecExt, Expander, ExternalSource, FillMode, Layout, ListBox, ListItemContext,
+        LocalState, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
+        PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
+        PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
+        RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
+        ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
+        SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
+        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
+        SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
+        TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
+        TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,
+        TimerDuration, TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip,
         TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
     };
 }

@@ -19,9 +19,11 @@ std = [
     "subduction_core/std",
     "taffy/std",
     "ui-events/std",
+    "understory_animation/std",
     "understory_box_tree/std",
     "understory_event_state/std",
     "understory_focus/std",
+    "understory_motion/std",
     "understory_outline/std",
     "understory_presentation/std",
     "understory_presentation_properties/std",
@@ -43,9 +45,12 @@ cursor-icon.workspace = true
 imaging.workspace = true
 
 understory_axis = { default-features = false, workspace = true }
+understory_animation = { default-features = false, workspace = true }
+understory_animation_timeline = { default-features = false, workspace = true }
 understory_box_tree = { default-features = false, features = ["libm"], workspace = true }
 understory_event_state = { default-features = false, features = ["click", "drag", "libm"], workspace = true }
 understory_focus = { default-features = false, features = ["box_tree_adapter", "libm"], workspace = true }
+understory_motion = { default-features = false, workspace = true }
 understory_outline = { default-features = false, workspace = true }
 understory_presentation = { default-features = false, features = ["libm"], workspace = true }
 understory_presentation_properties = { default-features = false, features = ["libm"], workspace = true }

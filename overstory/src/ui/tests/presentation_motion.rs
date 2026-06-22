@@ -295,6 +295,529 @@ fn styled_effect_rule_triggers_visual_translation_slot() {
 }
 
 #[test]
+fn triggered_effect_queues_animation_lifecycle_events() {
+    const EFFECTFUL: ClassId = ClassId(903);
+    const TRIGGER: EffectTriggerId = EffectTriggerId::new(903);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let effects = ui.properties().effects;
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(EFFECTFUL))
+                    .build(),
+                StyleBuilder::new()
+                    .set(
+                        effects,
+                        EffectRules::single(EffectRule::new(
+                            TRIGGER,
+                            PresentationTarget::visual_translation(),
+                            EffectClip::from_keyframes([
+                                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                                EffectKeyframe::new(
+                                    millis(100),
+                                    PresentationValue::Offset2d(Vec2::new(10.0, 0.0)),
+                                ),
+                            ]),
+                        )),
+                    )
+                    .build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(root, crate::Panel::new().class(EFFECTFUL));
+
+    ui.set_now(0);
+    assert!(ui.trigger_effect(panel, TRIGGER));
+
+    let started = ui.drain_animation_events();
+    assert_eq!(started.len(), 1);
+    assert_eq!(started[0].element(), panel);
+    assert_eq!(
+        started[0].target(),
+        PresentationTarget::visual_translation()
+    );
+    assert_eq!(started[0].kind(), crate::AnimationEventKind::Started);
+    assert_eq!(started[0].at(), 0);
+
+    ui.set_now(millis(100));
+    ui.flush_composition();
+
+    let finished = ui.drain_animation_events();
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].id(), started[0].id());
+    assert_eq!(finished[0].kind(), crate::AnimationEventKind::Finished);
+    assert_eq!(finished[0].at(), millis(100));
+}
+
+#[test]
+fn ui_animate_returns_id_and_controls_playback() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(root, crate::Panel::new());
+
+    ui.set_now(0);
+    let animation = ui
+        .animate(
+            panel,
+            PresentationTarget::visual_translation(),
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                EffectKeyframe::new(
+                    millis(100),
+                    PresentationValue::Offset2d(Vec2::new(10.0, 0.0)),
+                ),
+            ]),
+        )
+        .expect("visual translation clip should match the target");
+
+    let started = ui.drain_animation_events();
+    assert_eq!(started.len(), 1);
+    assert_eq!(started[0].id(), animation);
+    assert_eq!(started[0].kind(), crate::AnimationEventKind::Started);
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+    assert_eq!(ui.animation_current_time(animation), Some(0));
+    assert_eq!(ui.animation_playback_rate(animation), Some(1.0));
+    assert!(ui.has_active_presentation_motion());
+
+    ui.set_now(millis(50));
+    assert!(ui.pause_animation(animation));
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Paused)
+    );
+    assert_eq!(ui.animation_current_time(animation), Some(millis(50)));
+    assert!(!ui.has_active_presentation_motion());
+
+    ui.set_now(millis(90));
+    assert_eq!(ui.animation_current_time(animation), Some(millis(50)));
+    assert!(ui.seek_animation(animation, millis(25)));
+    assert_eq!(ui.animation_current_time(animation), Some(millis(25)));
+    assert!(ui.play_animation(animation));
+    assert!(ui.has_active_presentation_motion());
+
+    assert!(ui.cancel_animation(animation));
+    let canceled = ui.drain_animation_events();
+    assert_eq!(canceled.len(), 1);
+    assert_eq!(canceled[0].id(), animation);
+    assert_eq!(canceled[0].kind(), crate::AnimationEventKind::Canceled);
+    assert_eq!(ui.animation_state(animation), None);
+    assert!(!ui.has_active_presentation_motion());
+}
+
+#[test]
+fn ui_animate_uses_clip_timing_policy() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(root, crate::Panel::new());
+
+    ui.set_now(0);
+    let animation = ui
+        .animate_target(
+            panel,
+            AnimationTarget::visual_translation(),
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, Vec2::ZERO),
+                EffectKeyframe::new(millis(100), Vec2::new(10.0, 0.0)),
+            ])
+            .with_timing(crate::AnimationTiming {
+                duration: millis(200),
+                fill: crate::FillMode::Forwards,
+                ..crate::AnimationTiming::new(millis(200))
+            }),
+        )
+        .expect("visual translation clip should match the target");
+
+    ui.set_now(millis(50));
+    ui.flush_composition();
+
+    let translation = ui.presented_value(
+        panel,
+        PresentationTarget::slot(PresentationSlot::VisualTranslation),
+        Vec2::ZERO,
+    );
+    assert_close(translation.x, 2.5);
+    let timing_sample = ui
+        .animation_timing_sample(animation)
+        .expect("running effect should expose timing");
+    assert_eq!(timing_sample.phase, crate::TimingPhase::Active);
+    assert_eq!(timing_sample.iteration, Some(0));
+    assert_eq!(timing_sample.progress, Some(0.25));
+    assert_eq!(timing_sample.eased_progress, Some(0.25));
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+    let row = ui
+        .inspection_snapshot()
+        .timeline
+        .animations
+        .into_iter()
+        .find(|row| row.id == animation)
+        .expect("native visual translation animation should be inspectable");
+    assert_eq!(row.value_kind, Some(PresentationValueKind::Offset2d));
+}
+
+#[test]
+fn ui_animate_rejects_clip_kind_that_does_not_match_target() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(root, crate::Panel::new());
+
+    assert!(
+        ui.animate(
+            panel,
+            PresentationTarget::visual_translation(),
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PresentationValue::Scalar32(0.0)),
+                EffectKeyframe::new(millis(100), PresentationValue::Scalar32(1.0)),
+            ]),
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn custom_animatable_property_requires_registration() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let rotation = ui.registry_mut().register(
+        "RotationDegrees",
+        PropertyMetadataBuilder::new(Degrees(0.0)).build(),
+    );
+    let panel = ui.append(root, crate::Panel::new());
+    let target = PresentationTarget::property(rotation.id());
+    let clip = EffectClip::from_keyframes([
+        EffectKeyframe::new(0, PresentationValue::Scalar64(0.0)),
+        EffectKeyframe::new(millis(100), PresentationValue::Scalar64(90.0)),
+    ]);
+
+    ui.set_now(0);
+    assert!(
+        ui.animate(panel, target, clip.clone()).is_none(),
+        "unregistered custom properties should not be timeline targets"
+    );
+
+    ui.register_animatable_property(rotation);
+    let animation = ui
+        .animate(panel, target, clip)
+        .expect("registered custom property should accept matching scalar animation");
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+
+    ui.set_now(millis(50));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(ui.resolve_value_for(element, rotation).0, 45.0);
+}
+
+#[test]
+fn native_property_animation_registers_custom_property_target() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let rotation = ui.registry_mut().register(
+        "RotationDegrees",
+        PropertyMetadataBuilder::new(Degrees(0.0)).build(),
+    );
+    let panel = ui.append(root, crate::Panel::new());
+    let clip = EffectClip::from_keyframes([
+        EffectKeyframe::new(0, Degrees(0.0)),
+        EffectKeyframe::new(millis(100), Degrees(90.0)),
+    ]);
+
+    ui.set_now(0);
+    let animation = ui
+        .animate_target(panel, AnimationTarget::property(rotation), clip)
+        .expect("native target animation should register and start the property target");
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+
+    ui.set_now(millis(50));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(ui.resolve_value_for(element, rotation).0, 45.0);
+}
+
+#[test]
+fn native_property_animation_does_not_require_presentation_value_kind() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let pressure = ui.registry_mut().register(
+        "Pressure",
+        PropertyMetadataBuilder::new(PressureReading(0.0)).build(),
+    );
+    let panel = ui.append(root, crate::Panel::new());
+
+    ui.set_now(0);
+    let animation = ui
+        .animate_property(
+            panel,
+            pressure,
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PressureReading(10.0)),
+                EffectKeyframe::new(millis(100), PressureReading(30.0)),
+            ]),
+        )
+        .expect("native target stack should accept custom animatable property values");
+
+    let started = ui.drain_animation_events();
+    assert_eq!(started.len(), 1);
+    assert_eq!(started[0].id(), animation);
+    assert_eq!(started[0].kind(), crate::AnimationEventKind::Started);
+    let row = ui
+        .inspection_snapshot()
+        .timeline
+        .animations
+        .into_iter()
+        .find(|row| row.id == animation)
+        .expect("custom native property animation should be inspectable");
+    assert_eq!(row.value_kind, None);
+
+    ui.set_now(millis(50));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_eq!(
+        ui.resolve_value_for(element, pressure),
+        PressureReading(20.0)
+    );
+    assert_eq!(ui.animation_current_time(animation), Some(millis(50)));
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+
+    assert!(ui.pause_animation(animation));
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Paused)
+    );
+    assert!(ui.seek_animation(animation, millis(75)));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_eq!(
+        ui.resolve_value_for(element, pressure),
+        PressureReading(25.0)
+    );
+}
+
+#[test]
+fn transition_rules_drive_custom_native_property_target() {
+    use crate::inspection::TimelineAnimationInspectionLayer;
+
+    const MOTION_PANEL: ClassId = ClassId(903);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let pressure = ui.registry_mut().register(
+        "Pressure",
+        PropertyMetadataBuilder::new(PressureReading(0.0)).build(),
+    );
+    ui.register_animation_target_property(pressure);
+
+    let transitions = ui.properties().transitions;
+    let selector =
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(MOTION_PANEL)).build();
+    let selected_selector = SelectorBuilder::new(
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(MOTION_PANEL)
+            .with_pseudo(PSEUDO_SELECTED),
+    )
+    .build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                selector,
+                StyleBuilder::new()
+                    .set(pressure, PressureReading(10.0))
+                    .set(
+                        transitions,
+                        TransitionRules::single(TransitionRule::interaction(
+                            PresentationTarget::property(pressure.id()),
+                            TransitionSpec::linear(millis(100)),
+                        )),
+                    )
+                    .build(),
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                selected_selector,
+                StyleBuilder::new()
+                    .set(pressure, PressureReading(30.0))
+                    .build(),
+            )
+            .build(),
+    );
+
+    let panel = ui.append(root, crate::Panel::new().class(MOTION_PANEL));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
+        PressureReading(10.0)
+    );
+
+    ui.set_now(0);
+    ui.add_pseudo(panel, PSEUDO_SELECTED);
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
+        PressureReading(10.0)
+    );
+
+    ui.set_now(millis(50));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
+        PressureReading(20.0)
+    );
+    let row = ui
+        .inspection_snapshot()
+        .timeline
+        .animations
+        .into_iter()
+        .find(|row| row.element == panel)
+        .expect("custom native transition should be inspectable");
+    assert_eq!(row.layer, TimelineAnimationInspectionLayer::Transition);
+    assert_eq!(row.composite, crate::CompositeOperation::Replace);
+    assert_eq!(row.value_kind, None);
+
+    ui.set_now(millis(100));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
+        PressureReading(30.0)
+    );
+}
+
+#[test]
+fn manual_timeline_drives_native_property_animation_without_frame_demand() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let rotation = ui.registry_mut().register(
+        "RotationDegrees",
+        PropertyMetadataBuilder::new(Degrees(0.0)).build(),
+    );
+    let panel = ui.append(root, crate::Panel::new());
+    let timeline = ui.create_manual_animation_timeline();
+    let clip = EffectClip::from_keyframes([
+        EffectKeyframe::new(0, Degrees(0.0)),
+        EffectKeyframe::new(millis(100), Degrees(90.0)),
+    ]);
+
+    ui.set_now(1_000);
+    let animation = ui
+        .animate_target_on_timeline(panel, AnimationTarget::property(rotation), clip, timeline)
+        .expect("manual timeline should drive native property animation");
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running)
+    );
+    assert_eq!(ui.manual_animation_timeline_time(timeline), Some(0));
+    assert!(
+        !ui.has_active_presentation_motion(),
+        "manual timeline progress should not request document animation frames"
+    );
+    assert_eq!(
+        ui.inspection_snapshot().timeline.animations[0].timeline,
+        timeline
+    );
+    let _ = ui.drain_animation_events();
+
+    assert!(ui.seek_manual_animation_timeline(timeline, millis(50)));
+    assert_eq!(ui.animation_current_time(animation), Some(millis(50)));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(ui.resolve_value_for(element, rotation).0, 45.0);
+
+    assert!(ui.seek_manual_animation_timeline(timeline, millis(100)));
+    assert_eq!(
+        ui.animation_state(animation),
+        Some(crate::AnimationPlayState::Running),
+        "manual timeline scrubbing should not drop a finite animation at its endpoint",
+    );
+    assert!(
+        ui.drain_animation_events()
+            .iter()
+            .all(|event| event.kind() != crate::AnimationEventKind::Finished),
+        "manual timeline seeking should not queue finished events that make later scrubs inert",
+    );
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(ui.resolve_value_for(element, rotation).0, 90.0);
+
+    assert!(ui.seek_manual_animation_timeline(timeline, millis(25)));
+    assert_eq!(ui.animation_current_time(animation), Some(millis(25)));
+    let element = ui.get(panel).expect("panel should exist");
+    assert_close(ui.resolve_value_for(element, rotation).0, 22.5);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Degrees(f64);
+
+impl Interpolate for Degrees {
+    fn interpolate(&self, to: &Self, progress: f64) -> Self {
+        Self(self.0.interpolate(&to.0, progress))
+    }
+}
+
+impl Animatable for Degrees {
+    type Velocity = f64;
+
+    fn is_close(&self, other: &Self) -> bool {
+        self.0.is_close(&other.0)
+    }
+
+    fn add(&self, other: &Self) -> Option<Self> {
+        self.0.add(&other.0).map(Self)
+    }
+
+    fn accumulate(&self, other: &Self, count: u64) -> Option<Self> {
+        self.0.accumulate(&other.0, count).map(Self)
+    }
+}
+
+impl crate::PresentationAnimationValue for Degrees {
+    const KIND: PresentationValueKind = PresentationValueKind::Scalar64;
+
+    fn into_presentation_value(self) -> PresentationValue {
+        PresentationValue::Scalar64(self.0)
+    }
+
+    fn from_presentation_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Scalar64(value) => Some(Self(value)),
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Color(_)
+            | PresentationValue::Offset2d(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PressureReading(f64);
+
+impl Interpolate for PressureReading {
+    fn interpolate(&self, to: &Self, progress: f64) -> Self {
+        Self(self.0.interpolate(&to.0, progress))
+    }
+}
+
+impl Animatable for PressureReading {
+    type Velocity = f64;
+
+    fn is_close(&self, other: &Self) -> bool {
+        self.0.is_close(&other.0)
+    }
+
+    fn add(&self, other: &Self) -> Option<Self> {
+        self.0.add(&other.0).map(Self)
+    }
+
+    fn accumulate(&self, other: &Self, count: u64) -> Option<Self> {
+        self.0.accumulate(&other.0, count).map(Self)
+    }
+}
+
+#[test]
 fn styled_effect_rule_targets_property_animation_layer() {
     const EFFECTFUL: ClassId = ClassId(902);
     const TRIGGER: EffectTriggerId = EffectTriggerId::new(902);
@@ -312,13 +835,13 @@ fn styled_effect_rule_targets_property_animation_layer() {
                 StyleBuilder::new()
                     .set(
                         effects,
-                        EffectRules::single(EffectRule::new(
+                        EffectRules::single(EffectRule::for_target(
                             TRIGGER,
-                            PresentationTarget::property(opacity.id()),
+                            AnimationTarget::property(opacity),
                             EffectClip::from_keyframes([
-                                EffectKeyframe::new(0, PresentationValue::Scalar32(1.0)),
-                                EffectKeyframe::new(millis(50), PresentationValue::Scalar32(0.25)),
-                                EffectKeyframe::new(millis(100), PresentationValue::Scalar32(1.0)),
+                                EffectKeyframe::new(0, 1.0_f32),
+                                EffectKeyframe::new(millis(50), 0.25_f32),
+                                EffectKeyframe::new(millis(100), 1.0_f32),
                             ]),
                         )),
                     )
@@ -889,7 +1412,7 @@ fn element_border_width(ui: &Ui, id: ElementId) -> f64 {
 
 fn thumb_timing(from: f64, to: f64, t: f64) -> f64 {
     let timing = TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.0);
-    from.interpolate(to, timing.sample(t))
+    from.interpolate(&to, timing.sample(t))
 }
 
 fn interpolate_srgb_color(from: Color, to: Color, t: f32) -> Color {

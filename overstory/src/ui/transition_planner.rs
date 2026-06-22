@@ -13,10 +13,10 @@ use alloc::vec::Vec;
 
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
-use crate::motion::{
-    PresentationSlot, PresentationTarget, PresentationValue, ResolvedTransitionSpec,
-};
+use crate::motion::{PresentationSlot, PresentationTarget, ResolvedTransitionSpec};
+use crate::timeline_properties::{TimelineTargetAdapter, TimelineTargetValue};
 use crate::timeline_runtime::ChangeCause;
+use understory_property::PropertyId;
 
 use super::{Ui, collect_preorder};
 
@@ -57,7 +57,6 @@ enum TransitionDecision {
 }
 
 /// Before-state capture for one interaction state transition.
-#[derive(Clone, Debug)]
 pub(in crate::ui) struct InteractionTransitionPlan {
     policy: MotionPolicy,
     root: ElementId,
@@ -70,17 +69,16 @@ impl InteractionTransitionPlan {
     pub(in crate::ui) fn capture(ui: &Ui, id: ElementId) -> Self {
         let mut tracked = Vec::new();
         let mut layout_outputs = Vec::new();
-        let properties: Vec<_> = ui.timeline_properties.properties().collect();
+        let target_adapters: Vec<_> = ui.timeline_properties.target_adapters().collect();
         for element in collect_preorder(ui, id) {
-            for property in &properties {
-                let Some(adapter) = ui.timeline_properties.adapter(*property) else {
-                    continue;
-                };
-                let target = PresentationTarget::Property(*property);
+            for &(property, adapter) in &target_adapters {
+                let target = PresentationTarget::Property(property);
                 tracked.push(TrackedValue {
                     element,
+                    property,
                     target,
-                    before: adapter.target_value(ui, element, *property),
+                    adapter,
+                    before: adapter.target_value(ui, element, property),
                     before_spec: ui.transition_spec_for(element, target, ChangeCause::Interaction),
                 });
             }
@@ -147,70 +145,113 @@ fn has_arrange_invalidated_ancestor(ui: &Ui, root: ElementId, mut element: Eleme
     }
 }
 
-#[derive(Clone, Copy, Debug)]
 struct TrackedValue {
     element: ElementId,
+    property: PropertyId,
     target: PresentationTarget,
-    before: Option<PresentationValue>,
+    adapter: TimelineTargetAdapter,
+    before: Option<TimelineTargetValue>,
     before_spec: Option<ResolvedTransitionSpec>,
 }
 
 impl TrackedValue {
     fn apply(self, ui: &mut Ui, policy: MotionPolicy) {
-        let after = self.target_value(ui);
-        if self.before == after {
+        let Self {
+            element,
+            property,
+            target,
+            adapter,
+            before,
+            before_spec,
+        } = self;
+
+        let after = adapter.target_value(ui, element, property);
+        if same_target_value(adapter, before.as_ref(), after.as_ref()) {
             return;
         }
 
         let spec = ui
-            .transition_spec_for(self.element, self.target, ChangeCause::Interaction)
-            .or(self.before_spec);
+            .transition_spec_for(element, target, ChangeCause::Interaction)
+            .or(before_spec);
 
-        match (self.before, after) {
+        match (before, after) {
             (Some(before), Some(after)) => match policy.decision_for_interaction(spec) {
                 TransitionDecision::Animate(spec) => {
-                    ui.set_presentation_target_value(
-                        self.element,
-                        self.target,
+                    set_target(
+                        ui,
+                        element,
+                        property,
+                        target,
+                        adapter,
                         before,
                         ChangeCause::Other,
                     );
-                    ui.request_presentation_transition(self.element, self.target, spec);
-                    ui.set_presentation_target_value(
-                        self.element,
-                        self.target,
+                    ui.request_presentation_transition(element, target, spec);
+                    set_target(
+                        ui,
+                        element,
+                        property,
+                        target,
+                        adapter,
                         after,
                         ChangeCause::Interaction,
                     );
                 }
                 TransitionDecision::Snap => {
-                    ui.clear_presentation_target(self.element, self.target);
+                    ui.clear_presentation_target(element, target);
                 }
             },
             (None, Some(after)) => {
                 if spec.is_some() {
-                    ui.set_presentation_target_value(
-                        self.element,
-                        self.target,
+                    set_target(
+                        ui,
+                        element,
+                        property,
+                        target,
+                        adapter,
                         after,
                         ChangeCause::Other,
                     );
                 } else {
-                    ui.clear_presentation_target(self.element, self.target);
+                    ui.clear_presentation_target(element, target);
                 }
             }
             (Some(_), None) | (None, None) => {
-                ui.clear_presentation_target(self.element, self.target);
+                ui.clear_presentation_target(element, target);
             }
         }
     }
+}
 
-    fn target_value(self, ui: &Ui) -> Option<PresentationValue> {
-        let PresentationTarget::Property(property) = self.target else {
-            return None;
-        };
-        ui.timeline_properties
-            .adapter(property)?
-            .target_value(ui, self.element, property)
+fn same_target_value(
+    adapter: TimelineTargetAdapter,
+    before: Option<&TimelineTargetValue>,
+    after: Option<&TimelineTargetValue>,
+) -> bool {
+    match (before, after) {
+        (Some(before), Some(after)) => adapter.same_value(before, after),
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
+    }
+}
+
+fn set_target(
+    ui: &mut Ui,
+    element: ElementId,
+    property: PropertyId,
+    target: PresentationTarget,
+    adapter: TimelineTargetAdapter,
+    value: TimelineTargetValue,
+    cause: ChangeCause,
+) -> bool {
+    match (adapter, value) {
+        (TimelineTargetAdapter::Presentation(_), TimelineTargetValue::Presentation(value)) => {
+            ui.set_presentation_target_value(element, target, value, cause)
+        }
+        (TimelineTargetAdapter::Native(adapter), TimelineTargetValue::Native(value)) => ui
+            .set_native_presentation_property_target_value(
+                element, property, adapter, value, cause,
+            ),
+        _ => false,
     }
 }

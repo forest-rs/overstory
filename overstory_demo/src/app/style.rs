@@ -65,6 +65,9 @@ pub(super) const CLASS_OPACITY_SWATCH: &str = ".opacity-swatch";
 pub(super) const CLASS_BORDER_SWATCH: &str = ".border-swatch";
 pub(super) const CLASS_RETARGET_SWATCH: &str = ".retarget-swatch";
 pub(super) const CLASS_MOVER_SWATCH: &str = ".mover-swatch";
+pub(super) const CLASS_RUNTIME_MOTION_SWATCH: &str = ".runtime-motion-swatch";
+pub(super) const CLASS_MANUAL_MOTION_SWATCH: &str = ".manual-motion-swatch";
+pub(super) const CLASS_MOTION_STATUS: &str = ".motion-status";
 pub(super) const CLASS_SRGB_SWATCH: &str = ".srgb-swatch";
 
 #[derive(Clone, Copy, Debug)]
@@ -107,6 +110,9 @@ pub(super) struct DemoClasses {
     pub(super) border_swatch: ClassId,
     pub(super) retarget_swatch: ClassId,
     pub(super) mover_swatch: ClassId,
+    pub(super) runtime_motion_swatch: ClassId,
+    pub(super) manual_motion_swatch: ClassId,
+    pub(super) motion_status: ClassId,
     pub(super) srgb_swatch: ClassId,
 }
 
@@ -174,6 +180,9 @@ impl overstory::StyleTokenSet for DemoStyleTokens {
                 border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
                 retarget_swatch: vocabulary.class_id(CLASS_RETARGET_SWATCH),
                 mover_swatch: vocabulary.class_id(CLASS_MOVER_SWATCH),
+                runtime_motion_swatch: vocabulary.class_id(CLASS_RUNTIME_MOTION_SWATCH),
+                manual_motion_swatch: vocabulary.class_id(CLASS_MANUAL_MOTION_SWATCH),
+                motion_status: vocabulary.class_id(CLASS_MOTION_STATUS),
                 srgb_swatch: vocabulary.class_id(CLASS_SRGB_SWATCH),
             },
             resources: DemoResources {
@@ -780,6 +789,34 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
             class_state_selector(classes.retarget_swatch, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .background(properties, opt_solid(0xf9, 0xf8, 0x71, 0xff))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(classes.runtime_motion_swatch),
+            StyleBuilder::new()
+                .background(properties, opt_solid(0x4f, 0xc3, 0xff, 0xff))
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xa0))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 16.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(classes.manual_motion_swatch),
+            StyleBuilder::new()
+                .background(properties, opt_solid(0xa7, 0x8b, 0xfa, 0xff))
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xa0))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 16.0_f64)
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            text_class_selector(classes.motion_status),
+            StyleBuilder::new()
+                .set_resource(properties.foreground, resources.body_fg)
+                .set(properties.font_size, 13.0_f64)
                 .build(),
         )
         .build()

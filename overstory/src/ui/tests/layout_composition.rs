@@ -707,6 +707,98 @@ fn inspection_snapshot_reports_timeline_counts() {
 }
 
 #[test]
+fn inspection_snapshot_reports_retained_timeline_animations() {
+    use crate::inspection::TimelineAnimationInspectionLayer;
+    use crate::motion::ResolvedTransitionSpec;
+    use crate::timeline_runtime::ChangeCause;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(root, crate::Panel::new());
+    let opacity_target = PresentationTarget::property(ui.properties().opacity.id());
+
+    ui.set_now(0);
+    ui.set_presentation_target(panel, opacity_target, 1.0_f32, ChangeCause::Other);
+    ui.request_presentation_transition(panel, opacity_target, ResolvedTransitionSpec::linear(100));
+    ui.set_presentation_target(panel, opacity_target, 0.5_f32, ChangeCause::Interaction);
+    let effect_id = ui
+        .animate(
+            panel,
+            PresentationTarget::visual_translation(),
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, PresentationValue::Offset2d(Vec2::ZERO)),
+                EffectKeyframe::new(
+                    millis(100),
+                    PresentationValue::Offset2d(Vec2::new(12.0, 0.0)),
+                ),
+            ]),
+        )
+        .expect("visual translation effect should start");
+
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.timeline.animations.len(), 2);
+
+    let transition = snapshot
+        .timeline
+        .animations
+        .iter()
+        .find(|row| row.layer == TimelineAnimationInspectionLayer::Transition)
+        .expect("transition row should be inspectable");
+    assert_eq!(transition.element, panel);
+    assert_eq!(transition.target, opacity_target);
+    assert_eq!(transition.state, crate::AnimationPlayState::Running);
+    assert_eq!(transition.current_time, Some(0));
+    let transition_timing = transition
+        .timing_sample
+        .expect("transition row should expose timing");
+    assert_eq!(transition_timing.phase, crate::TimingPhase::Active);
+    assert_eq!(transition_timing.iteration, Some(0));
+    assert_eq!(transition_timing.progress, Some(0.0));
+    assert_eq!(transition_timing.eased_progress, Some(0.0));
+    assert_eq!(transition.playback_rate, 1.0);
+    assert_eq!(transition.composite, crate::CompositeOperation::Replace);
+    assert_eq!(transition.value_kind, Some(PresentationValueKind::Scalar32));
+    assert_eq!(transition.timeline, crate::AnimationTimelineId::DOCUMENT);
+
+    let effect = snapshot
+        .timeline
+        .animations
+        .iter()
+        .find(|row| row.id == effect_id)
+        .expect("explicit effect row should be inspectable");
+    assert_eq!(effect.element, panel);
+    assert_eq!(effect.target, PresentationTarget::visual_translation());
+    assert_eq!(effect.layer, TimelineAnimationInspectionLayer::Effect);
+    assert_eq!(effect.state, crate::AnimationPlayState::Running);
+    assert_eq!(effect.current_time, Some(0));
+    let effect_timing = effect
+        .timing_sample
+        .expect("effect row should expose timing");
+    assert_eq!(effect_timing.phase, crate::TimingPhase::Active);
+    assert_eq!(effect_timing.iteration, Some(0));
+    assert_eq!(effect_timing.progress, Some(0.0));
+    assert_eq!(effect_timing.eased_progress, Some(0.0));
+    assert_eq!(effect.playback_rate, 1.0);
+    assert_eq!(effect.composite, crate::CompositeOperation::Replace);
+    assert_eq!(effect.value_kind, Some(PresentationValueKind::Offset2d));
+    assert_eq!(effect.timeline, crate::AnimationTimelineId::DOCUMENT);
+
+    assert!(ui.cancel_animation(effect_id));
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.timeline.animations.len(), 1);
+    assert!(
+        snapshot
+            .timeline
+            .animations
+            .iter()
+            .all(|row| row.layer == TimelineAnimationInspectionLayer::Transition)
+    );
+
+    ui.set_now(millis(100));
+    assert!(ui.inspection_snapshot().timeline.animations.is_empty());
+}
+
+#[test]
 fn visual_transform_updates_composition_without_changing_layout_bounds() {
     let mut ui = Ui::new();
     let root = ui.root();

@@ -252,17 +252,18 @@ impl UiHost {
 
     /// Pumps all timers that are due at the current host time.
     ///
-    /// Returns `true` when a UI timer, timeline cue, or active presentation
-    /// track was due. Due UI wakeups are treated as animation demand because
-    /// they require another sampled frame.
+    /// Returns `true` when a UI timer or timeline cue was due.
+    ///
+    /// Due UI wakeups are treated as animation demand because they may require
+    /// another sampled frame. Active presentation motion is requeued separately
+    /// through frame demand after dispatch and frame preparation.
     pub fn pump_timers_now(&mut self) -> bool {
         self.pump_timers(self.now())
     }
 
     /// Pumps all timers that are due at `now`.
     ///
-    /// Returns `true` when a UI timer, timeline cue, or active presentation
-    /// track was due.
+    /// Returns `true` when a UI timer or timeline cue was due.
     pub fn pump_timers(&mut self, now: TimerInstant) -> bool {
         let due = self
             .ui

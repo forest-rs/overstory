@@ -205,7 +205,7 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets initial style-authored one-shot effect rules.
+    /// Sets initial style-authored effect rules.
     #[must_use]
     fn effects(mut self, effects: EffectRules) -> Self {
         self.element_config_mut()

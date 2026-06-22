@@ -10,10 +10,12 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
-    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection, TimelineInspectionSnapshot,
+    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection,
+    TimelineAnimationInspectionLayer, TimelineAnimationInspectionRow, TimelineInspectionSnapshot,
     UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
+use crate::timeline_runtime::TimelineAnimationLayerKind;
 use peniko::Brush;
 use understory_presentation::CornerShape;
 use understory_presentation_properties::CornerRadius;
@@ -728,6 +730,31 @@ impl Ui {
             active_effects: self.timeline.active_effect_count(),
             pending_transitions: self.timeline.pending_transition_count(),
             pending_cues: self.timeline.pending_cue_count(),
+            animations: self
+                .timeline
+                .animation_rows(self.now())
+                .into_iter()
+                .map(|row| TimelineAnimationInspectionRow {
+                    id: row.id(),
+                    element: row.key().element(),
+                    target: row.key().target(),
+                    layer: match row.layer() {
+                        TimelineAnimationLayerKind::Transition => {
+                            TimelineAnimationInspectionLayer::Transition
+                        }
+                        TimelineAnimationLayerKind::Effect => {
+                            TimelineAnimationInspectionLayer::Effect
+                        }
+                    },
+                    state: row.state(),
+                    current_time: row.current_time(),
+                    timing_sample: row.timing_sample(),
+                    playback_rate: row.playback_rate(),
+                    composite: row.composite(),
+                    value_kind: row.value_kind(),
+                    timeline: row.timeline(),
+                })
+                .collect(),
         }
     }
 }

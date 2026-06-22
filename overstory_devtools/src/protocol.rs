@@ -166,7 +166,7 @@ impl InspectionSummaries {
         Self {
             composition: inspection.composition.clone(),
             storage: inspection.storage,
-            timeline: inspection.timeline,
+            timeline: inspection.timeline.clone(),
             frame: inspection.frame,
         }
     }

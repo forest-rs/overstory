@@ -702,7 +702,7 @@ impl Ui {
         self.bindings.clear_owner(BindingOwner::element(id));
         self.templates.remove_element(id);
         self.events.remove_target(id);
-        self.timeline.remove_element(id);
+        self.timeline.remove_element(id, self.now());
         self.timers.remove_target(id);
         self.scrolling.remove_target(id);
         self.focus.remove_target(id);

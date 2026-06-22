@@ -9,23 +9,39 @@
 //! value on an element. It also owns the matching read step used by transition
 //! planning: given an element and property, extract the current effective value
 //! as a timeline sample when the property is animatable. Most properties can
-//! use the typed adapter; mapped properties, such as animating the solid color
+//! use the native adapter; mapped properties, such as animating the solid color
 //! inside `Surface.Background`, can register a custom adapter.
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::any::Any;
 
 use hashbrown::HashMap;
 use peniko::Brush;
 use understory_property::{DependencyObject, Property, PropertyId};
+use understory_timing::TimerInstant;
 
 use crate::element::{Element, ElementId};
-use crate::motion::{PresentationValue, PresentationValueKind};
-use crate::timeline_runtime::AnimatableValue;
+use crate::motion::{Animatable, PresentationValue, PresentationValueKind};
+use crate::timeline_runtime::{
+    ChangeCause, PresentationRuntimeValue, TimelineRuntime, TimelineTrackKey,
+};
 use crate::ui::Ui;
 
 type ReadTarget = fn(&Ui, ElementId, PropertyId) -> Option<PresentationValue>;
 type SetSample = fn(&mut Element, PropertyId, PresentationValue) -> bool;
 type ClearSample = fn(&mut Element, PropertyId) -> bool;
+type ReadNativeTarget = fn(&Ui, ElementId, PropertyId) -> Option<Box<dyn Any>>;
+type SameNativeValue = fn(&dyn Any, &dyn Any) -> Option<bool>;
+type SetNativeTarget = fn(
+    &mut TimelineRuntime,
+    TimelineTrackKey,
+    Box<dyn Any>,
+    TimerInstant,
+    ChangeCause,
+    Option<PresentationValueKind>,
+) -> Option<bool>;
+type SetNativeSample = fn(&mut Element, PropertyId, &dyn Any) -> bool;
 
 /// Per-property adapter for timeline presentation samples.
 #[derive(Clone, Copy)]
@@ -37,15 +53,15 @@ pub(crate) struct TimelinePropertyAdapter {
 }
 
 impl TimelinePropertyAdapter {
-    fn typed<T>() -> Self
+    fn presentation_value<T>() -> Self
     where
-        T: AnimatableValue + Clone + 'static,
+        T: PresentationRuntimeValue,
     {
         Self {
             kind: T::KIND,
-            read_target: read_typed_target::<T>,
-            set_sample: set_typed_sample::<T>,
-            clear_sample: clear_typed_sample::<T>,
+            read_target: read_presentation_target::<T>,
+            set_sample: set_presentation_sample::<T>,
+            clear_sample: clear_property_animation_sample::<T>,
         }
     }
 
@@ -67,13 +83,13 @@ impl TimelinePropertyAdapter {
         }
     }
 
-    /// Returns the erased sample kind this adapter accepts.
+    /// Returns the presentation sample kind this adapter accepts.
     #[must_use]
     pub(crate) const fn kind(self) -> PresentationValueKind {
         self.kind
     }
 
-    /// Reads the current effective property target as an erased sample.
+    /// Reads the current effective property target as an presentation sample.
     #[must_use]
     pub(crate) fn target_value(
         self,
@@ -108,11 +124,147 @@ impl core::fmt::Debug for TimelinePropertyAdapter {
     }
 }
 
+/// Value read from an animatable dependency-property target.
+pub(crate) enum TimelineTargetValue {
+    Presentation(PresentationValue),
+    Native(Box<dyn Any>),
+}
+
+/// Unified adapter for one dependency-property animation target.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TimelineTargetAdapter {
+    Presentation(TimelinePropertyAdapter),
+    Native(NativeTimelinePropertyAdapter),
+}
+
+impl TimelineTargetAdapter {
+    /// Reads the current effective property target.
+    #[must_use]
+    pub(crate) fn target_value(
+        self,
+        ui: &Ui,
+        element: ElementId,
+        property: PropertyId,
+    ) -> Option<TimelineTargetValue> {
+        match self {
+            Self::Presentation(adapter) => adapter
+                .target_value(ui, element, property)
+                .map(TimelineTargetValue::Presentation),
+            Self::Native(adapter) => adapter
+                .target_value(ui, element, property)
+                .map(TimelineTargetValue::Native),
+        }
+    }
+
+    /// Returns whether two target values are close enough to skip transition planning.
+    #[must_use]
+    pub(crate) fn same_value(
+        self,
+        left: &TimelineTargetValue,
+        right: &TimelineTargetValue,
+    ) -> bool {
+        match (self, left, right) {
+            (
+                Self::Presentation(_),
+                TimelineTargetValue::Presentation(left),
+                TimelineTargetValue::Presentation(right),
+            ) => left == right,
+            (
+                Self::Native(adapter),
+                TimelineTargetValue::Native(left),
+                TimelineTargetValue::Native(right),
+            ) => adapter
+                .same_value(left.as_ref(), right.as_ref())
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+}
+
+/// Per-property adapter for native timeline samples.
+#[derive(Clone, Copy)]
+pub(crate) struct NativeTimelinePropertyAdapter {
+    read_target: ReadNativeTarget,
+    same_value: SameNativeValue,
+    set_target: SetNativeTarget,
+    set_sample: SetNativeSample,
+    clear_sample: ClearSample,
+}
+
+impl NativeTimelinePropertyAdapter {
+    fn native<T>() -> Self
+    where
+        T: Animatable,
+    {
+        Self {
+            read_target: read_native_target::<T>,
+            same_value: same_native_value::<T>,
+            set_target: set_native_target::<T>,
+            set_sample: set_native_sample::<T>,
+            clear_sample: clear_property_animation_sample::<T>,
+        }
+    }
+
+    /// Reads the current effective property target as a native erased value.
+    #[must_use]
+    pub(crate) fn target_value(
+        self,
+        ui: &Ui,
+        element: ElementId,
+        property: PropertyId,
+    ) -> Option<Box<dyn Any>> {
+        (self.read_target)(ui, element, property)
+    }
+
+    /// Returns whether two native erased values are close enough to be the same target.
+    #[must_use]
+    pub(crate) fn same_value(self, left: &dyn Any, right: &dyn Any) -> Option<bool> {
+        (self.same_value)(left, right)
+    }
+
+    /// Writes a native target value into the timeline runtime.
+    pub(crate) fn set_target(
+        self,
+        runtime: &mut TimelineRuntime,
+        key: TimelineTrackKey,
+        value: Box<dyn Any>,
+        now: TimerInstant,
+        cause: ChangeCause,
+        value_kind: Option<PresentationValueKind>,
+    ) -> Option<bool> {
+        (self.set_target)(runtime, key, value, now, cause, value_kind)
+    }
+
+    /// Applies a native sampled timeline value to `element`'s animation layer.
+    pub(crate) fn set_sample(
+        self,
+        element: &mut Element,
+        property: PropertyId,
+        value: &dyn Any,
+    ) -> bool {
+        (self.set_sample)(element, property, value)
+    }
+
+    /// Clears `property` from `element`'s animation layer.
+    pub(crate) fn clear_sample(self, element: &mut Element, property: PropertyId) -> bool {
+        (self.clear_sample)(element, property)
+    }
+}
+
+impl core::fmt::Debug for NativeTimelinePropertyAdapter {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("NativeTimelinePropertyAdapter")
+            .finish_non_exhaustive()
+    }
+}
+
 /// Registry of properties that can receive timeline samples.
 #[derive(Debug, Default)]
 pub(crate) struct TimelinePropertyRegistry {
     adapters: HashMap<PropertyId, TimelinePropertyAdapter>,
+    native_adapters: HashMap<PropertyId, NativeTimelinePropertyAdapter>,
     properties: Vec<PropertyId>,
+    native_properties: Vec<PropertyId>,
 }
 
 impl TimelinePropertyRegistry {
@@ -125,9 +277,25 @@ impl TimelinePropertyRegistry {
     /// Registers a property whose animation sample type is the property type.
     pub(crate) fn register<T>(&mut self, property: Property<T>)
     where
-        T: AnimatableValue + Clone + 'static,
+        T: PresentationRuntimeValue,
     {
-        self.insert(property.id(), TimelinePropertyAdapter::typed::<T>());
+        self.insert(
+            property.id(),
+            TimelinePropertyAdapter::presentation_value::<T>(),
+        );
+    }
+
+    /// Registers a property whose native animation sample type is the property type.
+    pub(crate) fn register_native<T>(&mut self, property: Property<T>)
+    where
+        T: Animatable,
+    {
+        if !self.native_adapters.contains_key(&property.id()) {
+            self.native_properties.push(property.id());
+            self.native_properties.sort_unstable();
+        }
+        self.native_adapters
+            .insert(property.id(), NativeTimelinePropertyAdapter::native::<T>());
     }
 
     /// Registers a `Brush` property that animates its solid color value.
@@ -149,9 +317,33 @@ impl TimelinePropertyRegistry {
         self.adapters.get(&property).copied()
     }
 
-    /// Returns registered animatable dependency-property targets.
-    pub(crate) fn properties(&self) -> impl Iterator<Item = PropertyId> + '_ {
-        self.properties.iter().copied()
+    /// Returns the native adapter for `property`, if the property accepts native value samples.
+    #[must_use]
+    pub(crate) fn native_adapter(
+        &self,
+        property: PropertyId,
+    ) -> Option<NativeTimelinePropertyAdapter> {
+        self.native_adapters.get(&property).copied()
+    }
+
+    /// Returns registered dependency-property animation target adapters.
+    pub(crate) fn target_adapters(
+        &self,
+    ) -> impl Iterator<Item = (PropertyId, TimelineTargetAdapter)> + '_ {
+        let presentation = self.properties.iter().copied().filter_map(|property| {
+            self.adapter(property)
+                .map(|adapter| (property, TimelineTargetAdapter::Presentation(adapter)))
+        });
+        let native = self
+            .native_properties
+            .iter()
+            .copied()
+            .filter(|property| !self.adapters.contains_key(property))
+            .filter_map(|property| {
+                self.native_adapter(property)
+                    .map(|adapter| (property, TimelineTargetAdapter::Native(adapter)))
+            });
+        presentation.chain(native)
     }
 
     fn insert(&mut self, property: PropertyId, adapter: TimelinePropertyAdapter) {
@@ -163,18 +355,18 @@ impl TimelinePropertyRegistry {
     }
 }
 
-fn read_typed_target<T>(
+fn read_presentation_target<T>(
     ui: &Ui,
     element: ElementId,
     property: PropertyId,
 ) -> Option<PresentationValue>
 where
-    T: AnimatableValue + Clone + 'static,
+    T: PresentationRuntimeValue,
 {
     let element = ui.get(element)?;
     Some(
         ui.resolve_value_for(element, Property::<T>::from_id(property))
-            .into_value(),
+            .into_presentation_value(),
     )
 }
 
@@ -202,15 +394,15 @@ fn read_optional_solid_brush_color_target(
     }
 }
 
-fn set_typed_sample<T>(
+fn set_presentation_sample<T>(
     element: &mut Element,
     property: PropertyId,
     value: PresentationValue,
 ) -> bool
 where
-    T: AnimatableValue + Clone + 'static,
+    T: PresentationRuntimeValue,
 {
-    let Some(value) = T::from_value(value) else {
+    let Some(value) = T::from_presentation_value(value) else {
         return false;
     };
     element
@@ -219,9 +411,58 @@ where
     true
 }
 
-fn clear_typed_sample<T>(element: &mut Element, property: PropertyId) -> bool
+fn set_native_sample<T>(element: &mut Element, property: PropertyId, value: &dyn Any) -> bool
 where
-    T: AnimatableValue + Clone + 'static,
+    T: Animatable,
+{
+    let Some(value) = value.downcast_ref::<T>() else {
+        return false;
+    };
+    element
+        .property_store_mut()
+        .set_animation(Property::<T>::from_id(property), value.clone());
+    true
+}
+
+fn read_native_target<T>(ui: &Ui, element: ElementId, property: PropertyId) -> Option<Box<dyn Any>>
+where
+    T: Animatable,
+{
+    let element = ui.get(element)?;
+    Some(Box::new(ui.resolve_value_for(
+        element,
+        Property::<T>::from_id(property),
+    )))
+}
+
+fn same_native_value<T>(left: &dyn Any, right: &dyn Any) -> Option<bool>
+where
+    T: Animatable,
+{
+    Some(
+        left.downcast_ref::<T>()?
+            .is_close(right.downcast_ref::<T>()?),
+    )
+}
+
+fn set_native_target<T>(
+    runtime: &mut TimelineRuntime,
+    key: TimelineTrackKey,
+    value: Box<dyn Any>,
+    now: TimerInstant,
+    cause: ChangeCause,
+    value_kind: Option<PresentationValueKind>,
+) -> Option<bool>
+where
+    T: Animatable,
+{
+    let value = *value.downcast::<T>().ok()?;
+    runtime.set_native_target_value(key, value, now, cause, value_kind)
+}
+
+fn clear_property_animation_sample<T>(element: &mut Element, property: PropertyId) -> bool
+where
+    T: Clone + 'static,
 {
     element
         .property_store_mut()
@@ -278,7 +519,7 @@ mod tests {
     use crate::element::ElementId;
 
     #[test]
-    fn typed_adapter_writes_and_clears_animation_value() {
+    fn native_adapter_writes_and_clears_animation_value() {
         let property = Property::<f32>::from_id(PropertyId::new(7));
         let mut registry = TimelinePropertyRegistry::new();
         registry.register(property);

@@ -10,243 +10,21 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::fmt;
+use core::marker::PhantomData;
 
 use kurbo::Vec2;
-use peniko::color::{self, ColorSpaceTag, DynamicColor, HueDirection, Srgb};
-use peniko::{Color, InterpolationAlphaSpace};
-use understory_property::PropertyId;
+use peniko::Color;
+pub use understory_animation::{
+    AnimationTiming, CompositeOperation, FillMode, Keyframe, KeyframeEffect, PlaybackDirection,
+    StackEffect, TimingPhase, TimingSample,
+};
+pub use understory_motion::{
+    AnimatableValue as Animatable, ColorInterpolation, ColorTransition, Interpolate,
+    TimingFunction, Transform2d, Transition, millis, normalized_progress,
+};
+use understory_property::{Property, PropertyId};
 use understory_style::{ResourceKey, Theme};
-use understory_timing::{TimerDuration, TimerInstant};
-
-/// Converts milliseconds to Overstory's timer duration unit.
-#[must_use]
-pub const fn millis(value: u64) -> TimerDuration {
-    value.saturating_mul(1_000_000)
-}
-
-/// Value that can be interpolated between two endpoints.
-pub trait Interpolate: Copy {
-    /// Returns the value at normalized progress `t` between `self` and `to`.
-    ///
-    /// Most transitions pass values in the inclusive `0.0..=1.0` range, but
-    /// timing functions may intentionally overshoot for future motion styles.
-    fn interpolate(self, to: Self, t: f64) -> Self;
-}
-
-/// Value suitable for timeline sampling.
-pub trait Animatable: Interpolate + PartialEq {
-    /// Returns whether two values are close enough to snap instead of animate.
-    fn is_close(self, other: Self) -> bool;
-}
-
-impl Interpolate for f32 {
-    fn interpolate(self, to: Self, t: f64) -> Self {
-        self + ((to - self) * f32_progress(t))
-    }
-}
-
-impl Animatable for f32 {
-    fn is_close(self, other: Self) -> bool {
-        (self - other).abs() <= Self::EPSILON
-    }
-}
-
-impl Interpolate for f64 {
-    fn interpolate(self, to: Self, t: f64) -> Self {
-        self + ((to - self) * t)
-    }
-}
-
-impl Animatable for f64 {
-    fn is_close(self, other: Self) -> bool {
-        (self - other).abs() <= Self::EPSILON
-    }
-}
-
-impl Interpolate for Vec2 {
-    fn interpolate(self, to: Self, t: f64) -> Self {
-        self + ((to - self) * t)
-    }
-}
-
-impl Animatable for Vec2 {
-    fn is_close(self, other: Self) -> bool {
-        (self.x - other.x).abs() <= f64::EPSILON && (self.y - other.y).abs() <= f64::EPSILON
-    }
-}
-
-/// Data-driven timing function for normalized transition progress.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TimingFunction {
-    kind: TimingFunctionKind,
-}
-
-impl TimingFunction {
-    /// Constant progress rate.
-    pub const LINEAR: Self = Self {
-        kind: TimingFunctionKind::Linear,
-    };
-
-    /// Creates a cubic Bezier timing function from CSS-style control points.
-    ///
-    /// The curve always starts at `(0, 0)` and ends at `(1, 1)`. `x1` and `x2`
-    /// should be finite values in `0.0..=1.0` so the curve can be inverted from
-    /// input progress to output progress.
-    #[must_use]
-    pub const fn cubic_bezier(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
-        Self {
-            kind: TimingFunctionKind::CubicBezier(CubicBezierTimingFunction { x1, y1, x2, y2 }),
-        }
-    }
-
-    /// Samples the timing function at normalized input progress `t`.
-    #[must_use]
-    pub fn sample(self, t: f64) -> f64 {
-        match self.kind {
-            TimingFunctionKind::Linear => t.clamp(0.0, 1.0),
-            TimingFunctionKind::CubicBezier(curve) => curve.sample(t),
-        }
-    }
-}
-
-impl Default for TimingFunction {
-    fn default() -> Self {
-        Self::LINEAR
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum TimingFunctionKind {
-    Linear,
-    CubicBezier(CubicBezierTimingFunction),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct CubicBezierTimingFunction {
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-}
-
-impl CubicBezierTimingFunction {
-    fn sample(self, t: f64) -> f64 {
-        let t = t.clamp(0.0, 1.0);
-        if t <= 0.0 || t >= 1.0 {
-            return t;
-        }
-        cubic_value(self.solve_x(t), self.y1, self.y2)
-    }
-
-    fn solve_x(self, x: f64) -> f64 {
-        const DERIVATIVE_EPSILON: f64 = 1.0e-6;
-        const NEWTON_STEPS: usize = 8;
-        const BISECTION_STEPS: usize = 12;
-
-        let mut t = x;
-        for _ in 0..NEWTON_STEPS {
-            let error = cubic_value(t, self.x1, self.x2) - x;
-            let derivative = cubic_derivative(t, self.x1, self.x2);
-            if derivative.abs() <= DERIVATIVE_EPSILON {
-                break;
-            }
-            let next = t - (error / derivative);
-            if !(0.0..=1.0).contains(&next) {
-                break;
-            }
-            t = next;
-        }
-
-        let mut low = 0.0;
-        let mut high = 1.0;
-        for _ in 0..BISECTION_STEPS {
-            let value = cubic_value(t, self.x1, self.x2);
-            if (value - x).abs() <= DERIVATIVE_EPSILON {
-                return t;
-            }
-            if value < x {
-                low = t;
-            } else {
-                high = t;
-            }
-            t = (low + high) * 0.5;
-        }
-        t
-    }
-}
-
-fn cubic_value(t: f64, p1: f64, p2: f64) -> f64 {
-    let inverse = 1.0 - t;
-    (3.0 * inverse * inverse * t * p1) + (3.0 * inverse * t * t * p2) + (t * t * t)
-}
-
-fn cubic_derivative(t: f64, p1: f64, p2: f64) -> f64 {
-    let inverse = 1.0 - t;
-    (3.0 * inverse * inverse * p1) + (6.0 * inverse * t * (p2 - p1)) + (3.0 * t * t * (1.0 - p2))
-}
-
-/// Policy for interpolating colors.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ColorInterpolation {
-    color_space: ColorSpaceTag,
-    hue_direction: HueDirection,
-    alpha_space: InterpolationAlphaSpace,
-}
-
-impl ColorInterpolation {
-    /// Interpolate in sRGB with premultiplied alpha.
-    pub const SRGB: Self = Self::new(
-        ColorSpaceTag::Srgb,
-        HueDirection::Shorter,
-        InterpolationAlphaSpace::Premultiplied,
-    );
-
-    /// Interpolate in Oklab with premultiplied alpha.
-    pub const OKLAB: Self = Self::new(
-        ColorSpaceTag::Oklab,
-        HueDirection::Shorter,
-        InterpolationAlphaSpace::Premultiplied,
-    );
-
-    /// Creates a color interpolation policy.
-    #[must_use]
-    pub const fn new(
-        color_space: ColorSpaceTag,
-        hue_direction: HueDirection,
-        alpha_space: InterpolationAlphaSpace,
-    ) -> Self {
-        Self {
-            color_space,
-            hue_direction,
-            alpha_space,
-        }
-    }
-
-    /// Returns the color space used for interpolation.
-    #[must_use]
-    pub const fn color_space(self) -> ColorSpaceTag {
-        self.color_space
-    }
-
-    /// Returns the hue direction used for cylindrical color spaces.
-    #[must_use]
-    pub const fn hue_direction(self) -> HueDirection {
-        self.hue_direction
-    }
-
-    /// Returns how alpha participates in interpolation.
-    #[must_use]
-    pub const fn alpha_space(self) -> InterpolationAlphaSpace {
-        self.alpha_space
-    }
-}
-
-impl Default for ColorInterpolation {
-    fn default() -> Self {
-        Self::SRGB
-    }
-}
+use understory_timing::TimerDuration;
 
 /// Presentation-only output sampled by the motion runtime.
 ///
@@ -312,6 +90,58 @@ impl PresentationTarget {
     #[must_use]
     pub const fn visual_translation() -> Self {
         Self::Slot(PresentationSlot::VisualTranslation)
+    }
+}
+
+/// Animation destination with a concrete value type.
+///
+/// Use this with [`EffectClip<T>`] when the target value type is known at
+/// the call site. Overstory can then reject mismatched target and keyframe
+/// types at compile time for ordinary property and presentation-slot
+/// animations.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AnimationTarget<T> {
+    target: PresentationTarget,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> AnimationTarget<T> {
+    /// Creates a target from a presentation target.
+    const fn new(target: PresentationTarget) -> Self {
+        Self {
+            target,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns the presentation target identity for lower-level APIs.
+    #[must_use]
+    pub const fn presentation_target(self) -> PresentationTarget {
+        self.target
+    }
+}
+
+impl<T> AnimationTarget<T> {
+    /// Creates a target for dependency property `property`.
+    #[must_use]
+    pub const fn property(property: Property<T>) -> Self {
+        Self::new(PresentationTarget::Property(property.id()))
+    }
+}
+
+impl AnimationTarget<Vec2> {
+    /// Creates a target for layout-derived layer-local composition offset.
+    #[must_use]
+    pub const fn layer_offset() -> Self {
+        Self::new(PresentationTarget::Slot(PresentationSlot::LayerOffset))
+    }
+
+    /// Creates a target for additive transient visual translation.
+    #[must_use]
+    pub const fn visual_translation() -> Self {
+        Self::new(PresentationTarget::Slot(
+            PresentationSlot::VisualTranslation,
+        ))
     }
 }
 
@@ -581,7 +411,7 @@ pub enum PresentationValueKind {
     Offset2d,
 }
 
-/// Typed value carried by a presentation track or one-shot effect keyframe.
+/// Value carried by a presentation track or effect keyframe.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PresentationValue {
     /// A single `f32` value.
@@ -607,7 +437,94 @@ impl PresentationValue {
     }
 }
 
-/// Stable semantic trigger for a style-authored one-shot effect.
+/// Property value type that can be animated through Overstory presentation samples.
+///
+/// This is the bridge between a dependency property value and Overstory's
+/// current presentation sample storage. A type may implement this directly when
+/// it can losslessly map to one of the built-in sample kinds, such as a domain
+/// wrapper around `f64` or `Vec2`. The interpolation and composition math then
+/// happens in that presentation representation, while the final sampled value
+/// is written back to the original property type.
+pub trait PresentationAnimationValue: Copy + PartialEq + 'static {
+    /// Runtime storage kind for this value.
+    const KIND: PresentationValueKind;
+
+    /// Converts this value into erased presentation storage.
+    fn into_presentation_value(self) -> PresentationValue;
+
+    /// Converts erased presentation storage back into this value.
+    fn from_presentation_value(value: PresentationValue) -> Option<Self>;
+}
+
+impl PresentationAnimationValue for f32 {
+    const KIND: PresentationValueKind = PresentationValueKind::Scalar32;
+
+    fn into_presentation_value(self) -> PresentationValue {
+        PresentationValue::Scalar32(self)
+    }
+
+    fn from_presentation_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Scalar32(value) => Some(value),
+            PresentationValue::Scalar64(_)
+            | PresentationValue::Color(_)
+            | PresentationValue::Offset2d(_) => None,
+        }
+    }
+}
+
+impl PresentationAnimationValue for f64 {
+    const KIND: PresentationValueKind = PresentationValueKind::Scalar64;
+
+    fn into_presentation_value(self) -> PresentationValue {
+        PresentationValue::Scalar64(self)
+    }
+
+    fn from_presentation_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Scalar64(value) => Some(value),
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Color(_)
+            | PresentationValue::Offset2d(_) => None,
+        }
+    }
+}
+
+impl PresentationAnimationValue for Color {
+    const KIND: PresentationValueKind = PresentationValueKind::Color;
+
+    fn into_presentation_value(self) -> PresentationValue {
+        PresentationValue::Color(self)
+    }
+
+    fn from_presentation_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Color(value) => Some(value),
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Scalar64(_)
+            | PresentationValue::Offset2d(_) => None,
+        }
+    }
+}
+
+impl PresentationAnimationValue for Vec2 {
+    const KIND: PresentationValueKind = PresentationValueKind::Offset2d;
+
+    fn into_presentation_value(self) -> PresentationValue {
+        PresentationValue::Offset2d(self)
+    }
+
+    fn from_presentation_value(value: PresentationValue) -> Option<Self> {
+        match value {
+            PresentationValue::Offset2d(value) => Some(value),
+            PresentationValue::Scalar32(_)
+            | PresentationValue::Scalar64(_)
+            | PresentationValue::Color(_) => None,
+        }
+    }
+}
+
+/// Stable semantic trigger for a style-authored presentation effect.
 ///
 /// Controls emit effect triggers to report interaction outcomes. Style rules
 /// decide whether that trigger produces visual feedback and which presentation
@@ -629,102 +546,165 @@ impl EffectTriggerId {
     }
 }
 
-/// One keyframe in a finite presentation effect clip.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct EffectKeyframe {
+/// One keyframe in an effect clip.
+///
+/// Keyframes for [`EffectClip<T>`] let app and control code author animations
+/// in the property or presentation-slot value's own Rust type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EffectKeyframe<T = PresentationValue> {
     offset: TimerDuration,
-    value: PresentationValue,
+    value: T,
 }
 
-impl EffectKeyframe {
+impl<T> EffectKeyframe<T> {
     /// Creates a keyframe at `offset` relative to clip start.
     #[must_use]
-    pub const fn new(offset: TimerDuration, value: PresentationValue) -> Self {
+    pub const fn new(offset: TimerDuration, value: T) -> Self {
         Self { offset, value }
     }
 
     /// Returns the offset relative to clip start.
     #[must_use]
-    pub const fn offset(self) -> TimerDuration {
+    pub const fn offset(&self) -> TimerDuration {
         self.offset
     }
 
     /// Returns the keyframe value.
     #[must_use]
-    pub const fn value(self) -> PresentationValue {
-        self.value
+    pub const fn value(&self) -> &T {
+        &self.value
     }
 }
 
-/// Finite keyframed presentation effect.
+/// Keyframed effect over one target value.
 ///
-/// Effects are for semantic feedback where there is no lasting target value to
-/// retain, such as a short denied-action nudge. They are authored as style data
-/// and sampled by the timeline runtime.
+/// Effects can be authored as style-triggered feedback, such as a short
+/// denied-action nudge, or started explicitly through
+/// [`Ui::animate_target`](crate::Ui::animate_target). Keyframe offsets describe
+/// one effect iteration; [`AnimationTiming`] controls playback duration, delay,
+/// fill, direction, iteration count, and easing.
+///
+/// Use `EffectClip<T>` with an [`AnimationTarget<T>`] when the value type is
+/// known. Plain `EffectClip` is the lower-level form whose keyframes contain
+/// [`PresentationValue`] directly.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EffectClip {
-    keyframes: Vec<EffectKeyframe>,
-    kind: PresentationValueKind,
+pub struct EffectClip<T = PresentationValue> {
+    keyframes: Vec<EffectKeyframe<T>>,
+    timing: AnimationTiming,
+    composite: CompositeOperation,
 }
 
-impl EffectClip {
+impl<T> EffectClip<T> {
     /// Builds a clip from keyframes.
     ///
-    /// The first keyframe supplies the sample before its timestamp. All
-    /// keyframes must carry the same presentation value kind.
+    /// The first keyframe supplies the sample before its timestamp. The
+    /// default timing uses the last keyframe offset as one linear iteration and
+    /// fills forwards, matching the original finite feedback behavior. Use
+    /// [`Self::with_timing`] to repeat, delay, reverse, or retime the same
+    /// keyframe curve.
     #[must_use]
-    pub fn from_keyframes(keyframes: impl IntoIterator<Item = EffectKeyframe>) -> Self {
+    pub fn from_keyframes(keyframes: impl IntoIterator<Item = EffectKeyframe<T>>) -> Self {
         let mut keyframes: Vec<_> = keyframes.into_iter().collect();
         keyframes.sort_by_key(|keyframe| keyframe.offset);
         assert!(
             !keyframes.is_empty(),
             "effect clips require at least one keyframe"
         );
-        let kind = keyframes[0].value.kind();
-        debug_assert!(
-            keyframes
-                .iter()
-                .all(|keyframe| keyframe.value.kind() == kind),
-            "effect clip keyframes must use one value kind"
-        );
-        Self { keyframes, kind }
+        let duration = keyframe_duration(&keyframes);
+        Self {
+            keyframes,
+            timing: AnimationTiming {
+                duration,
+                fill: FillMode::Forwards,
+                ..AnimationTiming::new(duration)
+            },
+            composite: CompositeOperation::Replace,
+        }
+    }
+
+    /// Sets the playback timing for this clip.
+    #[must_use]
+    pub fn with_timing(mut self, timing: AnimationTiming) -> Self {
+        self.timing = timing;
+        self
+    }
+
+    /// Returns the playback timing for this clip.
+    #[must_use]
+    pub const fn timing(&self) -> AnimationTiming {
+        self.timing
+    }
+
+    /// Sets how this clip combines with the value beneath it in the target
+    /// stack.
+    ///
+    /// Unsupported additive or accumulative combinations are ignored by the
+    /// stack sampler, matching [`understory_animation`] composition semantics.
+    #[must_use]
+    pub fn with_composite(mut self, composite: CompositeOperation) -> Self {
+        self.composite = composite;
+        self
+    }
+
+    /// Returns how this clip combines with the value beneath it.
+    #[must_use]
+    pub const fn composite(&self) -> CompositeOperation {
+        self.composite
     }
 
     /// Returns the keyframes in sorted order.
     #[must_use]
-    pub fn keyframes(&self) -> &[EffectKeyframe] {
+    pub fn keyframes(&self) -> &[EffectKeyframe<T>] {
         &self.keyframes
     }
 
-    pub(crate) const fn value_kind(&self) -> PresentationValueKind {
-        self.kind
+    pub(crate) fn into_presentation_values(self) -> EffectClip
+    where
+        T: PresentationAnimationValue,
+    {
+        EffectClip::from_keyframes(self.keyframes.into_iter().map(|keyframe| {
+            EffectKeyframe::new(keyframe.offset, keyframe.value.into_presentation_value())
+        }))
+        .with_timing(self.timing)
+        .with_composite(self.composite)
     }
 
-    pub(crate) fn sample(&self, elapsed: TimerDuration) -> PresentationValue {
-        let first = self.keyframes[0];
-        if elapsed <= first.offset {
-            return first.value;
-        }
-        for pair in self.keyframes.windows(2) {
-            let from = pair[0];
-            let to = pair[1];
-            if elapsed <= to.offset {
-                let span = to.offset.saturating_sub(from.offset);
-                let progress = duration_progress(elapsed.saturating_sub(from.offset), span);
-                return interpolate_presentation_value(from.value, to.value, progress);
-            }
-        }
-        self.keyframes
-            .last()
-            .map(|keyframe| keyframe.value)
-            .unwrap_or(first.value)
+    pub(crate) fn into_stack_effect(self) -> StackEffect<T>
+    where
+        T: Animatable,
+    {
+        let duration = keyframe_duration(&self.keyframes);
+        let keyframes = self
+            .keyframes
+            .into_iter()
+            .map(|keyframe| {
+                Keyframe::new(
+                    normalized_keyframe_offset(keyframe.offset, duration),
+                    keyframe.value,
+                )
+            })
+            .collect();
+        StackEffect::new(
+            KeyframeEffect::new(keyframes).with_composite(self.composite),
+            self.timing,
+        )
     }
 
-    pub(crate) fn duration(&self) -> TimerDuration {
-        self.keyframes
-            .last()
-            .map(|keyframe| keyframe.offset)
-            .unwrap_or(0)
+    pub(crate) fn keyframe_duration(&self) -> TimerDuration {
+        keyframe_duration(&self.keyframes)
+    }
+}
+
+impl EffectClip<PresentationValue> {
+    pub(crate) fn value_kind(&self) -> PresentationValueKind {
+        let kind = self.keyframes[0].value.kind();
+        debug_assert!(
+            self.keyframes
+                .iter()
+                .all(|keyframe| keyframe.value.kind() == kind),
+            "presentation-value effect keyframes must use one value kind"
+        );
+        kind
     }
 }
 
@@ -738,6 +718,10 @@ pub struct EffectRule {
 
 impl EffectRule {
     /// Creates an effect rule for `trigger`, `target`, and `clip`.
+    ///
+    /// Prefer [`Self::for_target`] or [`Self::property`] when the target value
+    /// type is known. This constructor is for lower-level code that already has
+    /// keyframes in [`PresentationValue`] form.
     #[must_use]
     pub fn new(trigger: EffectTriggerId, target: PresentationTarget, clip: EffectClip) -> Self {
         Self {
@@ -745,6 +729,39 @@ impl EffectRule {
             target,
             clip,
         }
+    }
+
+    /// Creates an effect rule for an animation target with a concrete value type.
+    ///
+    /// This is the preferred constructor when the effect target's value type is
+    /// known at the call site. The clip values are authored as `T`, then
+    /// lowered once for storage in the style rule.
+    #[must_use]
+    pub fn for_target<T>(
+        trigger: EffectTriggerId,
+        target: AnimationTarget<T>,
+        clip: EffectClip<T>,
+    ) -> Self
+    where
+        T: PresentationAnimationValue,
+    {
+        Self::new(
+            trigger,
+            target.presentation_target(),
+            clip.into_presentation_values(),
+        )
+    }
+
+    /// Creates an effect rule for a dependency property with a concrete value type.
+    ///
+    /// This convenience constructor is equivalent to passing
+    /// [`AnimationTarget::property`] to [`Self::for_target`].
+    #[must_use]
+    pub fn property<T>(trigger: EffectTriggerId, property: Property<T>, clip: EffectClip<T>) -> Self
+    where
+        T: PresentationAnimationValue,
+    {
+        Self::for_target(trigger, AnimationTarget::property(property), clip)
     }
 
     /// Returns the trigger this rule responds to.
@@ -766,7 +783,7 @@ impl EffectRule {
     }
 }
 
-/// Target-local style value containing one-shot effect rules for one element.
+/// Target-local style value containing effect rules for one element.
 ///
 /// The cascade can attach different rule lists to different elements with
 /// ordinary selectors. The trigger source is deliberately not modeled here:
@@ -928,311 +945,27 @@ impl From<TransitionRule> for TransitionRules {
     }
 }
 
-/// A single-value transition clip.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Transition<T: Animatable> {
-    from: T,
-    to: T,
-    started_at: TimerInstant,
-    duration: TimerDuration,
-    timing: TimingFunction,
+fn keyframe_duration<T>(keyframes: &[EffectKeyframe<T>]) -> TimerDuration {
+    keyframes
+        .last()
+        .map(|keyframe| keyframe.offset)
+        .unwrap_or(0)
 }
 
-impl<T: Animatable> Transition<T> {
-    /// Creates a transition from `from` to `to`.
-    #[must_use]
-    pub const fn new(
-        from: T,
-        to: T,
-        started_at: TimerInstant,
-        duration: TimerDuration,
-        timing: TimingFunction,
-    ) -> Self {
-        Self {
-            from,
-            to,
-            started_at,
-            duration,
-            timing,
-        }
-    }
-
-    /// Returns the transition start value.
-    #[must_use]
-    pub const fn from(&self) -> T {
-        self.from
-    }
-
-    /// Returns the transition target value.
-    #[must_use]
-    pub const fn to(&self) -> T {
-        self.to
-    }
-
-    /// Returns the transition start instant.
-    #[must_use]
-    pub const fn started_at(&self) -> TimerInstant {
-        self.started_at
-    }
-
-    /// Returns the transition duration.
-    #[must_use]
-    pub const fn duration(&self) -> TimerDuration {
-        self.duration
-    }
-
-    /// Returns the timing function.
-    #[must_use]
-    pub const fn timing(&self) -> TimingFunction {
-        self.timing
-    }
-
-    /// Samples this transition at `now`.
-    #[must_use]
-    pub fn sample(self, now: TimerInstant) -> T {
-        let t = self
-            .timing
-            .sample(normalized_progress(now, self.started_at, self.duration));
-        self.from.interpolate(self.to, t)
-    }
-
-    /// Returns whether this transition has reached its target by `now`.
-    #[must_use]
-    pub fn is_complete(self, now: TimerInstant) -> bool {
-        now.saturating_sub(self.started_at) >= self.duration
-    }
-
-    /// Returns the instant this transition reaches its target.
-    #[must_use]
-    pub fn end_time(self) -> TimerInstant {
-        self.started_at.saturating_add(self.duration)
-    }
-}
-
-/// A color transition clip with explicit interpolation policy.
-#[derive(Clone, Copy)]
-pub struct ColorTransition {
-    from: Color,
-    to: Color,
-    started_at: TimerInstant,
-    duration: TimerDuration,
-    timing: TimingFunction,
-    interpolation: ColorInterpolation,
-    ramp: ColorRamp,
-}
-
-impl ColorTransition {
-    /// Creates a color transition.
-    #[must_use]
-    pub fn new(
-        from: Color,
-        to: Color,
-        started_at: TimerInstant,
-        duration: TimerDuration,
-        timing: TimingFunction,
-        interpolation: ColorInterpolation,
-    ) -> Self {
-        Self {
-            from,
-            to,
-            started_at,
-            duration,
-            timing,
-            interpolation,
-            ramp: ColorRamp::new(from, to, interpolation),
-        }
-    }
-
-    /// Returns the transition start color.
-    #[must_use]
-    pub const fn from(&self) -> Color {
-        self.from
-    }
-
-    /// Returns the transition target color.
-    #[must_use]
-    pub const fn to(&self) -> Color {
-        self.to
-    }
-
-    /// Returns the transition start instant.
-    #[must_use]
-    pub const fn started_at(&self) -> TimerInstant {
-        self.started_at
-    }
-
-    /// Returns the transition duration.
-    #[must_use]
-    pub const fn duration(&self) -> TimerDuration {
-        self.duration
-    }
-
-    /// Returns the timing function.
-    #[must_use]
-    pub const fn timing(&self) -> TimingFunction {
-        self.timing
-    }
-
-    /// Returns the color interpolation policy.
-    #[must_use]
-    pub const fn interpolation(&self) -> ColorInterpolation {
-        self.interpolation
-    }
-
-    /// Samples this color transition at `now`.
-    #[must_use]
-    pub fn sample(self, now: TimerInstant) -> Color {
-        self.ramp.sample(self.timing.sample(normalized_progress(
-            now,
-            self.started_at,
-            self.duration,
-        )))
-    }
-
-    /// Returns whether this transition has reached its target by `now`.
-    #[must_use]
-    pub fn is_complete(self, now: TimerInstant) -> bool {
-        now.saturating_sub(self.started_at) >= self.duration
-    }
-
-    /// Returns the instant this transition reaches its target.
-    #[must_use]
-    pub fn end_time(self) -> TimerInstant {
-        self.started_at.saturating_add(self.duration)
-    }
-}
-
-impl fmt::Debug for ColorTransition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ColorTransition")
-            .field("from", &self.from)
-            .field("to", &self.to)
-            .field("started_at", &self.started_at)
-            .field("duration", &self.duration)
-            .field("timing", &self.timing)
-            .field("interpolation", &self.interpolation)
-            .finish_non_exhaustive()
-    }
-}
-
-impl PartialEq for ColorTransition {
-    fn eq(&self, other: &Self) -> bool {
-        self.from == other.from
-            && self.to == other.to
-            && self.started_at == other.started_at
-            && self.duration == other.duration
-            && self.timing == other.timing
-            && self.interpolation == other.interpolation
-    }
-}
-
-fn interpolate_presentation_value(
-    from: PresentationValue,
-    to: PresentationValue,
-    progress: f64,
-) -> PresentationValue {
-    match (from, to) {
-        (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
-            PresentationValue::Scalar32(from.interpolate(to, progress))
-        }
-        (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
-            PresentationValue::Scalar64(from.interpolate(to, progress))
-        }
-        (PresentationValue::Color(from), PresentationValue::Color(to)) => PresentationValue::Color(
-            ColorTransition::new(
-                from,
-                to,
-                0,
-                1_000_000,
-                TimingFunction::LINEAR,
-                ColorInterpolation::SRGB,
-            )
-            .sample(progress_timer_instant(progress)),
-        ),
-        (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
-            PresentationValue::Offset2d(from.interpolate(to, progress))
-        }
-        _ => to,
-    }
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "effect progress is clamped to 0..=1 before conversion to the fixed sample span"
-)]
-fn progress_timer_instant(progress: f64) -> TimerInstant {
-    (progress.clamp(0.0, 1.0) * 1_000_000.0).round() as TimerInstant
-}
-
-#[derive(Clone, Copy)]
-enum ColorRamp {
-    Premultiplied(color::Interpolator),
-    Unpremultiplied(color::UnpremultipliedInterpolator),
-}
-
-impl ColorRamp {
-    fn new(from: Color, to: Color, interpolation: ColorInterpolation) -> Self {
-        let from = DynamicColor::from_alpha_color(from);
-        let to = DynamicColor::from_alpha_color(to);
-        match interpolation.alpha_space() {
-            InterpolationAlphaSpace::Premultiplied => Self::Premultiplied(from.interpolate(
-                to,
-                interpolation.color_space(),
-                interpolation.hue_direction(),
-            )),
-            InterpolationAlphaSpace::Unpremultiplied => {
-                Self::Unpremultiplied(from.interpolate_unpremultiplied(
-                    to,
-                    interpolation.color_space(),
-                    interpolation.hue_direction(),
-                ))
-            }
-        }
-    }
-
-    fn sample(self, t: f64) -> Color {
-        let t = f32_progress(t);
-        match self {
-            Self::Premultiplied(ramp) => ramp.eval(t),
-            Self::Unpremultiplied(ramp) => ramp.eval(t),
-        }
-        .to_alpha_color::<Srgb>()
-    }
-}
-
-/// Returns normalized progress through a duration.
-#[must_use]
-pub fn normalized_progress(
-    now: TimerInstant,
-    started_at: TimerInstant,
-    duration: TimerDuration,
-) -> f64 {
+fn normalized_keyframe_offset(offset: TimerDuration, duration: TimerDuration) -> f64 {
     if duration == 0 {
-        return 1.0;
-    }
-    let elapsed = now.saturating_sub(started_at);
-    duration_progress(elapsed, duration)
-}
-
-fn duration_progress(elapsed: TimerDuration, duration: TimerDuration) -> f64 {
-    if duration == 0 || elapsed >= duration {
-        1.0
+        0.0
     } else {
-        elapsed as f64 / duration as f64
+        offset as f64 / duration as f64
     }
-}
-
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "color ramps and f32-valued properties require f32 progress"
-)]
-fn f32_progress(progress: f64) -> f32 {
-    progress as f32
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::String;
+    use peniko::InterpolationAlphaSpace;
+    use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
 
     #[test]
     fn timing_function_samples_expected_shape() {
@@ -1242,6 +975,35 @@ mod tests {
         assert_eq!(TimingFunction::LINEAR.sample(0.5), 0.5);
         assert!(slow_start.sample(0.5) < 0.5);
         assert!(slow_finish.sample(0.5) > 0.5);
+    }
+
+    #[test]
+    fn typed_effect_clip_keeps_domain_values_until_erased() {
+        #[derive(Clone, Debug, PartialEq)]
+        struct DomainValue {
+            label: String,
+        }
+
+        let clip = EffectClip::from_keyframes([
+            EffectKeyframe::new(
+                100,
+                DomainValue {
+                    label: String::from("end"),
+                },
+            ),
+            EffectKeyframe::new(
+                0,
+                DomainValue {
+                    label: String::from("start"),
+                },
+            ),
+        ]);
+
+        assert_eq!(clip.timing().duration, 100);
+        assert_eq!(clip.keyframes()[0].offset(), 0);
+        assert_eq!(clip.keyframes()[0].value().label, "start");
+        assert_eq!(clip.keyframes()[1].offset(), 100);
+        assert_eq!(clip.keyframes()[1].value().label, "end");
     }
 
     #[test]

@@ -194,7 +194,7 @@ pub struct BuiltInProperties {
     /// output targets. Default empty, which snaps target changes.
     pub transitions: Property<TransitionRules>,
 
-    /// Style-authored one-shot effect rules for semantic control events.
+    /// Style-authored effect rules for semantic control events.
     /// Default empty, which ignores effect triggers.
     pub effects: Property<EffectRules>,
 
