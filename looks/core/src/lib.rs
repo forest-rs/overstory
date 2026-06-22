@@ -3,15 +3,19 @@
 
 //! # Overstory Look
 //!
-//! The shared harness behind the `overstory_look_*` looks. It holds the two
-//! pieces every look reuses regardless of its visual language:
+//! The shared harness behind the `overstory_look_*` looks. It holds the pieces
+//! every look reuses regardless of its visual language:
 //!
 //! - [`color`] — small sRGB color math (blend, lighten, darken, alpha) for
 //!   deriving ramps and shades from seed colors.
-//! - [`design_md`] — a minimal Markdown token-table reader and hex-color parser,
-//!   so each look can keep its palette in a human-editable `DESIGN.md`.
+//! - [`design_md`] — a reader for the Google Labs `DESIGN.md` token format
+//!   (YAML frontmatter), so each look keeps its palette in a human-editable
+//!   file.
+//! - [`class`] — shared chrome class names every look styles, so an app can
+//!   switch looks at runtime without rebuilding its tree.
 //!
 //! Each look layers its own token taxonomy, palette, theme, and cascade on top.
 
+pub mod class;
 pub mod color;
 pub mod design_md;

@@ -76,22 +76,15 @@ pub const RES_MOTION_OVERSHOOT_EASING: &str = "signature.motion.overshoot.easing
 /// Slower duration for emphasized glow/elevation motion.
 pub const RES_MOTION_GLOW_DURATION: &str = "signature.motion.glow.duration";
 
-// --- Class role names ------------------------------------------------------
+// --- Class role names -------------------------------------------------------
+//
+// Chrome classes are shared across all looks (see `overstory_look::class`) so an
+// app can switch looks at runtime without rebuilding its tree.
 
-/// App root backdrop.
-pub const CLASS_ROOT: &str = ".sig-root";
-/// Flat surface region.
-pub const CLASS_SURFACE: &str = ".sig-surface";
-/// Raised panel.
-pub const CLASS_PANEL: &str = ".sig-panel";
-/// Card (subtle raise, used for grouped content).
-pub const CLASS_CARD: &str = ".sig-card";
-/// Display/heading text.
-pub const CLASS_HEADING: &str = ".sig-heading";
-/// Body text.
-pub const CLASS_BODY: &str = ".sig-body";
-/// Muted/caption text.
-pub const CLASS_CAPTION: &str = ".sig-caption";
+pub use overstory_look::class::{
+    BODY as CLASS_BODY, CAPTION as CLASS_CAPTION, CARD as CLASS_CARD, HEADING as CLASS_HEADING,
+    PANEL as CLASS_PANEL, ROOT as CLASS_ROOT, SURFACE as CLASS_SURFACE,
+};
 
 /// Resolved extended resource keys, handed out by the `Ui` vocabulary.
 #[derive(Clone, Copy, Debug)]

@@ -1,0 +1,20 @@
+[package]
+name = "overstory_look_gallery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A live gallery that switches between Overstory looks and schemes."
+publish = false
+
+[dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { default-features = false, features = ["winit-host"], workspace = true }
+overstory_look = { workspace = true }
+overstory_look_chicago = { workspace = true }
+overstory_look_signature = { workspace = true }
+overstory_look_system6 = { workspace = true }
+
+[lints]
+workspace = true

@@ -2328,11 +2328,22 @@ version = "0.0.1"
 dependencies = [
  "kurbo",
  "overstory",
- "overstory_app",
  "overstory_look",
  "peniko",
  "understory_style",
  "understory_timing",
+]
+
+[[package]]
+name = "overstory_look_gallery"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "overstory_app",
+ "overstory_look",
+ "overstory_look_chicago",
+ "overstory_look_signature",
+ "overstory_look_system6",
 ]
 
 [[package]]
@@ -2341,7 +2352,6 @@ version = "0.0.1"
 dependencies = [
  "kurbo",
  "overstory",
- "overstory_app",
  "overstory_look",
  "peniko",
  "understory_style",
@@ -2353,7 +2363,6 @@ name = "overstory_look_system6"
 version = "0.0.1"
 dependencies = [
  "overstory",
- "overstory_app",
  "overstory_look",
  "peniko",
  "understory_style",

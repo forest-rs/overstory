@@ -46,20 +46,12 @@ pub const RES_BEVEL_LIGHT: &str = "chicago.bevel.light";
 /// Bevel shadow edge (dark: bottom + right of a raised control).
 pub const RES_BEVEL_DARK: &str = "chicago.bevel.dark";
 
-/// App root backdrop.
-pub const CLASS_ROOT: &str = ".chi-root";
-/// Flat surface region.
-pub const CLASS_SURFACE: &str = ".chi-surface";
-/// Raised panel.
-pub const CLASS_PANEL: &str = ".chi-panel";
-/// Card (a raised group box).
-pub const CLASS_CARD: &str = ".chi-card";
-/// Heading text.
-pub const CLASS_HEADING: &str = ".chi-heading";
-/// Body text.
-pub const CLASS_BODY: &str = ".chi-body";
-/// Caption text.
-pub const CLASS_CAPTION: &str = ".chi-caption";
+// Chrome classes are shared across all looks (see `overstory_look::class`) so an
+// app can switch looks at runtime without rebuilding its tree.
+pub use overstory_look::class::{
+    BODY as CLASS_BODY, CAPTION as CLASS_CAPTION, CARD as CLASS_CARD, HEADING as CLASS_HEADING,
+    PANEL as CLASS_PANEL, ROOT as CLASS_ROOT, SURFACE as CLASS_SURFACE,
+};
 
 /// Resolved extended resource keys.
 #[derive(Clone, Copy, Debug)]

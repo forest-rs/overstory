@@ -44,20 +44,12 @@ pub const RES_INK: &str = "system6.ink";
 /// Pure surface paper (white on the classic scheme).
 pub const RES_PAPER: &str = "system6.paper";
 
-/// App root backdrop (the desktop).
-pub const CLASS_ROOT: &str = ".sys6-root";
-/// Flat surface region.
-pub const CLASS_SURFACE: &str = ".sys6-surface";
-/// A bordered panel.
-pub const CLASS_PANEL: &str = ".sys6-panel";
-/// A bordered dialog card.
-pub const CLASS_CARD: &str = ".sys6-card";
-/// Heading text.
-pub const CLASS_HEADING: &str = ".sys6-heading";
-/// Body text.
-pub const CLASS_BODY: &str = ".sys6-body";
-/// Caption text.
-pub const CLASS_CAPTION: &str = ".sys6-caption";
+// Chrome classes are shared across all looks (see `overstory_look::class`) so an
+// app can switch looks at runtime without rebuilding its tree.
+pub use overstory_look::class::{
+    BODY as CLASS_BODY, CAPTION as CLASS_CAPTION, CARD as CLASS_CARD, HEADING as CLASS_HEADING,
+    PANEL as CLASS_PANEL, ROOT as CLASS_ROOT, SURFACE as CLASS_SURFACE,
+};
 
 /// Resolved extended resource keys.
 #[derive(Clone, Copy, Debug)]

@@ -17,14 +17,8 @@ peniko.workspace = true
 kurbo.workspace = true
 
 [dev-dependencies]
-# Tests construct a `Ui` (gated behind `system-fonts`); the example also needs a host.
+# Tests construct a `Ui`, which is gated behind `system-fonts`.
 overstory = { features = ["system-fonts"], workspace = true }
-overstory_app = { default-features = false, features = ["winit-host"], workspace = true }
-
-# Distinct binary name so it doesn't collide with other looks' examples.
-[[example]]
-name = "signature_showcase"
-path = "examples/showcase.rs"
 
 [lints]
 workspace = true
