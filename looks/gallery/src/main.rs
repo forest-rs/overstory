@@ -143,7 +143,7 @@ fn build_ui() -> Ui {
                 card.with_child(
                     Panel::row(12.0).layout(Layout::row(12.0).align_center()),
                     |actions| {
-                        actions.add(Button::new("Primary"));
+                        actions.add(Button::new("Primary").class(class::PRIMARY));
                         actions.add(Button::new("Disabled").disabled());
                     },
                 );

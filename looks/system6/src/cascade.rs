@@ -14,9 +14,10 @@
 
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use overstory::{
-    Brush, BuiltInProperties, Color, PART_CHECK_BOX_BOX, PART_SLIDER_THUMB, PART_SLIDER_TRACK,
-    PART_TOGGLE_THUMB, SurfaceStyleExt, TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_GENERIC, TYPE_POPUP,
-    TYPE_SELECT, TYPE_SLIDER, TYPE_TEXT, TYPE_TEXT_INPUT, TYPE_TOGGLE, selectors,
+    Brush, BuiltInProperties, Color, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutJustify,
+    PART_CHECK_BOX_BOX, PART_SLIDER_THUMB, PART_SLIDER_TRACK, PART_TOGGLE_THUMB, SurfaceStyleExt,
+    TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_GENERIC, TYPE_POPUP, TYPE_SELECT, TYPE_SLIDER, TYPE_TEXT,
+    TYPE_TEXT_INPUT, TYPE_TOGGLE, selectors,
 };
 use understory_style::{
     ClassId, PseudoClassId, ResourceKey, Selector, SelectorStep, Style, StyleBuilder, StyleCascade,
@@ -30,6 +31,17 @@ use crate::tokens::{
 
 /// Rounded push-button radius; everything else is square.
 const RADIUS_BUTTON: f64 = 9.0;
+/// System 6 button content padding (overrides the framework's larger default).
+const BUTTON_PAD_X: f64 = 18.0;
+const BUTTON_PAD_Y: f64 = 8.0;
+/// Gap between the default button's outer ring and inner face.
+const BUTTON_RING_PAD: f64 = 3.0;
+/// Inner-face padding for the double-frame default button, sized so its outer
+/// box matches a regular button: a regular button insets content by
+/// `pad + 1` (border) per side; the double frame insets by
+/// `inner + 1 + ring + 1`, so `inner = pad - ring - 1`.
+const BUTTON_INNER_PAD_X: f64 = BUTTON_PAD_X - BUTTON_RING_PAD - 1.0;
+const BUTTON_INNER_PAD_Y: f64 = BUTTON_PAD_Y - BUTTON_RING_PAD - 1.0;
 
 fn transparent() -> Option<Brush> {
     Some(Brush::Solid(Color::TRANSPARENT))
@@ -45,6 +57,20 @@ fn type_state_sel(type_tag: TypeTag, pseudo: PseudoClassId) -> Selector {
 
 fn class_sel(class: ClassId) -> Selector {
     Selector::single(SelectorStep::type_tag(TYPE_GENERIC).with_class(class))
+}
+
+fn untyped_class_sel(class: ClassId) -> Selector {
+    Selector::single(SelectorStep::class(class))
+}
+
+fn type_class_sel(type_tag: TypeTag, class: ClassId) -> Selector {
+    Selector::single(SelectorStep::type_tag(type_tag).with_class(class))
+}
+
+fn centered() -> LayoutAlignment {
+    LayoutAlignment::new()
+        .align_items(LayoutAlign::Center)
+        .justify_content(LayoutJustify::Center)
 }
 
 fn text_class_sel(class: ClassId) -> Selector {
@@ -89,11 +115,16 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         .build();
 
     // Buttons: paper with a rounded ink frame; press inverts to ink/paper.
+    // Override the framework's large default padding so System 6 buttons are
+    // modest, and so the regular and primary (double-frame) buttons match in
+    // size (the primary's inner padding is sized to land at the same outer box;
+    // see `BUTTON_PAD_*`).
     let button_idle = StyleBuilder::new()
         .background_resource(properties, PANEL_BG)
         .border_brush_resource(properties, CONTROL_BORDER)
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, RADIUS_BUTTON)
+        .padding_xy(properties, BUTTON_PAD_X, BUTTON_PAD_Y)
         .set_resource(properties.foreground, ON_SURFACE_FG)
         .build();
     // No hover highlight in System 6 — neutralize the framework accent-on-hover.
@@ -148,6 +179,38 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
         )
         .build();
     let check_box_box = framed(properties, CONTROL_BG, 0.0);
+
+    // Default (primary) button: the classic Mac double border. A template swap
+    // (an outer ring around an inner face) — styling can't draw two concentric
+    // outlines with a gap. The button's own surface goes transparent so the
+    // outer/inner frames are the visible structure.
+    let button_primary = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(crate::templates::default_button()),
+        )
+        .background(properties, None::<Brush>)
+        .border_width(properties, 0.0_f64)
+        .padding_all(properties, 0.0)
+        .build();
+    let button_outer = StyleBuilder::new()
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, RADIUS_BUTTON + BUTTON_RING_PAD)
+        .padding_all(properties, BUTTON_RING_PAD)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_alignment, centered())
+        .build();
+    let button_inner = StyleBuilder::new()
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, RADIUS_BUTTON)
+        .padding_xy(properties, BUTTON_INNER_PAD_X, BUTTON_INNER_PAD_Y)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(properties.layout_container, LayoutContainer::row())
+        .set(properties.layout_alignment, centered())
+        .build();
 
     StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, class_sel(c.root), root)
@@ -207,6 +270,21 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
             StyleOrigin::Base,
             selectors::part(selectors::template_part(TYPE_CHECK_BOX, PART_CHECK_BOX_BOX)),
             check_box_box,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            type_class_sel(TYPE_BUTTON, c.primary),
+            button_primary,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_sel(c.default_button_outer),
+            button_outer,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            untyped_class_sel(c.default_button_inner),
+            button_inner,
         )
         .build()
 }

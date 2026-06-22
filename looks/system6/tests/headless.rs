@@ -3,7 +3,7 @@
 
 //! Headless assertions that the System 6 look resolves through the real cascade.
 
-use overstory::{Brush, Button, CheckBox, Ui};
+use overstory::{Brush, Button, CheckBox, ElementSpecExt, Ui};
 
 use overstory_look_system6::{Scheme, templates, theme, tokens};
 
@@ -82,6 +82,25 @@ fn checkbox_uses_the_look_authored_template() {
         resolved,
         Some(templates::check_box()),
         "the System 6 cascade should install its own checkbox template",
+    );
+}
+
+#[test]
+fn primary_button_uses_the_double_border_template() {
+    // A class-driven template swap: a `.primary` button gets System 6's
+    // double-frame default-button template (which styling alone can't produce).
+    let mut ui = Ui::new();
+    let _ = overstory_look_system6::install(&mut ui, Scheme::Light);
+    let root = ui.root();
+    let button = ui.append(root, Button::new("OK").class(tokens::CLASS_PRIMARY));
+
+    let resolved = ui
+        .resolved_value(button, ui.properties().control_template)
+        .flatten();
+    assert_eq!(
+        resolved,
+        Some(templates::default_button()),
+        "a primary button should get the System 6 double-border template",
     );
 }
 

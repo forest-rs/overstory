@@ -44,12 +44,19 @@ pub const RES_INK: &str = "system6.ink";
 /// Pure surface paper (white on the classic scheme).
 pub const RES_PAPER: &str = "system6.paper";
 
-// Chrome classes are shared across all looks (see `overstory_look::class`) so an
-// app can switch looks at runtime without rebuilding its tree.
+// Chrome classes (and the primary-action marker) are shared across all looks
+// (see `overstory_look::class`) so an app can switch looks at runtime without
+// rebuilding its tree.
 pub use overstory_look::class::{
     BODY as CLASS_BODY, CAPTION as CLASS_CAPTION, CARD as CLASS_CARD, HEADING as CLASS_HEADING,
-    PANEL as CLASS_PANEL, ROOT as CLASS_ROOT, SURFACE as CLASS_SURFACE,
+    PANEL as CLASS_PANEL, PRIMARY as CLASS_PRIMARY, ROOT as CLASS_ROOT, SURFACE as CLASS_SURFACE,
 };
+
+/// Outer ring of the default (primary) button's double border. A template-local
+/// class, styled by the cascade.
+pub const CLASS_DEFAULT_BUTTON_OUTER: &str = ".sys6-default-button-outer";
+/// Inner face of the default (primary) button's double border.
+pub const CLASS_DEFAULT_BUTTON_INNER: &str = ".sys6-default-button-inner";
 
 /// Resolved extended resource keys.
 #[derive(Clone, Copy, Debug)]
@@ -77,6 +84,12 @@ pub struct System6Classes {
     pub body: ClassId,
     /// See [`CLASS_CAPTION`].
     pub caption: ClassId,
+    /// See [`CLASS_PRIMARY`].
+    pub primary: ClassId,
+    /// See [`CLASS_DEFAULT_BUTTON_OUTER`].
+    pub default_button_outer: ClassId,
+    /// See [`CLASS_DEFAULT_BUTTON_INNER`].
+    pub default_button_inner: ClassId,
 }
 
 /// Everything System 6 resolves from the `Ui` vocabulary.
@@ -109,6 +122,9 @@ impl StyleTokenSet for System6Tokens {
                 heading: vocabulary.class_id(CLASS_HEADING),
                 body: vocabulary.class_id(CLASS_BODY),
                 caption: vocabulary.class_id(CLASS_CAPTION),
+                primary: vocabulary.class_id(CLASS_PRIMARY),
+                default_button_outer: vocabulary.class_id(CLASS_DEFAULT_BUTTON_OUTER),
+                default_button_inner: vocabulary.class_id(CLASS_DEFAULT_BUTTON_INNER),
             },
         }
     }

@@ -22,3 +22,7 @@ pub const HEADING: &str = ".look-heading";
 pub const BODY: &str = ".look-body";
 /// Muted / caption text.
 pub const CAPTION: &str = ".look-caption";
+
+/// Marks a primary / default action (e.g. the default button). Looks may give
+/// it special emphasis — System 6, for instance, draws a double border.
+pub const PRIMARY: &str = ".look-primary";
