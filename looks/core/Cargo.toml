@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 peniko.workspace = true
+yaml-rust2.workspace = true
 
 [lints]
 workspace = true

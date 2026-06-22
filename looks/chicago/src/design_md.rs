@@ -1,19 +1,19 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Loading Chicago [`Seeds`] from a `DESIGN.md` color table.
+//! Loading Chicago [`Seeds`] from a `DESIGN.md` file.
 //!
-//! Chicago uses the same lightweight Markdown token format as the other looks:
-//! a `## Colors` table mapping each role to a per-scheme hex color. (Motion is
-//! fixed — period UI did not animate — so there is no motion table.) The parser
-//! overlays whatever roles it finds onto the Rust defaults, so a partial file
-//! is fine.
+//! Uses the shared [Google Labs DESIGN.md][spec] reader in
+//! [`overstory_look::design_md`]: YAML frontmatter `colors` tokens (each a
+//! `{ light, dark }` map) map onto Chicago's [`Seeds`]. Motion is fixed, so
+//! there is no motion block.
+//!
+//! [spec]: https://github.com/google-labs-code/design.md
 
-use core::fmt;
-
-use overstory_look::design_md::{parse_hex_color, table_rows};
-use peniko::Color;
+use overstory_look::design_md::parse;
 use understory_style::Theme;
+
+pub use overstory_look::design_md::DesignError;
 
 use crate::palette::{Seeds, seeds_for};
 use crate::theme::theme_from_seeds;
@@ -22,54 +22,49 @@ use crate::tokens::{ResolvedTokens, Scheme};
 /// The crate's bundled `DESIGN.md`.
 pub const DEFAULT: &str = include_str!("../DESIGN.md");
 
-/// A failure parsing a `DESIGN.md` color table.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DesignError {
-    /// A color cell was not a valid `#rrggbb` / `#rrggbbaa` hex string.
-    BadColor {
-        /// The role whose color failed to parse.
-        role: String,
-        /// The offending cell text.
-        value: String,
-    },
-}
-
-impl fmt::Display for DesignError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self::BadColor { role, value } = self;
-        write!(f, "invalid color for role `{role}`: {value:?}")
+fn scheme_key(scheme: Scheme) -> &'static str {
+    match scheme {
+        Scheme::Light => "light",
+        Scheme::Dark => "dark",
     }
 }
 
-impl std::error::Error for DesignError {}
-
-/// Parses `src` and returns the [`Seeds`] for `scheme`, overlaying any roles the
-/// file defines onto the defaults.
+/// Parses `src` and returns the [`Seeds`] for `scheme`, overlaying any tokens
+/// the file defines onto the defaults.
 ///
 /// # Errors
 ///
-/// Returns [`DesignError`] if a color cell is present but malformed.
+/// Returns [`DesignError`] if the frontmatter is missing/invalid or a color
+/// value is malformed.
 pub fn seeds(src: &str, scheme: Scheme) -> Result<Seeds, DesignError> {
-    let mut seeds = seeds_for(scheme);
-    // Colors table columns are `light | dark`.
-    let index = match scheme {
-        Scheme::Light => 0,
-        Scheme::Dark => 1,
-    };
-    for row in table_rows(src) {
-        if !row.section.starts_with("color") {
-            continue;
-        }
-        let Some(cell) = row.cells.get(index).copied().filter(|c| !c.is_empty()) else {
-            continue;
-        };
-        let color = parse_hex_color(cell).ok_or_else(|| DesignError::BadColor {
-            role: row.key.to_string(),
-            value: cell.to_string(),
-        })?;
-        apply_color(&mut seeds, row.key, color);
+    let doc = parse(src)?;
+    let key = scheme_key(scheme);
+    let mut s = seeds_for(scheme);
+    if let Some(c) = doc.color("face", key) {
+        s.face = c;
     }
-    Ok(seeds)
+    if let Some(c) = doc.color("window", key) {
+        s.window = c;
+    }
+    if let Some(c) = doc.color("bevel-light", key) {
+        s.bevel_light = c;
+    }
+    if let Some(c) = doc.color("bevel-dark", key) {
+        s.bevel_dark = c;
+    }
+    if let Some(c) = doc.color("accent", key) {
+        s.accent = c;
+    }
+    if let Some(c) = doc.color("text", key) {
+        s.text = c;
+    }
+    if let Some(c) = doc.color("muted", key) {
+        s.muted = c;
+    }
+    if let Some(c) = doc.color("on-accent", key) {
+        s.on_accent = c;
+    }
+    Ok(s)
 }
 
 /// Builds a Chicago [`Theme`] for `scheme` from a `DESIGN.md` source.
@@ -85,20 +80,6 @@ pub fn theme_from_design_md(
     Ok(theme_from_seeds(scheme, &seeds(src, scheme)?, tokens))
 }
 
-fn apply_color(seeds: &mut Seeds, role: &str, color: Color) {
-    match role {
-        "face" => seeds.face = color,
-        "window" => seeds.window = color,
-        "bevel-light" => seeds.bevel_light = color,
-        "bevel-dark" => seeds.bevel_dark = color,
-        "accent" => seeds.accent = color,
-        "text" => seeds.text = color,
-        "muted" => seeds.muted = color,
-        "on-accent" => seeds.on_accent = color,
-        _ => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,7 +90,7 @@ mod tests {
         assert_eq!(
             seeds(DEFAULT, Scheme::Light).expect("DESIGN.md parses"),
             classic_seeds(),
-            "DESIGN.md light column drifted from palette::classic_seeds()"
+            "DESIGN.md light tokens drifted from palette::classic_seeds()"
         );
     }
 
@@ -118,16 +99,16 @@ mod tests {
         assert_eq!(
             seeds(DEFAULT, Scheme::Dark).expect("DESIGN.md parses"),
             dark_chrome_seeds(),
-            "DESIGN.md dark column drifted from palette::dark_chrome_seeds()"
+            "DESIGN.md dark tokens drifted from palette::dark_chrome_seeds()"
         );
     }
 
     #[test]
     fn bad_color_is_an_error() {
-        let src = "## Colors\n| role | light | dark |\n| face | nope | #000000 |\n";
+        let src = "---\ncolors:\n  face: \"nope\"\n---\n";
         assert!(matches!(
-            seeds(src, Scheme::Light).unwrap_err(),
-            DesignError::BadColor { .. }
+            seeds(src, Scheme::Light),
+            Err(DesignError::BadColor { .. })
         ));
     }
 }

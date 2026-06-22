@@ -1,27 +1,43 @@
-# Chicago — Design Tokens
+---
+name: Chicago
+description: A flat, beveled, square-cornered retro look for Overstory.
+colors:
+  face: { light: "#c0c0c0", dark: "#3a3a3a" }
+  window: { light: "#ffffff", dark: "#1e1e1e" }
+  bevel-light: { light: "#ffffff", dark: "#6a6a6a" }
+  bevel-dark: { light: "#808080", dark: "#000000" }
+  accent: { light: "#000080", dark: "#283a8c" }
+  text: { light: "#000000", dark: "#f0f0f0" }
+  muted: { light: "#808080", dark: "#a0a0a0" }
+  on-accent: "#ffffff"
+rounded:
+  none: 0px
+---
 
-Source of truth for the Chicago palette — a flat, beveled, square-cornered
-homage to the mid-90s desktop. Parsed by `overstory_look_chicago::design_md`
-into [`Seeds`]; the Rust defaults in `palette.rs` mirror this table, and a test
-fails if they drift.
+# Chicago
 
-There is no motion table: period UI did not animate, so Chicago's durations are
-fixed at zero.
+A flat, beveled, square-cornered homage to the mid-90s desktop. Follows the
+[Google Labs DESIGN.md format](https://github.com/google-labs-code/design.md):
+the YAML frontmatter is the machine-readable source of truth.
+
+Per the per-scheme extension, each color is a `{ light, dark }` map (`light` is
+the classic gray chrome; `dark` is a darker variant). There is no motion block —
+period UI did not animate. The Rust defaults in `palette.rs` mirror this
+frontmatter; a test fails if they drift.
+
+## Overview
+
+Extruded 3D bevels from a fixed system palette: a `#c0c0c0` face, white
+highlight, gray shadow, navy selection. Nothing is derived — the period look is
+hand-set system colors painted flat.
 
 ## Colors
 
-Hex is `#rrggbb` or `#rrggbbaa`. `light` is the classic gray chrome; `dark` is a
-darker variant.
+`face` is the control/dialog fill; `window` is the editable (text field) fill.
+`bevel-light` and `bevel-dark` are the two 3D edges (light top/left, dark
+bottom/right; inverted when a button is pressed). `accent` is the selection and
+"on" color; `text`/`muted` are foregrounds.
 
-| role        | light     | dark      |
-| ----------- | --------- | --------- |
-| face        | #c0c0c0   | #3a3a3a   |
-| window      | #ffffff   | #1e1e1e   |
-| bevel-light | #ffffff   | #6a6a6a   |
-| bevel-dark  | #808080   | #000000   |
-| accent      | #000080   | #283a8c   |
-| text        | #000000   | #f0f0f0   |
-| muted       | #808080   | #a0a0a0   |
-| on-accent   | #ffffff   | #ffffff   |
+## Layout
 
-[`Seeds`]: https://docs.rs/overstory_look_chicago/latest/overstory_look_chicago/palette/struct.Seeds.html
+Square corners throughout (`rounded.none`).

@@ -1,24 +1,39 @@
-# System 6 — Design Tokens
+---
+name: System 6
+description: A 1-bit black-and-white classic Mac look for Overstory.
+colors:
+  ink: { light: "#000000", dark: "#ffffff" }
+  paper: { light: "#ffffff", dark: "#101010" }
+  desktop: { light: "#a0a0a0", dark: "#303030" }
+  muted: { light: "#808080", dark: "#909090" }
+rounded:
+  button: 9px
+  none: 0px
+---
 
-Source of truth for the System 6 palette — a 1-bit black-and-white classic Mac
-look. Parsed by `overstory_look_system6::design_md` into [`Seeds`]; the Rust
-defaults in `palette.rs` mirror this table, and a test fails if they drift.
+# System 6
 
-A true 1-bit world is just ink and paper. `desktop` and `muted` are pragmatic
-grays standing in for things the original faked with 50% dither (the desktop
-stipple and disabled text); a real stipple would need a pattern brush the
-toolkit doesn't expose yet. There is no motion table — System 6 did not animate.
+A 1-bit black-and-white classic Mac look. Follows the
+[Google Labs DESIGN.md format](https://github.com/google-labs-code/design.md):
+the YAML frontmatter is the machine-readable source of truth.
+
+Per the per-scheme extension, each color is a `{ light, dark }` map (`light` is
+the classic black-on-white desktop; `dark` is an inverted night variant). There
+is no motion block — System 6 did not animate. The Rust defaults in `palette.rs`
+mirror this frontmatter; a test fails if they drift.
+
+## Overview
+
+A two-color world: `ink` and `paper`. `desktop` and `muted` are pragmatic grays
+standing in for things the original faked with a 50% dither (the desktop stipple
+and disabled text) — a true stipple would need a pattern brush the toolkit
+doesn't expose yet.
 
 ## Colors
 
-Hex is `#rrggbb` or `#rrggbbaa`. `light` is the classic black-on-white desktop;
-`dark` is an inverted "night" variant.
+`ink` is every line and label; `paper` is every surface. Selection and the
+pressed-button inversion use ink-on-paper flipped to paper-on-ink.
 
-| role    | light     | dark      |
-| ------- | --------- | --------- |
-| ink     | #000000   | #ffffff   |
-| paper   | #ffffff   | #101010   |
-| desktop | #a0a0a0   | #303030   |
-| muted   | #808080   | #909090   |
+## Layout
 
-[`Seeds`]: https://docs.rs/overstory_look_system6/latest/overstory_look_system6/palette/struct.Seeds.html
+Rounded push buttons (`rounded.button`); everything else square (`rounded.none`).

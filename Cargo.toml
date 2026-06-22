@@ -96,6 +96,10 @@ ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "8
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }
 
+# DESIGN.md token parsing (looks). `default-features = false` drops the
+# `encoding` feature (and the heavy `encoding_rs` dep); we only parse UTF-8 `&str`.
+yaml-rust2 = { default-features = false, version = "0.11.0" }
+
 # Layout engine.
 taffy = { default-features = false, features = [
     "block_layout",
