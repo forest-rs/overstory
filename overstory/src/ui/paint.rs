@@ -72,13 +72,37 @@ fn lower_path_stroke<S: imaging::PaintSink + ?Sized>(
 fn fill_contour<S: imaging::PaintSink + ?Sized>(
     contour: BoxContour,
     brush: &Brush,
+    brush_transform: Option<Affine>,
     painter: &mut imaging::Painter<'_, S>,
 ) {
     if let Some(rounded) = contour.rounded_rect() {
-        painter.fill(rounded, brush).draw();
+        painter
+            .fill(rounded, brush)
+            .brush_transform(brush_transform)
+            .draw();
     } else {
         let path = contour.to_path();
-        painter.fill(&path, brush).draw();
+        painter
+            .fill(&path, brush)
+            .brush_transform(brush_transform)
+            .draw();
+    }
+}
+
+/// Surface gradient and image background brushes are authored in the unit
+/// square `[0, 1]²`; this maps that square onto the element bounds so one brush
+/// fits any control size. Solid brushes need no transform.
+///
+/// This is the static form of bounds-fitted brushes; making the transform an
+/// explicit, animatable value is tracked as a follow-up (see the
+/// `overstory_look_signature` GAPS log).
+fn bounds_fitted_brush_transform(brush: &Brush, bounds: Rect) -> Option<Affine> {
+    match brush {
+        Brush::Gradient(_) | Brush::Image(_) => Some(
+            Affine::translate((bounds.x0, bounds.y0))
+                * Affine::scale_non_uniform(bounds.width(), bounds.height()),
+        ),
+        _ => None,
     }
 }
 
@@ -141,7 +165,13 @@ fn lower_presentation(
             Primitive::Surface(surface) => {
                 let geometry = surface.decoration_geometry(bounds);
                 for layer in &surface.backgrounds {
-                    fill_contour(geometry.border_edge, &layer.brush, &mut painter);
+                    let brush_transform = bounds_fitted_brush_transform(&layer.brush, bounds);
+                    fill_contour(
+                        geometry.border_edge,
+                        &layer.brush,
+                        brush_transform,
+                        &mut painter,
+                    );
                 }
                 lower_surface_border(surface, geometry, &mut painter);
                 // Shadow lowering — TODO when controls need it.
