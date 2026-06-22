@@ -5,6 +5,7 @@ members = [
     "looks/chicago",
     "looks/core",
     "looks/signature",
+    "looks/system6",
     "overstory",
     "overstory_app",
     "overstory_demo",

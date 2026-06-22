@@ -2333,6 +2333,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_look_system6"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "overstory_app",
+ "overstory_look",
+ "peniko",
+ "understory_style",
+ "understory_timing",
+]
+
+[[package]]
 name = "overstory_node_graph_demo"
 version = "0.0.1"
 dependencies = [
