@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/sightline",
     "looks/chicago",
+    "looks/core",
     "looks/signature",
     "overstory",
     "overstory_app",
@@ -30,6 +31,7 @@ repository = "https://github.com/forest-rs/overstory"
 # Overstory workspace crates.
 overstory = { default-features = false, path = "overstory", version = "0.0.1" }
 overstory_app = { default-features = false, path = "overstory_app", version = "0.0.1" }
+overstory_look = { path = "looks/core", version = "0.0.1" }
 overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }

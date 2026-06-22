@@ -11,6 +11,7 @@
 
 use core::fmt;
 
+use overstory_look::design_md::{parse_hex_color, table_rows};
 use peniko::Color;
 use understory_style::Theme;
 
@@ -50,19 +51,23 @@ impl std::error::Error for DesignError {}
 /// Returns [`DesignError`] if a color cell is present but malformed.
 pub fn seeds(src: &str, scheme: Scheme) -> Result<Seeds, DesignError> {
     let mut seeds = seeds_for(scheme);
-    for (role, cells) in color_rows(src) {
-        let index = match scheme {
-            Scheme::Light => 0,
-            Scheme::Dark => 1,
-        };
-        let Some(cell) = cells.get(index).copied().filter(|c| !c.is_empty()) else {
+    // Colors table columns are `light | dark`.
+    let index = match scheme {
+        Scheme::Light => 0,
+        Scheme::Dark => 1,
+    };
+    for row in table_rows(src) {
+        if !row.section.starts_with("color") {
+            continue;
+        }
+        let Some(cell) = row.cells.get(index).copied().filter(|c| !c.is_empty()) else {
             continue;
         };
-        let color = parse_color(cell).ok_or_else(|| DesignError::BadColor {
-            role: role.to_string(),
+        let color = parse_hex_color(cell).ok_or_else(|| DesignError::BadColor {
+            role: row.key.to_string(),
             value: cell.to_string(),
         })?;
-        apply_color(&mut seeds, role, color);
+        apply_color(&mut seeds, row.key, color);
     }
     Ok(seeds)
 }
@@ -78,44 +83,6 @@ pub fn theme_from_design_md(
     tokens: &ResolvedTokens,
 ) -> Result<Theme, DesignError> {
     Ok(theme_from_seeds(scheme, &seeds(src, scheme)?, tokens))
-}
-
-fn color_rows(src: &str) -> Vec<(&str, Vec<&str>)> {
-    let mut rows = Vec::new();
-    let mut in_colors = false;
-    for line in src.lines() {
-        let trimmed = line.trim();
-        if let Some(heading) = trimmed.strip_prefix("##") {
-            in_colors = heading.trim().to_ascii_lowercase().starts_with("color");
-            continue;
-        }
-        if !in_colors || !trimmed.starts_with('|') {
-            continue;
-        }
-        let cells: Vec<&str> = trimmed
-            .trim_matches('|')
-            .split('|')
-            .map(str::trim)
-            .collect();
-        let Some((role, rest)) = cells.split_first() else {
-            continue;
-        };
-        if role.eq_ignore_ascii_case("role") || role.chars().all(|c| c == '-' || c == ':') {
-            continue;
-        }
-        rows.push((*role, rest.to_vec()));
-    }
-    rows
-}
-
-fn parse_color(cell: &str) -> Option<Color> {
-    let hex = cell.strip_prefix('#')?;
-    let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
-    match hex.len() {
-        6 => Some(Color::from_rgba8(byte(0)?, byte(2)?, byte(4)?, 0xff)),
-        8 => Some(Color::from_rgba8(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
-        _ => None,
-    }
 }
 
 fn apply_color(seeds: &mut Seeds, role: &str, color: Color) {

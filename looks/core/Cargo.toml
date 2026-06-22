@@ -1,0 +1,15 @@
+[package]
+name = "overstory_look"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared harness for Overstory looks: color math and DESIGN.md token parsing."
+publish = false
+
+[dependencies]
+peniko.workspace = true
+
+[lints]
+workspace = true

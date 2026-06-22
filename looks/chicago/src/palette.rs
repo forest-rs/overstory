@@ -9,14 +9,11 @@
 //! effectively instant.
 
 use overstory::motion::{ColorInterpolation, TimingFunction, millis};
+use overstory_look::color::rgb;
 use peniko::{Brush, Color};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
-
-const fn rgb(r: u8, g: u8, b: u8) -> Color {
-    Color::from_rgba8(r, g, b, 0xff)
-}
 
 fn solid(color: Color) -> Option<Brush> {
     Some(Brush::Solid(color))

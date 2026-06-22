@@ -2300,12 +2300,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_look"
+version = "0.0.1"
+dependencies = [
+ "peniko",
+]
+
+[[package]]
 name = "overstory_look_chicago"
 version = "0.0.1"
 dependencies = [
  "kurbo",
  "overstory",
  "overstory_app",
+ "overstory_look",
  "peniko",
  "understory_style",
  "understory_timing",
@@ -2318,6 +2326,7 @@ dependencies = [
  "kurbo",
  "overstory",
  "overstory_app",
+ "overstory_look",
  "peniko",
  "understory_style",
  "understory_timing",

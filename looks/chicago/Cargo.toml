@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 overstory.workspace = true
+overstory_look.workspace = true
 understory_style = { default-features = false, workspace = true }
 understory_timing = { default-features = false, workspace = true }
 peniko.workspace = true
@@ -19,6 +20,11 @@ kurbo.workspace = true
 # Tests construct a `Ui` (gated behind `system-fonts`); the example also needs a host.
 overstory = { features = ["system-fonts"], workspace = true }
 overstory_app = { default-features = false, features = ["winit-host"], workspace = true }
+
+# Distinct binary name so it doesn't collide with other looks' examples.
+[[example]]
+name = "chicago_showcase"
+path = "examples/showcase.rs"
 
 [lints]
 workspace = true
