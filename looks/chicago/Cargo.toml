@@ -1,0 +1,24 @@
+[package]
+name = "overstory_look_chicago"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Chicago: a flat, beveled, square-cornered retro look for Overstory."
+publish = false
+
+[dependencies]
+overstory.workspace = true
+understory_style = { default-features = false, workspace = true }
+understory_timing = { default-features = false, workspace = true }
+peniko.workspace = true
+kurbo.workspace = true
+
+[dev-dependencies]
+# Tests construct a `Ui` (gated behind `system-fonts`); the example also needs a host.
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { default-features = false, features = ["winit-host"], workspace = true }
+
+[lints]
+workspace = true
