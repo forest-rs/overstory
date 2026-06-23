@@ -1,12 +1,13 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Native macOS Overstory host built on `AppKit`, `CAMetalLayer`, `wgpu`,
-//! and `imaging_vello`.
+//! Native macOS Overstory host built on `AppKit`, `CAMetalLayer`, and
+//! `overstory_presenter_wgpu`.
 //!
 //! This crate owns the AppKit event loop, `NSWindow`/`CAMetalLayer` surface,
-//! native display-link ticks, GPU surface setup, and presentation path. It
-//! explicitly does not own Overstory UI semantics, input normalization, or
+//! native display-link ticks, and native `wgpu` surface creation. Shared
+//! `wgpu` / Vello presentation is delegated to `overstory_presenter_wgpu`.
+//! It explicitly does not own Overstory UI semantics, input normalization, or
 //! platform-independent frame scheduling policy.
 
 extern crate alloc;

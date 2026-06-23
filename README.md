@@ -14,7 +14,9 @@ top of explicit, measurable internals.
 | --- | --- |
 | [`overstory`](overstory/) | Core retained UI tree, controls, styling, layout intent, routed events, presentation lowering, and compositor-neutral composition data. |
 | [`overstory_host`](overstory_host/) | Platform-neutral host runtime for driving a `Ui` from normalized input, timers, layout, and rendering preparation. |
-| [`overstory_host_winit`](overstory_host_winit/) | Native `winit` / `wgpu` / Vello host for running Overstory apps on desktop. |
+| [`overstory_presenter_wgpu`](overstory_presenter_wgpu/) | Shared `wgpu` / Vello presenter used by native host crates after they create a platform surface. |
+| [`overstory_host_appkit`](overstory_host_appkit/) | Native AppKit / `CAMetalLayer` host for running Overstory apps on macOS. |
+| [`overstory_host_winit`](overstory_host_winit/) | Native `winit` host for running Overstory apps on desktop. |
 | [`overstory_demo`](overstory_demo/) | Control and motion gallery used to exercise built-in controls, routed input, timers, focus, popups, overlays, styling, and presentation transitions. |
 | [`overstory_node_graph_demo`](overstory_node_graph_demo/) | Focused node graph showcase built with Overstory, `understory_node_graph`, and `understory_view2d`. |
 | [`overstory_wind_tunnel`](overstory_wind_tunnel/) | Benchmarks and profiler scenarios for Overstory runtime hot paths. |

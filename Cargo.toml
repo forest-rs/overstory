@@ -15,6 +15,7 @@ members = [
     "overstory_host_appkit",
     "overstory_host_winit",
     "overstory_node_graph_demo",
+    "overstory_presenter_wgpu",
     "overstory_svg",
     "overstory_transcript",
     "overstory_wind_tunnel",
@@ -41,6 +42,7 @@ overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
+overstory_presenter_wgpu = { path = "overstory_presenter_wgpu", version = "0.0.1" }
 overstory_svg = { path = "overstory_svg", version = "0.0.1" }
 overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 

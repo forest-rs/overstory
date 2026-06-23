@@ -2,7 +2,7 @@
 
 # Overstory Host Winit
 
-**Native `winit`, `wgpu`, and Vello host for Overstory applications.**
+**Native `winit` host for Overstory applications.**
 
 [![Latest published version.](https://img.shields.io/crates/v/overstory_host_winit.svg)](https://crates.io/crates/overstory_host_winit)
 [![Documentation build status.](https://img.shields.io/docsrs/overstory_host_winit.svg)](https://docs.rs/overstory_host_winit)
@@ -19,11 +19,13 @@ Full documentation at https://github.com/orium/cargo-rdme -->
 
 <!-- cargo-rdme start -->
 
-Native Overstory host built on `winit`, `wgpu`, and `imaging_vello`.
+Native Overstory host built on `winit` and `overstory_presenter_wgpu`.
 
 This crate owns the platform event loop, window creation, normalized
-input translation, GPU surface setup, and presentation path. Application
-crates only need to provide a function that builds an [`overstory::Ui`].
+input translation, and native `wgpu` surface creation. Shared `wgpu` /
+Vello presentation is delegated to `overstory_presenter_wgpu`.
+Application crates only need to provide a function that builds an
+[`overstory::Ui`].
 
 <!-- cargo-rdme end -->
 
@@ -48,9 +50,7 @@ backend or when integrating Overstory into an existing application runtime.
 
 - `winit` event-loop and window creation;
 - `ui-events` translation for pointer and keyboard input;
-- `wgpu` surface setup and resize handling;
-- Vello rendering into an offscreen texture;
-- presentation of the rendered scene into the platform surface.
+- native `wgpu` surface creation and resize handling.
 
 ## Minimum Supported Rust Version (MSRV)
 

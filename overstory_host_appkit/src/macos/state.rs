@@ -8,10 +8,9 @@
     reason = "CAMetalLayer surface creation and NSWindow setup require Objective-C FFI"
 )]
 
-use alloc::{boxed::Box, format};
+use alloc::boxed::Box;
 use core::{
     cell::{Cell, RefCell},
-    error::Error,
     ffi::c_void,
     ptr,
 };
@@ -22,8 +21,6 @@ use frameclock::{
     SchedulerConfig,
 };
 use frameclock_apple::DisplayLink;
-use imaging_vello::VelloRenderer;
-use imaging_wgpu::{TextureRenderer, TextureViewTarget};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -31,16 +28,16 @@ use objc2_app_kit::{NSBackingStoreType, NSEvent, NSWindow, NSWindowStyleMask};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::NSString;
 use objc2_quartz_core::CAMetalLayer;
-use overstory::{Ui, UiRendererTimings};
+use overstory::Ui;
 use overstory_host::{
     FrameViewport, HostDispatchResult, HostFrameSubmission, HostFrameTiming, UiHost,
 };
+use overstory_presenter_wgpu::{WgpuPresentResult, WgpuPresenter, WgpuPresenterDescriptor};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use ui_events_appkit::AppKitInputResponder;
 
 use super::accessibility::AccessKitState;
-use super::blit::BlitState;
 use super::cursor::set_cursor;
 use super::input::install_input_responder;
 use super::time::AppleTimeMap;
@@ -141,12 +138,7 @@ pub(crate) fn handle_display_tick(tick: FrameTick) {
 
 pub(crate) struct WindowState {
     accesskit: AccessKitState,
-    renderer: VelloRenderer,
-    blit: BlitState,
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    presenter: WgpuPresenter,
     display_link: DisplayLink,
     display_link_started: bool,
     #[allow(
@@ -278,14 +270,7 @@ impl WindowState {
         self.metal_layer
             .setDrawableSize(CGSize::new(f64::from(size.width), f64::from(size.height)));
 
-        if self.surface_config.width == size.width && self.surface_config.height == size.height {
-            return;
-        }
-
-        self.surface_config.width = size.width;
-        self.surface_config.height = size.height;
-        self.surface.configure(&self.device, &self.surface_config);
-        self.blit.invalidate_offscreen();
+        self.presenter.resize(size.width, size.height);
     }
 
     fn view_surface_size(&self) -> SurfaceSize {
@@ -300,7 +285,7 @@ impl WindowState {
     }
 
     fn size(&self) -> (u32, u32) {
-        (self.surface_config.width, self.surface_config.height)
+        self.presenter.size()
     }
 
     fn host_timing_from_tick(&self, tick: FrameTick) -> HostFrameTiming {
@@ -337,74 +322,35 @@ impl WindowState {
             return Ok(());
         }
 
-        self.blit.ensure_offscreen(&self.device, width, height);
+        let scale_factor = self.scale_factor();
+        let viewport = FrameViewport::from_physical_size(width, height, scale_factor);
+        let present = {
+            let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
+                return Ok(());
+            };
+            debug_assert!(
+                !prepared.demand().is_empty(),
+                "requested frames should carry non-empty planned demand"
+            );
+            self.presenter.present_scene(prepared.scene())
+        };
 
-        let viewport = FrameViewport::from_physical_size(width, height, self.scale_factor());
-        let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
+        let present = match present {
+            Ok(present) => present,
+            Err(err) => {
+                self.host.discard_prepared_frame();
+                return Err(Box::new(err));
+            }
+        };
+        self.sync_accessibility();
+        let WgpuPresentResult::Presented(timings) = present else {
+            self.host.discard_prepared_frame();
             return Ok(());
         };
-        debug_assert!(
-            !prepared.demand().is_empty(),
-            "requested frames should carry non-empty planned demand"
-        );
-        let mut scaled_scene = prepared.scene();
-
-        let offscreen_view = self
-            .blit
-            .offscreen_view()
-            .expect("offscreen target should exist after ensure_offscreen");
-        let target = TextureViewTarget::new(offscreen_view, width, height);
-        let phase_start = web_time::Instant::now();
-        if let Err(err) = self
-            .renderer
-            .render_source_into_texture(&mut scaled_scene, target)
-        {
-            self.host.discard_prepared_frame();
-            return Err(err.into());
-        }
-        let scene_to_texture = phase_start.elapsed();
-        self.sync_accessibility();
-
-        let phase_start = web_time::Instant::now();
-        let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(output)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.surface_config);
-                self.host.discard_prepared_frame();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                self.host.discard_prepared_frame();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                self.host.discard_prepared_frame();
-                return Err(Box::new(AppKitHostError::SurfaceValidation));
-            }
-        };
-        let surface_acquire = phase_start.elapsed();
-
-        let output_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let phase_start = web_time::Instant::now();
-        self.blit.blit(&self.device, &self.queue, &output_view);
-        let blit = phase_start.elapsed();
-
-        let phase_start = web_time::Instant::now();
-        output.present();
-        let present = phase_start.elapsed();
         self.host.record_frame_submission(
-            HostFrameSubmission::new(UiRendererTimings {
-                scene_to_texture,
-                surface_acquire,
-                blit,
-                present,
-                total: scene_to_texture + surface_acquire + blit + present,
-            })
-            .with_submitted_at(self.submitted_at())
-            .with_deferred_present_feedback(),
+            HostFrameSubmission::new(timings)
+                .with_submitted_at(self.submitted_at())
+                .with_deferred_present_feedback(),
         );
         Ok(())
     }
@@ -467,63 +413,25 @@ where
         ))?
     };
 
-    let (adapter, device, queue) = pollster::block_on(async {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .map_err(|e| Box::<dyn Error>::from(format!("request_adapter: {e}")))?;
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("overstory_host_appkit device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-            })
-            .await
-            .map_err(|e| Box::<dyn Error>::from(format!("request_device: {e}")))?;
-        Ok::<_, Box<dyn Error>>((adapter, device, queue))
-    })?;
-
-    let mut surface_config = surface
-        .get_default_config(&adapter, initial_size.width, initial_size.height)
-        .ok_or(AppKitHostError::SurfaceIncompatible)?;
-    let caps = surface.get_capabilities(&adapter);
-    if let Some(unorm) = caps.formats.iter().copied().find(|f| {
-        matches!(
-            *f,
-            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
-        )
-    }) {
-        surface_config.format = unorm;
-    }
-    surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
-    surface.configure(&device, &surface_config);
-
     let window_delegate = WindowDelegate::new(mtm);
     window.setDelegate(Some(ProtocolObject::from_ref(&*window_delegate)));
     let input_responder = install_input_responder(mtm, &window, &content_view);
     let accesskit = AccessKitState::new(&content_view);
 
-    let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
-    let blit = BlitState::new(&device, surface_config.format);
+    let presenter = WgpuPresenter::new(
+        &instance,
+        surface,
+        initial_size.width,
+        initial_size.height,
+        WgpuPresenterDescriptor::new("overstory_host_appkit"),
+    )?;
     let host = UiHost::with_scheduler_config(build_ui(), appkit_scheduler_config());
     let time_map = AppleTimeMap::new();
     let display_link = DisplayLink::new(handle_display_tick, OutputId(0), mtm);
 
     Ok(WindowState {
         accesskit,
-        renderer,
-        blit,
-        surface,
-        surface_config,
-        device,
-        queue,
+        presenter,
         display_link,
         display_link_started: false,
         window_delegate,

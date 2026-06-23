@@ -2280,8 +2280,6 @@ dependencies = [
  "accesskit_macos",
  "frameclock",
  "frameclock_apple",
- "imaging_vello",
- "imaging_wgpu",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
@@ -2290,7 +2288,7 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "overstory",
  "overstory_host",
- "pollster",
+ "overstory_presenter_wgpu",
  "ui-events",
  "ui-events-appkit",
  "web-time",
@@ -2303,11 +2301,9 @@ version = "0.0.1"
 dependencies = [
  "accesskit_winit",
  "frameclock",
- "imaging_vello",
- "imaging_wgpu",
  "overstory",
  "overstory_host",
- "pollster",
+ "overstory_presenter_wgpu",
  "ui-events-winit",
  "web-time",
  "wgpu",
@@ -2379,6 +2375,19 @@ dependencies = [
  "peniko",
  "understory_node_graph",
  "understory_view2d",
+]
+
+[[package]]
+name = "overstory_presenter_wgpu"
+version = "0.0.1"
+dependencies = [
+ "imaging",
+ "imaging_vello",
+ "imaging_wgpu",
+ "overstory",
+ "pollster",
+ "web-time",
+ "wgpu",
 ]
 
 [[package]]

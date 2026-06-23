@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "AppKit, wgpu, and vello native host for Overstory applications."
+description = "AppKit native host for Overstory applications."
 publish = false
 
 [dependencies]
@@ -16,14 +16,12 @@ accesskit.workspace = true
 accesskit_macos.workspace = true
 frameclock.workspace = true
 frameclock_apple.workspace = true
-imaging_vello.workspace = true
-imaging_wgpu.workspace = true
 overstory_host.workspace = true
-pollster.workspace = true
+overstory_presenter_wgpu.workspace = true
 ui-events.workspace = true
 ui-events-appkit.workspace = true
 web-time.workspace = true
-wgpu = { features = ["wgsl"], workspace = true }
+wgpu.workspace = true
 
 objc2 = { version = "0.6", default-features = false, features = ["alloc"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [

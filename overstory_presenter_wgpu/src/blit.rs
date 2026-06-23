@@ -59,7 +59,7 @@ struct OffscreenTarget {
 impl BlitState {
     pub(crate) fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("overstory_host_appkit blit layout"),
+            label: Some("overstory_presenter_wgpu blit layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -80,22 +80,22 @@ impl BlitState {
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("overstory_host_appkit blit sampler"),
+            label: Some("overstory_presenter_wgpu blit sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("overstory_host_appkit blit shader"),
+            label: Some("overstory_presenter_wgpu blit shader"),
             source: wgpu::ShaderSource::Wgsl(BLIT_SHADER.into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("overstory_host_appkit blit pipeline layout"),
+            label: Some("overstory_presenter_wgpu blit pipeline layout"),
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("overstory_host_appkit blit pipeline"),
+            label: Some("overstory_presenter_wgpu blit pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -149,7 +149,7 @@ impl BlitState {
     }
 
     pub(crate) fn offscreen_view(&self) -> Option<&wgpu::TextureView> {
-        self.offscreen.as_ref().map(|t| &t.view)
+        self.offscreen.as_ref().map(|target| &target.view)
     }
 
     pub(crate) fn blit(
@@ -162,11 +162,11 @@ impl BlitState {
             return;
         };
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("overstory_host_appkit blit"),
+            label: Some("overstory_presenter_wgpu blit"),
         });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("overstory_host_appkit blit pass"),
+                label: Some("overstory_presenter_wgpu blit pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: output,
                     depth_slice: None,
@@ -198,7 +198,7 @@ impl OffscreenTarget {
         height: u32,
     ) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("overstory_host_appkit offscreen scene"),
+            label: Some("overstory_presenter_wgpu offscreen scene"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -215,7 +215,7 @@ impl OffscreenTarget {
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("overstory_host_appkit offscreen bind group"),
+            label: Some("overstory_presenter_wgpu offscreen bind group"),
             layout,
             entries: &[
                 wgpu::BindGroupEntry {

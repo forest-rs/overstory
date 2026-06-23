@@ -1,0 +1,21 @@
+[package]
+name = "overstory_presenter_wgpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WGPU and Vello presentation helpers for Overstory host crates."
+publish = false
+
+[dependencies]
+imaging.workspace = true
+imaging_vello.workspace = true
+imaging_wgpu.workspace = true
+overstory = { features = ["std"], workspace = true }
+pollster.workspace = true
+web-time.workspace = true
+wgpu = { features = ["wgsl"], workspace = true }
+
+[lints]
+workspace = true

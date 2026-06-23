@@ -5,20 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Winit, wgpu, and vello native host for Overstory applications."
+description = "Winit native host for Overstory applications."
 publish = false
 
 [dependencies]
 accesskit_winit.workspace = true
 frameclock.workspace = true
-imaging_vello.workspace = true
-imaging_wgpu.workspace = true
 overstory = { features = ["std"], workspace = true }
 overstory_host.workspace = true
-pollster.workspace = true
+overstory_presenter_wgpu.workspace = true
 ui-events-winit.workspace = true
 web-time.workspace = true
-wgpu = { features = ["wgsl"], workspace = true }
+wgpu.workspace = true
 winit.workspace = true
 
 [lints]

@@ -13,7 +13,6 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindow};
 use overstory::Ui;
 
 mod accessibility;
-mod blit;
 mod cursor;
 mod input;
 mod state;
@@ -82,8 +81,6 @@ pub(crate) enum AppKitHostError {
     MainThreadRequired,
     WindowAlreadyRunning,
     MissingContentLayer,
-    SurfaceIncompatible,
-    SurfaceValidation,
 }
 
 impl fmt::Display for AppKitHostError {
@@ -96,12 +93,6 @@ impl fmt::Display for AppKitHostError {
                 f.write_str("overstory_host_appkit already has a running window")
             }
             Self::MissingContentLayer => f.write_str("AppKit content view has no backing layer"),
-            Self::SurfaceIncompatible => {
-                f.write_str("CAMetalLayer surface is not compatible with the selected adapter")
-            }
-            Self::SurfaceValidation => {
-                f.write_str("wgpu surface acquisition reported a validation error")
-            }
         }
     }
 }

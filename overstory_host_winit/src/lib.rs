@@ -1,11 +1,13 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Native Overstory host built on `winit`, `wgpu`, and `imaging_vello`.
+//! Native Overstory host built on `winit` and `overstory_presenter_wgpu`.
 //!
 //! This crate owns the platform event loop, window creation, normalized
-//! input translation, GPU surface setup, and presentation path. Application
-//! crates only need to provide a function that builds an [`overstory::Ui`].
+//! input translation, and native `wgpu` surface creation. Shared `wgpu` /
+//! Vello presentation is delegated to `overstory_presenter_wgpu`.
+//! Application crates only need to provide a function that builds an
+//! [`overstory::Ui`].
 
 extern crate alloc;
 
@@ -16,8 +18,6 @@ use overstory::Ui;
 use winit::event_loop::EventLoop;
 
 mod app;
-mod blit;
-mod error;
 mod options;
 mod state;
 

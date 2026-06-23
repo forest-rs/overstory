@@ -3,17 +3,15 @@
 
 //! Retained winit window, renderer, surface, accessibility, and UI host state.
 
-use alloc::{boxed::Box, format, sync::Arc};
-use core::error::Error;
+use alloc::{boxed::Box, sync::Arc};
 
 use accesskit_winit::{
     Adapter as AccessKitAdapter, Event as AccessKitEvent, WindowEvent as AccessKitWindowEvent,
 };
 use frameclock::{Duration as FrameDuration, FrameDemand};
-use imaging_vello::VelloRenderer;
-use imaging_wgpu::{TextureRenderer, TextureViewTarget};
-use overstory::{Ui, UiRendererTimings};
+use overstory::Ui;
 use overstory_host::{FrameViewport, HostFrameSubmission, HostFrameTiming, UiHost};
+use overstory_presenter_wgpu::{WgpuPresentResult, WgpuPresenter, WgpuPresenterDescriptor};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use web_time::Instant;
 use winit::dpi::PhysicalSize;
@@ -22,19 +20,12 @@ use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::window::Window;
 
 use crate::app::HostEvent;
-use crate::blit::BlitState;
-use crate::error::SurfaceValidationError;
 use crate::{HostResult, WindowOptions};
 
 pub(crate) struct WindowState {
     window: Arc<Window>,
     accesskit: AccessKitAdapter,
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    renderer: VelloRenderer,
-    blit: BlitState,
+    presenter: WgpuPresenter,
     host: UiHost,
     event_reducer: WindowEventReducer,
 }
@@ -145,14 +136,11 @@ impl WindowState {
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
-        self.surface_config.width = size.width.max(1);
-        self.surface_config.height = size.height.max(1);
-        self.surface.configure(&self.device, &self.surface_config);
-        self.blit.invalidate_offscreen();
+        self.presenter.resize(size.width, size.height);
     }
 
     fn size(&self) -> (u32, u32) {
-        (self.surface_config.width, self.surface_config.height)
+        self.presenter.size()
     }
 
     fn sync_cursor(&mut self) {
@@ -174,75 +162,38 @@ impl WindowState {
             return Ok(());
         }
 
-        self.blit.ensure_offscreen(&self.device, width, height);
-
-        let viewport = FrameViewport::from_physical_size(width, height, self.window.scale_factor());
+        let scale_factor = self.window.scale_factor();
+        let viewport = FrameViewport::from_physical_size(width, height, scale_factor);
         let timing = self.host_frame_timing();
-        let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
-            if !self.host.pending_frame_demand().is_empty() {
-                self.window.request_redraw();
+        let present = {
+            let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
+                if !self.host.pending_frame_demand().is_empty() {
+                    self.window.request_redraw();
+                }
+                return Ok(());
+            };
+            let demand = prepared.demand();
+            debug_assert!(
+                !demand.is_empty(),
+                "requested frames should carry non-empty planned demand"
+            );
+            self.presenter.present_scene(prepared.scene())
+        };
+
+        let present = match present {
+            Ok(present) => present,
+            Err(err) => {
+                self.host.discard_prepared_frame();
+                return Err(Box::new(err));
             }
+        };
+        self.sync_accessibility();
+        let WgpuPresentResult::Presented(timings) = present else {
+            self.host.discard_prepared_frame();
             return Ok(());
         };
-        let demand = prepared.demand();
-        debug_assert!(
-            !demand.is_empty(),
-            "requested frames should carry non-empty planned demand"
-        );
-        let mut scaled_scene = prepared.scene();
-
-        let offscreen_view = self
-            .blit
-            .offscreen_view()
-            .expect("offscreen target should exist after ensure_offscreen");
-        let target = TextureViewTarget::new(offscreen_view, width, height);
-        let phase_start = Instant::now();
-        if let Err(err) = self
-            .renderer
-            .render_source_into_texture(&mut scaled_scene, target)
-        {
-            self.host.discard_prepared_frame();
-            return Err(err.into());
-        }
-        let scene_to_texture = phase_start.elapsed();
-        self.sync_accessibility();
-
-        let phase_start = Instant::now();
-        let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(output)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.surface_config);
-                self.host.discard_prepared_frame();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                self.host.discard_prepared_frame();
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                self.host.discard_prepared_frame();
-                return Err(Box::new(SurfaceValidationError));
-            }
-        };
-        let surface_acquire = phase_start.elapsed();
-        let output_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let phase_start = Instant::now();
-        self.blit.blit(&self.device, &self.queue, &output_view);
-        let blit = phase_start.elapsed();
-        let phase_start = Instant::now();
-        output.present();
-        let present = phase_start.elapsed();
         self.host
-            .record_frame_submission(HostFrameSubmission::new(UiRendererTimings {
-                scene_to_texture,
-                surface_acquire,
-                blit,
-                present,
-                total: scene_to_texture + surface_acquire + blit + present,
-            }));
+            .record_frame_submission(HostFrameSubmission::new(timings));
         if !self.host.pending_frame_demand().is_empty() {
             self.window.request_redraw();
         }
@@ -300,62 +251,23 @@ where
     let instance = wgpu::Instance::default();
     let surface = instance.create_surface(window.clone())?;
 
-    let (adapter, device, queue) = pollster::block_on(async {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .map_err(|e| Box::<dyn Error>::from(format!("request_adapter: {e}")))?;
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("overstory_host_winit device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-            })
-            .await
-            .map_err(|e| Box::<dyn Error>::from(format!("request_device: {e}")))?;
-        Ok::<_, Box<dyn Error>>((adapter, device, queue))
-    })?;
-
     let inner = window.inner_size();
     let initial_width = inner.width.max(1);
     let initial_height = inner.height.max(1);
-
-    let mut surface_config = surface
-        .get_default_config(&adapter, initial_width, initial_height)
-        .ok_or("surface not compatible with adapter")?;
-    let caps = surface.get_capabilities(&adapter);
-    if let Some(unorm) = caps.formats.iter().copied().find(|f| {
-        matches!(
-            *f,
-            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
-        )
-    }) {
-        surface_config.format = unorm;
-    }
-    surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
-    surface.configure(&device, &surface_config);
-
-    let renderer = VelloRenderer::new(device.clone(), queue.clone())?;
-    let blit = BlitState::new(&device, surface_config.format);
+    let presenter = WgpuPresenter::new(
+        &instance,
+        surface,
+        initial_width,
+        initial_height,
+        WgpuPresenterDescriptor::new("overstory_host_winit"),
+    )?;
     let host = UiHost::new(build_ui());
     window.set_visible(true);
 
     Ok(WindowState {
         window,
         accesskit,
-        surface,
-        surface_config,
-        device,
-        queue,
-        renderer,
-        blit,
+        presenter,
         host,
         event_reducer: WindowEventReducer::default(),
     })
