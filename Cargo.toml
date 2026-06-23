@@ -13,6 +13,7 @@ members = [
     "overstory_devtools",
     "overstory_host",
     "overstory_host_appkit",
+    "overstory_host_uikit",
     "overstory_host_winit",
     "overstory_node_graph_demo",
     "overstory_presenter_wgpu",
@@ -41,6 +42,7 @@ overstory_look_system6 = { path = "looks/system6", version = "0.0.1" }
 overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }
+overstory_host_uikit = { path = "overstory_host_uikit", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 overstory_presenter_wgpu = { path = "overstory_presenter_wgpu", version = "0.0.1" }
 overstory_svg = { path = "overstory_svg", version = "0.0.1" }
@@ -98,6 +100,7 @@ imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
 ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
+ui-events-uikit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "865936fb5b8def4b8de9a9bd7cc2c74e28711327" }
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }

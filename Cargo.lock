@@ -2123,6 +2123,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-ui-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
+dependencies = [
+ "bitflags 2.11.1",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+]
+
+[[package]]
 name = "objc2-uniform-type-identifiers"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2292,6 +2305,25 @@ dependencies = [
  "ui-events",
  "ui-events-appkit",
  "web-time",
+ "wgpu",
+]
+
+[[package]]
+name = "overstory_host_uikit"
+version = "0.0.1"
+dependencies = [
+ "frameclock",
+ "frameclock_apple",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "objc2-ui-kit 0.3.2",
+ "overstory",
+ "overstory_host",
+ "overstory_presenter_wgpu",
+ "ui-events",
+ "ui-events-uikit",
  "wgpu",
 ]
 
@@ -3519,6 +3551,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui-events-uikit"
+version = "0.3.0"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+dependencies = [
+ "dpi",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-ui-kit 0.3.2",
+ "ui-events",
+ "ui-events-apple-common",
+]
+
+[[package]]
 name = "ui-events-winit"
 version = "0.3.0"
 source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
@@ -4473,7 +4519,7 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
- "objc2-ui-kit",
+ "objc2-ui-kit 0.2.2",
  "orbclient",
  "percent-encoding",
  "pin-project",

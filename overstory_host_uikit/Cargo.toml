@@ -1,0 +1,53 @@
+[package]
+name = "overstory_host_uikit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UIKit native host for Overstory applications."
+publish = false
+
+[dependencies]
+overstory = { features = ["std"], workspace = true }
+
+[target.'cfg(any(target_os = "ios", target_os = "tvos"))'.dependencies]
+frameclock.workspace = true
+frameclock_apple.workspace = true
+overstory_host.workspace = true
+overstory_presenter_wgpu.workspace = true
+ui-events.workspace = true
+ui-events-uikit.workspace = true
+wgpu.workspace = true
+
+objc2 = { version = "0.6", default-features = false, features = ["alloc"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "CFCGTypes",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "NSRunLoop",
+    "NSSet",
+] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = [
+    "CADisplayLink",
+    "CAFrameRateRange",
+    "CALayer",
+    "CAMetalLayer",
+    "objc2-core-foundation",
+] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = [
+    "UIEvent",
+    "UIPress",
+    "UIPressesEvent",
+    "UIResponder",
+    "UIScreen",
+    "UITouch",
+    "UIView",
+    "UIViewController",
+    "UIWindow",
+    "objc2-core-foundation",
+    "objc2-quartz-core",
+] }
+
+[lints]
+workspace = true
