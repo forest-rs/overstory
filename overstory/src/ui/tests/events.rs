@@ -58,6 +58,38 @@ fn pointer_focus_does_not_set_focus_visible() {
 }
 
 #[test]
+fn touch_contact_activates_button() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    use crate::{ActivationSource, Button};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let count = Rc::new(Cell::new(0));
+    let count_for_handler = Rc::clone(&count);
+    let button = ui.append(
+        root,
+        Button::new("Tap").on_activate(move |_ui, event| {
+            assert_eq!(event.source, ActivationSource::Pointer);
+            count_for_handler.set(count_for_handler.get() + 1);
+        }),
+    );
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    let down = ui.dispatch_pointer_event(&touch_down(center, 1));
+    assert!(down.capture_changed);
+    assert!(ui.pointer_capture().is_some());
+
+    let up = ui.dispatch_pointer_event(&touch_up(center, 2));
+    assert!(up.changed());
+    assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(count.get(), 1);
+}
+
+#[test]
 fn routed_event_origin_preserves_template_child_source() {
     use alloc::rc::Rc;
     use core::cell::Cell;

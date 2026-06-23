@@ -10,6 +10,7 @@ members = [
     "overstory",
     "overstory_app",
     "overstory_demo",
+    "overstory_demo_uikit",
     "overstory_devtools",
     "overstory_host",
     "overstory_host_appkit",
@@ -35,6 +36,7 @@ repository = "https://github.com/forest-rs/overstory"
 # Overstory workspace crates.
 overstory = { default-features = false, path = "overstory", version = "0.0.1" }
 overstory_app = { default-features = false, path = "overstory_app", version = "0.0.1" }
+overstory_demo = { default-features = false, path = "overstory_demo", version = "0.0.1" }
 overstory_look = { path = "looks/core", version = "0.0.1" }
 overstory_look_chicago = { path = "looks/chicago", version = "0.0.1" }
 overstory_look_signature = { path = "looks/signature", version = "0.0.1" }

@@ -6,7 +6,9 @@ use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
-use crate::test_support::{pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up};
+use crate::test_support::{
+    pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up, touch_down, touch_up,
+};
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
     ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,

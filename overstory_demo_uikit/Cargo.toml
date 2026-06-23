@@ -1,0 +1,39 @@
+[package]
+name = "overstory_demo_uikit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UIKit app wrapper for the Overstory demo."
+publish = false
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+overstory_demo.workspace = true
+overstory_host_uikit.workspace = true
+
+[target.'cfg(any(target_os = "ios", target_os = "tvos"))'.dependencies]
+objc2 = { version = "0.6", default-features = false, features = ["alloc"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "CFCGTypes",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "NSDictionary",
+    "NSObject",
+    "NSString",
+] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = [
+    "UIApplication",
+    "UIResponder",
+    "UIScreen",
+    "UIView",
+    "UIViewController",
+    "UIWindow",
+    "objc2-core-foundation",
+] }
+
+[lints]
+workspace = true

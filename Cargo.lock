@@ -2263,6 +2263,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_demo_uikit"
+version = "0.0.1"
+dependencies = [
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-ui-kit 0.3.2",
+ "overstory_demo",
+ "overstory_host_uikit",
+]
+
+[[package]]
 name = "overstory_devtools"
 version = "0.0.1"
 dependencies = [

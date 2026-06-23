@@ -59,11 +59,12 @@ impl WgpuPresenter {
                 .await
                 .map_err(WgpuPresenterError::RequestAdapter)?;
             let device_label = format!("{} device", descriptor.label);
+            let adapter_limits = adapter.limits();
             let (device, queue) = adapter
                 .request_device(&wgpu::DeviceDescriptor {
                     label: Some(device_label.as_str()),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
+                    required_limits: presenter_required_limits(&adapter_limits),
                     memory_hints: wgpu::MemoryHints::default(),
                     trace: wgpu::Trace::Off,
                     experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -202,4 +203,74 @@ fn preferred_surface_format(
             )
         })
         .unwrap_or(fallback)
+}
+
+fn presenter_required_limits(adapter_limits: &wgpu::Limits) -> wgpu::Limits {
+    let mut limits = wgpu::Limits::default()
+        .using_resolution(adapter_limits.clone())
+        .using_alignment(adapter_limits.clone());
+    limits.max_inter_stage_shader_variables = limits
+        .max_inter_stage_shader_variables
+        .min(adapter_limits.max_inter_stage_shader_variables);
+    limits
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn presenter_limits_allow_stricter_inter_stage_shader_variables() {
+        let adapter_limits = wgpu::Limits {
+            max_inter_stage_shader_variables: 15,
+            ..wgpu::Limits::default()
+        };
+
+        let limits = presenter_required_limits(&adapter_limits);
+
+        assert_eq!(limits.max_inter_stage_shader_variables, 15);
+    }
+
+    #[test]
+    fn presenter_limits_keep_modern_defaults_for_unrelated_limits() {
+        let adapter_limits = wgpu::Limits {
+            max_inter_stage_shader_variables: 15,
+            ..wgpu::Limits::default()
+        };
+
+        let limits = presenter_required_limits(&adapter_limits);
+
+        assert_eq!(
+            limits.max_color_attachments,
+            wgpu::Limits::default().max_color_attachments
+        );
+        assert_eq!(
+            limits.max_uniform_buffer_binding_size,
+            wgpu::Limits::default().max_uniform_buffer_binding_size
+        );
+    }
+
+    #[test]
+    fn presenter_limits_preserve_adapter_texture_resolution() {
+        let adapter_limits = wgpu::Limits {
+            max_texture_dimension_2d: 16_384,
+            ..wgpu::Limits::default()
+        };
+
+        let limits = presenter_required_limits(&adapter_limits);
+
+        assert_eq!(limits.max_texture_dimension_2d, 16_384);
+    }
+
+    #[test]
+    fn presenter_limits_use_adapter_buffer_alignment() {
+        let adapter_limits = wgpu::Limits {
+            min_uniform_buffer_offset_alignment: 512,
+            ..wgpu::Limits::default()
+        };
+
+        let limits = presenter_required_limits(&adapter_limits);
+
+        assert_eq!(limits.min_uniform_buffer_offset_alignment, 512);
+    }
 }

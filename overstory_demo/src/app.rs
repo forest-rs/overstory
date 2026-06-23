@@ -84,14 +84,22 @@ mod widgets;
 use chrome::*;
 use devtools::*;
 use fixtures::*;
+#[cfg(feature = "host-runner")]
 use overstory_app::WindowOptions;
 use style::*;
 use widgets::*;
 
-pub(crate) fn run() -> overstory_app::HostResult<()> {
+/// Return the demo's preferred initial window size in logical pixels.
+pub fn initial_window_size() -> (u32, u32) {
+    INITIAL_WINDOW_SIZE
+}
+
+/// Run the demo through the selected desktop host.
+#[cfg(feature = "host-runner")]
+pub fn run() -> overstory_app::HostResult<()> {
+    let (width, height) = initial_window_size();
     overstory_app::run(
-        WindowOptions::new("overstory_demo")
-            .initial_size(INITIAL_WINDOW_SIZE.0, INITIAL_WINDOW_SIZE.1),
+        WindowOptions::new("overstory_demo").initial_size(width, height),
         build_ui,
     )
 }
@@ -284,9 +292,11 @@ fn apply_demo_theme(ui: &mut Ui, shell: &DemoShellState) {
     ui.set_theme(shell.current_theme());
 }
 
-/// Builds the demo tree as a focused gallery. The shell owns page selection;
-/// each page owns only its local controls and timers.
-fn build_ui() -> Ui {
+/// Build the demo tree as a focused gallery.
+///
+/// The shell owns page selection; each page owns only its local controls and
+/// timers.
+pub fn build_ui() -> Ui {
     let mut ui = Ui::new();
     let tokens = ui.style_tokens::<DemoStyleTokens>();
     let shell = Rc::new(DemoShellState::new(tokens.resources));

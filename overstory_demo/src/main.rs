@@ -1,7 +1,8 @@
-//! Overstory control gallery demo.
+// Copyright 2026 the Overstory Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod app;
+//! Overstory control gallery desktop runner.
 
 fn main() -> overstory_app::HostResult<()> {
-    app::run()
+    overstory_demo::run()
 }

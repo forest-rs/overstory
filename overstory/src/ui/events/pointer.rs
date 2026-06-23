@@ -5,7 +5,7 @@ use kurbo::Point;
 use ui_events::keyboard::Modifiers;
 use ui_events::pointer::{
     PointerButton, PointerButtonEvent, PointerEvent, PointerInfo, PointerScrollEvent, PointerState,
-    PointerUpdate,
+    PointerType, PointerUpdate,
 };
 use understory_event_state::click::ClickResult;
 use understory_timing::TimerInstant;
@@ -108,6 +108,11 @@ fn pointer_route_data_for_info(raw: &PointerEvent, pointer: PointerInfo) -> Poin
     }
 }
 
+fn is_primary_activation_contact(event: &PointerButtonEvent) -> bool {
+    event.button == Some(PointerButton::Primary)
+        || (event.button.is_none() && matches!(event.pointer.pointer_type, PointerType::Touch))
+}
+
 impl Ui {
     fn dispatch_pointer_hit(
         &mut self,
@@ -189,7 +194,7 @@ impl Ui {
                 let pos = button_event.state.logical_point();
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
-                if button_event.button == Some(PointerButton::Primary) {
+                if is_primary_activation_contact(button_event) {
                     let hit_before_dismissal = self.responder().hit_test(pos);
                     result.overlay_changed |=
                         self.dismiss_popups_for_pointer_down(hit_before_dismissal);
@@ -224,7 +229,7 @@ impl Ui {
                             data,
                         );
                         result.include_routed(pointer_down);
-                        if button_event.button == Some(PointerButton::Primary)
+                        if is_primary_activation_contact(button_event)
                             && !pointer_down.handled
                             && !pointer_down.propagation_stopped
                         {
@@ -266,7 +271,7 @@ impl Ui {
                 };
                 let mut result = PointerDispatchResult::default();
                 result.include_routed(pointer_up);
-                if button_event.button == Some(PointerButton::Primary) {
+                if is_primary_activation_contact(button_event) {
                     // Hand the up to the click recognizer — produces a
                     // `ClickResult::Click(target)` when the press is
                     // recognized; dispatch handlers along the responder
