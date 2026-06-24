@@ -3534,7 +3534,7 @@ dependencies = [
 [[package]]
 name = "ui-events"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
 dependencies = [
  "dpi",
  "keyboard-types",
@@ -3544,7 +3544,7 @@ dependencies = [
 [[package]]
 name = "ui-events-appkit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3556,7 +3556,7 @@ dependencies = [
 [[package]]
 name = "ui-events-apple-common"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
 dependencies = [
  "dpi",
  "ui-events",
@@ -3565,7 +3565,7 @@ dependencies = [
 [[package]]
 name = "ui-events-uikit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3579,7 +3579,7 @@ dependencies = [
 [[package]]
 name = "ui-events-winit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=865936fb5b8def4b8de9a9bd7cc2c74e28711327#865936fb5b8def4b8de9a9bd7cc2c74e28711327"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
 dependencies = [
  "ui-events",
  "winit",

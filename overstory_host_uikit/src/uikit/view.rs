@@ -8,18 +8,27 @@
     reason = "UIKit class definitions require Objective-C FFI"
 )]
 
+use core::cell::{Cell, RefCell};
+
 use objc2::rc::Retained;
-use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
+use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::NSSet;
 use objc2_quartz_core::{CALayer, CAMetalLayer};
-use objc2_ui_kit::{UIEvent, UIPress, UIPressesEvent, UITouch, UIView, UIWindow};
-use ui_events_uikit::UIKitInputResponder;
+use objc2_ui_kit::{
+    UIEvent, UIGestureRecognizerState, UIPanGestureRecognizer, UIPress, UIPressesEvent, UITouch,
+    UIView, UIWindow,
+};
+use ui_events::pointer::{PointerEvent, PointerId, PointerInfo, PointerType};
+use ui_events_uikit::{UIKitInputResponder, pointer_scroll_from_uipan};
 
+use super::input::{current_host_time_ns, dispatch_pointer_event};
 use super::state::{resize_view, start_display_link};
 
 pub(crate) struct ContentViewIvars {
     input_responder: Retained<UIKitInputResponder>,
+    scroll_pan_gesture: RefCell<Option<Retained<UIPanGestureRecognizer>>>,
+    scroll_pan_last_translation: Cell<CGPoint>,
 }
 
 define_class! {
@@ -76,6 +85,11 @@ define_class! {
             self.ivars().input_responder.handle_touch_set(touches, event);
         }
 
+        #[unsafe(method(handleScrollPan:))]
+        fn handle_scroll_pan(&self, recognizer: &UIPanGestureRecognizer) {
+            self.dispatch_scroll_pan(recognizer);
+        }
+
         #[unsafe(method(pressesBegan:withEvent:))]
         fn presses_began(&self, presses: &NSSet<UIPress>, _event: Option<&UIPressesEvent>) {
             self.ivars().input_responder.handle_press_set(presses);
@@ -104,13 +118,82 @@ impl ContentView {
         frame: CGRect,
         input_responder: Retained<UIKitInputResponder>,
     ) -> Retained<Self> {
-        let this = mtm
-            .alloc::<Self>()
-            .set_ivars(ContentViewIvars { input_responder });
+        let this = mtm.alloc::<Self>().set_ivars(ContentViewIvars {
+            input_responder,
+            scroll_pan_gesture: RefCell::new(None),
+            scroll_pan_last_translation: Cell::new(CGPoint::new(0.0, 0.0)),
+        });
         let view: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: frame] };
         view.setUserInteractionEnabled(true);
         view.setMultipleTouchEnabled(true);
+        view.install_scroll_pan_gesture(mtm);
         view
+    }
+
+    fn install_scroll_pan_gesture(&self, mtm: MainThreadMarker) {
+        if self.ivars().scroll_pan_gesture.borrow().is_some() {
+            return;
+        }
+        let pan = unsafe {
+            UIPanGestureRecognizer::initWithTarget_action(
+                mtm.alloc(),
+                Some(self),
+                Some(sel!(handleScrollPan:)),
+            )
+        };
+        pan.setMinimumNumberOfTouches(2);
+        pan.setMaximumNumberOfTouches(2);
+        pan.setCancelsTouchesInView(true);
+        pan.setDelaysTouchesBegan(false);
+        pan.setDelaysTouchesEnded(false);
+        self.addGestureRecognizer(&pan);
+        self.ivars().scroll_pan_gesture.replace(Some(pan));
+    }
+
+    fn dispatch_scroll_pan(&self, recognizer: &UIPanGestureRecognizer) {
+        match recognizer.state() {
+            UIGestureRecognizerState::Began => {
+                let translation = recognizer.translationInView(None);
+                self.ivars().scroll_pan_last_translation.set(translation);
+                dispatch_pointer_event(&PointerEvent::Cancel(touch_pointer_info()));
+            }
+            UIGestureRecognizerState::Changed => {
+                self.dispatch_scroll_pan_delta(recognizer);
+            }
+            UIGestureRecognizerState::Ended => {
+                self.dispatch_scroll_pan_delta(recognizer);
+                self.ivars()
+                    .scroll_pan_last_translation
+                    .set(CGPoint::new(0.0, 0.0));
+            }
+            UIGestureRecognizerState::Cancelled | UIGestureRecognizerState::Failed => {
+                self.ivars()
+                    .scroll_pan_last_translation
+                    .set(CGPoint::new(0.0, 0.0));
+            }
+            _ => {}
+        }
+    }
+
+    fn dispatch_scroll_pan_delta(&self, recognizer: &UIPanGestureRecognizer) {
+        let previous_translation = self.ivars().scroll_pan_last_translation.get();
+        if let Some((event, translation)) = pointer_scroll_from_uipan(
+            recognizer,
+            previous_translation,
+            scale_factor(self),
+            current_host_time_ns(),
+        ) {
+            self.ivars().scroll_pan_last_translation.set(translation);
+            dispatch_pointer_event(&event);
+        }
+    }
+}
+
+fn touch_pointer_info() -> PointerInfo {
+    PointerInfo {
+        pointer_id: Some(PointerId::PRIMARY),
+        persistent_device_id: None,
+        pointer_type: PointerType::Touch,
     }
 }
 

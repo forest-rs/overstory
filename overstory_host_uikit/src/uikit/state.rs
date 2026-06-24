@@ -143,6 +143,10 @@ impl ViewState {
         self.time_map
     }
 
+    pub(crate) fn current_time_ns(&self) -> u64 {
+        self.current_time().ticks()
+    }
+
     fn start_display_link(&mut self) {
         if self.display_link_started {
             return;

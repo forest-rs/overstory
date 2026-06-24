@@ -33,6 +33,24 @@ pub(crate) fn create_input_responder(mtm: MainThreadMarker) -> Retained<UIKitInp
     UIKitInputResponder::new(mtm, Box::new(InputHost))
 }
 
+pub(crate) fn dispatch_pointer_event(event: &PointerEvent) {
+    with_view_state_cell(|cell| {
+        let mut state = cell.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        state.dispatch_pointer_event(event);
+    });
+}
+
+pub(crate) fn current_host_time_ns() -> u64 {
+    with_view_state_cell(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map_or(0, |state| state.current_time_ns())
+    })
+}
+
 fn dispatch_keyboard_event(event: &KeyboardEvent) {
     with_view_state_cell(|cell| {
         let mut state = cell.borrow_mut();
@@ -40,16 +58,6 @@ fn dispatch_keyboard_event(event: &KeyboardEvent) {
             return;
         };
         state.dispatch_keyboard_event(event);
-    });
-}
-
-fn dispatch_pointer_event(event: &PointerEvent) {
-    with_view_state_cell(|cell| {
-        let mut state = cell.borrow_mut();
-        let Some(state) = state.as_mut() else {
-            return;
-        };
-        state.dispatch_pointer_event(event);
     });
 }
 

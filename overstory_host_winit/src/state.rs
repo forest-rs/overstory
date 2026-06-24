@@ -132,6 +132,9 @@ impl WindowState {
                     self.request_frame(result.frame_demand);
                 }
             }
+            WindowEventTranslation::Text(_) => {
+                // Overstory does not yet expose a host-level text input dispatch path.
+            }
         }
     }
 

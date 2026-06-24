@@ -17,7 +17,7 @@ frameclock_apple.workspace = true
 overstory_host.workspace = true
 overstory_presenter_wgpu.workspace = true
 ui-events.workspace = true
-ui-events-uikit.workspace = true
+ui-events-uikit = { features = ["gestures"], workspace = true }
 wgpu.workspace = true
 
 objc2 = { version = "0.6", default-features = false, features = ["alloc"] }
@@ -37,6 +37,8 @@ objc2-quartz-core = { version = "0.3", default-features = false, features = [
 ] }
 objc2-ui-kit = { version = "0.3", default-features = false, features = [
     "UIEvent",
+    "UIGestureRecognizer",
+    "UIPanGestureRecognizer",
     "UIPress",
     "UIPressesEvent",
     "UIResponder",
