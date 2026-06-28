@@ -75,6 +75,7 @@ spoor_session = { default-features = false, git = "https://github.com/forest-rs/
 subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
 
 # Understory primitives.
+understory_anchor = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "846a1d960b2e852b790de3d0012118ededa30057" }
 understory_animation = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "846a1d960b2e852b790de3d0012118ededa30057" }
 understory_animation_timeline = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "846a1d960b2e852b790de3d0012118ededa30057" }
 understory_axis = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "846a1d960b2e852b790de3d0012118ededa30057" }

@@ -17,7 +17,11 @@
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;
-use kurbo::{Point, Rect, Size, Vec2};
+use kurbo::{Insets, Point, Rect, Size, Vec2};
+use understory_anchor::{
+    Anchor, AnchorConstraint, AnchorInput, AnchorPolicy, AnchorPositionOption,
+    Placement as AnchorPlacement, ScoringPolicy, resolve_anchor,
+};
 
 use crate::controls::tooltip::Tooltip;
 use crate::element::ElementId;
@@ -44,42 +48,43 @@ impl Placement {
         viewport: Size,
         offset: Vec2,
     ) -> Point {
-        let placement = self.flip_to_fit(target, overlay, viewport, offset);
-        let origin = placement.raw_origin(target, overlay, offset);
-        clamp_to_viewport(origin, overlay, viewport)
-    }
-
-    fn flip_to_fit(self, target: Rect, overlay: Size, viewport: Size, offset: Vec2) -> Self {
         if viewport.width <= 0.0 || viewport.height <= 0.0 {
-            return self;
+            return self.raw_origin(target, overlay, offset);
         }
-        match self {
-            Self::Bottom
-                if target.y1 + offset.y + overlay.height > viewport.height
-                    && target.y0 - offset.y - overlay.height >= 0.0 =>
-            {
-                Self::Top
-            }
-            Self::Top
-                if target.y0 - offset.y - overlay.height < 0.0
-                    && target.y1 + offset.y + overlay.height <= viewport.height =>
-            {
-                Self::Bottom
-            }
-            Self::Right
-                if target.x1 + offset.x + overlay.width > viewport.width
-                    && target.x0 - offset.x - overlay.width >= 0.0 =>
-            {
-                Self::Left
-            }
-            Self::Left
-                if target.x0 - offset.x - overlay.width < 0.0
-                    && target.x1 + offset.x + overlay.width <= viewport.width =>
-            {
-                Self::Right
-            }
-            _ => self,
-        }
+
+        let viewport = Rect::from_origin_size((0.0, 0.0), viewport);
+        let (main_axis, cross_axis) = self.anchor_offsets(offset);
+        let constraints = [
+            AnchorConstraint::Offset {
+                main_axis,
+                cross_axis,
+            },
+            AnchorConstraint::Shift {
+                padding: Insets::ZERO,
+            },
+        ];
+        let preferred =
+            AnchorPositionOption::new(self.anchor_placement()).with_constraints(&constraints);
+        let fallbacks = [AnchorPositionOption::new(preferred.placement.opposite())
+            .with_constraints(&constraints)];
+        let mut policy = AnchorPolicy::new(preferred, &fallbacks);
+        policy.scoring = ScoringPolicy {
+            preferred_bonus: 0.0,
+            incumbent_bonus: 0.0,
+            ..ScoringPolicy::default()
+        };
+        resolve_anchor(
+            AnchorInput {
+                anchor: Anchor::Rect(target),
+                floating_size: overlay,
+                viewport,
+                boundary: viewport,
+                previous: None,
+            },
+            policy,
+        )
+        .rect
+        .origin()
     }
 
     fn raw_origin(self, target: Rect, overlay: Size, offset: Vec2) -> Point {
@@ -90,23 +95,30 @@ impl Placement {
             Self::Left => Point::new(target.x0 - overlay.width - offset.x, target.y0 + offset.y),
         }
     }
-}
 
-fn clamp_to_viewport(origin: Point, overlay: Size, viewport: Size) -> Point {
-    if viewport.width <= 0.0 || viewport.height <= 0.0 {
-        return origin;
+    fn opposite(self) -> Self {
+        match self {
+            Self::Bottom => Self::Top,
+            Self::Top => Self::Bottom,
+            Self::Right => Self::Left,
+            Self::Left => Self::Right,
+        }
     }
-    Point::new(
-        clamp_axis(origin.x, overlay.width, viewport.width),
-        clamp_axis(origin.y, overlay.height, viewport.height),
-    )
-}
 
-fn clamp_axis(origin: f64, extent: f64, viewport: f64) -> f64 {
-    if extent >= viewport {
-        0.0
-    } else {
-        origin.clamp(0.0, viewport - extent)
+    fn anchor_placement(self) -> AnchorPlacement {
+        match self {
+            Self::Bottom => AnchorPlacement::BOTTOM_START,
+            Self::Top => AnchorPlacement::TOP_START,
+            Self::Right => AnchorPlacement::RIGHT_START,
+            Self::Left => AnchorPlacement::LEFT_START,
+        }
+    }
+
+    fn anchor_offsets(self, offset: Vec2) -> (f64, f64) {
+        match self {
+            Self::Bottom | Self::Top => (offset.y, offset.x),
+            Self::Right | Self::Left => (offset.x, offset.y),
+        }
     }
 }
 

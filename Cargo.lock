@@ -2243,6 +2243,7 @@ dependencies = [
  "subduction_core",
  "taffy",
  "ui-events",
+ "understory_anchor",
  "understory_animation",
  "understory_animation_timeline",
  "understory_axis",
@@ -3641,6 +3642,14 @@ source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d5225
 dependencies = [
  "ui-events",
  "winit",
+]
+
+[[package]]
+name = "understory_anchor"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=846a1d960b2e852b790de3d0012118ededa30057#846a1d960b2e852b790de3d0012118ededa30057"
+dependencies = [
+ "kurbo",
 ]
 
 [[package]]
