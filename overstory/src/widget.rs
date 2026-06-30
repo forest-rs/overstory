@@ -81,8 +81,16 @@ use crate::template::{TemplateContract, TemplateSlot};
 use crate::ui::{ControlState, Ui};
 
 /// Selector identity for an element that has no widget attached
-/// (an anonymous container, e.g. the root or a layout-only panel).
+/// (an anonymous container, e.g. a layout-only panel).
 pub const TYPE_GENERIC: TypeTag = TypeTag(0);
+
+/// Selector identity for the [`Ui`] root element.
+///
+/// The root carries its own type rather than [`TYPE_GENERIC`] so the default
+/// cascade can give the window surface its themed background and seed the
+/// inherited default foreground, without those rules also matching every
+/// ordinary layout panel. See [`crate::theme::default_cascade`].
+pub const TYPE_ROOT: TypeTag = TypeTag(30);
 
 /// Per-element behavior + state.
 ///
@@ -376,6 +384,28 @@ pub(crate) struct SurfacePartWidget;
 impl Widget for SurfacePartWidget {
     fn type_tag(&self) -> Option<TypeTag> {
         None
+    }
+}
+
+/// Widget for the [`Ui`] root element.
+///
+/// It behaves like an anonymous container — no measurement, the default
+/// surface presentation — but reports [`TYPE_ROOT`] so the default cascade can
+/// target the window surface specifically. See [`crate::theme`].
+#[derive(Debug, Default)]
+pub(crate) struct RootWidget;
+
+impl Widget for RootWidget {
+    fn type_tag(&self) -> Option<TypeTag> {
+        Some(TYPE_ROOT)
+    }
+
+    fn accessibility_role(
+        &self,
+        _element: &Element,
+        _ctx: &AccessibilityContext<'_>,
+    ) -> Option<Role> {
+        Some(Role::GenericContainer)
     }
 }
 

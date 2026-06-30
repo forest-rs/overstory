@@ -38,7 +38,7 @@ fn clear_local_removes_override_and_reveals_styled_value() {
     let styled = Some(Brush::Solid(Color::from_rgba8(0x24, 0x78, 0xff, 0xff)));
     let local = Some(Brush::Solid(Color::from_rgba8(0xff, 0x44, 0x55, 0xff)));
     let style = StyleBuilder::new().set(background, styled.clone()).build();
-    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build();
+    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_ROOT)).build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, selector, style)
         .build();
@@ -123,7 +123,7 @@ fn styled_surface_inset_properties_invalidate_layout() {
         .set(ui.properties().surface.padding_widths.left, 12.0_f64)
         .build();
     let selector =
-        SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(PADDED)).build();
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_ROOT).with_class(PADDED)).build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, selector, style)
         .build();
@@ -152,7 +152,7 @@ fn styled_surface_corner_shape_invalidates_geometry_without_layout() {
         )
         .build();
     let selector =
-        SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(SHAPED)).build();
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_ROOT).with_class(SHAPED)).build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, selector, style)
         .build();

@@ -5,7 +5,7 @@ use super::*;
 
 #[test]
 fn styled_background_resolves_through_cascade() {
-    // A style for `Type(TYPE_GENERIC)` should supply the
+    // A style for `Type(TYPE_ROOT)` should supply the
     // background value for elements that don't have a local override.
     let mut ui = Ui::new();
     let root = ui.root();
@@ -15,7 +15,7 @@ fn styled_background_resolves_through_cascade() {
     // Build a cascade with one rule.
     let red = Some(Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff)));
     let style = StyleBuilder::new().set(background, red).build();
-    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build();
+    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_ROOT)).build();
     let cascade = StyleCascadeBuilder::new()
         .push_rule(StyleOrigin::Base, selector, style)
         .build();
@@ -43,6 +43,10 @@ fn three_rule_cascade_picks_class_over_type() {
 
     let mut ui = Ui::new();
     let root = ui.root();
+    // Two generic children: `plain` exercises the type-only rule, `fg` the
+    // class-over-type specificity. The root itself is `TYPE_ROOT`, so it is not
+    // a generic styling subject.
+    let plain = ui.insert_child(root);
     let fg = ui.insert_child(root);
     ui.add_class(fg, CLASS_FG);
 
@@ -77,11 +81,17 @@ fn three_rule_cascade_picks_class_over_type() {
     let lookup = UiResolveLookup::new(&ui);
     let cx = ResolveCx::new(ui.registry(), ui.theme(), lookup);
 
-    // Root: only the generic rule matches → dark.
-    let root_el = ui.get(root).unwrap();
-    let resolved_root: Option<Brush> =
-        cx.get_value(root_el, bg_prop, Some((ui.cascade(), ui.match_state(root))));
-    assert_eq!(resolved_root, dark, "root should resolve to dark");
+    // Plain generic child: only the generic rule matches → dark.
+    let plain_el = ui.get(plain).unwrap();
+    let resolved_plain: Option<Brush> = cx.get_value(
+        plain_el,
+        bg_prop,
+        Some((ui.cascade(), ui.match_state(plain))),
+    );
+    assert_eq!(
+        resolved_plain, dark,
+        "plain generic child should resolve to dark"
+    );
 
     // Foreground: both rules match; the class-bearing rule has higher
     // specificity → blue.
@@ -559,6 +569,37 @@ fn control_row_labels_keep_single_line_widths() {
     assert!(
         max_span < 20.0,
         "control row labels should paint on one line; max glyph y span was {max_span}"
+    );
+}
+
+#[test]
+fn default_cascade_styles_root_surface_and_text_foreground() {
+    use crate::{Text, theme};
+
+    // The default cascade gives the root the themed window background and seeds
+    // the inherited default foreground; a bare text element should pick up that
+    // foreground without any per-element styling. Values are the dark theme's
+    // `SURFACE_BG` / `ON_SURFACE_FG`.
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    let root = ui.root();
+    let text = ui.append(root, Text::new("hello"));
+
+    let surface_bg = Some(Brush::Solid(Color::from_rgba8(0x1e, 0x1e, 0x24, 0xff)));
+    let on_surface_fg = Brush::Solid(Color::from_rgba8(0xf4, 0xf4, 0xf7, 0xff));
+
+    let background = ui.properties().surface.background;
+    let foreground = ui.properties().foreground;
+
+    assert_eq!(
+        ui.resolve_value_for(ui.get(root).unwrap(), background),
+        surface_bg,
+        "root should resolve the themed surface background by default"
+    );
+    assert_eq!(
+        ui.resolve_value_for(ui.get(text).unwrap(), foreground),
+        on_surface_fg,
+        "a bare text element should inherit the default on-surface foreground"
     );
 }
 

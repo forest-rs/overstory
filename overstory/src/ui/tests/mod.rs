@@ -13,8 +13,8 @@ use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,
     ElementSpecExt, FocusChangeReason, KeyDispatchResult, Layout, LayoutPlacement, Navigation,
     Phase, PointerEventKind, RoutedEventKind, RoutedHandlerOptions, StyleTokenSet, StyleVocabulary,
-    SurfaceSpecExt, SurfaceStyleExt, TYPE_GENERIC, TemplateContext, TemplateSlot, TooltipSpecExt,
-    UiResolveLookup,
+    SurfaceSpecExt, SurfaceStyleExt, TYPE_GENERIC, TYPE_ROOT, TemplateContext, TemplateSlot,
+    TooltipSpecExt, UiResolveLookup,
 };
 use alloc::boxed::Box;
 use alloc::string::String;

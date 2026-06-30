@@ -1971,7 +1971,7 @@ mod tests {
         assert_eq!(nodes.len(), 2);
         assert_eq!(
             nodes[0].label(),
-            format!("Panel {}:{}", root.slot(), root.generation())
+            format!("Root {}:{}", root.slot(), root.generation())
         );
         assert_eq!(
             nodes[1].label(),

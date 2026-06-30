@@ -259,7 +259,7 @@ pub use view::View;
 pub use widget::{
     AppendSpec, ContentSlotSpec, ControlStateSpecExt, ControlTemplateSpec, ControlTemplateSpecExt,
     ElementConfig, ElementSpec, ElementSpecExt, RangeSpecExt, SurfaceSpecExt, SurfaceStyleExt,
-    TYPE_GENERIC, TextSpecExt, Widget,
+    TYPE_GENERIC, TYPE_ROOT, TextSpecExt, Widget,
 };
 
 /// Common imports for authoring Overstory UI trees.

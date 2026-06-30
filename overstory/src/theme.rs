@@ -125,6 +125,7 @@ use crate::pseudos::{
 use crate::selectors;
 use crate::selectors::TemplatePartSelector;
 use crate::spec_ext::SurfaceStyleExt;
+use crate::widget::TYPE_ROOT;
 use understory_timing::TimerDuration;
 
 const TOGGLE_THUMB_PART: TemplatePartSelector =
@@ -369,6 +370,14 @@ pub fn default_cascade(properties: &BuiltInProperties) -> StyleCascade {
 /// defaults automatically.
 #[must_use]
 pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBuilder {
+    // The root element carries the window surface background and seeds the
+    // inherited default foreground. `foreground` inherits, so any descendant
+    // text resolves to `ON_SURFACE_FG` unless a closer control overrides it.
+    let root_surface = StyleBuilder::new()
+        .background_resource(properties, SURFACE_BG)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .build();
+
     let button_idle = StyleBuilder::new()
         .set(properties.control_template, Some(default_button_template()))
         .background_resource(properties, ACCENT_BG)
@@ -1007,6 +1016,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .corner_radius(properties, 8.0_f64)
         .build();
     StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_ROOT),
+            root_surface,
+        )
         .push_rule(
             StyleOrigin::Base,
             selectors::type_tag(TYPE_BUTTON),

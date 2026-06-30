@@ -11,6 +11,12 @@
 //! 3. React to input through a routed control handler ([`Button::on_activate`])
 //!    and push new state back into the tree with [`Ui::set_local`].
 //!
+//! Installing the default theme is enough to color the window and text: the
+//! default cascade gives the root the themed `SURFACE_BG` and seeds the
+//! inherited `ON_SURFACE_FG`, so neither the window background nor the labels
+//! need a literal color. The card still names its own brushes — referencing
+//! theme tokens from a control spec is a separate piece of work.
+//!
 //! Run it with:
 //!
 //! ```sh
@@ -25,11 +31,10 @@ use overstory::theme;
 use overstory_app::WindowOptions;
 use peniko::Brush;
 
-const WINDOW_BG: Color = Color::from_rgba8(0x14, 0x16, 0x1c, 0xff);
+// The card chrome is still authored as explicit brushes; everything else
+// (window surface, heading, label) comes from the installed theme.
 const CARD_BG: Color = Color::from_rgba8(0x1d, 0x20, 0x2a, 0xff);
 const CARD_BORDER: Color = Color::from_rgba8(0x3a, 0x3f, 0x52, 0xff);
-const HEADING_FG: Color = Color::from_rgba8(0xf5, 0xf3, 0xff, 0xff);
-const BODY_FG: Color = Color::from_rgba8(0xc2, 0xc6, 0xd6, 0xff);
 
 fn main() -> overstory_app::HostResult<()> {
     overstory_app::run(
@@ -42,6 +47,8 @@ fn main() -> overstory_app::HostResult<()> {
 /// exist.
 fn build_ui() -> Ui {
     let mut ui = Ui::new();
+    // Installs the default palette. The default cascade resolves the root's
+    // window background and the inherited text foreground from it.
     ui.set_theme(theme::default_theme());
 
     // The root fills the window; center its single child on both axes.
@@ -53,8 +60,6 @@ fn build_ui() -> Ui {
             .align_center()
             .justify_center(),
     );
-    let surface = ui.properties().surface;
-    ui.set_local(root, surface.background, Some(Brush::from(WINDOW_BG)));
 
     // A content-sized card stacking the heading, the live count, and a button.
     let card = ui.append(
@@ -68,17 +73,10 @@ fn build_ui() -> Ui {
             .corner_radius(16.0),
     );
 
-    ui.append(
-        card,
-        Text::new("Hello, Overstory")
-            .font_size(24.0)
-            .foreground(HEADING_FG),
-    );
+    // No `.foreground(...)`: both inherit the theme's default on-surface color.
+    ui.append(card, Text::new("Hello, Overstory").font_size(24.0));
 
-    let count_label = ui.append(
-        card,
-        Text::new("Clicks: 0").font_size(15.0).foreground(BODY_FG),
-    );
+    let count_label = ui.append(card, Text::new("Clicks: 0").font_size(15.0));
 
     // The button owns its own pressed/focus/activation behavior; we keep the
     // app-level count in a shared cell and rewrite the label on each activation.

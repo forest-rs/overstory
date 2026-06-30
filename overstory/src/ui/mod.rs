@@ -38,7 +38,6 @@ use crate::binding::BindingSourceRuntime;
 use crate::binding_runtime::BindingRuntime;
 use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
-use crate::controls::panel::PanelWidget;
 use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
 use crate::element::{Element, ElementId};
 use crate::element_store::ElementStore;
@@ -57,6 +56,7 @@ use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
 use crate::timeline_properties::TimelinePropertyRegistry;
 use crate::timeline_runtime::TimelineRuntime;
 use crate::timer_runtime::TimerRuntime;
+use crate::widget::RootWidget;
 
 mod bindings;
 mod events;
@@ -214,7 +214,7 @@ impl core::fmt::Debug for Ui {
 }
 
 impl Ui {
-    /// Creates a new [`Ui`] with an empty root `PanelWidget`, built-in
+    /// Creates a new [`Ui`] with an empty root `RootWidget`, built-in
     /// properties registered, the generic behavior installed, built-in
     /// framework styles, and an empty app cascade and theme.
     ///
@@ -298,7 +298,7 @@ impl Ui {
             .add_cascade(PAINT, COMPOSE)
             .expect("PAINT → COMPOSE cascade should be acyclic");
 
-        let elements = ElementStore::new(Box::new(PanelWidget));
+        let elements = ElementStore::new(Box::new(RootWidget));
         let root = elements.root();
 
         let mut me = Self {
