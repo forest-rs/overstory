@@ -1,0 +1,17 @@
+[package]
+name = "hello"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Minimal getting-started example for Overstory: a window, a heading, and a live counter button."
+publish = false
+
+[dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { features = ["winit-host"], workspace = true }
+peniko.workspace = true
+
+[lints]
+workspace = true
