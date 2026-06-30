@@ -29,6 +29,7 @@ overstory_svg.workspace = true
 overstory_transcript.workspace = true
 peniko.workspace = true
 ui-events.workspace = true
+understory_anchor.workspace = true
 understory_style.workspace = true
 understory_view2d.workspace = true
 

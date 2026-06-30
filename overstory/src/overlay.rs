@@ -96,15 +96,6 @@ impl Placement {
         }
     }
 
-    fn opposite(self) -> Self {
-        match self {
-            Self::Bottom => Self::Top,
-            Self::Top => Self::Bottom,
-            Self::Right => Self::Left,
-            Self::Left => Self::Right,
-        }
-    }
-
     fn anchor_placement(self) -> AnchorPlacement {
         match self {
             Self::Bottom => AnchorPlacement::BOTTOM_START,

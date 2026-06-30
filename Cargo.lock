@@ -2285,6 +2285,7 @@ dependencies = [
  "overstory_transcript",
  "peniko",
  "ui-events",
+ "understory_anchor",
  "understory_property",
  "understory_style",
  "understory_view2d",

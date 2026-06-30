@@ -1,3 +1,4 @@
+mod anchoring;
 mod box_model;
 mod disclosure;
 mod inputs;
@@ -56,6 +57,7 @@ pub(super) fn show_demo_page_themed(
             DemoPage::Selection => stage.view(selection::SelectionPage),
             DemoPage::Outline => stage.view(outline::OutlinePage),
             DemoPage::Layout => stage.view(layout::LayoutPage),
+            DemoPage::Anchoring => stage.view(anchoring::AnchoringPage),
             DemoPage::BoxModel => stage.view(box_model::BoxModelPage),
             DemoPage::Transcript => stage.view(transcript::TranscriptPage),
             DemoPage::Svg => stage.view(svg::SvgPage),

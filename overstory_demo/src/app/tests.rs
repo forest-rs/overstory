@@ -662,6 +662,56 @@ fn disclosure_page_keeps_expander_and_accordion_cards_together() {
     }
 }
 
+#[test]
+fn anchoring_page_opens_popup_with_viewport_fallback() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Anchoring);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    let target = find_by_class(&ui, stage, CLASS_DEMO_ANCHOR_FLIP_TARGET)
+        .expect("anchoring page should render the lower fallback target");
+    let result = ui.synthesize_click(target, ui.effective_bounds(target).center());
+    assert!(result.handled, "fallback target should activate a popup");
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    let popup = find_by_class(&ui, ui.root(), CLASS_DEMO_ANCHOR_POPUP)
+        .expect("anchoring target should open a tagged popup overlay");
+    assert_eq!(
+        count_type(&ui, ui.root(), overstory::TYPE_POPUP),
+        1,
+        "anchoring page should keep one popup open at a time",
+    );
+
+    let target_bounds = ui.effective_bounds(target);
+    let popup_bounds = ui.effective_bounds(popup);
+    assert!(
+        popup_bounds.y1 <= target_bounds.y0,
+        "bottom-preferred popup should flip above the lower target: target={target_bounds:?}, popup={popup_bounds:?}",
+    );
+}
+
+#[test]
+fn anchoring_page_renders_understory_anchor_visualization() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Anchoring);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    assert!(
+        count_by_class(&ui, stage, CLASS_DEMO_ANCHOR_REFERENCE) >= 8,
+        "anchoring page should draw direct anchor reference geometry",
+    );
+    assert!(
+        count_by_class(&ui, stage, CLASS_DEMO_ANCHOR_RESOLVED) >= 6,
+        "anchoring page should draw resolved floating geometry",
+    );
+    assert!(
+        count_by_class(&ui, stage, CLASS_DEMO_ANCHOR_ARROW) >= 4,
+        "anchoring page should draw arrow geometry from understory_anchor",
+    );
+}
+
 fn assert_subtree_inside_width(ui: &Ui, element: ElementId, max_x: f64) {
     let bounds = ui.effective_bounds(element);
     assert!(
@@ -829,6 +879,26 @@ fn find_by_class_id(ui: &Ui, element: ElementId, class: ClassId) -> Option<Eleme
         .children()
         .iter()
         .find_map(|child| find_by_class_id(ui, *child, class))
+}
+
+fn count_by_class(ui: &Ui, element: ElementId, class: impl Into<overstory::StyleClass>) -> usize {
+    let class = class
+        .into()
+        .registered_id(ui.style_vocabulary())
+        .expect("class should be registered by rendered content");
+    count_by_class_id(ui, element, class)
+}
+
+fn count_by_class_id(ui: &Ui, element: ElementId, class: ClassId) -> usize {
+    let Some(current) = ui.get(element) else {
+        return 0;
+    };
+    usize::from(current.classes().contains(&class))
+        + current
+            .children()
+            .iter()
+            .map(|child| count_by_class_id(ui, *child, class))
+            .sum::<usize>()
 }
 
 fn text_content(ui: &Ui, element: ElementId) -> String {

@@ -23,13 +23,13 @@ use overstory::{
     CornerRadius, CornerShape, Corners, CursorIcon, Divider, Edges, ElementId, ElementRef,
     ElementRefSpecExt, ElementSpecExt, Expander, FontFeature, Layout, LayoutAlign, LayoutAlignment,
     LayoutContainer, LayoutDimension, LayoutJustify, LayoutPlacement, LayoutSize, ListBox,
-    LocalState, OutlineView, OutlineViewNode, Panel, Popup, ProgressBar, RadioButton, RadioGroup,
-    Rect, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL, SLOT_CHECK_BOX_MARK,
-    SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK, ScrollView, SegmentedControl, Select, Slider, Spinner,
-    Splitter, SurfaceSpecExt, SurfaceStyleExt, TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, TemplateNode,
-    TemplateSpec, Text, TextInput, TextInputSubmitAction, TextSpecExt, TimerDuration, TimerId,
-    ToggleSwitch, TooltipSpecExt, Ui, View, Viewport, layouts, set_progress_value,
-    set_text_input_text, text_input_text, theme,
+    LocalState, OutlineView, OutlineViewNode, Panel, Placement, Popup, ProgressBar, RadioButton,
+    RadioGroup, Rect, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL,
+    SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK, ScrollView, SegmentedControl,
+    Select, Slider, Spinner, Splitter, SurfaceSpecExt, SurfaceStyleExt, TYPE_BUTTON, TYPE_GENERIC,
+    TYPE_TEXT, TemplateNode, TemplateSpec, Text, TextInput, TextInputSubmitAction, TextSpecExt,
+    TimerDuration, TimerId, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, View, Viewport, layouts,
+    set_progress_value, set_text_input_text, text_input_text, theme,
 };
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};
@@ -114,6 +114,7 @@ enum DemoPage {
     Selection,
     Outline,
     Layout,
+    Anchoring,
     BoxModel,
     Transcript,
     Svg,
@@ -122,7 +123,7 @@ enum DemoPage {
 }
 
 impl DemoPage {
-    const ALL: [Self; 13] = [
+    const ALL: [Self; 14] = [
         Self::Overview,
         Self::Workbench,
         Self::Inputs,
@@ -131,6 +132,7 @@ impl DemoPage {
         Self::Selection,
         Self::Outline,
         Self::Layout,
+        Self::Anchoring,
         Self::BoxModel,
         Self::Transcript,
         Self::Svg,
@@ -152,11 +154,12 @@ impl DemoPage {
             Self::Selection => 5,
             Self::Outline => 6,
             Self::Layout => 7,
-            Self::BoxModel => 8,
-            Self::Transcript => 9,
-            Self::Svg => 10,
-            Self::Typography => 11,
-            Self::Motion => 12,
+            Self::Anchoring => 8,
+            Self::BoxModel => 9,
+            Self::Transcript => 10,
+            Self::Svg => 11,
+            Self::Typography => 12,
+            Self::Motion => 13,
         }
     }
 
@@ -170,6 +173,7 @@ impl DemoPage {
             Self::Selection => "Selection",
             Self::Outline => "Outline",
             Self::Layout => "Layout",
+            Self::Anchoring => "Anchoring",
             Self::BoxModel => "Box Model",
             Self::Transcript => "Transcript",
             Self::Svg => "SVG",
@@ -188,6 +192,7 @@ impl DemoPage {
             Self::Selection => "Selection and Virtualization",
             Self::Outline => "Expandable Outline",
             Self::Layout => "Layout and Resizing",
+            Self::Anchoring => "Anchored Overlays",
             Self::BoxModel => "Box Decoration and Contours",
             Self::Transcript => "Agent Transcript",
             Self::Svg => "SVG Import",
@@ -221,6 +226,9 @@ impl DemoPage {
             }
             Self::Layout => {
                 "Resizable panes, fixed-size content, axis-aware controls, and slider ruler marks."
+            }
+            Self::Anchoring => {
+                "Popup and tooltip targets exercising preferred sides, measured overlay placement, and viewport fallback."
             }
             Self::BoxModel => {
                 "Border sides, padding contours, elliptical radii, and shaped corners resolved through Understory box decoration geometry."
