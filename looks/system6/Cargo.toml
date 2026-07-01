@@ -11,9 +11,9 @@ publish = false
 [dependencies]
 overstory.workspace = true
 overstory_look.workspace = true
+peniko.workspace = true
 understory_style = { default-features = false, workspace = true }
 understory_timing = { default-features = false, workspace = true }
-peniko.workspace = true
 
 [dev-dependencies]
 # Tests construct a `Ui`, which is gated behind `system-fonts`.

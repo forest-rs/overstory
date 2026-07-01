@@ -44,9 +44,9 @@ subduction_core.workspace = true
 cursor-icon.workspace = true
 imaging.workspace = true
 
-understory_axis = { default-features = false, workspace = true }
 understory_animation = { default-features = false, workspace = true }
 understory_animation_timeline = { default-features = false, workspace = true }
+understory_axis = { default-features = false, workspace = true }
 understory_box_tree = { default-features = false, features = ["libm"], workspace = true }
 understory_event_state = { default-features = false, features = ["click", "drag", "libm"], workspace = true }
 understory_focus = { default-features = false, features = ["box_tree_adapter", "libm"], workspace = true }
