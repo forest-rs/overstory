@@ -1,0 +1,16 @@
+[package]
+name = "binding"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Overstory example: one source value fanned out to bound, transformed views."
+publish = false
+
+[dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { features = ["winit-host"], workspace = true }
+
+[lints]
+workspace = true
