@@ -4,7 +4,7 @@
 //! Style-builder helpers for Overstory's canonical surface properties.
 
 use peniko::Brush;
-use understory_presentation::{CornerShape, CornerShapes, Corners, Edges};
+use understory_presentation::{BorderStyle, CornerShape, CornerShapes, Corners, Edges};
 use understory_presentation_properties::CornerRadius;
 use understory_style::{ResourceKey, StyleBuilder};
 
@@ -26,12 +26,25 @@ pub trait SurfaceStyleExt: Sized {
     fn background_resource(self, properties: &BuiltInProperties, key: ResourceKey) -> Self;
 
     /// Sets one border brush for all four sides.
+    ///
+    /// This also writes a matching border style: [`BorderStyle::Solid`] for a
+    /// brush, or [`BorderStyle::None`] for no brush.
     #[must_use]
     fn border_brush(self, properties: &BuiltInProperties, brush: impl Into<Option<Brush>>) -> Self;
 
     /// Sets one border brush resource for all four sides.
+    ///
+    /// This also writes [`BorderStyle::Solid`] for all sides.
     #[must_use]
     fn border_brush_resource(self, properties: &BuiltInProperties, key: ResourceKey) -> Self;
+
+    /// Sets one border style for all four sides.
+    #[must_use]
+    fn border_style(self, properties: &BuiltInProperties, style: BorderStyle) -> Self;
+
+    /// Sets physical border styles in top/right/bottom/left order.
+    #[must_use]
+    fn border_styles(self, properties: &BuiltInProperties, styles: Edges<BorderStyle>) -> Self;
 
     /// Sets one border width for all four sides.
     #[must_use]
@@ -92,10 +105,16 @@ impl SurfaceStyleExt for StyleBuilder {
 
     fn border_brush(self, properties: &BuiltInProperties, brush: impl Into<Option<Brush>>) -> Self {
         let brush = brush.into();
+        let style = if brush.is_some() {
+            BorderStyle::Solid
+        } else {
+            BorderStyle::None
+        };
         self.set(properties.surface.border_brushes.top, brush.clone())
             .set(properties.surface.border_brushes.right, brush.clone())
             .set(properties.surface.border_brushes.bottom, brush.clone())
             .set(properties.surface.border_brushes.left, brush)
+            .border_style(properties, style)
     }
 
     fn border_brush_resource(self, properties: &BuiltInProperties, key: ResourceKey) -> Self {
@@ -103,6 +122,18 @@ impl SurfaceStyleExt for StyleBuilder {
             .set_resource(properties.surface.border_brushes.right, key)
             .set_resource(properties.surface.border_brushes.bottom, key)
             .set_resource(properties.surface.border_brushes.left, key)
+            .border_style(properties, BorderStyle::Solid)
+    }
+
+    fn border_style(self, properties: &BuiltInProperties, style: BorderStyle) -> Self {
+        self.border_styles(properties, Edges::all(style))
+    }
+
+    fn border_styles(self, properties: &BuiltInProperties, styles: Edges<BorderStyle>) -> Self {
+        self.set(properties.surface.border_styles.top, styles.top)
+            .set(properties.surface.border_styles.right, styles.right)
+            .set(properties.surface.border_styles.bottom, styles.bottom)
+            .set(properties.surface.border_styles.left, styles.left)
     }
 
     fn border_width(self, properties: &BuiltInProperties, width: f64) -> Self {

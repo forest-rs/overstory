@@ -555,8 +555,8 @@ pub(crate) fn surface_aware_channels(
     channels: ChannelSet,
 ) -> ChannelSet {
     // Understory's surface bundle only knows paint-vs-geometry. Overstory
-    // additionally treats border and padding widths as layout inputs because
-    // they define the content inset used by Taffy.
+    // additionally treats border style, border width, and padding width as
+    // layout inputs because they define the content inset used by Taffy.
     if channels.is_empty() || !is_surface_layout_inset_property(properties, property) {
         return channels;
     }
@@ -565,7 +565,11 @@ pub(crate) fn surface_aware_channels(
 
 fn is_surface_layout_inset_property(properties: BuiltInProperties, property: PropertyId) -> bool {
     let surface = properties.surface;
-    property == surface.border_widths.top.id()
+    property == surface.border_styles.top.id()
+        || property == surface.border_styles.right.id()
+        || property == surface.border_styles.bottom.id()
+        || property == surface.border_styles.left.id()
+        || property == surface.border_widths.top.id()
         || property == surface.border_widths.right.id()
         || property == surface.border_widths.bottom.id()
         || property == surface.border_widths.left.id()

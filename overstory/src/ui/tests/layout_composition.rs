@@ -55,6 +55,36 @@ fn surface_border_and_padding_define_layout_content_inset() {
 }
 
 #[test]
+fn surface_border_style_none_removes_layout_border_inset() {
+    use crate::SurfaceSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::row(0.0).logical_size(120.0, 80.0));
+
+    let child = ui.append(
+        root,
+        crate::Panel::new()
+            .border_width(3.0)
+            .border_style(crate::BorderStyle::None)
+            .padding_all(10.0)
+            .layout(Layout::row(0.0).logical_size(80.0, 40.0)),
+    );
+    let grandchild = ui.append(
+        child,
+        crate::Panel::new().layout(Layout::new().logical_size(20.0, 10.0)),
+    );
+
+    ui.compute_layout(Size::new(120.0, 80.0));
+
+    assert_eq!(ui.effective_bounds(child), Rect::new(0.0, 0.0, 80.0, 40.0));
+    assert_eq!(
+        ui.effective_bounds(grandchild),
+        Rect::new(10.0, 10.0, 30.0, 20.0)
+    );
+}
+
+#[test]
 fn clean_compute_layout_skips_widget_layout_work() {
     use alloc::rc::Rc;
     use core::cell::Cell;

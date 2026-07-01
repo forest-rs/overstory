@@ -63,8 +63,9 @@ pub struct BuiltInProperties {
     /// shapes are registered by `understory_presentation_properties` and
     /// resolved into `understory_presentation::SurfacePrimitive` by the shared
     /// [`crate::present_surface`] path. Most surface geometry starts at the
-    /// `GEOMETRY` channel; Overstory widens border and padding width writes to
-    /// `LAYOUT` because those longhands also define content insets.
+    /// `GEOMETRY` channel; Overstory widens border style, border width, and
+    /// padding width writes to `LAYOUT` because those longhands also define
+    /// content insets.
     pub surface: SurfaceProperties,
 
     /// Bounds in viewport coordinates the element paints into. Layout writes

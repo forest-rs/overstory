@@ -24,7 +24,7 @@ impl View for BoxModelPage {
 
                 row.demo_responsive_card("BORDER SIDES", PAGE_CARD_WIDTH, |card| {
                     card.add(body_text(
-                        "Physical sides can carry different widths and brushes. The lowerer now fills the border ring instead of stroking outside the box.",
+                        "Physical sides can carry different widths and brushes. The lowerer fills border side geometry instead of stroking outside the box.",
                     ));
                     card.add(
                         asymmetric_border_specimen()
@@ -68,6 +68,24 @@ impl View for BoxModelPage {
                         },
                     );
                 });
+
+                row.demo_responsive_card("BORDER STYLES", PAGE_CARD_WIDTH, |card| {
+                    card.add(body_text(
+                        "Border style is now a resolved surface longhand, so each side can use CSS-style visibility and stroke semantics.",
+                    ));
+                    card.with_child(Panel::new().layout(Layout::row(10.0).wrap()), |samples| {
+                        add_border_style_sample(samples, "Solid", BorderStyle::Solid);
+                        add_border_style_sample(samples, "Dashed", BorderStyle::Dashed);
+                        add_border_style_sample(samples, "Dotted", BorderStyle::Dotted);
+                        add_border_style_sample(samples, "Double", BorderStyle::Double);
+                        add_border_style_sample(samples, "Groove", BorderStyle::Groove);
+                        add_border_style_sample(samples, "Ridge", BorderStyle::Ridge);
+                        add_border_style_sample(samples, "Inset", BorderStyle::Inset);
+                        add_border_style_sample(samples, "Outset", BorderStyle::Outset);
+                        add_border_style_sample(samples, "None", BorderStyle::None);
+                        add_border_style_sample(samples, "Hidden", BorderStyle::Hidden);
+                    });
+                });
             },
         );
     }
@@ -97,6 +115,16 @@ fn border_pill(label: &str, r: u8, g: u8, b: u8) -> Text {
         .foreground(solid(r, g, b, 255))
 }
 
+fn add_border_style_sample(parent: &mut ChildUi<'_>, label: &str, style: BorderStyle) {
+    parent.with_child(
+        Panel::column(6.0).layout(Layout::column(6.0).logical_size(96.0, 90.0)),
+        |sample| {
+            sample.add(border_style_specimen(style).layout(Layout::new().logical_size(96.0, 54.0)));
+            sample.add(caption(label));
+        },
+    );
+}
+
 fn corner_specimen(kind: CornerShapeKind) -> Panel {
     Panel::new()
         .background(solid(38, 46, 65, 255))
@@ -120,6 +148,15 @@ fn asymmetric_border_specimen() -> Panel {
         .padding_widths(Edges::new(14.0, 22.0, 16.0, 12.0))
         .corner_radius(0.0)
         .corner_shape(CornerShape::Round)
+}
+
+fn border_style_specimen(style: BorderStyle) -> Panel {
+    Panel::new()
+        .background(solid(30, 39, 54, 255))
+        .border_brush(opt_solid(126, 155, 255, 255))
+        .border_width(7.0)
+        .border_style(style)
+        .corner_radius(0.0)
 }
 
 impl CornerShapeKind {

@@ -300,9 +300,9 @@ pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};
 pub use peniko::{Brush, Color, Fill, color::Rgba8};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
-    CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle, FontWeight,
-    FontWidth, GenericFamily, Language, OverflowWrap, PathFill, PathPaintOrder, PathPrimitive,
-    PathStroke, TextLineHeight, TextWrapMode, WordBreak,
+    BorderStyle, CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle,
+    FontWeight, FontWidth, GenericFamily, Language, OverflowWrap, PathFill, PathPaintOrder,
+    PathPrimitive, PathStroke, TextLineHeight, TextWrapMode, WordBreak,
 };
 pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;

@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use kurbo::{Point, Rect, RoundedRect, Size, Vec2};
 use understory_box_tree::NodeId;
-use understory_presentation::Edges;
+use understory_presentation::{BorderStyle, Edges};
 
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::{ARRANGE, LAYOUT};
@@ -499,10 +499,22 @@ impl Ui {
     fn effective_box_layout_inset(&self, element: &Element) -> Option<LayoutEdges> {
         let surface = self.properties.surface;
         let border = Edges::new(
-            finite_non_negative(self.resolve_value_for(element, surface.border_widths.top)),
-            finite_non_negative(self.resolve_value_for(element, surface.border_widths.right)),
-            finite_non_negative(self.resolve_value_for(element, surface.border_widths.bottom)),
-            finite_non_negative(self.resolve_value_for(element, surface.border_widths.left)),
+            visible_surface_border_width(
+                self.resolve_value_for(element, surface.border_widths.top),
+                self.resolve_value_for(element, surface.border_styles.top),
+            ),
+            visible_surface_border_width(
+                self.resolve_value_for(element, surface.border_widths.right),
+                self.resolve_value_for(element, surface.border_styles.right),
+            ),
+            visible_surface_border_width(
+                self.resolve_value_for(element, surface.border_widths.bottom),
+                self.resolve_value_for(element, surface.border_styles.bottom),
+            ),
+            visible_surface_border_width(
+                self.resolve_value_for(element, surface.border_widths.left),
+                self.resolve_value_for(element, surface.border_styles.left),
+            ),
         );
         let padding = Edges::new(
             finite_non_negative(self.resolve_value_for(element, surface.padding_widths.top)),
@@ -518,5 +530,13 @@ impl Ui {
             border.left + padding.left,
         ));
         (!inset.is_zero()).then_some(inset)
+    }
+}
+
+fn visible_surface_border_width(width: f64, style: BorderStyle) -> f64 {
+    if style.paints_border() {
+        finite_non_negative(width)
+    } else {
+        0.0
     }
 }

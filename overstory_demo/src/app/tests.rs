@@ -398,6 +398,50 @@ fn gallery_pages_keep_primary_cards_on_one_line_at_narrow_width() {
 }
 
 #[test]
+fn box_model_page_keeps_border_styles_in_secondary_row() {
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::BoxModel);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    let stage_children = ui
+        .get(stage)
+        .expect("stage should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        stage_children.len(),
+        3,
+        "Box model should have a header plus two rows"
+    );
+
+    let primary_cards = ui
+        .get(stage_children[1])
+        .expect("primary box-model row should exist")
+        .children()
+        .to_vec();
+    let secondary_cards = ui
+        .get(stage_children[2])
+        .expect("secondary box-model row should exist")
+        .children()
+        .to_vec();
+    assert_eq!(
+        primary_cards.len(),
+        2,
+        "corner contours and border sides should stay in the primary row"
+    );
+    assert_eq!(
+        secondary_cards.len(),
+        2,
+        "box padding and border styles should stay in the secondary row"
+    );
+
+    for card in primary_cards.into_iter().chain(secondary_cards) {
+        assert_card_contains_subtree(&ui, card);
+    }
+}
+
+#[test]
 fn inputs_page_groups_input_and_choice_cards_without_card_spill() {
     let mut ui = build_ui();
     let stage = stage_element(&ui);

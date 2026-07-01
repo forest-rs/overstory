@@ -114,6 +114,25 @@ fn surface_inset_properties_invalidate_layout() {
 }
 
 #[test]
+fn surface_border_style_invalidates_layout() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.invalidation.clear(LAYOUT);
+    ui.invalidation.clear(GEOMETRY);
+    ui.invalidation.clear(PAINT);
+
+    ui.set_local(
+        root,
+        ui.properties().surface.border_styles.left,
+        crate::BorderStyle::Solid,
+    );
+
+    assert!(ui.invalidation().is_invalidated(root, LAYOUT));
+    assert!(ui.invalidation().is_invalidated(root, GEOMETRY));
+    assert!(ui.invalidation().is_invalidated(root, PAINT));
+}
+
+#[test]
 fn styled_surface_inset_properties_invalidate_layout() {
     const PADDED: ClassId = ClassId(0xB0D);
 

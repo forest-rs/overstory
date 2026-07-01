@@ -547,6 +547,21 @@ impl ElementConfig {
         );
     }
 
+    pub(crate) fn set_built_in_local_if_absent<T>(&mut self, property: BuiltInPropertyKey, value: T)
+    where
+        T: Clone + 'static,
+    {
+        let target = InitialPropertyTarget::BuiltIn(property);
+        if self
+            .local_properties
+            .iter()
+            .any(|write| write.target == target)
+        {
+            return;
+        }
+        self.set_initial_property(target, ErasedValue::new(value));
+    }
+
     fn set_initial_property(&mut self, target: InitialPropertyTarget, value: ErasedValue) {
         if let Some(write) = self
             .local_properties
@@ -620,6 +635,10 @@ pub(crate) enum BuiltInPropertyKey {
     SurfaceBorderRightBrush,
     SurfaceBorderBottomBrush,
     SurfaceBorderLeftBrush,
+    SurfaceBorderTopStyle,
+    SurfaceBorderRightStyle,
+    SurfaceBorderBottomStyle,
+    SurfaceBorderLeftStyle,
     SurfaceBorderTopWidth,
     SurfaceBorderRightWidth,
     SurfaceBorderBottomWidth,
@@ -677,6 +696,10 @@ impl BuiltInPropertyKey {
             Self::SurfaceBorderRightBrush => properties.surface.border_brushes.right.id(),
             Self::SurfaceBorderBottomBrush => properties.surface.border_brushes.bottom.id(),
             Self::SurfaceBorderLeftBrush => properties.surface.border_brushes.left.id(),
+            Self::SurfaceBorderTopStyle => properties.surface.border_styles.top.id(),
+            Self::SurfaceBorderRightStyle => properties.surface.border_styles.right.id(),
+            Self::SurfaceBorderBottomStyle => properties.surface.border_styles.bottom.id(),
+            Self::SurfaceBorderLeftStyle => properties.surface.border_styles.left.id(),
             Self::SurfaceBorderTopWidth => properties.surface.border_widths.top.id(),
             Self::SurfaceBorderRightWidth => properties.surface.border_widths.right.id(),
             Self::SurfaceBorderBottomWidth => properties.surface.border_widths.bottom.id(),

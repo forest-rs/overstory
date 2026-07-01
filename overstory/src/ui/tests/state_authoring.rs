@@ -541,6 +541,10 @@ fn element_spec_ext_applies_initial_local_properties() {
         Some(&2.0)
     );
     assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.top),
+        Some(&crate::BorderStyle::Solid)
+    );
+    assert_eq!(
         element.get_local_value(ui.properties().surface.corner_radii.top_left),
         Some(&corner_radius)
     );
@@ -560,6 +564,59 @@ fn element_spec_ext_applies_initial_local_properties() {
     assert_eq!(
         element.get_local_value(ui.properties().content),
         Some(&String::from("Configured"))
+    );
+}
+
+#[test]
+fn surface_border_style_shorthand_writes_surface_border_styles() {
+    use crate::SurfaceSpecExt;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.append(
+        root,
+        crate::Panel::new()
+            .border_style(crate::BorderStyle::Dashed)
+            .border_width(2.0)
+            .border_brush(Brush::from(Color::from_rgba8(0x22, 0x33, 0x44, 0xff))),
+    );
+    let element = ui.get(panel).unwrap();
+
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.top),
+        Some(&crate::BorderStyle::Dashed)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.bottom),
+        Some(&crate::BorderStyle::Dashed)
+    );
+
+    let panel = ui.append(
+        root,
+        crate::Panel::new().border_styles(understory_presentation::Edges::new(
+            crate::BorderStyle::Dotted,
+            crate::BorderStyle::Double,
+            crate::BorderStyle::Groove,
+            crate::BorderStyle::Ridge,
+        )),
+    );
+    let element = ui.get(panel).unwrap();
+
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.top),
+        Some(&crate::BorderStyle::Dotted)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.right),
+        Some(&crate::BorderStyle::Double)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.bottom),
+        Some(&crate::BorderStyle::Groove)
+    );
+    assert_eq!(
+        element.get_local_value(ui.properties().surface.border_styles.left),
+        Some(&crate::BorderStyle::Ridge)
     );
 }
 

@@ -7,12 +7,12 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use imaging::record::Scene;
-use kurbo::{Affine, Rect};
-use peniko::{Brush, Fill};
+use kurbo::{Affine, BezPath, Cap, Point, Rect, Stroke};
+use peniko::{Brush, Color, Fill};
 use subduction_core::layer::SurfaceId;
 use understory_box_tree::NodeId;
 use understory_presentation::{
-    BorderSide, BorderSideGeometry, BoxContour, BoxDecorationGeometry, PathPaintOrder,
+    BorderSide, BorderSideGeometry, BorderStyle, BoxContour, BoxDecorationGeometry, PathPaintOrder,
     PathPrimitive, PresentationStore, Primitive, Side, SurfacePrimitive, TextPrimitive,
 };
 
@@ -111,12 +111,18 @@ fn lower_surface_border<S: imaging::PaintSink + ?Sized>(
     geometry: BoxDecorationGeometry,
     painter: &mut imaging::Painter<'_, S>,
 ) {
-    if let Some(side) = surface.border.uniform_visible_side() {
+    if let Some(side) = surface.border.uniform_visible_side()
+        && side.style == BorderStyle::Solid
+    {
         let Some(brush) = side.brush.as_ref() else {
             return;
         };
         let path = geometry.to_border_ring_path();
-        painter.fill(&path, brush).fill_rule(Fill::EvenOdd).draw();
+        painter
+            .fill(&path, brush)
+            .brush_transform(side.brush_transform)
+            .fill_rule(Fill::EvenOdd)
+            .draw();
         return;
     }
 
@@ -143,9 +149,176 @@ fn lower_border_side<S: imaging::PaintSink + ?Sized>(
         return;
     };
 
-    let mut path = kurbo::BezPath::new();
+    match geometry.style {
+        BorderStyle::None | BorderStyle::Hidden => {}
+        BorderStyle::Solid => {
+            fill_border_side_region(geometry, brush, side.brush_transform, painter);
+        }
+        BorderStyle::Dotted | BorderStyle::Dashed => {
+            stroke_border_side_centerline(geometry, brush, side.brush_transform, painter);
+        }
+        BorderStyle::Double => {
+            fill_border_side_band(
+                geometry,
+                0.0,
+                1.0 / 3.0,
+                brush,
+                side.brush_transform,
+                painter,
+            );
+            fill_border_side_band(
+                geometry,
+                2.0 / 3.0,
+                1.0,
+                brush,
+                side.brush_transform,
+                painter,
+            );
+        }
+        BorderStyle::Groove | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset => {
+            lower_relief_border_side(geometry, brush, side.brush_transform, painter);
+        }
+    }
+}
+
+fn fill_border_side_region<S: imaging::PaintSink + ?Sized>(
+    geometry: BorderSideGeometry,
+    brush: &Brush,
+    brush_transform: Option<Affine>,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    let mut path = BezPath::new();
     geometry.write_path(&mut path);
-    painter.fill(&path, brush).draw();
+    painter
+        .fill(&path, brush)
+        .brush_transform(brush_transform)
+        .draw();
+}
+
+fn fill_border_side_band<S: imaging::PaintSink + ?Sized>(
+    geometry: BorderSideGeometry,
+    outer_t: f64,
+    inner_t: f64,
+    brush: &Brush,
+    brush_transform: Option<Affine>,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    let path = border_side_band_path(geometry, outer_t, inner_t);
+    painter
+        .fill(&path, brush)
+        .brush_transform(brush_transform)
+        .draw();
+}
+
+fn stroke_border_side_centerline<S: imaging::PaintSink + ?Sized>(
+    geometry: BorderSideGeometry,
+    brush: &Brush,
+    brush_transform: Option<Affine>,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    let start = lerp_point(geometry.outer_start, geometry.inner_start, 0.5);
+    let end = lerp_point(geometry.outer_end, geometry.inner_end, 0.5);
+    let mut path = BezPath::new();
+    path.move_to(start);
+    path.line_to(end);
+
+    let stroke = match geometry.style {
+        BorderStyle::Dotted => Stroke::new(geometry.width)
+            .with_caps(Cap::Round)
+            .with_dashes(0.0, [0.01, (geometry.width * 1.8).max(1.0)]),
+        BorderStyle::Dashed => Stroke::new(geometry.width)
+            .with_caps(Cap::Butt)
+            .with_dashes(
+                0.0,
+                [
+                    (geometry.width * 3.0).max(1.0),
+                    (geometry.width * 2.0).max(1.0),
+                ],
+            ),
+        _ => Stroke::new(geometry.width),
+    };
+
+    painter
+        .stroke(&path, &stroke, brush)
+        .brush_transform(brush_transform)
+        .draw();
+}
+
+fn lower_relief_border_side<S: imaging::PaintSink + ?Sized>(
+    geometry: BorderSideGeometry,
+    brush: &Brush,
+    brush_transform: Option<Affine>,
+    painter: &mut imaging::Painter<'_, S>,
+) {
+    fill_border_side_region(geometry, brush, brush_transform, painter);
+
+    match geometry.style {
+        BorderStyle::Inset | BorderStyle::Outset => {
+            let overlay = inset_outset_overlay(geometry.side, geometry.style);
+            fill_border_side_region(geometry, &overlay, None, painter);
+        }
+        BorderStyle::Groove | BorderStyle::Ridge => {
+            let (outer, inner) = groove_ridge_overlays(geometry.side, geometry.style);
+            fill_border_side_band(geometry, 0.0, 0.5, &outer, None, painter);
+            fill_border_side_band(geometry, 0.5, 1.0, &inner, None, painter);
+        }
+        _ => {}
+    }
+}
+
+fn border_side_band_path(geometry: BorderSideGeometry, outer_t: f64, inner_t: f64) -> BezPath {
+    let outer_t = outer_t.clamp(0.0, 1.0);
+    let inner_t = inner_t.clamp(outer_t, 1.0);
+    let outer_start = lerp_point(geometry.outer_start, geometry.inner_start, outer_t);
+    let outer_end = lerp_point(geometry.outer_end, geometry.inner_end, outer_t);
+    let inner_start = lerp_point(geometry.outer_start, geometry.inner_start, inner_t);
+    let inner_end = lerp_point(geometry.outer_end, geometry.inner_end, inner_t);
+
+    let mut path = BezPath::new();
+    path.move_to(outer_start);
+    path.line_to(outer_end);
+    path.line_to(inner_end);
+    path.line_to(inner_start);
+    path.close_path();
+    path
+}
+
+fn lerp_point(start: Point, end: Point, t: f64) -> Point {
+    Point::new(
+        start.x + (end.x - start.x) * t,
+        start.y + (end.y - start.y) * t,
+    )
+}
+
+fn inset_outset_overlay(side: Side, style: BorderStyle) -> Brush {
+    let before_edge = matches!(side, Side::Top | Side::Left);
+    let highlight = match style {
+        BorderStyle::Outset => before_edge,
+        BorderStyle::Inset => !before_edge,
+        _ => false,
+    };
+    relief_overlay(highlight)
+}
+
+fn groove_ridge_overlays(side: Side, style: BorderStyle) -> (Brush, Brush) {
+    let before_edge = matches!(side, Side::Top | Side::Left);
+    let outer_highlight = match style {
+        BorderStyle::Ridge => before_edge,
+        BorderStyle::Groove => !before_edge,
+        _ => false,
+    };
+    (
+        relief_overlay(outer_highlight),
+        relief_overlay(!outer_highlight),
+    )
+}
+
+fn relief_overlay(highlight: bool) -> Brush {
+    if highlight {
+        Brush::Solid(Color::from_rgba8(255, 255, 255, 72))
+    } else {
+        Brush::Solid(Color::from_rgba8(0, 0, 0, 72))
+    }
 }
 
 /// Lowers a node's resolved presentation primitives into `output`,

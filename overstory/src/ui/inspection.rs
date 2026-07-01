@@ -17,7 +17,7 @@ use crate::inspection::{
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use crate::timeline_runtime::TimelineAnimationLayerKind;
 use peniko::Brush;
-use understory_presentation::CornerShape;
+use understory_presentation::{BorderStyle, CornerShape};
 use understory_presentation_properties::CornerRadius;
 use understory_property::{DependencyObject, Property};
 use understory_style::ResolvedSource;
@@ -534,6 +534,15 @@ impl Ui {
         }
 
         for (name, property) in [
+            ("Border top style", surface.border_styles.top),
+            ("Border right style", surface.border_styles.right),
+            ("Border bottom style", surface.border_styles.bottom),
+            ("Border left style", surface.border_styles.left),
+        ] {
+            self.push_property_row(rows, element, name, box_model, property, border_style_value);
+        }
+
+        for (name, property) in [
             ("Border top width", surface.border_widths.top),
             ("Border right width", surface.border_widths.right),
             ("Border bottom width", surface.border_widths.bottom),
@@ -808,6 +817,10 @@ fn corner_radius_value(value: CornerRadius) -> ElementPropertyInspectionValue {
 }
 
 fn corner_shape_value(value: CornerShape) -> ElementPropertyInspectionValue {
+    ElementPropertyInspectionValue::Token(format!("{value:?}"))
+}
+
+fn border_style_value(value: BorderStyle) -> ElementPropertyInspectionValue {
     ElementPropertyInspectionValue::Token(format!("{value:?}"))
 }
 

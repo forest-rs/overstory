@@ -5,7 +5,7 @@
 
 use kurbo::Affine;
 use peniko::Brush;
-use understory_presentation::{CornerShape, CornerShapes, Corners, Edges};
+use understory_presentation::{BorderStyle, CornerShape, CornerShapes, Corners, Edges};
 use understory_presentation_properties::CornerRadius;
 
 use crate::motion::{EffectRules, TransitionRules};
@@ -38,20 +38,35 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
     /// Sets the initial border brush.
     ///
     /// Pass `None` to explicitly author no border brush as a local value.
+    /// If no border style has already been authored, this also defaults the
+    /// border style to [`BorderStyle::Solid`] for a brush or
+    /// [`BorderStyle::None`] for no brush.
     #[must_use]
     fn border_brush(mut self, brush: impl Into<Option<Brush>>) -> Self {
         let brush = brush.into();
+        let style = if brush.is_some() {
+            BorderStyle::Solid
+        } else {
+            BorderStyle::None
+        };
         let element = self.element_config_mut();
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopBrush, brush.clone());
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightBrush, brush.clone());
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomBrush, brush.clone());
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftBrush, brush);
+        element.set_built_in_local_if_absent(BuiltInPropertyKey::SurfaceBorderTopStyle, style);
+        element.set_built_in_local_if_absent(BuiltInPropertyKey::SurfaceBorderRightStyle, style);
+        element.set_built_in_local_if_absent(BuiltInPropertyKey::SurfaceBorderBottomStyle, style);
+        element.set_built_in_local_if_absent(BuiltInPropertyKey::SurfaceBorderLeftStyle, style);
         self
     }
 
     /// Sets initial physical border brushes in top/right/bottom/left order.
     ///
     /// Pass `None` for any side that should not draw.
+    /// Sides without an authored border style default to
+    /// [`BorderStyle::Solid`] when a brush is present, or
+    /// [`BorderStyle::None`] when it is absent.
     #[must_use]
     fn border_brushes(
         mut self,
@@ -60,15 +75,56 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
         bottom: impl Into<Option<Brush>>,
         left: impl Into<Option<Brush>>,
     ) -> Self {
+        let top = top.into();
+        let right = right.into();
+        let bottom = bottom.into();
+        let left = left.into();
         let element = self.element_config_mut();
-        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopBrush, top.into());
-        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightBrush, right.into());
-        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomBrush, bottom.into());
-        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftBrush, left.into());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopBrush, top.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightBrush, right.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomBrush, bottom.clone());
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftBrush, left.clone());
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderTopStyle,
+            border_style_for_brush(&top),
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderRightStyle,
+            border_style_for_brush(&right),
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderBottomStyle,
+            border_style_for_brush(&bottom),
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderLeftStyle,
+            border_style_for_brush(&left),
+        );
+        self
+    }
+
+    /// Sets the initial border style for every side.
+    #[must_use]
+    fn border_style(mut self, style: BorderStyle) -> Self {
+        self = self.border_styles(Edges::all(style));
+        self
+    }
+
+    /// Sets initial physical border styles in top/right/bottom/left order.
+    #[must_use]
+    fn border_styles(mut self, styles: Edges<BorderStyle>) -> Self {
+        let element = self.element_config_mut();
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderTopStyle, styles.top);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightStyle, styles.right);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomStyle, styles.bottom);
+        element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftStyle, styles.left);
         self
     }
 
     /// Sets the initial border width in logical pixels.
+    ///
+    /// If no border style has already been authored, this also defaults each
+    /// side to [`BorderStyle::Solid`] so border width remains layout-affecting.
     #[must_use]
     fn border_width(mut self, width: f64) -> Self {
         self = self.border_widths(Edges::all(width));
@@ -76,6 +132,9 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
     }
 
     /// Sets initial physical border widths in top/right/bottom/left order.
+    ///
+    /// If no border style has already been authored, this also defaults each
+    /// side to [`BorderStyle::Solid`] so border width remains layout-affecting.
     #[must_use]
     fn border_widths(mut self, widths: Edges<f64>) -> Self {
         let element = self.element_config_mut();
@@ -83,6 +142,22 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderRightWidth, widths.right);
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderBottomWidth, widths.bottom);
         element.set_built_in_local(BuiltInPropertyKey::SurfaceBorderLeftWidth, widths.left);
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderTopStyle,
+            BorderStyle::Solid,
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderRightStyle,
+            BorderStyle::Solid,
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderBottomStyle,
+            BorderStyle::Solid,
+        );
+        element.set_built_in_local_if_absent(
+            BuiltInPropertyKey::SurfaceBorderLeftStyle,
+            BorderStyle::Solid,
+        );
         self
     }
 
@@ -215,3 +290,11 @@ pub trait SurfaceSpecExt: ElementSpec + Sized {
 }
 
 impl<T> SurfaceSpecExt for T where T: ElementSpec {}
+
+fn border_style_for_brush(brush: &Option<Brush>) -> BorderStyle {
+    if brush.is_some() {
+        BorderStyle::Solid
+    } else {
+        BorderStyle::None
+    }
+}

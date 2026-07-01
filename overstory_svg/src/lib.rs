@@ -455,6 +455,7 @@ fn path_stroke_from_usvg(stroke: &usvg::Stroke, inherited_opacity: f32) -> Optio
     }
     Some(PathStroke {
         brush,
+        brush_transform: None,
         stroke: style,
     })
 }
