@@ -1061,12 +1061,12 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 [[package]]
 name = "frameclock"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
+source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
 
 [[package]]
 name = "frameclock_apple"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
+source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
 dependencies = [
  "frameclock",
  "objc2 0.6.4",
@@ -3293,7 +3293,7 @@ dependencies = [
 [[package]]
 name = "subduction_core"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=b3147afd33b1cb548d522f04f9480b3a5a48df25#b3147afd33b1cb548d522f04f9480b3a5a48df25"
+source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
 dependencies = [
  "color",
  "frameclock",

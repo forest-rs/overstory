@@ -17,17 +17,15 @@ use core::{
 
 use frameclock::scheduler::DegradationPolicy;
 use frameclock::{
-    DisplayTiming, Duration as FrameDuration, FrameDemand, FrameTick, HostTime, OutputId,
-    SchedulerConfig,
+    DisplayTiming, Duration as FrameDuration, FrameDemand, FrameOpportunity, FrameTick, HostTime,
+    OutputId, SchedulerConfig,
 };
 use frameclock_apple::DisplayLink;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_ui_kit::UIViewController;
 use overstory::Ui;
-use overstory_host::{
-    FrameViewport, HostDispatchResult, HostFrameSubmission, HostFrameTiming, UiHost,
-};
+use overstory_host::{FrameViewport, HostDispatchResult, UiHost};
 use overstory_presenter_wgpu::{WgpuPresentResult, WgpuPresenter, WgpuPresenterDescriptor};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
@@ -170,9 +168,9 @@ impl ViewState {
     }
 
     fn handle_display_tick(&mut self, tick: FrameTick) -> HostResult<()> {
-        let timing = self.host_timing_from_tick(tick);
-        self.host.pump_timers(timing.now.ticks());
-        let result = self.render(timing);
+        let opportunity = self.frame_opportunity_from_tick(tick);
+        self.host.pump_timers(opportunity.tick.now.ticks());
+        let result = self.render(opportunity);
         self.sync_display_link_activity();
         result
     }
@@ -222,19 +220,9 @@ impl ViewState {
         self.presenter.size()
     }
 
-    fn host_timing_from_tick(&self, tick: FrameTick) -> HostFrameTiming {
+    fn frame_opportunity_from_tick(&self, tick: FrameTick) -> FrameOpportunity {
         let tick = self.time_map.map_tick(tick);
-        HostFrameTiming {
-            now: tick.now,
-            predicted_present: tick.predicted_present,
-            refresh_interval: tick.refresh_interval,
-            prev_actual_present: tick.prev_actual_present,
-            hints: frameclock_apple::present_hints(&tick, FALLBACK_REFRESH_INTERVAL),
-            display_timing: frameclock_apple::display_timing(
-                &tick,
-                DisplayTiming::fixed(FALLBACK_REFRESH_INTERVAL),
-            ),
-        }
+        frameclock_apple::frame_opportunity(tick, DisplayTiming::fixed(FALLBACK_REFRESH_INTERVAL))
     }
 
     fn submitted_at(&self) -> HostTime {
@@ -250,7 +238,7 @@ impl ViewState {
             .duration_until_next_wakeup_at(self.current_time().ticks())
     }
 
-    fn render(&mut self, timing: HostFrameTiming) -> HostResult<()> {
+    fn render(&mut self, opportunity: FrameOpportunity) -> HostResult<()> {
         let (width, height) = self.size();
         if width == 0 || height == 0 {
             return Ok(());
@@ -259,13 +247,18 @@ impl ViewState {
         let scale_factor = self.scale_factor();
         let viewport = FrameViewport::from_physical_size(width, height, scale_factor);
         let present = {
-            let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
+            let Some(prepared) = self.host.prepare_requested_frame(viewport, opportunity) else {
                 return Ok(());
             };
             debug_assert!(
                 !prepared.demand().is_empty(),
                 "requested frames should carry non-empty planned demand"
             );
+            if let Some(plan) = prepared.plan() {
+                let _ = self
+                    .display_link
+                    .set_preferred_frame_interval(plan.frame_interval, opportunity.display_timing);
+            }
             self.presenter.present_scene(prepared.scene())
         };
 
@@ -281,9 +274,8 @@ impl ViewState {
             return Ok(());
         };
         self.host.record_frame_submission(
-            HostFrameSubmission::new(timings)
-                .with_submitted_at(self.submitted_at())
-                .with_deferred_present_feedback(),
+            timings,
+            frameclock_apple::DEFAULT_FEEDBACK_MODE.submission(self.submitted_at()),
         );
         Ok(())
     }

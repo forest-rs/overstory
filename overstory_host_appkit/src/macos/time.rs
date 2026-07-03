@@ -42,7 +42,6 @@ impl AppleTimeMap {
             refresh_interval: tick
                 .refresh_interval
                 .map(|interval| self.map_refresh_interval(interval)),
-            frame_index: tick.frame_index,
             output: tick.output,
             prev_actual_present: tick
                 .prev_actual_present

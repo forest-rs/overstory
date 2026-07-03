@@ -56,10 +56,10 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 accesskit = { default-features = false, version = "0.24.0" }
 accesskit_macos = { version = "0.26.1" }
 chronostore = { default-features = false, git = "https://github.com/forest-rs/chronostore.git", rev = "f618fbf045db7767e4ca6c68e12b86a327447ad2" }
-frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
+frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
 frameclock_apple = { default-features = false, features = [
     "ca-display-link",
-], git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
+], git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
@@ -69,7 +69,7 @@ kurbo = { default-features = false, features = ["libm"], version = "0.13.1" }
 peniko = { default-features = false, features = ["libm"], version = "0.6.1" }
 smallvec = { default-features = false, version = "1.13.2" }
 spoor_session = { default-features = false, git = "https://github.com/forest-rs/spoor.git", rev = "42a84421d9fb1251b21d92882f402a90d42ca6f0" }
-subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "b3147afd33b1cb548d522f04f9480b3a5a48df25" }
+subduction_core = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
 
 # Understory primitives.
 understory_animation = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "d4c7b11bf3babb37b975205ec181c6ed322cb60d" }

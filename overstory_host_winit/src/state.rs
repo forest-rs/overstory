@@ -8,9 +8,11 @@ use alloc::{boxed::Box, sync::Arc};
 use accesskit_winit::{
     Adapter as AccessKitAdapter, Event as AccessKitEvent, WindowEvent as AccessKitWindowEvent,
 };
-use frameclock::{Duration as FrameDuration, FrameDemand};
+use frameclock::{
+    Duration as FrameDuration, FrameDemand, FrameOpportunity, FrameSubmission, OutputId,
+};
 use overstory::Ui;
-use overstory_host::{FrameViewport, HostFrameSubmission, HostFrameTiming, UiHost};
+use overstory_host::{FrameViewport, HostDispatchResult, UiHost};
 use overstory_presenter_wgpu::{WgpuPresentResult, WgpuPresenter, WgpuPresenterDescriptor};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use web_time::Instant;
@@ -22,6 +24,9 @@ use winit::window::Window;
 use crate::app::HostEvent;
 use crate::{HostResult, WindowOptions};
 
+const FALLBACK_REFRESH_INTERVAL: FrameDuration = FrameDuration(16_666_667);
+const DEFAULT_OUTPUT: OutputId = OutputId(0);
+
 pub(crate) struct WindowState {
     window: Arc<Window>,
     accesskit: AccessKitAdapter,
@@ -32,6 +37,9 @@ pub(crate) struct WindowState {
 
 impl WindowState {
     pub(crate) fn request_frame(&mut self, demand: FrameDemand) {
+        if demand.is_empty() {
+            return;
+        }
         self.host.request_frame(demand);
         self.window.request_redraw();
     }
@@ -79,9 +87,8 @@ impl WindowState {
                 self.sync_accessibility();
             }
             AccessKitWindowEvent::ActionRequested(request) => {
-                if self.host.handle_accesskit_action(&request).needs_redraw {
-                    self.request_frame(FrameDemand::INPUT);
-                }
+                let result = self.host.handle_accesskit_action(&request);
+                self.finish_dispatch(result);
                 self.sync_accessibility();
                 self.sync_cursor();
             }
@@ -121,20 +128,22 @@ impl WindowState {
         match translation {
             WindowEventTranslation::Pointer(pointer) => {
                 let result = self.host.dispatch_pointer_event(&pointer);
-                if result.needs_redraw {
-                    self.request_frame(result.frame_demand);
-                }
+                self.finish_dispatch(result);
                 self.sync_cursor();
             }
             WindowEventTranslation::Keyboard(key) => {
                 let result = self.host.dispatch_key(&key);
-                if result.needs_redraw {
-                    self.request_frame(result.frame_demand);
-                }
+                self.finish_dispatch(result);
             }
             WindowEventTranslation::Text(_) => {
                 // Overstory does not yet expose a host-level text input dispatch path.
             }
+        }
+    }
+
+    fn finish_dispatch(&mut self, result: HostDispatchResult) {
+        if result.needs_redraw {
+            self.request_frame(result.frame_demand);
         }
     }
 
@@ -167,9 +176,9 @@ impl WindowState {
 
         let scale_factor = self.window.scale_factor();
         let viewport = FrameViewport::from_physical_size(width, height, scale_factor);
-        let timing = self.host_frame_timing();
+        let opportunity = self.host_frame_opportunity();
         let present = {
-            let Some(prepared) = self.host.prepare_requested_frame(viewport, timing) else {
+            let Some(prepared) = self.host.prepare_requested_frame(viewport, opportunity) else {
                 if !self.host.pending_frame_demand().is_empty() {
                     self.window.request_redraw();
                 }
@@ -196,14 +205,14 @@ impl WindowState {
             return Ok(());
         };
         self.host
-            .record_frame_submission(HostFrameSubmission::new(timings));
+            .record_frame_submission(timings, FrameSubmission::new(self.host.frame_now(), None));
         if !self.host.pending_frame_demand().is_empty() {
             self.window.request_redraw();
         }
         Ok(())
     }
 
-    fn host_frame_timing(&self) -> HostFrameTiming {
+    fn host_frame_opportunity(&self) -> FrameOpportunity {
         let now = self.host.frame_now();
         // TODO(overstory_host_winit): This is only a nominal pacing hint.
         // Plain winit does not expose presentation timing or vsync feedback,
@@ -214,8 +223,8 @@ impl WindowState {
             .and_then(|monitor| monitor.refresh_rate_millihertz())
             .and_then(refresh_interval_from_millihertz)
             .map_or_else(
-                || HostFrameTiming::pacing_only(now),
-                |interval| HostFrameTiming::pacing_only_with_refresh_interval(now, interval),
+                || FrameOpportunity::pacing_only(now, FALLBACK_REFRESH_INTERVAL, DEFAULT_OUTPUT),
+                |interval| FrameOpportunity::pacing_only(now, interval, DEFAULT_OUTPUT),
             )
     }
 }
