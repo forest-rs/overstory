@@ -17,6 +17,7 @@ members = [
     "overstory_host",
     "overstory_host_appkit",
     "overstory_host_uikit",
+    "overstory_host_wayland",
     "overstory_host_winit",
     "overstory_node_graph_demo",
     "overstory_presenter_wgpu",
@@ -43,6 +44,7 @@ overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }
 overstory_host_uikit = { path = "overstory_host_uikit", version = "0.0.1" }
+overstory_host_wayland = { path = "overstory_host_wayland", version = "0.0.1" }
 overstory_host_winit = { path = "overstory_host_winit", version = "0.0.1" }
 overstory_look = { path = "looks/core", version = "0.0.1" }
 overstory_look_chicago = { path = "looks/chicago", version = "0.0.1" }
@@ -60,6 +62,7 @@ frameclock = { default-features = false, git = "https://github.com/forest-rs/sub
 frameclock_apple = { default-features = false, features = [
     "ca-display-link",
 ], git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
+frameclock_wayland = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
@@ -102,10 +105,11 @@ imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.
 
 # Input event normalization.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
-ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "c588c9fe6e296493a5621f10659ac49605f67cb3" }
-ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "c588c9fe6e296493a5621f10659ac49605f67cb3" }
-ui-events-uikit = { git = "https://github.com/forest-rs/ui-events.git", rev = "c588c9fe6e296493a5621f10659ac49605f67cb3" }
-ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "c588c9fe6e296493a5621f10659ac49605f67cb3" }
+ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "fba8b1e0af6446d522538c2a569815b022ff2d38" }
+ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "fba8b1e0af6446d522538c2a569815b022ff2d38" }
+ui-events-uikit = { git = "https://github.com/forest-rs/ui-events.git", rev = "fba8b1e0af6446d522538c2a569815b022ff2d38" }
+ui-events-wayland = { features = ["xkb"], git = "https://github.com/forest-rs/ui-events.git", rev = "fba8b1e0af6446d522538c2a569815b022ff2d38" }
+ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "fba8b1e0af6446d522538c2a569815b022ff2d38" }
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }
 

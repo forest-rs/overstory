@@ -1076,6 +1076,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "frameclock_wayland"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
+dependencies = [
+ "frameclock",
+ "rustix 1.1.4",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2258,6 +2267,7 @@ name = "overstory_app"
 version = "0.0.1"
 dependencies = [
  "overstory_host_appkit",
+ "overstory_host_wayland",
  "overstory_host_winit",
 ]
 
@@ -2353,6 +2363,25 @@ dependencies = [
  "overstory_presenter_wgpu",
  "ui-events",
  "ui-events-uikit",
+ "wgpu",
+]
+
+[[package]]
+name = "overstory_host_wayland"
+version = "0.0.1"
+dependencies = [
+ "frameclock",
+ "frameclock_wayland",
+ "overstory",
+ "overstory_host",
+ "overstory_presenter_wgpu",
+ "rustix 1.1.4",
+ "ui-events",
+ "ui-events-wayland",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "web-time",
  "wgpu",
 ]
 
@@ -3551,7 +3580,7 @@ dependencies = [
 [[package]]
 name = "ui-events"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
 dependencies = [
  "dpi",
  "keyboard-types",
@@ -3561,7 +3590,7 @@ dependencies = [
 [[package]]
 name = "ui-events-appkit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3573,7 +3602,7 @@ dependencies = [
 [[package]]
 name = "ui-events-apple-common"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
 dependencies = [
  "dpi",
  "ui-events",
@@ -3582,7 +3611,7 @@ dependencies = [
 [[package]]
 name = "ui-events-uikit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3594,9 +3623,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui-events-wayland"
+version = "0.3.0"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
+dependencies = [
+ "dpi",
+ "ui-events",
+ "wayland-client",
+ "wayland-protocols",
+ "xkbcommon",
+]
+
+[[package]]
 name = "ui-events-winit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=c588c9fe6e296493a5621f10659ac49605f67cb3#c588c9fe6e296493a5621f10659ac49605f67cb3"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=fba8b1e0af6446d522538c2a569815b022ff2d38#fba8b1e0af6446d522538c2a569815b022ff2d38"
 dependencies = [
  "ui-events",
  "winit",
@@ -4644,6 +4685,16 @@ name = "xcursor"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
+
+[[package]]
+name = "xkbcommon"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7a974f48060a14e95705c01f24ad9c3345022f4d97441b8a36beb7ed5c4a02d"
+dependencies = [
+ "libc",
+ "xkeysym",
+]
 
 [[package]]
 name = "xkbcommon-dl"

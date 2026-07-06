@@ -11,10 +11,12 @@ publish = false
 [features]
 default = ["winit-host"]
 appkit-host = ["dep:overstory_host_appkit"]
+wayland-host = ["dep:overstory_host_wayland"]
 winit-host = ["dep:overstory_host_winit"]
 
 [dependencies]
 overstory_host_appkit = { optional = true, workspace = true }
+overstory_host_wayland = { optional = true, workspace = true }
 overstory_host_winit = { optional = true, workspace = true }
 
 [lints]
