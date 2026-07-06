@@ -17,7 +17,7 @@
 use smallvec::SmallVec;
 use understory_property::{PropertyId, PropertyRegistry};
 use understory_style::{
-    ExpressionLayer, MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
+    ExprDeps, ExpressionLayer, MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
 };
 
 use crate::element::{Element, ElementId};
@@ -116,6 +116,26 @@ impl StyleRuntime {
         self.match_states.remove(id);
     }
 
+    /// Returns expression targets that may depend on `property` for `state`.
+    ///
+    /// The set is intentionally conservative: every relevant cascade style
+    /// expression and every default expression is considered, even if a
+    /// higher-precedence source currently wins the target property.
+    pub(crate) fn expression_targets_depending_on(
+        &self,
+        state: MatchState,
+        property: PropertyId,
+    ) -> SmallVec<[PropertyId; 4]> {
+        let mut targets = SmallVec::new();
+        for entry in self.expressions.defaults().expression_entries() {
+            push_expression_target(&mut targets, entry.property(), entry.deps(), property);
+        }
+        for entry in self.cascade.expression_entries(state) {
+            push_expression_target(&mut targets, entry.property(), entry.deps(), property);
+        }
+        targets
+    }
+
     pub(crate) fn style_one(
         &mut self,
         id: ElementId,
@@ -161,6 +181,24 @@ impl StyleRuntime {
             return Some(invalidation);
         }
         None
+    }
+}
+
+fn push_expression_target(
+    targets: &mut SmallVec<[PropertyId; 4]>,
+    target: PropertyId,
+    deps: &ExprDeps,
+    property: PropertyId,
+) {
+    if deps.properties.binary_search(&property).is_ok() {
+        push_sorted_unique(targets, target);
+    }
+}
+
+fn push_sorted_unique(targets: &mut SmallVec<[PropertyId; 4]>, target: PropertyId) {
+    match targets.binary_search(&target) {
+        Ok(_) => {}
+        Err(index) => targets.insert(index, target),
     }
 }
 

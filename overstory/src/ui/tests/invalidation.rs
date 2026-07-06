@@ -1,8 +1,9 @@
 use super::{LAYOUT, PAINT};
 use crate::{Panel, TYPE_GENERIC, Text, Ui};
 use peniko::{Brush, Color};
+use understory_property::PropertyMetadataBuilder;
 use understory_style::{
-    ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin,
+    ClassId, SelectorBuilder, SelectorStep, StyleBuilder, StyleCascadeBuilder, StyleOrigin, expr,
 };
 
 #[test]
@@ -71,4 +72,49 @@ fn inherited_styled_property_change_invalidates_descendants() {
 
     assert!(ui.invalidation().is_invalidated(panel, PAINT));
     assert!(ui.invalidation().is_invalidated(label, PAINT));
+}
+
+#[test]
+fn expression_dependency_write_invalidates_transitive_target_channels() {
+    let mut ui = Ui::new();
+    let driver = ui.registry_mut().register(
+        "Test.ExpressionDriver",
+        PropertyMetadataBuilder::new(0.0_f64).build(),
+    );
+    let derived = ui.registry_mut().register(
+        "Test.ExpressionDerived",
+        PropertyMetadataBuilder::new(0.0_f64).build(),
+    );
+    let background = ui.properties().surface.background;
+    let low = Some(Brush::Solid(Color::from_rgba8(0x20, 0x40, 0x80, 0xff)));
+    let high = Some(Brush::Solid(Color::from_rgba8(0xff, 0x70, 0x20, 0xff)));
+
+    let style = StyleBuilder::new()
+        .set_expr(derived, expr::prop(driver) * 2.0)
+        .set_expr(
+            background,
+            expr::cond(
+                expr::gt(expr::prop(derived), expr::lit(1.0)),
+                expr::lit(high.clone()),
+                expr::lit(low),
+            ),
+        )
+        .build();
+    let selector = SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC)).build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(StyleOrigin::Base, selector, style)
+        .build();
+    ui.set_cascade(cascade);
+
+    let root = ui.root();
+    let panel = ui.append(root, Panel::new());
+    ui.invalidation.clear(PAINT);
+
+    ui.set_local(panel, driver, 0.75);
+
+    assert!(ui.invalidation().is_invalidated(panel, PAINT));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), background),
+        high,
+    );
 }
