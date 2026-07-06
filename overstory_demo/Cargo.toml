@@ -12,6 +12,7 @@ publish = false
 default = ["winit-host"]
 appkit-host = ["host-runner", "overstory_app/appkit-host"]
 host-runner = ["dep:overstory_app"]
+wayland-host = ["host-runner", "overstory_app/wayland-host"]
 winit-host = ["host-runner", "overstory_app/winit-host"]
 
 [[bin]]

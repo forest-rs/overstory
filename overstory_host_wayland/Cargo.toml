@@ -1,0 +1,32 @@
+[package]
+name = "overstory_host_wayland"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wayland native host for Overstory applications."
+publish = false
+
+[dependencies]
+overstory = { features = ["std"], workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+frameclock.workspace = true
+frameclock_wayland.workspace = true
+overstory_host.workspace = true
+overstory_presenter_wgpu.workspace = true
+ui-events.workspace = true
+ui-events-wayland.workspace = true
+web-time.workspace = true
+wgpu.workspace = true
+
+rustix = { version = "1", features = ["event"] }
+wayland-backend = { version = "0.3", features = ["client_system", "dlopen"] }
+wayland-client = "0.31"
+# `staging` for cursor-shape-v1; `unstable` because that protocol's generated
+# code references the unstable tablet protocol's types.
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+
+[lints]
+workspace = true

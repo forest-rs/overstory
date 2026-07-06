@@ -11,6 +11,7 @@ publish = false
 [features]
 default = ["winit-host"]
 appkit-host = ["overstory_app/appkit-host"]
+wayland-host = ["overstory_app/wayland-host"]
 winit-host = ["overstory_app/winit-host"]
 
 [dependencies]
