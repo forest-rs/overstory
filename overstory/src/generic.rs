@@ -40,7 +40,7 @@ pub fn present_surface(
         return;
     };
     *surface = ctx.properties.surface.resolve_surface(
-        &ResolveCx::new(ctx.registry, ctx.theme, ctx.lookup),
+        &ResolveCx::new(ctx.registry, ctx.theme, ctx.expressions, ctx.lookup),
         element,
         Some(StyleMatch::new(
             ctx.cascade,

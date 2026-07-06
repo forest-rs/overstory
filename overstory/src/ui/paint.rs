@@ -510,6 +510,7 @@ impl Ui {
             registry: &self.registry,
             properties: &self.properties,
             theme: self.style.theme(),
+            expressions: self.style.expressions(),
             cascade: self.style.cascade(),
             match_state,
             lookup: UiResolveLookup::new(self),

@@ -16,7 +16,9 @@
 
 use smallvec::SmallVec;
 use understory_property::{PropertyId, PropertyRegistry};
-use understory_style::{MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme};
+use understory_style::{
+    ExpressionLayer, MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
+};
 
 use crate::element::{Element, ElementId};
 use crate::element_side_map::ElementSideMap;
@@ -56,6 +58,9 @@ pub(crate) struct StyleRuntime {
     cascade: StyleCascade,
     /// Theme resource table used by style resolution.
     theme: Theme,
+    /// Property default expressions and expression functions used by style
+    /// resolution.
+    expressions: ExpressionLayer,
     /// Cached selector automaton state for each retained element.
     ///
     /// The state is derived from the parent state and this element's current
@@ -73,6 +78,7 @@ impl StyleRuntime {
             app_cascade,
             cascade,
             theme: Theme::default(),
+            expressions: ExpressionLayer::new(),
             match_states: ElementSideMap::new(),
         }
     }
@@ -83,6 +89,10 @@ impl StyleRuntime {
 
     pub(crate) fn theme(&self) -> &Theme {
         &self.theme
+    }
+
+    pub(crate) fn expressions(&self) -> &ExpressionLayer {
+        &self.expressions
     }
 
     pub(crate) fn set_cascade(&mut self, cascade: StyleCascade) {

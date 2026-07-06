@@ -311,6 +311,7 @@ impl Ui {
                         registry,
                         properties,
                         theme: style.theme(),
+                        expressions: style.expressions(),
                         cascade: style.cascade(),
                         match_state,
                         lookup: crate::lookup::ElementResolveLookup::new(elements, style),

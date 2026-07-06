@@ -25,7 +25,7 @@ use core::ops::{Deref, DerefMut};
 
 use kurbo::{Rect, Size};
 use understory_property::{Property, PropertyRegistry};
-use understory_style::{MatchState, ResolveCx, StyleCascade, Theme};
+use understory_style::{ExpressionLayer, MatchState, ResolveCx, StyleCascade, Theme};
 
 use crate::element::{Element, ElementId};
 use crate::lookup::{ElementResolveLookup, UiResolveLookup};
@@ -303,6 +303,8 @@ pub struct PresentContext<'a> {
     /// Active theme. Resources referenced by style entries resolve
     /// through it.
     pub theme: &'a Theme,
+    /// Expression defaults and functions used by style resolution.
+    pub(crate) expressions: &'a ExpressionLayer,
     /// The compiled style cascade rules apply through.
     pub cascade: &'a StyleCascade,
     /// The match state for the element currently being presented.
@@ -326,7 +328,7 @@ impl<'a> PresentContext<'a> {
     where
         T: Clone + 'static,
     {
-        ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
+        ResolveCx::new(self.registry, self.theme, self.expressions, self.lookup).get_value(
             element,
             property,
             Some((self.cascade, self.lookup.match_state(element.id()))),
@@ -352,6 +354,8 @@ pub struct MeasureContext<'a> {
     pub properties: &'a BuiltInProperties,
     /// Active theme.
     pub theme: &'a Theme,
+    /// Expression defaults and functions used by style resolution.
+    pub(crate) expressions: &'a ExpressionLayer,
     /// The compiled style cascade.
     pub cascade: &'a StyleCascade,
     /// The match state for the element currently being measured.
@@ -377,7 +381,7 @@ impl<'a> MeasureContext<'a> {
     where
         T: Clone + 'static,
     {
-        ResolveCx::new(self.registry, self.theme, self.lookup).get_value(
+        ResolveCx::new(self.registry, self.theme, self.expressions, self.lookup).get_value(
             element,
             property,
             Some((self.cascade, self.lookup.match_state(element.id()))),

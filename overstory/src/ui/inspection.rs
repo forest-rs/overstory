@@ -32,7 +32,9 @@ fn property_inspection_origin(source: &ResolvedSource) -> ElementPropertyInspect
         }
         ResolvedSource::ThemeResource { .. } => ElementPropertyInspectionOrigin::Theme,
         ResolvedSource::Inherited { .. } => ElementPropertyInspectionOrigin::Inherited,
-        ResolvedSource::Default => ElementPropertyInspectionOrigin::Default,
+        ResolvedSource::Default | ResolvedSource::DefaultExpression { .. } => {
+            ElementPropertyInspectionOrigin::Default
+        }
     }
 }
 

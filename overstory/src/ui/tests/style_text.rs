@@ -37,7 +37,7 @@ fn styled_background_resolves_through_cascade() {
 #[test]
 fn three_rule_cascade_picks_class_over_type() {
     // Mirror the demo: rules at Base origin keyed on TYPE_GENERIC.
-    use understory_style::{ClassId, SelectorBuilder, SelectorStep};
+    use understory_style::{ClassId, ExpressionLayer, SelectorBuilder, SelectorStep};
 
     const CLASS_FG: ClassId = ClassId(1);
 
@@ -79,7 +79,8 @@ fn three_rule_cascade_picks_class_over_type() {
     );
 
     let lookup = UiResolveLookup::new(&ui);
-    let cx = ResolveCx::new(ui.registry(), ui.theme(), lookup);
+    let expressions = ExpressionLayer::new();
+    let cx = ResolveCx::new(ui.registry(), ui.theme(), &expressions, lookup);
 
     // Plain generic child: only the generic rule matches → dark.
     let plain_el = ui.get(plain).unwrap();

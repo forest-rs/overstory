@@ -88,6 +88,7 @@ impl Ui {
         ResolveCx::new(
             &self.registry,
             self.style.theme(),
+            self.style.expressions(),
             UiResolveLookup::new(self),
         )
         .get_value(
@@ -107,6 +108,7 @@ impl Ui {
         ResolveCx::new(
             &self.registry,
             self.style.theme(),
+            self.style.expressions(),
             UiResolveLookup::new(self),
         )
         .explain_value(
@@ -151,6 +153,7 @@ impl Ui {
             ResolveCx::new(
                 &self.registry,
                 self.style.theme(),
+                self.style.expressions(),
                 UiResolveLookup::new(self),
             )
             .explain_value(
@@ -283,7 +286,9 @@ fn describe_resolved_source(source: &ResolvedSource, vocabulary: &StyleVocabular
         ResolvedSource::Inherited { ancestor_depth, .. } => {
             format!("Inherited (depth {ancestor_depth})")
         }
-        ResolvedSource::Default => String::from("Framework default"),
+        ResolvedSource::Default | ResolvedSource::DefaultExpression { .. } => {
+            String::from("Framework default")
+        }
     }
 }
 
