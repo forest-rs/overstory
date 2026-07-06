@@ -60,6 +60,7 @@ pub(super) const CLASS_DEMO_TRANSCRIPT_VIEWPORT: &str = ".demo-transcript-viewpo
 pub(super) const CLASS_DEMO_TRANSCRIPT_COMPOSER_INPUT: &str = ".demo-transcript-composer-input";
 pub(super) const CLASS_DEVTOOLS_EVENT_LOG: &str = ".devtools-event-log";
 pub(super) const CLASS_FOREGROUND_SWATCH: &str = ".foreground-swatch";
+pub(super) const CLASS_EXPRESSION_SWATCH: &str = ".expression-swatch";
 pub(super) const CLASS_OKLAB_SWATCH: &str = ".oklab-swatch";
 pub(super) const CLASS_OPACITY_SWATCH: &str = ".opacity-swatch";
 pub(super) const CLASS_BORDER_SWATCH: &str = ".border-swatch";
@@ -105,6 +106,7 @@ pub(super) struct DemoClasses {
     pub(super) demo_template_slider_track: ClassId,
     pub(super) demo_template_slider_thumb: ClassId,
     pub(super) foreground_swatch: ClassId,
+    pub(super) expression_swatch: ClassId,
     pub(super) oklab_swatch: ClassId,
     pub(super) opacity_swatch: ClassId,
     pub(super) border_swatch: ClassId,
@@ -175,6 +177,7 @@ impl overstory::StyleTokenSet for DemoStyleTokens {
                 demo_template_slider_track: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_TRACK),
                 demo_template_slider_thumb: vocabulary.class_id(CLASS_DEMO_TEMPLATE_SLIDER_THUMB),
                 foreground_swatch: vocabulary.class_id(CLASS_FOREGROUND_SWATCH),
+                expression_swatch: vocabulary.class_id(CLASS_EXPRESSION_SWATCH),
                 oklab_swatch: vocabulary.class_id(CLASS_OKLAB_SWATCH),
                 opacity_swatch: vocabulary.class_id(CLASS_OPACITY_SWATCH),
                 border_swatch: vocabulary.class_id(CLASS_BORDER_SWATCH),
@@ -660,6 +663,27 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
             text_class_state_selector(classes.foreground_swatch, PSEUDO_SELECTED),
             StyleBuilder::new()
                 .set(properties.foreground, solid(0x2f, 0x62, 0xd6, 0xff))
+                .build(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            class_selector(classes.expression_swatch),
+            StyleBuilder::new()
+                .set_expr(
+                    properties.surface.background,
+                    expr::cond(
+                        expr::lt(expr::prop(properties.value), expr::lit(0.34)),
+                        expr::lit(opt_solid(0x2f, 0x62, 0xd6, 0xff)),
+                        expr::cond(
+                            expr::lt(expr::prop(properties.value), expr::lit(0.67)),
+                            expr::lit(opt_solid(0x18, 0xa0, 0x64, 0xff)),
+                            expr::lit(opt_solid(0xf2, 0x6a, 0x8d, 0xff)),
+                        ),
+                    ),
+                )
+                .border_brush(properties, opt_solid(0xff, 0xff, 0xff, 0xa0))
+                .border_width(properties, 1.0_f64)
+                .corner_radius(properties, 18.0_f64)
                 .build(),
         )
         .push_rule(

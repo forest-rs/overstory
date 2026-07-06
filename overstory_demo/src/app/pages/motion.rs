@@ -75,6 +75,8 @@ impl View for MotionPage {
                     );
                 });
 
+                build_expression_color_card(row);
+
                 row.demo_responsive_card("COMPOSITION MOTION", PAGE_CARD_WIDTH, |composition| {
                     let [opacity, border, retarget] = composition.with_child(
                         Panel::row(12.0)
@@ -258,6 +260,43 @@ fn build_animation_runtime_card(row: &mut ChildUi<'_>) {
                     );
                 });
             },
+        );
+    });
+}
+
+fn build_expression_color_card(row: &mut ChildUi<'_>) {
+    row.demo_responsive_card("EXPRESSION COLOR", PAGE_CARD_WIDTH, |expression| {
+        let amount = expression.local_state(0.52_f64);
+        let status = expression.local_state(String::from("bound value: 0.52"));
+        let value_property = expression.ui().properties().value;
+
+        expression.add(
+            Panel::new()
+                .class(CLASS_EXPRESSION_SWATCH)
+                .layout(Layout::new().logical_size(PAGE_CONTROL_WIDTH, 92.0))
+                .bind_property(value_property, amount.binding()),
+        );
+        expression.add(
+            Slider::new()
+                .range(0.0, 1.0)
+                .step(0.05)
+                .value(0.52)
+                .fill_width()
+                .on_value_changed(move |ui, event| {
+                    amount.set(ui, event.value);
+                    status.set(ui, format!("bound value: {:.2}", event.value));
+                }),
+        );
+        expression.add(
+            Text::new("")
+                .class(CLASS_MOTION_STATUS)
+                .bind_text(status.binding()),
+        );
+        expression.add(
+            caption(
+                "The slider writes local state; binding writes Value; the style expression resolves the color.",
+            )
+            .wrap(),
         );
     });
 }
@@ -568,6 +607,37 @@ mod tests {
                 .pseudos()
                 .contains(&PSEUDO_SELECTED),
             "foreground specimen timer should toggle selected state",
+        );
+    }
+
+    #[test]
+    fn motion_page_expression_swatch_resolves_from_bound_value() {
+        let mut ui = build_ui();
+        let stage = stage_element(&ui);
+        show_demo_page(&mut ui, stage, DemoPage::Motion);
+        ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+        let swatch = find_by_class(&ui, ui.root(), CLASS_EXPRESSION_SWATCH)
+            .expect("motion page should contain the expression color specimen");
+        assert_eq!(
+            ui.get(swatch)
+                .expect("expression swatch should exist")
+                .get_local_value(ui.properties().value),
+            Some(&0.52),
+            "binding should write the local state value into the swatch Value property",
+        );
+        assert_eq!(
+            ui.resolved_value(swatch, ui.properties().surface.background),
+            Some(opt_solid(0x18, 0xa0, 0x64, 0xff)),
+            "initial bound value should resolve the middle color band",
+        );
+
+        ui.set_local(swatch, ui.properties().value, 0.9);
+
+        assert_eq!(
+            ui.resolved_value(swatch, ui.properties().surface.background),
+            Some(opt_solid(0xf2, 0x6a, 0x8d, 0xff)),
+            "changing the dependency property should resolve the high color band",
         );
     }
 
