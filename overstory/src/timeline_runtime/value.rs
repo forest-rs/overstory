@@ -248,7 +248,7 @@ where
 pub(super) struct ValueTargetState<T, E, B> {
     target: Option<T>,
     transition: TransitionRunner<u8, u8>,
-    layers: Vec<ValueAnimationLayer<T, E>>,
+    layers: Vec<RetainedValueAnimation<E>>,
     value_kind: Option<PresentationValueKind>,
     _bridge: PhantomData<B>,
 }
@@ -300,17 +300,17 @@ where
     pub(super) fn set_effect(
         &mut self,
         key: TimelineTrackKey,
-        instance: ValueAnimationInstance<T, E>,
+        instance: RetainedValueAnimation<E>,
         event_at: TimerInstant,
         events: &mut Vec<AnimationEvent>,
     ) {
         events.push(AnimationEvent::new(
-            instance.id(),
+            *instance.id(),
             key,
             AnimationEventKind::Started,
             event_at,
         ));
-        self.layers.push(ValueAnimationLayer::new(instance));
+        self.layers.push(instance);
     }
 
     /// Records a new target value and updates the implicit transition layer.
@@ -352,10 +352,8 @@ where
     }
 
     fn sample_stack(&self, underlying: Option<T>, clock: TimelineClock<'_>) -> Option<T> {
-        self.layers.iter().fold(underlying, |value, layer| {
-            layer
-                .instance
-                .sample_over(value, layer.instance.timeline_time(clock))
+        self.layers.iter().fold(underlying, |value, instance| {
+            sample_instance(instance, value, timeline_time(instance, clock))
         })
     }
 
@@ -365,18 +363,12 @@ where
             .and_then(B::transition_value)
     }
 
-    fn animation(&self, id: AnimationId) -> Option<&ValueAnimationInstance<T, E>> {
-        self.layers
-            .iter()
-            .find(|layer| layer.instance.id() == id)
-            .map(|layer| &layer.instance)
+    fn animation(&self, id: AnimationId) -> Option<&RetainedValueAnimation<E>> {
+        self.layers.iter().find(|instance| *instance.id() == id)
     }
 
-    fn animation_mut(&mut self, id: AnimationId) -> Option<&mut ValueAnimationInstance<T, E>> {
-        self.layers
-            .iter_mut()
-            .find(|layer| layer.instance.id() == id)
-            .map(|layer| &mut layer.instance)
+    fn animation_mut(&mut self, id: AnimationId) -> Option<&mut RetainedValueAnimation<E>> {
+        self.layers.iter_mut().find(|instance| *instance.id() == id)
     }
 
     fn control_result(
@@ -399,25 +391,23 @@ where
         events: &mut Vec<AnimationEvent>,
     ) {
         let mut retained = Vec::new();
-        for mut layer in self.layers.drain(..) {
-            let timeline_time = layer.instance.timeline_time(clock);
-            layer
-                .instance
-                .queue_iteration_events(key, timeline_time, event_at, events);
+        for mut instance in self.layers.drain(..) {
+            let timeline_time = timeline_time(&instance, clock);
+            queue_iteration_events(&mut instance, key, timeline_time, event_at, events);
             // Manual timelines are scrub sources: reaching the effect endpoint
             // should sample the endpoint, not retire the retained instance.
-            if layer.instance.timeline() == AnimationTimelineId::DOCUMENT
+            if *instance.timeline() == AnimationTimelineId::DOCUMENT
                 && timeline_time
-                    .is_some_and(|timeline_time| layer.instance.finish_if_complete(timeline_time))
+                    .is_some_and(|timeline_time| instance.finish_if_complete(timeline_time))
             {
                 events.push(AnimationEvent::new(
-                    layer.instance.id(),
+                    *instance.id(),
                     key,
                     AnimationEventKind::Finished,
                     event_at,
                 ));
             } else {
-                retained.push(layer);
+                retained.push(instance);
             }
         }
         self.layers = retained;
@@ -431,15 +421,11 @@ where
         kind: AnimationEventKind,
         events: &mut Vec<AnimationEvent>,
     ) -> bool {
-        let Some(index) = self
-            .layers
-            .iter()
-            .position(|layer| layer.instance.id() == id)
-        else {
+        let Some(index) = self.layers.iter().position(|instance| *instance.id() == id) else {
             return false;
         };
-        let layer = self.layers.remove(index);
-        events.push(AnimationEvent::new(layer.instance.id(), key, kind, now));
+        let instance = self.layers.remove(index);
+        events.push(AnimationEvent::new(*instance.id(), key, kind, now));
         true
     }
 }
@@ -475,7 +461,7 @@ where
             || self
                 .layers
                 .iter()
-                .any(|layer| layer.instance.timeline() == timeline && layer.instance.is_running())
+                .any(|instance| *instance.timeline() == timeline && instance.is_running())
     }
 
     fn running_transition_count(&self) -> usize {
@@ -485,12 +471,12 @@ where
     fn running_effect_count(&self) -> usize {
         self.layers
             .iter()
-            .filter(|layer| layer.instance.is_running())
+            .filter(|instance| instance.is_running())
             .count()
     }
 
     fn animation_state(&self, id: AnimationId) -> Option<AnimationPlayState> {
-        self.animation(id).map(ValueAnimationInstance::state)
+        self.animation(id).map(RetainedAnimationInstance::state)
     }
 
     fn animation_current_time(
@@ -499,8 +485,7 @@ where
         clock: TimelineClock<'_>,
     ) -> Option<TimerDuration> {
         self.animation(id).and_then(|instance| {
-            instance
-                .timeline_time(clock)
+            timeline_time(instance, clock)
                 .and_then(|timeline_time| instance.current_time(timeline_time))
         })
     }
@@ -511,15 +496,14 @@ where
         clock: TimelineClock<'_>,
     ) -> Option<TimingSample> {
         self.animation(id).and_then(|instance| {
-            instance
-                .timeline_time(clock)
+            timeline_time(instance, clock)
                 .and_then(|timeline_time| instance.timing_sample(timeline_time))
         })
     }
 
     fn animation_playback_rate(&self, id: AnimationId) -> Option<f64> {
         self.animation(id)
-            .map(ValueAnimationInstance::playback_rate)
+            .map(RetainedAnimationInstance::playback_rate)
     }
 
     fn animation_rows(
@@ -531,7 +515,7 @@ where
         rows.extend(
             self.layers
                 .iter()
-                .map(|layer| layer.instance.runtime_row(key, self.value_kind, clock)),
+                .map(|instance| runtime_row::<T, E>(instance, key, self.value_kind, clock)),
         );
     }
 
@@ -569,7 +553,7 @@ where
         key: TimelineTrackKey,
         clock: TimelineClock<'_>,
     ) -> Option<TimelineTargetControlResult> {
-        let timeline_time = self.animation(id)?.timeline_time(clock)?;
+        let timeline_time = timeline_time(self.animation(id)?, clock)?;
         let instance = self.animation_mut(id)?;
         if !instance.pause(timeline_time) {
             return None;
@@ -583,7 +567,7 @@ where
         key: TimelineTrackKey,
         clock: TimelineClock<'_>,
     ) -> Option<TimelineTargetControlResult> {
-        let timeline_time = self.animation(id)?.timeline_time(clock)?;
+        let timeline_time = timeline_time(self.animation(id)?, clock)?;
         let instance = self.animation_mut(id)?;
         if !instance.play(timeline_time) {
             return None;
@@ -598,7 +582,7 @@ where
         local_time: TimerDuration,
         clock: TimelineClock<'_>,
     ) -> Option<TimelineTargetControlResult> {
-        let timeline_time = self.animation(id)?.timeline_time(clock)?;
+        let timeline_time = timeline_time(self.animation(id)?, clock)?;
         let instance = self.animation_mut(id)?;
         instance.seek(local_time, timeline_time);
         Some(self.control_result(key, clock))
@@ -610,7 +594,7 @@ where
         key: TimelineTrackKey,
         clock: TimelineClock<'_>,
     ) -> Option<TimelineTargetControlResult> {
-        let timeline_time = self.animation(id)?.timeline_time(clock)?;
+        let timeline_time = timeline_time(self.animation(id)?, clock)?;
         let instance = self.animation_mut(id)?;
         if !instance.reverse(timeline_time) {
             return None;
@@ -625,7 +609,7 @@ where
         playback_rate: f64,
         clock: TimelineClock<'_>,
     ) -> Option<TimelineTargetControlResult> {
-        let timeline_time = self.animation(id)?.timeline_time(clock)?;
+        let timeline_time = timeline_time(self.animation(id)?, clock)?;
         let instance = self.animation_mut(id)?;
         if !instance.set_playback_rate(playback_rate, timeline_time) {
             return None;
@@ -671,9 +655,9 @@ where
         events: &mut Vec<AnimationEvent>,
     ) {
         let _ = self.transition.cancel(0, 0);
-        for layer in self.layers.drain(..) {
+        for instance in self.layers.drain(..) {
             events.push(AnimationEvent::new(
-                layer.instance.id(),
+                *instance.id(),
                 key,
                 AnimationEventKind::Canceled,
                 now,
@@ -682,151 +666,76 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct ValueAnimationLayer<T, E> {
-    instance: ValueAnimationInstance<T, E>,
-}
+type RetainedValueAnimation<E> = RetainedAnimationInstance<AnimationId, AnimationTimelineId, E>;
 
-impl<T, E> ValueAnimationLayer<T, E> {
-    const fn new(instance: ValueAnimationInstance<T, E>) -> Self {
-        Self { instance }
-    }
-}
-
-/// Retained animation instance for one native effect adapter.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct ValueAnimationInstance<T, E> {
-    inner: RetainedAnimationInstance<AnimationId, AnimationTimelineId, E>,
-    _value: PhantomData<T>,
-}
-
-impl<T, E> ValueAnimationInstance<T, E>
+fn sample_instance<T, E>(
+    instance: &RetainedValueAnimation<E>,
+    underlying: Option<T>,
+    timeline_time: Option<TimelineTime>,
+) -> Option<T>
 where
     T: Clone + 'static,
     E: RuntimeEffect<T>,
 {
-    /// Creates a retained animation instance.
-    pub(super) fn new(
-        id: AnimationId,
-        timeline: AnimationTimelineId,
-        effect: E,
-        started_at: TimelineTime,
-    ) -> Self {
-        Self {
-            inner: RetainedAnimationInstance::new(id, timeline, effect, started_at),
-            _value: PhantomData,
-        }
-    }
+    let local_time = instance.local_time(timeline_time?)?;
+    instance.effect().sample_over(underlying, local_time)
+}
 
-    fn id(&self) -> AnimationId {
-        *self.inner.id()
-    }
+fn timeline_time<E>(
+    instance: &RetainedValueAnimation<E>,
+    clock: TimelineClock<'_>,
+) -> Option<TimelineTime>
+where
+    E: RetainedAnimationEffect,
+{
+    clock.time(*instance.timeline())
+}
 
-    fn timeline(&self) -> AnimationTimelineId {
-        *self.inner.timeline()
-    }
+fn runtime_row<T, E>(
+    instance: &RetainedValueAnimation<E>,
+    key: TimelineTrackKey,
+    target_value_kind: Option<PresentationValueKind>,
+    clock: TimelineClock<'_>,
+) -> TimelineAnimationRuntimeRow
+where
+    T: Clone + 'static,
+    E: RuntimeEffect<T>,
+{
+    let timeline_time = timeline_time(instance, clock);
+    TimelineAnimationRuntimeRow::new(
+        *instance.id(),
+        key,
+        instance.state(),
+        timeline_time.and_then(|time| instance.current_time(time)),
+        timeline_time.and_then(|time| instance.timing_sample(time)),
+        instance.playback_rate(),
+        instance.effect().composite(),
+        instance.effect().value_kind().or(target_value_kind),
+        *instance.timeline(),
+    )
+}
 
-    fn state(&self) -> AnimationPlayState {
-        self.inner.state()
-    }
-
-    fn playback_rate(&self) -> f64 {
-        self.inner.playback_rate()
-    }
-
-    fn is_running(&self) -> bool {
-        self.inner.is_running()
-    }
-
-    fn runtime_row(
-        &self,
-        key: TimelineTrackKey,
-        target_value_kind: Option<PresentationValueKind>,
-        clock: TimelineClock<'_>,
-    ) -> TimelineAnimationRuntimeRow {
-        let timeline_time = self.timeline_time(clock);
-        TimelineAnimationRuntimeRow::new(
-            self.id(),
-            key,
-            self.state(),
-            timeline_time.and_then(|timeline_time| self.current_time(timeline_time)),
-            timeline_time.and_then(|timeline_time| self.timing_sample(timeline_time)),
-            self.playback_rate(),
-            self.composite(),
-            self.inner.effect().value_kind().or(target_value_kind),
-            self.timeline(),
-        )
-    }
-
-    fn composite(&self) -> CompositeOperation {
-        self.inner.effect().composite()
-    }
-
-    fn current_time(&self, timeline_time: TimelineTime) -> Option<TimerDuration> {
-        self.inner.current_time(timeline_time)
-    }
-
-    fn timing_sample(&self, timeline_time: TimelineTime) -> Option<TimingSample> {
-        self.inner.timing_sample(timeline_time)
-    }
-
-    fn timeline_time(&self, clock: TimelineClock<'_>) -> Option<TimelineTime> {
-        clock.time(self.timeline())
-    }
-
-    fn sample_over(&self, underlying: Option<T>, timeline_time: Option<TimelineTime>) -> Option<T> {
-        let time = self.inner.local_time(timeline_time?)?;
-        self.inner.effect().sample_over(underlying, time)
-    }
-
-    fn play(&mut self, timeline_time: TimelineTime) -> bool {
-        self.inner.play(timeline_time)
-    }
-
-    fn pause(&mut self, timeline_time: TimelineTime) -> bool {
-        self.inner.pause(timeline_time)
-    }
-
-    fn seek(&mut self, local_time: TimerDuration, timeline_time: TimelineTime) {
-        self.inner.seek(local_time, timeline_time);
-    }
-
-    fn reverse(&mut self, timeline_time: TimelineTime) -> bool {
-        self.inner.reverse(timeline_time)
-    }
-
-    fn set_playback_rate(&mut self, playback_rate: f64, timeline_time: TimelineTime) -> bool {
-        self.inner.set_playback_rate(playback_rate, timeline_time)
-    }
-
-    fn finish(&mut self) -> bool {
-        self.inner.finish()
-    }
-
-    fn finish_if_complete(&mut self, timeline_time: TimelineTime) -> bool {
-        self.inner.finish_if_complete(timeline_time)
-    }
-
-    fn queue_iteration_events(
-        &mut self,
-        key: TimelineTrackKey,
-        timeline_time: Option<TimelineTime>,
-        event_at: TimerInstant,
-        events: &mut Vec<AnimationEvent>,
-    ) {
-        let Some(timeline_time) = timeline_time else {
-            return;
-        };
-        if let Some(change) = self.inner.take_iteration_change(timeline_time) {
-            change.for_each_crossed(|iteration| {
-                events.push(AnimationEvent::new_iteration(
-                    self.id(),
-                    key,
-                    event_at,
-                    iteration,
-                ));
-            });
-        }
+fn queue_iteration_events<E>(
+    instance: &mut RetainedValueAnimation<E>,
+    key: TimelineTrackKey,
+    timeline_time: Option<TimelineTime>,
+    event_at: TimerInstant,
+    events: &mut Vec<AnimationEvent>,
+) where
+    E: RetainedAnimationEffect,
+{
+    let Some(timeline_time) = timeline_time else {
+        return;
+    };
+    if let Some(change) = instance.take_iteration_change(timeline_time) {
+        change.for_each_crossed(|iteration| {
+            events.push(AnimationEvent::new_iteration(
+                *instance.id(),
+                key,
+                event_at,
+                iteration,
+            ));
+        });
     }
 }
 
@@ -883,10 +792,10 @@ pub(super) type TimelineTargetState =
     ValueTargetState<PresentationValue, PresentationEffect, PresentationBridge>;
 
 /// Built-in presentation animation instance.
-pub(super) type AnimationInstance = ValueAnimationInstance<PresentationValue, PresentationEffect>;
+pub(super) type AnimationInstance = RetainedValueAnimation<PresentationEffect>;
 
 /// App-defined native target state.
 pub(super) type NativeTargetState<T> = ValueTargetState<T, StackEffect<T>, NativeBridge>;
 
 /// App-defined native animation instance.
-pub(super) type NativeAnimationInstance<T> = ValueAnimationInstance<T, StackEffect<T>>;
+pub(super) type NativeAnimationInstance<T> = RetainedValueAnimation<StackEffect<T>>;
