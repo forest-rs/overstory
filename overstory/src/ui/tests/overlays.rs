@@ -258,7 +258,7 @@ fn tooltip_can_be_placed_to_the_right_of_target() {
     ui.set_tooltip(
         target,
         crate::Tooltip::new("Side")
-            .placement(crate::Placement::Right)
+            .placement(crate::Placement::RIGHT_START)
             .offset(6.0, 0.0),
     );
 

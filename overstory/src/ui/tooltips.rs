@@ -5,7 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
-use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind};
+use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind, resolve_placement};
 
 use super::Ui;
 
@@ -89,7 +89,13 @@ impl Ui {
         let bounds = self.effective_bounds(target);
         let placement = tooltip.placement_value();
         let offset = tooltip.offset_value();
-        let origin = placement.resolve(bounds, kurbo::Size::ZERO, self.last_viewport, offset);
+        let origin = resolve_placement(
+            placement,
+            bounds,
+            kurbo::Size::ZERO,
+            self.last_viewport,
+            offset,
+        );
         let tooltip_element = append_overlay_tooltip(self, &tooltip, origin);
         self.overlays.open(ActiveOverlay {
             kind: OverlayKind::Tooltip,

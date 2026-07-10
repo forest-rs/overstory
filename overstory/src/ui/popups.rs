@@ -10,7 +10,7 @@ use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
 
 use crate::controls::popup::{Popup, append_overlay_popup};
 use crate::element::ElementId;
-use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind};
+use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind, resolve_placement};
 
 use super::Ui;
 
@@ -33,7 +33,7 @@ impl Ui {
         } else {
             None
         };
-        let origin = placement.resolve(bounds, Size::ZERO, self.last_viewport, offset);
+        let origin = resolve_placement(placement, bounds, Size::ZERO, self.last_viewport, offset);
         let popup_element = append_overlay_popup(self, &popup, origin);
         build(self, popup_element);
         self.overlays.open(ActiveOverlay {

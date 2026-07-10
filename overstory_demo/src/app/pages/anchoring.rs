@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use peniko::kurbo::{Insets, Size};
 use understory_anchor::{
     Anchor, AnchorConstraint, AnchorFrame, AnchorInput, AnchorPolicy, AnchorPositionOption,
-    AnchorRects, Placement as AnchorPlacement, RectReference, ScoringPolicy, resolve_anchor,
+    AnchorRects, RectReference, ScoringPolicy, Side, resolve_anchor,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +36,7 @@ impl View for AnchoringPage {
                             scene,
                             Rc::clone(&open_popup),
                             "Top",
-                            Placement::Top,
+                            Placement::TOP_START,
                             114.0,
                             18.0,
                             CLASS_DEMO_ANCHOR_TARGET,
@@ -45,7 +45,7 @@ impl View for AnchoringPage {
                             scene,
                             Rc::clone(&open_popup),
                             "Left",
-                            Placement::Left,
+                            Placement::LEFT_START,
                             22.0,
                             116.0,
                             CLASS_DEMO_ANCHOR_TARGET,
@@ -54,7 +54,7 @@ impl View for AnchoringPage {
                             scene,
                             Rc::clone(&open_popup),
                             "Right",
-                            Placement::Right,
+                            Placement::RIGHT_START,
                             206.0,
                             116.0,
                             CLASS_DEMO_ANCHOR_TARGET,
@@ -63,7 +63,7 @@ impl View for AnchoringPage {
                             scene,
                             Rc::clone(&open_popup),
                             "Bottom",
-                            Placement::Bottom,
+                            Placement::BOTTOM_START,
                             114.0,
                             214.0,
                             CLASS_DEMO_ANCHOR_TARGET,
@@ -88,7 +88,7 @@ impl View for AnchoringPage {
                             scene,
                             Rc::clone(&open_popup),
                             "Bottom edge",
-                            Placement::Bottom,
+                            Placement::BOTTOM_START,
                             108.0,
                             540.0,
                             CLASS_DEMO_ANCHOR_FLIP_TARGET,
@@ -104,9 +104,9 @@ impl View for AnchoringPage {
                 row.demo_responsive_card("ALIGNMENT & ARROWS", PAGE_CARD_WIDTH, |card| {
                     card.add(control_label("Start, center, and end placement"));
                     card.with_child(anchor_scene(ANCHOR_VISUAL_HEIGHT), |scene| {
-                        add_alignment_sample(scene, "Start", AnchorPlacement::BOTTOM_START, 24.0);
-                        add_alignment_sample(scene, "Center", AnchorPlacement::BOTTOM, 108.0);
-                        add_alignment_sample(scene, "End", AnchorPlacement::BOTTOM_END, 192.0);
+                        add_alignment_sample(scene, "Start", Placement::BOTTOM_START, 24.0);
+                        add_alignment_sample(scene, "Center", Placement::BOTTOM, 108.0);
+                        add_alignment_sample(scene, "End", Placement::BOTTOM_END, 192.0);
                     });
                 });
 
@@ -171,7 +171,7 @@ fn add_anchor_target(
 fn add_alignment_sample(
     parent: &mut ChildUi<'_>,
     label: &'static str,
-    placement: AnchorPlacement,
+    placement: Placement,
     y: f64,
 ) {
     let anchor = Rect::new(126.0, y + 12.0, 214.0, y + 38.0);
@@ -211,8 +211,8 @@ fn add_point_anchor_sample(parent: &mut ChildUi<'_>) {
     let frame = resolve_demo_anchor(
         Anchor::Point(point),
         Size::new(88.0, 30.0),
-        AnchorPlacement::RIGHT,
-        &[AnchorPlacement::LEFT],
+        Placement::RIGHT,
+        &[Placement::LEFT],
         &[
             AnchorConstraint::Offset {
                 main_axis: 10.0,
@@ -247,8 +247,8 @@ fn add_multi_rect_sample(parent: &mut ChildUi<'_>) {
             reference: RectReference::Focus,
         },
         Size::new(98.0, 28.0),
-        AnchorPlacement::BOTTOM,
-        &[AnchorPlacement::TOP],
+        Placement::BOTTOM,
+        &[Placement::TOP],
         &[
             AnchorConstraint::Offset {
                 main_axis: 8.0,
@@ -289,8 +289,8 @@ fn add_size_constraint_sample(parent: &mut ChildUi<'_>) {
     let frame = resolve_demo_anchor(
         Anchor::Rect(anchor),
         desired,
-        AnchorPlacement::RIGHT,
-        &[AnchorPlacement::TOP],
+        Placement::RIGHT,
+        &[Placement::TOP],
         &[
             AnchorConstraint::Offset {
                 main_axis: 10.0,
@@ -327,8 +327,8 @@ fn add_size_constraint_sample(parent: &mut ChildUi<'_>) {
 fn resolve_demo_anchor(
     anchor: Anchor<'_>,
     floating_size: Size,
-    preferred: AnchorPlacement,
-    fallbacks: &[AnchorPlacement],
+    preferred: Placement,
+    fallbacks: &[Placement],
     constraints: &[AnchorConstraint],
     width: f64,
     height: f64,
@@ -459,20 +459,20 @@ fn anchor_popup_handler(
 }
 
 fn popup_title(label: &str, placement: Placement) -> &'static str {
-    match placement {
-        Placement::Bottom if label == "Bottom edge" => "Flipped fallback",
-        Placement::Bottom => "Bottom popup",
-        Placement::Top => "Top popup",
-        Placement::Right => "Right popup",
-        Placement::Left => "Left popup",
+    match placement.side {
+        Side::Bottom if label == "Bottom edge" => "Flipped fallback",
+        Side::Bottom => "Bottom popup",
+        Side::Top => "Top popup",
+        Side::Right => "Right popup",
+        Side::Left => "Left popup",
     }
 }
 
 fn placement_description(placement: Placement) -> &'static str {
-    match placement {
-        Placement::Bottom => "Preferred bottom, opposite fallback",
-        Placement::Top => "Preferred top, opposite fallback",
-        Placement::Right => "Preferred right, opposite fallback",
-        Placement::Left => "Preferred left, opposite fallback",
+    match placement.side {
+        Side::Bottom => "Preferred bottom, opposite fallback",
+        Side::Top => "Preferred top, opposite fallback",
+        Side::Right => "Preferred right, opposite fallback",
+        Side::Left => "Preferred left, opposite fallback",
     }
 }

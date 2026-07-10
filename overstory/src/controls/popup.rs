@@ -58,7 +58,7 @@ impl Popup {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            placement: Placement::Bottom,
+            placement: Placement::BOTTOM_START,
             offset: Vec2::new(0.0, 6.0),
             padding: box_padding_xy(10.0, 8.0),
             dismiss_on_outside_pointer: true,

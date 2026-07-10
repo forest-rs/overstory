@@ -9,6 +9,7 @@ use kurbo::{Point, Size};
 
 use crate::element::ElementId;
 use crate::layouts::LayoutPlacement;
+use crate::overlay::resolve_placement;
 
 use super::Ui;
 
@@ -30,7 +31,8 @@ impl Ui {
             }
             let target_bounds = self.effective_bounds(entry.target);
             let overlay_bounds = self.effective_bounds(entry.element);
-            let origin = entry.placement.resolve(
+            let origin = resolve_placement(
+                entry.placement,
                 target_bounds,
                 overlay_bounds.size(),
                 viewport,

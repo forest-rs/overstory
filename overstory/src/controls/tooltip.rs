@@ -62,7 +62,7 @@ impl Tooltip {
         Self {
             content: content.into(),
             font_size: None,
-            placement: Placement::Bottom,
+            placement: Placement::BOTTOM_START,
             offset: Vec2::new(0.0, 8.0),
             padding: box_padding_xy(10.0, 6.0),
             element: ElementConfig::default(),

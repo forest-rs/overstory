@@ -18,98 +18,60 @@ use alloc::vec::Vec;
 
 use hashbrown::HashMap;
 use kurbo::{Insets, Point, Rect, Size, Vec2};
+pub use understory_anchor::Placement;
 use understory_anchor::{
-    Anchor, AnchorConstraint, AnchorInput, AnchorPolicy, AnchorPositionOption,
-    Placement as AnchorPlacement, ScoringPolicy, resolve_anchor,
+    Anchor, AnchorConstraint, AnchorInput, AnchorPolicy, AnchorPositionOption, ScoringPolicy, Side,
+    resolve_anchor,
 };
 
 use crate::controls::tooltip::Tooltip;
 use crate::element::ElementId;
 
-/// Preferred placement for an anchored overlay.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Placement {
-    /// Place the overlay below the target.
-    #[default]
-    Bottom,
-    /// Place the overlay above the target.
-    Top,
-    /// Place the overlay to the target's right.
-    Right,
-    /// Place the overlay to the target's left.
-    Left,
+pub(crate) fn resolve_placement(
+    placement: Placement,
+    target: Rect,
+    overlay: Size,
+    viewport: Size,
+    offset: Vec2,
+) -> Point {
+    let viewport = Rect::from_origin_size((0.0, 0.0), viewport);
+    let (main_axis, cross_axis) = anchor_offsets(placement.side, offset);
+    let constraints = [
+        AnchorConstraint::Offset {
+            main_axis,
+            cross_axis,
+        },
+        AnchorConstraint::Shift {
+            padding: Insets::ZERO,
+        },
+    ];
+    let preferred = AnchorPositionOption::new(placement).with_constraints(&constraints);
+    let fallbacks =
+        [AnchorPositionOption::new(placement.opposite()).with_constraints(&constraints)];
+    let mut policy = AnchorPolicy::new(preferred, &fallbacks);
+    policy.scoring = ScoringPolicy {
+        preferred_bonus: 0.0,
+        incumbent_bonus: 0.0,
+        ..ScoringPolicy::default()
+    };
+    resolve_anchor(
+        AnchorInput {
+            anchor: Anchor::Rect(target),
+            floating_size: overlay,
+            viewport,
+            boundary: viewport,
+            previous: None,
+        },
+        policy,
+    )
+    .rect
+    .origin()
 }
 
-impl Placement {
-    pub(crate) fn resolve(
-        self,
-        target: Rect,
-        overlay: Size,
-        viewport: Size,
-        offset: Vec2,
-    ) -> Point {
-        if viewport.width <= 0.0 || viewport.height <= 0.0 {
-            return self.raw_origin(target, overlay, offset);
-        }
-
-        let viewport = Rect::from_origin_size((0.0, 0.0), viewport);
-        let (main_axis, cross_axis) = self.anchor_offsets(offset);
-        let constraints = [
-            AnchorConstraint::Offset {
-                main_axis,
-                cross_axis,
-            },
-            AnchorConstraint::Shift {
-                padding: Insets::ZERO,
-            },
-        ];
-        let preferred =
-            AnchorPositionOption::new(self.anchor_placement()).with_constraints(&constraints);
-        let fallbacks = [AnchorPositionOption::new(preferred.placement.opposite())
-            .with_constraints(&constraints)];
-        let mut policy = AnchorPolicy::new(preferred, &fallbacks);
-        policy.scoring = ScoringPolicy {
-            preferred_bonus: 0.0,
-            incumbent_bonus: 0.0,
-            ..ScoringPolicy::default()
-        };
-        resolve_anchor(
-            AnchorInput {
-                anchor: Anchor::Rect(target),
-                floating_size: overlay,
-                viewport,
-                boundary: viewport,
-                previous: None,
-            },
-            policy,
-        )
-        .rect
-        .origin()
-    }
-
-    fn raw_origin(self, target: Rect, overlay: Size, offset: Vec2) -> Point {
-        match self {
-            Self::Bottom => Point::new(target.x0 + offset.x, target.y1 + offset.y),
-            Self::Top => Point::new(target.x0 + offset.x, target.y0 - overlay.height - offset.y),
-            Self::Right => Point::new(target.x1 + offset.x, target.y0 + offset.y),
-            Self::Left => Point::new(target.x0 - overlay.width - offset.x, target.y0 + offset.y),
-        }
-    }
-
-    fn anchor_placement(self) -> AnchorPlacement {
-        match self {
-            Self::Bottom => AnchorPlacement::BOTTOM_START,
-            Self::Top => AnchorPlacement::TOP_START,
-            Self::Right => AnchorPlacement::RIGHT_START,
-            Self::Left => AnchorPlacement::LEFT_START,
-        }
-    }
-
-    fn anchor_offsets(self, offset: Vec2) -> (f64, f64) {
-        match self {
-            Self::Bottom | Self::Top => (offset.y, offset.x),
-            Self::Right | Self::Left => (offset.x, offset.y),
-        }
+fn anchor_offsets(side: Side, offset: Vec2) -> (f64, f64) {
+    match side {
+        Side::Bottom | Side::Top => (offset.y, offset.x),
+        Side::Right | Side::Left => (offset.x, offset.y),
     }
 }
 
