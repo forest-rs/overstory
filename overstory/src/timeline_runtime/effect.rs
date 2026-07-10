@@ -4,16 +4,13 @@
 use kurbo::Vec2;
 use peniko::Color;
 use understory_animation::{
-    AnimationTiming, CompositeOperation, FillMode, Keyframe, KeyframeEffect,
-    RetainedAnimationEffect, StackEffect, TimingPhase, TimingSample, sample_effects,
+    CompositeOperation, Keyframe, KeyframeEffect, RetainedAnimationEffect, StackEffect,
+    TimingPhase, TimingSample, sample_effects,
 };
 use understory_animation_timeline::TimelineTime;
 use understory_timing::TimerDuration;
 
-use crate::motion::{
-    Animatable, ColorTransition, EffectClip, PresentationValue, PresentationValueKind,
-    ResolvedTransitionSpec, normalized_progress,
-};
+use crate::motion::{Animatable, EffectClip, PresentationValue, PresentationValueKind};
 
 use super::types::PresentationRuntimeValue;
 
@@ -21,47 +18,16 @@ use super::types::PresentationRuntimeValue;
 pub(super) enum PresentationEffect {
     Scalar32(StackEffect<f32>),
     Scalar64(StackEffect<f64>),
-    Color(ColorStackEffect),
+    Color(StackEffect<Color>),
     Offset(StackEffect<Vec2>),
 }
 
 impl PresentationEffect {
-    pub(super) fn transition(
-        from: PresentationValue,
-        to: PresentationValue,
-        spec: ResolvedTransitionSpec,
-    ) -> Self {
-        match (from, to) {
-            (PresentationValue::Scalar32(from), PresentationValue::Scalar32(to)) => {
-                Self::Scalar32(stack_transition(from, to, spec))
-            }
-            (PresentationValue::Scalar64(from), PresentationValue::Scalar64(to)) => {
-                Self::Scalar64(stack_transition(from, to, spec))
-            }
-            (PresentationValue::Color(from), PresentationValue::Color(to)) => {
-                Self::Color(ColorStackEffect::Transition(ColorTransition::new(
-                    from,
-                    to,
-                    0,
-                    spec.duration(),
-                    spec.timing(),
-                    spec.color_interpolation(),
-                )))
-            }
-            (PresentationValue::Offset2d(from), PresentationValue::Offset2d(to)) => {
-                Self::Offset(stack_transition(from, to, spec))
-            }
-            _ => unreachable!("timeline target kinds should match property metadata"),
-        }
-    }
-
     pub(super) fn effect(clip: EffectClip) -> Self {
         match clip.value_kind() {
             PresentationValueKind::Scalar32 => Self::Scalar32(stack_effect_clip::<f32>(&clip)),
             PresentationValueKind::Scalar64 => Self::Scalar64(stack_effect_clip::<f64>(&clip)),
-            PresentationValueKind::Color => {
-                Self::Color(ColorStackEffect::Effect(stack_effect_clip::<Color>(&clip)))
-            }
+            PresentationValueKind::Color => Self::Color(stack_effect_clip::<Color>(&clip)),
             PresentationValueKind::Offset2d => Self::Offset(stack_effect_clip::<Vec2>(&clip)),
         }
     }
@@ -74,11 +40,13 @@ impl PresentationEffect {
             Self::Scalar64(effect) if effect.effect.composite() == CompositeOperation::Replace => {
                 effect.sample(time).map(PresentationValue::Scalar64)
             }
-            Self::Color(effect) => effect.sample_standalone(time).map(PresentationValue::Color),
+            Self::Color(effect) if effect.effect.composite() == CompositeOperation::Replace => {
+                effect.sample(time).map(PresentationValue::Color)
+            }
             Self::Offset(effect) if effect.effect.composite() == CompositeOperation::Replace => {
                 effect.sample(time).map(PresentationValue::Offset2d)
             }
-            Self::Scalar32(_) | Self::Scalar64(_) | Self::Offset(_) => None,
+            Self::Scalar32(_) | Self::Scalar64(_) | Self::Color(_) | Self::Offset(_) => None,
         }
     }
 
@@ -95,7 +63,7 @@ impl PresentationEffect {
                 sample_native_stack(value, self.scalar64_effect(time)),
             )),
             Some(PresentationValue::Color(value)) => Some(PresentationValue::Color(
-                sample_color_stack(Some(value), self.color_effect(time))?,
+                sample_native_stack(value, self.color_effect(time)),
             )),
             Some(PresentationValue::Offset2d(value)) => Some(PresentationValue::Offset2d(
                 sample_native_stack(value, self.offset_effect(time)),
@@ -108,7 +76,7 @@ impl PresentationEffect {
         match self {
             Self::Scalar32(effect) => effect.timing.total_duration(),
             Self::Scalar64(effect) => effect.timing.total_duration(),
-            Self::Color(effect) => effect.total_duration(),
+            Self::Color(effect) => effect.timing.total_duration(),
             Self::Offset(effect) => effect.timing.total_duration(),
         }
     }
@@ -117,7 +85,7 @@ impl PresentationEffect {
         match self {
             Self::Scalar32(effect) => effect.timing.sample(time).iteration,
             Self::Scalar64(effect) => effect.timing.sample(time).iteration,
-            Self::Color(effect) => effect.iteration_at(time),
+            Self::Color(effect) => effect.timing.sample(time).iteration,
             Self::Offset(effect) => effect.timing.sample(time).iteration,
         }
     }
@@ -126,7 +94,7 @@ impl PresentationEffect {
         Some(match self {
             Self::Scalar32(effect) => stack_timing_sample(effect, time),
             Self::Scalar64(effect) => stack_timing_sample(effect, time),
-            Self::Color(effect) => effect.timing_sample_at(time),
+            Self::Color(effect) => stack_timing_sample(effect, time),
             Self::Offset(effect) => stack_timing_sample(effect, time),
         })
     }
@@ -144,7 +112,7 @@ impl PresentationEffect {
         match self {
             Self::Scalar32(effect) => effect.effect.composite(),
             Self::Scalar64(effect) => effect.effect.composite(),
-            Self::Color(effect) => effect.composite(),
+            Self::Color(effect) => effect.effect.composite(),
             Self::Offset(effect) => effect.effect.composite(),
         }
     }
@@ -163,7 +131,7 @@ impl PresentationEffect {
         }
     }
 
-    const fn as_color(&self) -> Option<&ColorStackEffect> {
+    const fn as_color(&self) -> Option<&StackEffect<Color>> {
         match self {
             Self::Color(effect) => Some(effect),
             Self::Scalar32(_) | Self::Scalar64(_) | Self::Offset(_) => None,
@@ -185,16 +153,8 @@ impl PresentationEffect {
         self.local_stack_effect(self.as_scalar64()?, time)
     }
 
-    fn color_effect(&self, time: TimelineTime) -> Option<LocalColorEffect<'_>> {
-        Some(match self.as_color()? {
-            ColorStackEffect::Transition(transition) => LocalColorEffect::Transition {
-                transition,
-                elapsed: time.duration(),
-            },
-            ColorStackEffect::Effect(effect) => {
-                LocalColorEffect::Effect(LocalStackEffect { effect, time })
-            }
-        })
+    fn color_effect(&self, time: TimelineTime) -> Option<LocalStackEffect<'_, Color>> {
+        self.local_stack_effect(self.as_color()?, time)
     }
 
     fn offset_effect(&self, time: TimelineTime) -> Option<LocalStackEffect<'_, Vec2>> {
@@ -224,81 +184,12 @@ impl RetainedAnimationEffect for PresentationEffect {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) enum ColorStackEffect {
-    Transition(ColorTransition),
-    Effect(StackEffect<Color>),
-}
-
-impl ColorStackEffect {
-    fn sample_standalone(&self, time: TimelineTime) -> Option<Color> {
-        match self {
-            Self::Transition(transition) => Some(transition.sample(time.duration())),
-            Self::Effect(effect) if effect.effect.composite() == CompositeOperation::Replace => {
-                effect.sample(time)
-            }
-            Self::Effect(_) => None,
-        }
-    }
-
-    fn total_duration(&self) -> Option<TimerDuration> {
-        match self {
-            Self::Transition(transition) => Some(transition.duration()),
-            Self::Effect(effect) => effect.timing.total_duration(),
-        }
-    }
-
-    fn iteration_at(&self, time: TimelineTime) -> Option<u64> {
-        match self {
-            Self::Transition(_) => Some(0),
-            Self::Effect(effect) => effect.timing.sample(time).iteration,
-        }
-    }
-
-    fn timing_sample_at(&self, time: TimelineTime) -> TimingSample {
-        match self {
-            Self::Transition(transition) => color_transition_timing_sample(*transition, time),
-            Self::Effect(effect) => stack_timing_sample(effect, time),
-        }
-    }
-
-    const fn composite(&self) -> CompositeOperation {
-        match self {
-            Self::Transition(_) => CompositeOperation::Replace,
-            Self::Effect(effect) => effect.effect.composite(),
-        }
-    }
-}
-
 fn stack_timing_sample<T>(effect: &StackEffect<T>, time: TimelineTime) -> TimingSample {
     if time < effect.starts_at {
         return empty_timing_sample(TimingPhase::Before);
     }
     let local = TimelineTime::from_duration(time.saturating_duration_since(effect.starts_at));
     effect.timing.sample(local)
-}
-
-fn color_transition_timing_sample(transition: ColorTransition, time: TimelineTime) -> TimingSample {
-    let local = time.duration();
-    if local < transition.started_at() {
-        return empty_timing_sample(TimingPhase::Before);
-    }
-
-    let progress = normalized_progress(local, transition.started_at(), transition.duration());
-    let phase = if transition.duration() == 0
-        || local.saturating_sub(transition.started_at()) >= transition.duration()
-    {
-        TimingPhase::After
-    } else {
-        TimingPhase::Active
-    };
-
-    TimingSample {
-        phase,
-        iteration: Some(0),
-        progress: Some(progress),
-        eased_progress: Some(transition.timing().sample(progress)),
-    }
 }
 
 const fn empty_timing_sample(phase: TimingPhase) -> TimingSample {
@@ -308,21 +199,6 @@ const fn empty_timing_sample(phase: TimingPhase) -> TimingSample {
         progress: None,
         eased_progress: None,
     }
-}
-
-fn stack_transition<T>(from: T, to: T, spec: ResolvedTransitionSpec) -> StackEffect<T>
-where
-    T: Animatable + Clone,
-{
-    StackEffect::new(
-        KeyframeEffect::from_values(alloc::vec![from, to]),
-        AnimationTiming {
-            duration: spec.duration(),
-            fill: FillMode::Forwards,
-            easing: spec.timing(),
-            ..AnimationTiming::new(spec.duration())
-        },
-    )
 }
 
 fn stack_effect_clip<T>(clip: &EffectClip) -> StackEffect<T>
@@ -352,35 +228,6 @@ struct LocalStackEffect<'a, T> {
     time: TimelineTime,
 }
 
-#[derive(Clone, Copy)]
-enum LocalColorEffect<'a> {
-    Transition {
-        transition: &'a ColorTransition,
-        elapsed: TimerDuration,
-    },
-    Effect(LocalStackEffect<'a, Color>),
-}
-
-impl LocalColorEffect<'_> {
-    fn sample_over(self, underlying: Option<Color>) -> Option<Color> {
-        match self {
-            Self::Transition {
-                transition,
-                elapsed,
-            } => Some(transition.sample(elapsed)),
-            Self::Effect(effect) => match underlying {
-                Some(underlying) => Some(
-                    sample_effects(&underlying, core::iter::once(effect.effect), effect.time).value,
-                ),
-                None if effect.effect.effect.composite() == CompositeOperation::Replace => {
-                    effect.effect.sample(effect.time)
-                }
-                None => None,
-            },
-        }
-    }
-}
-
 fn sample_native_stack<'a, T>(
     underlying: T,
     effects: impl IntoIterator<Item = LocalStackEffect<'a, T>>,
@@ -391,15 +238,6 @@ where
     effects.into_iter().fold(underlying, |value, effect| {
         sample_effects(&value, core::iter::once(effect.effect), effect.time).value
     })
-}
-
-fn sample_color_stack<'a>(
-    underlying: Option<Color>,
-    effects: impl IntoIterator<Item = LocalColorEffect<'a>>,
-) -> Option<Color> {
-    effects
-        .into_iter()
-        .fold(underlying, |value, effect| effect.sample_over(value))
 }
 
 fn normalized_keyframe_offset(offset: TimerDuration, duration: TimerDuration) -> f64 {

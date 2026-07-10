@@ -33,9 +33,32 @@ use understory_style::{
 use crate::motion::{
     Animatable, AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule,
     EffectRules, EffectTriggerId, Interpolate, PresentationSlot, PresentationTarget,
-    PresentationValue, PresentationValueKind, TimingFunction, TransitionRule, TransitionRules,
-    TransitionSpec, millis,
+    PresentationValue, PresentationValueKind, TimingFunction, TransitionDeclaration,
+    TransitionDeclarations, TransitionResourceKey, TransitionTiming, millis,
 };
+
+fn transition<T>(
+    target: PresentationTarget,
+    duration: understory_timing::TimerDuration,
+) -> TransitionDeclarations<PresentationTarget>
+where
+    T: Interpolate + PartialEq + 'static,
+{
+    TransitionDeclarations::new().with(TransitionDeclaration::for_target::<T>(
+        target,
+        TransitionTiming::new(duration),
+    ))
+}
+
+fn color_transition(
+    target: PresentationTarget,
+    duration: understory_timing::TimerDuration,
+) -> TransitionDeclarations<PresentationTarget> {
+    TransitionDeclarations::new().with(
+        TransitionDeclaration::for_color_target(target, TransitionTiming::new(duration))
+            .with_color_interpolation(ColorInterpolation::SRGB),
+    )
+}
 
 mod content;
 mod content_presenter;

@@ -15,13 +15,13 @@ use understory_property::PropertyId;
 use crate::element::ElementId;
 use crate::motion::{
     Animatable, ColorInterpolation, EffectClip, EffectKeyframe, Interpolate, PresentationSlot,
-    PresentationTarget, PresentationValue, ResolvedTransitionSpec,
+    PresentationTarget, PresentationValue, TimingFunction,
 };
 
 use super::timeline::DocumentTimeline;
 use super::*;
 
-const SPEC: ResolvedTransitionSpec = ResolvedTransitionSpec::linear(100);
+const SPEC: ResolvedTransition = ResolvedTransition::linear(100);
 const SCALAR_PROPERTY: PropertyId = PropertyId::new(1);
 const COLOR_PROPERTY: PropertyId = PropertyId::new(2);
 
@@ -175,7 +175,7 @@ fn color_transition_uses_resolved_interpolation_policy() {
     let mut runtime = TimelineRuntime::new();
     let from = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
     let to = Color::from_rgba8(0x00, 0x00, 0xff, 0xff);
-    let spec = SPEC.with_color_interpolation(ColorInterpolation::OKLAB);
+    let spec = ResolvedTransition::new(100, 0, TimingFunction::LINEAR, ColorInterpolation::OKLAB);
     runtime.set_target(key, from, 0, ChangeCause::Other);
     runtime.request_transition(key, spec);
     runtime.set_target(key, to, 0, ChangeCause::Interaction);
@@ -223,10 +223,7 @@ fn native_transition_samples_custom_target_value() {
         Some(Gauge(5.0))
     );
 
-    let rows = runtime.animation_rows(50);
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].layer(), TimelineAnimationLayerKind::Transition);
-    assert_eq!(rows[0].value_kind(), None);
+    assert!(runtime.animation_rows(50).is_empty());
 
     let samples = native_samples(runtime.advance(100));
     assert_eq!(samples.len(), 1);
@@ -298,7 +295,7 @@ fn zero_duration_transition_does_not_create_active_track() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-    runtime.request_transition(key, ResolvedTransitionSpec::linear(0));
+    runtime.request_transition(key, ResolvedTransition::linear(0));
 
     assert!(!runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction));
     assert!(!runtime.has_active_track(key));
@@ -326,7 +323,7 @@ fn active_motion_does_not_arm_timer_deadline() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-    runtime.request_transition(key, ResolvedTransitionSpec::linear(100));
+    runtime.request_transition(key, ResolvedTransition::linear(100));
     runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
     assert!(runtime.has_active_motion());
@@ -339,7 +336,7 @@ fn transition_sampling_depends_on_timeline_time_not_frame_cadence() {
         let key = scalar_key();
         let mut runtime = TimelineRuntime::new();
         runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-        runtime.request_transition(key, ResolvedTransitionSpec::linear(120));
+        runtime.request_transition(key, ResolvedTransition::linear(120));
         runtime.set_target(key, 120.0_f32, 0, ChangeCause::Interaction);
 
         let mut sample = PresentationValue::Scalar32(0.0);
@@ -802,28 +799,21 @@ fn remove_element_drops_tracks_targets_and_pending_specs() {
 }
 
 #[test]
-fn transition_lifecycle_events_report_started_and_finished() {
+fn transitions_do_not_create_controllable_animation_instances() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
     runtime.request_transition(key, SPEC);
     runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
 
-    let started = runtime.drain_animation_events();
-    assert_eq!(started.len(), 1);
-    assert_eq!(started[0].id().get(), 0);
-    assert_eq!(started[0].key(), key);
-    assert_eq!(started[0].kind(), AnimationEventKind::Started);
-    assert_eq!(started[0].at(), 0);
+    assert!(runtime.drain_animation_events().is_empty());
+    assert_eq!(runtime.active_transition_count(), 1);
+    assert!(runtime.animation_rows(0).is_empty());
 
     runtime.advance(100);
 
-    let finished = runtime.drain_animation_events();
-    assert_eq!(finished.len(), 1);
-    assert_eq!(finished[0].id(), started[0].id());
-    assert_eq!(finished[0].key(), key);
-    assert_eq!(finished[0].kind(), AnimationEventKind::Finished);
-    assert_eq!(finished[0].at(), 100);
+    assert!(runtime.drain_animation_events().is_empty());
+    assert_eq!(runtime.active_transition_count(), 0);
 }
 
 #[test]
@@ -904,25 +894,21 @@ fn repeated_effect_reports_coalesced_iteration_events_before_finish() {
 }
 
 #[test]
-fn retargeting_transition_cancels_old_instance_and_starts_new_one() {
+fn retargeting_transition_replaces_the_active_transition() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
     runtime.request_transition(key, SPEC);
     runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-    let old_id = runtime.drain_animation_events()[0].id();
+    assert_eq!(runtime.sample(key, 10.0_f32, 50), 5.0);
 
     runtime.request_transition(key, SPEC);
     runtime.set_target(key, 2.0_f32, 50, ChangeCause::Interaction);
 
-    let events = runtime.drain_animation_events();
-    assert_eq!(events.len(), 2);
-    assert_eq!(events[0].id(), old_id);
-    assert_eq!(events[0].kind(), AnimationEventKind::Canceled);
-    assert_eq!(events[0].at(), 50);
-    assert_eq!(events[1].id().get(), 1);
-    assert_eq!(events[1].kind(), AnimationEventKind::Started);
-    assert_eq!(events[1].key(), key);
+    assert!(runtime.drain_animation_events().is_empty());
+    assert_eq!(runtime.active_transition_count(), 1);
+    assert_eq!(runtime.sample(key, 2.0_f32, 50), 5.0);
+    assert_eq!(runtime.sample(key, 2.0_f32, 100), 3.5);
 }
 
 #[test]
@@ -998,21 +984,15 @@ fn native_retargeting_under_additive_effect_does_not_double_apply_effect() {
 }
 
 #[test]
-fn clearing_target_cancels_active_motion_instances() {
+fn clearing_target_cancels_the_active_transition() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
     runtime.request_transition(key, SPEC);
     runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-    let started = runtime.drain_animation_events();
-
     assert!(runtime.clear_target(key, 20));
-
-    let canceled = runtime.drain_animation_events();
-    assert_eq!(canceled.len(), 1);
-    assert_eq!(canceled[0].id(), started[0].id());
-    assert_eq!(canceled[0].kind(), AnimationEventKind::Canceled);
-    assert_eq!(canceled[0].at(), 20);
+    assert_eq!(runtime.active_transition_count(), 0);
+    assert!(runtime.drain_animation_events().is_empty());
 }
 
 #[test]
@@ -1020,9 +1000,15 @@ fn playback_controls_pause_seek_resume_and_reverse_animation() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-    runtime.request_transition(key, SPEC);
-    runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-    let id = runtime.drain_animation_events()[0].id();
+    let id = runtime.start_effect(
+        key,
+        EffectClip::from_keyframes([
+            EffectKeyframe::new(0, PresentationValue::Scalar32(0.0)),
+            EffectKeyframe::new(100, PresentationValue::Scalar32(10.0)),
+        ]),
+        0,
+    );
+    runtime.drain_animation_events();
 
     assert_eq!(
         runtime.animation_state(id),
@@ -1079,10 +1065,16 @@ fn playback_controls_pause_seek_resume_and_reverse_animation() {
 fn cancel_animation_queues_event_and_resamples_target() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
-    runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-    runtime.request_transition(key, SPEC);
-    runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-    let id = runtime.drain_animation_events()[0].id();
+    runtime.set_target(key, 10.0_f32, 0, ChangeCause::Other);
+    let id = runtime.start_effect(
+        key,
+        EffectClip::from_keyframes([
+            EffectKeyframe::new(0, PresentationValue::Scalar32(0.0)),
+            EffectKeyframe::new(100, PresentationValue::Scalar32(10.0)),
+        ]),
+        0,
+    );
+    runtime.drain_animation_events();
 
     let canceled = runtime.cancel_animation(id, 50).unwrap();
     let canceled = presentation_control_result(canceled);
@@ -1104,9 +1096,15 @@ fn finish_animation_queues_event_and_removes_instance() {
     let key = scalar_key();
     let mut runtime = TimelineRuntime::new();
     runtime.set_target(key, 0.0_f32, 0, ChangeCause::Other);
-    runtime.request_transition(key, SPEC);
-    runtime.set_target(key, 10.0_f32, 0, ChangeCause::Interaction);
-    let id = runtime.drain_animation_events()[0].id();
+    let id = runtime.start_effect(
+        key,
+        EffectClip::from_keyframes([
+            EffectKeyframe::new(0, PresentationValue::Scalar32(0.0)),
+            EffectKeyframe::new(100, PresentationValue::Scalar32(10.0)),
+        ]),
+        0,
+    );
+    runtime.drain_animation_events();
 
     let finished = runtime.finish_animation(id, 20).unwrap();
     let finished = presentation_control_result(finished);

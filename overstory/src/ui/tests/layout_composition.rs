@@ -738,9 +738,7 @@ fn inspection_snapshot_reports_timeline_counts() {
 
 #[test]
 fn inspection_snapshot_reports_retained_timeline_animations() {
-    use crate::inspection::TimelineAnimationInspectionLayer;
-    use crate::motion::ResolvedTransitionSpec;
-    use crate::timeline_runtime::ChangeCause;
+    use crate::timeline_runtime::{ChangeCause, ResolvedTransition};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -749,7 +747,7 @@ fn inspection_snapshot_reports_retained_timeline_animations() {
 
     ui.set_now(0);
     ui.set_presentation_target(panel, opacity_target, 1.0_f32, ChangeCause::Other);
-    ui.request_presentation_transition(panel, opacity_target, ResolvedTransitionSpec::linear(100));
+    ui.request_presentation_transition(panel, opacity_target, ResolvedTransition::linear(100));
     ui.set_presentation_target(panel, opacity_target, 0.5_f32, ChangeCause::Interaction);
     let effect_id = ui
         .animate(
@@ -766,29 +764,8 @@ fn inspection_snapshot_reports_retained_timeline_animations() {
         .expect("visual translation effect should start");
 
     let snapshot = ui.inspection_snapshot();
-    assert_eq!(snapshot.timeline.animations.len(), 2);
-
-    let transition = snapshot
-        .timeline
-        .animations
-        .iter()
-        .find(|row| row.layer == TimelineAnimationInspectionLayer::Transition)
-        .expect("transition row should be inspectable");
-    assert_eq!(transition.element, panel);
-    assert_eq!(transition.target, opacity_target);
-    assert_eq!(transition.state, crate::AnimationPlayState::Running);
-    assert_eq!(transition.current_time, Some(0));
-    let transition_timing = transition
-        .timing_sample
-        .expect("transition row should expose timing");
-    assert_eq!(transition_timing.phase, crate::TimingPhase::Active);
-    assert_eq!(transition_timing.iteration, Some(0));
-    assert_eq!(transition_timing.progress, Some(0.0));
-    assert_eq!(transition_timing.eased_progress, Some(0.0));
-    assert_eq!(transition.playback_rate, 1.0);
-    assert_eq!(transition.composite, crate::CompositeOperation::Replace);
-    assert_eq!(transition.value_kind, Some(PresentationValueKind::Scalar32));
-    assert_eq!(transition.timeline, crate::AnimationTimelineId::DOCUMENT);
+    assert_eq!(snapshot.timeline.active_transitions, 1);
+    assert_eq!(snapshot.timeline.animations.len(), 1);
 
     let effect = snapshot
         .timeline
@@ -798,7 +775,6 @@ fn inspection_snapshot_reports_retained_timeline_animations() {
         .expect("explicit effect row should be inspectable");
     assert_eq!(effect.element, panel);
     assert_eq!(effect.target, PresentationTarget::visual_translation());
-    assert_eq!(effect.layer, TimelineAnimationInspectionLayer::Effect);
     assert_eq!(effect.state, crate::AnimationPlayState::Running);
     assert_eq!(effect.current_time, Some(0));
     let effect_timing = effect
@@ -815,17 +791,13 @@ fn inspection_snapshot_reports_retained_timeline_animations() {
 
     assert!(ui.cancel_animation(effect_id));
     let snapshot = ui.inspection_snapshot();
-    assert_eq!(snapshot.timeline.animations.len(), 1);
-    assert!(
-        snapshot
-            .timeline
-            .animations
-            .iter()
-            .all(|row| row.layer == TimelineAnimationInspectionLayer::Transition)
-    );
+    assert_eq!(snapshot.timeline.active_transitions, 1);
+    assert!(snapshot.timeline.animations.is_empty());
 
     ui.set_now(millis(100));
-    assert!(ui.inspection_snapshot().timeline.animations.is_empty());
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.timeline.active_transitions, 0);
+    assert!(snapshot.timeline.animations.is_empty());
 }
 
 #[test]

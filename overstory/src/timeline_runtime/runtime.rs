@@ -10,9 +10,7 @@ use understory_animation_timeline::{ManualTimeline, TimelineTime};
 use understory_timing::{TimerDuration, TimerInstant};
 
 use crate::element::ElementId;
-use crate::motion::{
-    Animatable, EffectClip, PresentationValue, PresentationValueKind, ResolvedTransitionSpec,
-};
+use crate::motion::{Animatable, EffectClip, PresentationValue, PresentationValueKind};
 
 use super::cue::{TimelineCue, TimelineCueId};
 use super::effect::PresentationEffect;
@@ -24,7 +22,8 @@ use super::types::{
     TimelineTrackKey, evaluation_domain, expected_value_kind,
 };
 use super::value::{
-    AnimationInstance, NativeAnimationInstance, NativeTargetState, TimelineTargetState,
+    AnimationInstance, NativeAnimationInstance, NativeTargetState, ResolvedTransition,
+    TimelineTargetState,
 };
 
 /// Internal runtime for sampled timeline values.
@@ -40,7 +39,7 @@ pub(crate) struct TimelineRuntime {
     manual_timelines: HashMap<AnimationTimelineId, ManualTimeline>,
     next_timeline_id: u64,
     targets: HashMap<TimelineTrackKey, Box<dyn ErasedTargetState>>,
-    pending: HashMap<TimelineTrackKey, ResolvedTransitionSpec>,
+    pending: HashMap<TimelineTrackKey, ResolvedTransition>,
     cues: Vec<TimelineCue>,
     next_cue_id: u64,
     animation_events: Vec<AnimationEvent>,
@@ -137,11 +136,7 @@ impl TimelineRuntime {
 
     /// Requests that the next target change for `key` animate when it is caused
     /// by interaction.
-    pub(crate) fn request_transition(
-        &mut self,
-        key: TimelineTrackKey,
-        spec: ResolvedTransitionSpec,
-    ) {
+    pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, spec: ResolvedTransition) {
         self.pending.insert(key, spec);
     }
 
@@ -295,10 +290,6 @@ impl TimelineRuntime {
             Some(TimelineEvaluationDomain::Layout),
             "layout-domain animation must not be sampled by the generic target setter"
         );
-        let document_timeline = self.document_timeline;
-        let manual_timelines = &self.manual_timelines;
-        let clock = TimelineClock::new(document_timeline, now, manual_timelines);
-        let timeline_time = self.document_timeline_time(now);
         let (remove_state, result) = {
             let state = self
                 .targets
@@ -313,16 +304,7 @@ impl TimelineRuntime {
                 self.pending.remove(&key);
                 None
             };
-            let result = state.set_target(
-                key,
-                target,
-                spec,
-                clock,
-                timeline_time,
-                now,
-                &mut self.next_animation_id,
-                &mut self.animation_events,
-            );
+            let result = state.set_target(target, spec, now);
             (state.is_empty(), result)
         };
         if remove_state {
@@ -348,10 +330,6 @@ impl TimelineRuntime {
             Some(TimelineEvaluationDomain::Layout),
             "layout-domain animation must not be sampled by the generic target setter"
         );
-        let document_timeline = self.document_timeline;
-        let manual_timelines = &self.manual_timelines;
-        let clock = TimelineClock::new(document_timeline, now, manual_timelines);
-        let timeline_time = self.document_timeline_time(now);
         let (remove_state, result) = {
             let state = self
                 .targets
@@ -366,16 +344,7 @@ impl TimelineRuntime {
                 self.pending.remove(&key);
                 None
             };
-            let result = state.set_target(
-                key,
-                target,
-                spec,
-                clock,
-                timeline_time,
-                now,
-                &mut self.next_animation_id,
-                &mut self.animation_events,
-            );
+            let result = state.set_target(target, spec, now);
             (state.is_empty(), result)
         };
         if remove_state {
@@ -703,10 +672,6 @@ impl TimelineRuntime {
 
     fn clock(&self, now: TimerInstant) -> TimelineClock<'_> {
         TimelineClock::new(self.document_timeline, now, &self.manual_timelines)
-    }
-
-    fn document_timeline_time(&self, now: TimerInstant) -> TimelineTime {
-        self.document_timeline.time_at(now)
     }
 
     fn timeline_start_time(

@@ -171,8 +171,8 @@ fn timeline_cues_drain_by_time_and_drop_removed_targets() {
 
 #[test]
 fn active_presentation_motion_does_not_create_timer_wakeup() {
-    use crate::motion::{PresentationTarget, ResolvedTransitionSpec};
-    use crate::timeline_runtime::ChangeCause;
+    use crate::motion::PresentationTarget;
+    use crate::timeline_runtime::{ChangeCause, ResolvedTransition};
 
     let mut ui = Ui::new();
     let root = ui.root();
@@ -182,7 +182,7 @@ fn active_presentation_motion_does_not_create_timer_wakeup() {
 
     ui.set_now(0);
     ui.set_presentation_target(target, motion_target, 1.0_f32, ChangeCause::Other);
-    ui.request_presentation_transition(target, motion_target, ResolvedTransitionSpec::linear(100));
+    ui.request_presentation_transition(target, motion_target, ResolvedTransition::linear(100));
     ui.set_presentation_target(target, motion_target, 0.5_f32, ChangeCause::Interaction);
 
     assert!(ui.has_active_presentation_motion());

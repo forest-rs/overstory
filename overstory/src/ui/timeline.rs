@@ -14,20 +14,21 @@ use alloc::vec::Vec;
 use kurbo::{Affine, Vec2};
 use understory_animation::{AnimationPlayState, TimingSample};
 use understory_property::Property;
+use understory_style::{ResourceKey, ThemeResolveOptions};
 use understory_timing::{TimerDuration, TimerInstant};
+use understory_transition::{TransitionResourceKey, TransitionResources};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
 use crate::motion::{
     Animatable, AnimationTarget, EffectClip, EffectTriggerId, PresentationAnimationValue,
     PresentationSlot, PresentationTarget, PresentationValue, PresentationValueKind,
-    ResolvedTransitionSpec, TransitionTrigger,
 };
 use crate::timeline_properties::NativeTimelinePropertyAdapter;
 use crate::timeline_runtime::{
     AnimationEvent, AnimationId, AnimationTimelineId, ChangeCause, NativeTimelineControlResult,
-    NativeTimelineSample, PresentationRuntimeValue, TimelineControlResult, TimelineCue,
-    TimelineCueId, TimelineSample, TimelineTargetControlResult, TimelineTargetSample,
+    NativeTimelineSample, PresentationRuntimeValue, ResolvedTransition, TimelineControlResult,
+    TimelineCue, TimelineCueId, TimelineSample, TimelineTargetControlResult, TimelineTargetSample,
     TimelineTrackKey,
 };
 
@@ -39,7 +40,7 @@ impl Ui {
         &mut self,
         element: ElementId,
         target: PresentationTarget,
-        spec: ResolvedTransitionSpec,
+        spec: ResolvedTransition,
     ) {
         self.timeline
             .request_transition(TimelineTrackKey::new(element, target), spec);
@@ -224,15 +225,21 @@ impl Ui {
         element: ElementId,
         target: PresentationTarget,
         cause: ChangeCause,
-    ) -> Option<ResolvedTransitionSpec> {
-        let trigger = match cause {
-            ChangeCause::Interaction => TransitionTrigger::Interaction,
-            ChangeCause::Other => return None,
-        };
+    ) -> Option<ResolvedTransition> {
+        if cause == ChangeCause::Other {
+            return None;
+        }
         let element = self.get(element)?;
-        self.resolve_value_for(element, self.properties.transitions)
-            .rule_for(target, trigger)
-            .map(|rule| rule.spec().resolve(self.theme()))
+        let declarations = self.resolve_value_for(element, self.properties.transitions);
+        let declaration = declarations.find(&target)?;
+        let resources = ThemeTransitionResources(self.theme());
+        let timing = declaration.resolve_timing(&resources);
+        Some(ResolvedTransition::new(
+            timing.duration(),
+            timing.delay(),
+            timing.timing(),
+            declaration.resolve_color_interpolation(&resources),
+        ))
     }
 
     pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {
@@ -979,6 +986,31 @@ impl Ui {
             self.next_timer_deadline(),
             self.timeline.next_cue_deadline(self.now()),
         )
+    }
+}
+
+struct ThemeTransitionResources<'a>(ThemeResolveOptions<'a>);
+
+impl TransitionResources for ThemeTransitionResources<'_> {
+    fn duration(&self, key: TransitionResourceKey) -> Option<TimerDuration> {
+        self.0
+            .get::<TimerDuration>(ResourceKey::new(key.index()))
+            .copied()
+    }
+
+    fn timing_function(&self, key: TransitionResourceKey) -> Option<crate::motion::TimingFunction> {
+        self.0
+            .get::<crate::motion::TimingFunction>(ResourceKey::new(key.index()))
+            .copied()
+    }
+
+    fn color_interpolation(
+        &self,
+        key: TransitionResourceKey,
+    ) -> Option<crate::motion::ColorInterpolation> {
+        self.0
+            .get::<crate::motion::ColorInterpolation>(ResourceKey::new(key.index()))
+            .copied()
     }
 }
 

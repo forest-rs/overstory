@@ -540,8 +540,6 @@ pub struct TimelineAnimationInspectionRow {
     pub element: ElementId,
     /// Presentation target sampled by this animation.
     pub target: PresentationTarget,
-    /// Stack layer this animation occupies.
-    pub layer: TimelineAnimationInspectionLayer,
     /// Current playback state.
     pub state: AnimationPlayState,
     /// Current local animation time, when playback has one.
@@ -561,15 +559,6 @@ pub struct TimelineAnimationInspectionRow {
     pub value_kind: Option<PresentationValueKind>,
     /// Timeline source driving this animation.
     pub timeline: AnimationTimelineId,
-}
-
-/// Stack layer occupied by a retained animation instance.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TimelineAnimationInspectionLayer {
-    /// Implicit transition layer generated from a target-value change.
-    Transition,
-    /// Explicit or style-triggered effect layer.
-    Effect,
 }
 
 #[cfg(test)]

@@ -11,11 +11,10 @@ use crate::inspection::{
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
     LayerInspectionId, SurfaceInspectionId, TemplateContractInspection,
-    TimelineAnimationInspectionLayer, TimelineAnimationInspectionRow, TimelineInspectionSnapshot,
-    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    TimelineAnimationInspectionRow, TimelineInspectionSnapshot, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
-use crate::timeline_runtime::TimelineAnimationLayerKind;
 use peniko::Brush;
 use understory_presentation::{BorderStyle, CornerShape};
 use understory_presentation_properties::CornerRadius;
@@ -749,14 +748,6 @@ impl Ui {
                     id: row.id(),
                     element: row.key().element(),
                     target: row.key().target(),
-                    layer: match row.layer() {
-                        TimelineAnimationLayerKind::Transition => {
-                            TimelineAnimationInspectionLayer::Transition
-                        }
-                        TimelineAnimationLayerKind::Effect => {
-                            TimelineAnimationInspectionLayer::Effect
-                        }
-                    },
                     state: row.state(),
                     current_time: row.current_time(),
                     timing_sample: row.timing_sample(),

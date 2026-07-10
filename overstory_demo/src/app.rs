@@ -13,8 +13,8 @@ use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 
 use overstory::motion::{
-    ColorInterpolation, PresentationTarget, TimingFunction, TransitionRule, TransitionRules,
-    TransitionSpec, millis,
+    ColorInterpolation, PresentationTarget, TimingFunction, TransitionDeclaration,
+    TransitionDeclarations, TransitionTiming, millis,
 };
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{

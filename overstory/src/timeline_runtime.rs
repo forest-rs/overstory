@@ -42,6 +42,6 @@ pub(crate) use target::{
 };
 pub use timeline::AnimationTimelineId;
 pub(crate) use types::{
-    ChangeCause, PresentationRuntimeValue, TimelineAnimationLayerKind, TimelineControlResult,
-    TimelineSample, TimelineTrackKey,
+    ChangeCause, PresentationRuntimeValue, TimelineControlResult, TimelineSample, TimelineTrackKey,
 };
+pub(crate) use value::ResolvedTransition;

@@ -43,6 +43,7 @@ pub(crate) struct DocumentTimeline;
 
 impl DocumentTimeline {
     /// Converts a host monotonic instant into document timeline time.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn time_at(self, now: TimerInstant) -> TimelineTime {
         self.current_time(&now)
@@ -89,5 +90,11 @@ impl<'a> TimelineClock<'a> {
         self.manual_timelines
             .get(&timeline)
             .and_then(|timeline| timeline.current_time(&()))
+    }
+
+    /// Returns the host instant driving the document timeline.
+    #[must_use]
+    pub(super) const fn document_instant(self) -> TimerInstant {
+        self.document_context
     }
 }

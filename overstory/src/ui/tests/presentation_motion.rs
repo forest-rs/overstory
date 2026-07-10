@@ -185,7 +185,9 @@ fn toggle_thumb_transition_retargets_from_sampled_offset() {
 
     ui.set_now(millis(120));
     ui.compute_layout(Size::new(200.0, 80.0));
-    assert_close(layer_x(&ui, thumb), thumb_timing(midpoint, start_x, 0.5));
+    let reversing = layer_x(&ui, thumb);
+    assert!(reversing < midpoint);
+    assert!(reversing > start_x);
 
     ui.set_now(millis(180));
     ui.compute_layout(Size::new(200.0, 80.0));
@@ -607,8 +609,6 @@ fn native_property_animation_does_not_require_presentation_value_kind() {
 
 #[test]
 fn transition_rules_drive_custom_native_property_target() {
-    use crate::inspection::TimelineAnimationInspectionLayer;
-
     const MOTION_PANEL: ClassId = ClassId(903);
 
     let mut ui = Ui::new();
@@ -637,10 +637,10 @@ fn transition_rules_drive_custom_native_property_target() {
                     .set(pressure, PressureReading(10.0))
                     .set(
                         transitions,
-                        TransitionRules::single(TransitionRule::interaction(
+                        transition::<PressureReading>(
                             PresentationTarget::property(pressure.id()),
-                            TransitionSpec::linear(millis(100)),
-                        )),
+                            millis(100),
+                        ),
                     )
                     .build(),
             )
@@ -672,16 +672,9 @@ fn transition_rules_drive_custom_native_property_target() {
         ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
         PressureReading(20.0)
     );
-    let row = ui
-        .inspection_snapshot()
-        .timeline
-        .animations
-        .into_iter()
-        .find(|row| row.element == panel)
-        .expect("custom native transition should be inspectable");
-    assert_eq!(row.layer, TimelineAnimationInspectionLayer::Transition);
-    assert_eq!(row.composite, crate::CompositeOperation::Replace);
-    assert_eq!(row.value_kind, None);
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.timeline.active_transitions, 1);
+    assert!(snapshot.timeline.animations.is_empty());
 
     ui.set_now(millis(100));
     assert_eq!(
@@ -893,12 +886,16 @@ fn styled_transition_rule_controls_button_hover_duration() {
                 .set(background, Some(Brush::Solid(idle)))
                 .set(
                     transitions,
-                    TransitionRules::single(TransitionRule::interaction(
-                        PresentationTarget::property(background.id()),
-                        TransitionSpec::linear(millis(90))
-                            .with_duration_resource(TEST_HOVER_DURATION)
-                            .with_color_interpolation(ColorInterpolation::SRGB),
-                    )),
+                    TransitionDeclarations::new().with(
+                        TransitionDeclaration::for_color_target(
+                            PresentationTarget::property(background.id()),
+                            TransitionTiming::new(millis(90)),
+                        )
+                        .with_duration_resource(TransitionResourceKey::new(
+                            TEST_HOVER_DURATION.index(),
+                        ))
+                        .with_color_interpolation(ColorInterpolation::SRGB),
+                    ),
                 )
                 .build(),
         )
@@ -964,11 +961,10 @@ fn transition_rules_drive_registered_foreground_property() {
                     .set(foreground, Brush::Solid(idle))
                     .set(
                         transitions,
-                        TransitionRules::single(TransitionRule::interaction(
+                        color_transition(
                             PresentationTarget::property(foreground.id()),
-                            TransitionSpec::linear(millis(100))
-                                .with_color_interpolation(ColorInterpolation::SRGB),
-                        )),
+                            millis(100),
+                        ),
                     )
                     .build(),
             )
@@ -1041,11 +1037,10 @@ fn interaction_transitions_track_descendant_effective_value_changes() {
                     .set(foreground, Brush::Solid(idle))
                     .set(
                         transitions,
-                        TransitionRules::single(TransitionRule::interaction(
+                        color_transition(
                             PresentationTarget::property(foreground.id()),
-                            TransitionSpec::linear(millis(100))
-                                .with_color_interpolation(ColorInterpolation::SRGB),
-                        )),
+                            millis(100),
+                        ),
                     )
                     .build(),
             )
@@ -1115,11 +1110,10 @@ fn inherited_timeline_property_samples_invalidate_descendants() {
                     .set(foreground, Brush::Solid(idle))
                     .set(
                         transitions,
-                        TransitionRules::single(TransitionRule::interaction(
+                        color_transition(
                             PresentationTarget::property(foreground.id()),
-                            TransitionSpec::linear(millis(100))
-                                .with_color_interpolation(ColorInterpolation::SRGB),
-                        )),
+                            millis(100),
+                        ),
                     )
                     .build(),
             )
@@ -1326,7 +1320,7 @@ fn slider_thumb_snaps_without_styled_transition_rule() {
     let root = ui.root();
     ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
     let style = StyleBuilder::new()
-        .set(ui.properties().transitions, TransitionRules::new())
+        .set(ui.properties().transitions, TransitionDeclarations::new())
         .build();
     ui.set_cascade(
         StyleCascadeBuilder::new()

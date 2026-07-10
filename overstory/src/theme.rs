@@ -115,7 +115,8 @@ use crate::layouts::{
 };
 use crate::motion::{
     AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules,
-    PresentationTarget, TimingFunction, TransitionRule, TransitionRules, TransitionSpec, millis,
+    PresentationTarget, TimingFunction, TransitionDeclaration, TransitionDeclarations,
+    TransitionResourceKey, TransitionTiming, millis,
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -1585,29 +1586,40 @@ fn toggle_alignment(checked: bool) -> LayoutAlignment {
         .justify_content(justify)
 }
 
-fn button_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
-    surface_transition_rules(properties).with_rule(TransitionRule::interaction(
-        PresentationTarget::property(properties.opacity.id()),
-        scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
-    ))
+fn button_transition_rules(
+    properties: &BuiltInProperties,
+) -> TransitionDeclarations<PresentationTarget> {
+    surface_transition_rules(properties).with(
+        TransitionDeclaration::for_target::<f32>(
+            PresentationTarget::property(properties.opacity.id()),
+            TransitionTiming::new(DEFAULT_MOTION_FAST_DURATION),
+        )
+        .with_duration_resource(transition_key(MOTION_FAST_DURATION)),
+    )
 }
 
-fn surface_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+fn surface_transition_rules(
+    properties: &BuiltInProperties,
+) -> TransitionDeclarations<PresentationTarget> {
     with_border_width_transition_rules(
         with_border_brush_transition_rules(background_transition_rules(properties), properties),
         properties,
     )
 }
 
-fn border_affordance_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
+fn border_affordance_transition_rules(
+    properties: &BuiltInProperties,
+) -> TransitionDeclarations<PresentationTarget> {
     with_border_width_transition_rules(
-        with_border_brush_transition_rules(TransitionRules::new(), properties),
+        with_border_brush_transition_rules(TransitionDeclarations::new(), properties),
         properties,
     )
 }
 
-fn background_transition_rules(properties: &BuiltInProperties) -> TransitionRules {
-    TransitionRules::single(color_transition_rule(
+fn background_transition_rules(
+    properties: &BuiltInProperties,
+) -> TransitionDeclarations<PresentationTarget> {
+    TransitionDeclarations::new().with(color_transition(
         PresentationTarget::property(properties.surface.background.id()),
         DEFAULT_MOTION_NORMAL_DURATION,
         MOTION_NORMAL_DURATION,
@@ -1615,12 +1627,12 @@ fn background_transition_rules(properties: &BuiltInProperties) -> TransitionRule
 }
 
 fn with_border_brush_transition_rules(
-    mut rules: TransitionRules,
+    mut rules: TransitionDeclarations<PresentationTarget>,
     properties: &BuiltInProperties,
-) -> TransitionRules {
+) -> TransitionDeclarations<PresentationTarget> {
     let brushes = properties.surface.border_brushes;
     for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
-        rules.push(color_transition_rule(
+        rules.push(color_transition(
             PresentationTarget::property(property.id()),
             DEFAULT_MOTION_NORMAL_DURATION,
             MOTION_NORMAL_DURATION,
@@ -1630,48 +1642,49 @@ fn with_border_brush_transition_rules(
 }
 
 fn with_border_width_transition_rules(
-    mut rules: TransitionRules,
+    mut rules: TransitionDeclarations<PresentationTarget>,
     properties: &BuiltInProperties,
-) -> TransitionRules {
+) -> TransitionDeclarations<PresentationTarget> {
     let widths = properties.surface.border_widths;
     for property in [widths.top, widths.right, widths.bottom, widths.left] {
-        rules.push(TransitionRule::interaction(
-            PresentationTarget::property(property.id()),
-            scalar_transition_spec(DEFAULT_MOTION_FAST_DURATION, MOTION_FAST_DURATION),
-        ));
+        rules.push(
+            TransitionDeclaration::for_target::<f64>(
+                PresentationTarget::property(property.id()),
+                TransitionTiming::new(DEFAULT_MOTION_FAST_DURATION),
+            )
+            .with_duration_resource(transition_key(MOTION_FAST_DURATION)),
+        );
     }
     rules
 }
 
-fn color_transition_rule(
+fn color_transition(
     target: PresentationTarget,
     duration: TimerDuration,
     duration_token: ResourceKey,
-) -> TransitionRule {
-    TransitionRule::interaction(target, color_transition_spec(duration, duration_token))
-}
-
-fn color_transition_spec(duration: TimerDuration, duration_token: ResourceKey) -> TransitionSpec {
-    TransitionSpec::linear(duration)
-        .with_duration_resource(duration_token)
+) -> TransitionDeclaration<PresentationTarget> {
+    TransitionDeclaration::for_color_target(target, TransitionTiming::new(duration))
+        .with_duration_resource(transition_key(duration_token))
         .with_color_interpolation(ColorInterpolation::SRGB)
-        .with_color_interpolation_resource(MOTION_COLOR_INTERPOLATION)
-}
-
-fn scalar_transition_spec(duration: TimerDuration, duration_token: ResourceKey) -> TransitionSpec {
-    TransitionSpec::linear(duration).with_duration_resource(duration_token)
+        .with_color_interpolation_resource(transition_key(MOTION_COLOR_INTERPOLATION))
 }
 
 fn layer_offset_transition_rules(
     duration: TimerDuration,
     duration_token: ResourceKey,
-) -> TransitionRules {
-    TransitionRules::single(TransitionRule::interaction(
-        PresentationTarget::layer_offset(),
-        TransitionSpec::timed(duration, DEFAULT_MOTION_STANDARD_EASING)
-            .with_duration_resource(duration_token)
-            .with_easing_resource(MOTION_STANDARD_EASING),
-    ))
+) -> TransitionDeclarations<PresentationTarget> {
+    TransitionDeclarations::new().with(
+        TransitionDeclaration::for_target::<Vec2>(
+            PresentationTarget::layer_offset(),
+            TransitionTiming::new(duration).with_timing(DEFAULT_MOTION_STANDARD_EASING),
+        )
+        .with_duration_resource(transition_key(duration_token))
+        .with_timing_resource(transition_key(MOTION_STANDARD_EASING)),
+    )
+}
+
+const fn transition_key(key: ResourceKey) -> TransitionResourceKey {
+    TransitionResourceKey::new(key.index())
 }
 
 fn segmented_control_effect_rules() -> EffectRules {

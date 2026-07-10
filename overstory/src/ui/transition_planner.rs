@@ -6,16 +6,16 @@
 //! This module owns the bridge between an element state mutation and the
 //! timeline runtime. It does not decide which properties are animatable and it
 //! does not sample active tracks. Animatable property adapters live in
-//! `TimelinePropertyRegistry`; style-authored [`crate::TransitionRules`] decide
+//! `TimelinePropertyRegistry`; style-authored transition declarations decide
 //! which changed targets actually transition.
 
 use alloc::vec::Vec;
 
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
-use crate::motion::{PresentationSlot, PresentationTarget, ResolvedTransitionSpec};
+use crate::motion::{PresentationSlot, PresentationTarget};
 use crate::timeline_properties::{TimelineTargetAdapter, TimelineTargetValue};
-use crate::timeline_runtime::ChangeCause;
+use crate::timeline_runtime::{ChangeCause, ResolvedTransition};
 use understory_property::PropertyId;
 
 use super::{Ui, collect_preorder};
@@ -37,7 +37,7 @@ impl MotionPolicy {
 
     const fn decision_for_interaction(
         self,
-        spec: Option<ResolvedTransitionSpec>,
+        spec: Option<ResolvedTransition>,
     ) -> TransitionDecision {
         if self.interaction_transitions {
             match spec {
@@ -53,7 +53,7 @@ impl MotionPolicy {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionDecision {
     Snap,
-    Animate(ResolvedTransitionSpec),
+    Animate(ResolvedTransition),
 }
 
 /// Before-state capture for one interaction state transition.
@@ -113,7 +113,7 @@ impl InteractionTransitionPlan {
 struct TrackedLayoutOutput {
     element: ElementId,
     target: PresentationTarget,
-    before_spec: Option<ResolvedTransitionSpec>,
+    before_spec: Option<ResolvedTransition>,
 }
 
 impl TrackedLayoutOutput {
@@ -151,7 +151,7 @@ struct TrackedValue {
     target: PresentationTarget,
     adapter: TimelineTargetAdapter,
     before: Option<TimelineTargetValue>,
-    before_spec: Option<ResolvedTransitionSpec>,
+    before_spec: Option<ResolvedTransition>,
 }
 
 impl TrackedValue {

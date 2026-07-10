@@ -2260,6 +2260,7 @@ dependencies = [
  "understory_selection",
  "understory_style",
  "understory_timing",
+ "understory_transition",
  "understory_virtual_list",
 ]
 
@@ -3859,6 +3860,17 @@ version = "0.1.0"
 source = "git+https://github.com/forest-rs/understory.git?rev=dc00773f9c3de15b294a503c9e8a2e7508213f97#dc00773f9c3de15b294a503c9e8a2e7508213f97"
 dependencies = [
  "hashbrown 0.17.1",
+]
+
+[[package]]
+name = "understory_transition"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=dc00773f9c3de15b294a503c9e8a2e7508213f97#dc00773f9c3de15b294a503c9e8a2e7508213f97"
+dependencies = [
+ "peniko",
+ "understory_motion",
+ "understory_property",
+ "understory_timing",
 ]
 
 [[package]]

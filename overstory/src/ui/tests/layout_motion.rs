@@ -54,10 +54,7 @@ fn owner_state_layout_change_transitions_descendant_layer_offset() {
                 StyleBuilder::new()
                     .set(
                         ui.properties().transitions,
-                        TransitionRules::single(TransitionRule::interaction(
-                            PresentationTarget::layer_offset(),
-                            TransitionSpec::linear(millis(100)),
-                        )),
+                        transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
                     )
                     .build(),
             )
@@ -127,10 +124,7 @@ fn paint_only_interaction_does_not_arm_layer_offset_transition() {
                 StyleBuilder::new()
                     .set(
                         ui.properties().transitions,
-                        TransitionRules::single(TransitionRule::interaction(
-                            PresentationTarget::layer_offset(),
-                            TransitionSpec::linear(millis(100)),
-                        )),
+                        transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
                     )
                     .build(),
             )
@@ -175,10 +169,7 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
             StyleBuilder::new()
                 .set(
                     transitions,
-                    TransitionRules::single(TransitionRule::interaction(
-                        PresentationTarget::layer_offset(),
-                        TransitionSpec::linear(millis(100)),
-                    )),
+                    transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
                 )
                 .build(),
         )
@@ -239,10 +230,7 @@ fn snap_layout_placement_cancels_active_layer_offset_transition() {
             StyleBuilder::new()
                 .set(
                     transitions,
-                    TransitionRules::single(TransitionRule::interaction(
-                        PresentationTarget::layer_offset(),
-                        TransitionSpec::linear(millis(100)),
-                    )),
+                    transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
                 )
                 .build(),
         )

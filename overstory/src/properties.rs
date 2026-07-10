@@ -33,7 +33,7 @@ use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
     LayoutSpacing,
 };
-use crate::motion::{EffectRules, TransitionRules};
+use crate::motion::{EffectRules, PresentationTarget, TransitionDeclarations};
 use crate::template::ControlTemplate;
 
 /// Handles to the dependency properties Overstory registers in every
@@ -193,7 +193,7 @@ pub struct BuiltInProperties {
 
     /// Style-authored transition rules for dependency-property and visual
     /// output targets. Default empty, which snaps target changes.
-    pub transitions: Property<TransitionRules>,
+    pub transitions: Property<TransitionDeclarations<PresentationTarget>>,
 
     /// Style-authored effect rules for semantic control events.
     /// Default empty, which ignores effect triggers.
@@ -487,7 +487,7 @@ impl BuiltInProperties {
             ),
             transitions: registry.register(
                 "Transitions",
-                PropertyMetadataBuilder::new(TransitionRules::new()).build(),
+                PropertyMetadataBuilder::new(TransitionDeclarations::new()).build(),
             ),
             effects: registry.register(
                 "Effects",

@@ -6,28 +6,66 @@ use core::any::Any;
 use core::marker::PhantomData;
 
 use understory_animation::{
-    AnimationPlayState, AnimationTiming, CompositeOperation, FillMode, Keyframe, KeyframeEffect,
-    RetainedAnimationEffect, RetainedAnimationInstance, StackEffect, TimingSample, sample_effects,
+    AnimationPlayState, CompositeOperation, RetainedAnimationEffect, RetainedAnimationInstance,
+    StackEffect, TimingSample, sample_effects,
 };
 use understory_animation_timeline::TimelineTime;
+use understory_motion::{ColorInterpolation, TimingFunction};
+use understory_property::ErasedValue;
 use understory_timing::{TimerDuration, TimerInstant};
-
-use crate::motion::{
-    Animatable, PresentationTarget, PresentationValue, PresentationValueKind,
-    ResolvedTransitionSpec,
+use understory_transition::{
+    NoTransitionResources, TransitionDeclaration, TransitionDeclarations, TransitionRunner,
+    TransitionTiming,
 };
 
+use crate::motion::{Animatable, PresentationTarget, PresentationValue, PresentationValueKind};
+
 use super::effect::PresentationEffect;
-use super::instance::{AnimationEvent, AnimationEventKind, AnimationId, next_animation_id};
+use super::instance::{AnimationEvent, AnimationEventKind, AnimationId};
 use super::target::{
     ErasedTargetState, NativeTimelineControlResult, NativeTimelineSample,
     TimelineTargetControlResult, TimelineTargetSample,
 };
 use super::timeline::{AnimationTimelineId, TimelineClock};
 use super::types::{
-    TimelineAnimationLayerKind, TimelineAnimationRuntimeRow, TimelineControlResult, TimelineSample,
-    TimelineTrackKey, default_underlying_value, same_value,
+    TimelineAnimationRuntimeRow, TimelineControlResult, TimelineSample, TimelineTrackKey,
+    default_underlying_value, same_value,
 };
+
+/// Transition parameters after late-bound style resources are resolved.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ResolvedTransition {
+    duration: TimerDuration,
+    delay: TimerDuration,
+    timing: TimingFunction,
+    color_interpolation: ColorInterpolation,
+}
+
+impl ResolvedTransition {
+    pub(crate) const fn new(
+        duration: TimerDuration,
+        delay: TimerDuration,
+        timing: TimingFunction,
+        color_interpolation: ColorInterpolation,
+    ) -> Self {
+        Self {
+            duration,
+            delay,
+            timing,
+            color_interpolation,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn linear(duration: TimerDuration) -> Self {
+        Self::new(
+            duration,
+            0,
+            TimingFunction::LINEAR,
+            ColorInterpolation::SRGB,
+        )
+    }
+}
 
 /// Effect adapter used by the retained target runtime.
 ///
@@ -49,16 +87,22 @@ pub(super) trait RuntimeEffect<T>: RetainedAnimationEffect + Clone + 'static {
     }
 }
 
-/// Runtime effect adapter that can synthesize an implicit transition.
-pub(super) trait RuntimeTransitionEffect<T>: RuntimeEffect<T> {
-    /// Creates a replacement transition from `from` to `to`.
-    fn transition(from: T, to: T, spec: ResolvedTransitionSpec) -> Self;
-}
-
 /// Adapts a concrete target state into the erased runtime sample/result enums.
 pub(super) trait TargetValueBridge<T>: Default + 'static {
     /// Returns whether two target values are equivalent for retargeting.
     fn values_close(a: &T, b: &T) -> bool;
+
+    /// Captures the concrete value type and interpolation policy for a target.
+    fn transition_declarations(
+        target: &T,
+        spec: Option<ResolvedTransition>,
+    ) -> TransitionDeclarations<u8>;
+
+    /// Erases a target value for `understory_transition`.
+    fn erase_transition_value(value: T) -> ErasedValue;
+
+    /// Restores a target value sampled by `understory_transition`.
+    fn transition_value(value: ErasedValue) -> Option<T>;
 
     /// Returns the built-in underlying value for a target, if it has one.
     fn default_underlying(_target: PresentationTarget) -> Option<T> {
@@ -83,6 +127,53 @@ pub(super) struct PresentationBridge;
 impl TargetValueBridge<PresentationValue> for PresentationBridge {
     fn values_close(a: &PresentationValue, b: &PresentationValue) -> bool {
         same_value(*a, *b)
+    }
+
+    fn transition_declarations(
+        target: &PresentationValue,
+        spec: Option<ResolvedTransition>,
+    ) -> TransitionDeclarations<u8> {
+        let Some(spec) = spec else {
+            return TransitionDeclarations::new();
+        };
+        let timing = TransitionTiming::new(spec.duration)
+            .with_delay(spec.delay)
+            .with_timing(spec.timing);
+        let declaration = match target {
+            PresentationValue::Scalar32(_) => TransitionDeclaration::for_target::<f32>(0, timing),
+            PresentationValue::Scalar64(_) => TransitionDeclaration::for_target::<f64>(0, timing),
+            PresentationValue::Color(_) => TransitionDeclaration::for_color_target(0, timing)
+                .with_color_interpolation(spec.color_interpolation),
+            PresentationValue::Offset2d(_) => {
+                TransitionDeclaration::for_target::<kurbo::Vec2>(0, timing)
+            }
+        };
+        TransitionDeclarations::new().with(declaration)
+    }
+
+    fn erase_transition_value(value: PresentationValue) -> ErasedValue {
+        match value {
+            PresentationValue::Scalar32(value) => ErasedValue::new(value),
+            PresentationValue::Scalar64(value) => ErasedValue::new(value),
+            PresentationValue::Color(value) => ErasedValue::new(value),
+            PresentationValue::Offset2d(value) => ErasedValue::new(value),
+        }
+    }
+
+    fn transition_value(value: ErasedValue) -> Option<PresentationValue> {
+        if let Some(value) = value.downcast_ref::<f32>() {
+            return Some(PresentationValue::Scalar32(*value));
+        }
+        if let Some(value) = value.downcast_ref::<f64>() {
+            return Some(PresentationValue::Scalar64(*value));
+        }
+        if let Some(value) = value.downcast_ref::<peniko::Color>() {
+            return Some(PresentationValue::Color(*value));
+        }
+        value
+            .downcast_ref::<kurbo::Vec2>()
+            .copied()
+            .map(PresentationValue::Offset2d)
     }
 
     fn default_underlying(target: PresentationTarget) -> Option<PresentationValue> {
@@ -118,6 +209,27 @@ where
         a.is_close(b)
     }
 
+    fn transition_declarations(
+        _target: &T,
+        spec: Option<ResolvedTransition>,
+    ) -> TransitionDeclarations<u8> {
+        let Some(spec) = spec else {
+            return TransitionDeclarations::new();
+        };
+        let timing = TransitionTiming::new(spec.duration)
+            .with_delay(spec.delay)
+            .with_timing(spec.timing);
+        TransitionDeclarations::new().with(TransitionDeclaration::for_target::<T>(0, timing))
+    }
+
+    fn erase_transition_value(value: T) -> ErasedValue {
+        ErasedValue::new(value)
+    }
+
+    fn transition_value(value: ErasedValue) -> Option<T> {
+        value.downcast_ref::<T>().cloned()
+    }
+
     fn sample(key: TimelineTrackKey, value: T, complete: bool) -> TimelineTargetSample {
         TimelineTargetSample::Native(NativeTimelineSample::new(key, value, complete))
     }
@@ -132,9 +244,10 @@ where
 }
 
 /// Retained runtime state for one animation target.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub(super) struct ValueTargetState<T, E, B> {
     target: Option<T>,
+    transition: TransitionRunner<u8, u8>,
     layers: Vec<ValueAnimationLayer<T, E>>,
     value_kind: Option<PresentationValueKind>,
     _bridge: PhantomData<B>,
@@ -144,6 +257,7 @@ impl<T, E, B> Default for ValueTargetState<T, E, B> {
     fn default() -> Self {
         Self {
             target: None,
+            transition: TransitionRunner::new(),
             layers: Vec::new(),
             value_kind: None,
             _bridge: PhantomData,
@@ -154,7 +268,7 @@ impl<T, E, B> Default for ValueTargetState<T, E, B> {
 impl<T, E, B> ValueTargetState<T, E, B>
 where
     T: Clone + 'static,
-    E: RuntimeTransitionEffect<T>,
+    E: RuntimeEffect<T>,
     B: TargetValueBridge<T>,
 {
     /// Records inspection metadata for values with a presentation kind.
@@ -169,19 +283,17 @@ where
 
     /// Returns the sampled value over `fallback`.
     pub(super) fn sample(&self, fallback: Option<T>, clock: TimelineClock<'_>) -> Option<T> {
-        let underlying = fallback.or_else(|| self.target.clone());
+        let underlying = self
+            .sample_transition(clock)
+            .or(fallback)
+            .or_else(|| self.target.clone());
         self.sample_stack(underlying.clone(), clock).or(underlying)
     }
 
-    /// Returns the sampled transition layer, excluding explicit effects.
-    pub(super) fn sample_transition_layer(
-        &self,
-        fallback: Option<T>,
-        clock: TimelineClock<'_>,
-    ) -> Option<T> {
-        let underlying = fallback.or_else(|| self.target.clone());
-        self.sample_stack_until_effect(underlying.clone(), clock)
-            .or(underlying)
+    fn retained_underlying(&self, target: PresentationTarget) -> Option<T> {
+        self.target
+            .clone()
+            .or_else(|| B::default_underlying(target))
     }
 
     /// Appends an explicit effect layer.
@@ -202,106 +314,41 @@ where
     }
 
     /// Records a new target value and updates the implicit transition layer.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "retargeting needs runtime context"
-    )]
     pub(super) fn set_target(
         &mut self,
-        key: TimelineTrackKey,
         target: T,
-        spec: Option<ResolvedTransitionSpec>,
-        clock: TimelineClock<'_>,
-        timeline_time: TimelineTime,
+        spec: Option<ResolvedTransition>,
         event_at: TimerInstant,
-        next_animation: &mut u64,
-        events: &mut Vec<AnimationEvent>,
     ) -> bool {
         let previous_target = self.target.clone();
-        let current_presented = self
-            .sample_transition_layer(
-                previous_target.clone().or_else(|| Some(target.clone())),
-                clock,
-            )
-            .unwrap_or_else(|| target.clone());
-        self.target = Some(target.clone());
         let target_changed = previous_target
             .as_ref()
             .is_none_or(|previous| !B::values_close(previous, &target));
         if !target_changed {
             return false;
         }
-
-        let had_transition = self.has_transition();
-        match spec {
-            Some(spec) if !B::values_close(&current_presented, &target) && spec.duration() != 0 => {
-                let id = next_animation_id(next_animation);
-                let instance = ValueAnimationInstance::new(
-                    id,
-                    AnimationTimelineId::DOCUMENT,
-                    E::transition(current_presented, target, spec),
-                    timeline_time,
-                );
-                self.set_transition(key, instance, event_at, events);
-                true
-            }
-            Some(_) | None => {
-                self.clear_transition(key, event_at, events);
-                had_transition
-            }
-        }
-    }
-
-    /// Returns whether an implicit transition layer is retained.
-    pub(super) fn has_transition(&self) -> bool {
-        self.layers
-            .iter()
-            .any(|layer| layer.kind == TimelineAnimationLayerKind::Transition)
-    }
-
-    /// Replaces the implicit transition layer.
-    pub(super) fn set_transition(
-        &mut self,
-        key: TimelineTrackKey,
-        instance: ValueAnimationInstance<T, E>,
-        event_at: TimerInstant,
-        events: &mut Vec<AnimationEvent>,
-    ) {
-        self.cancel_layers(
-            key,
-            event_at,
-            TimelineAnimationLayerKind::Transition,
-            events,
-        );
-        events.push(AnimationEvent::new(
-            instance.id(),
-            key,
-            AnimationEventKind::Started,
-            event_at,
-        ));
-        let insertion = self
-            .layers
-            .iter()
-            .position(|layer| layer.kind == TimelineAnimationLayerKind::Effect)
-            .unwrap_or(self.layers.len());
-        self.layers.insert(
-            insertion,
-            ValueAnimationLayer::with_kind(TimelineAnimationLayerKind::Transition, instance),
-        );
-    }
-
-    /// Clears the implicit transition layer.
-    pub(super) fn clear_transition(
-        &mut self,
-        key: TimelineTrackKey,
-        now: TimerInstant,
-        events: &mut Vec<AnimationEvent>,
-    ) {
-        self.cancel_layers(key, now, TimelineAnimationLayerKind::Transition, events);
+        let before = previous_target.clone().unwrap_or_else(|| target.clone());
+        let declarations = B::transition_declarations(&target, spec);
+        let had_transition = !self.transition.is_idle();
+        let update = self
+            .transition
+            .set_target(
+                0,
+                0,
+                &declarations,
+                &NoTransitionResources,
+                &B::erase_transition_value(before),
+                B::erase_transition_value(target.clone()),
+                event_at,
+            )
+            .expect("transition declaration type matches its target adapter");
+        let (_, immediate) = update.into_parts();
+        self.target = Some(target);
+        had_transition || !self.transition.is_idle() || immediate.is_some()
     }
 
     fn motion_is_empty(&self) -> bool {
-        self.layers.is_empty()
+        self.transition.is_idle() && self.layers.is_empty()
     }
 
     fn sample_stack(&self, underlying: Option<T>, clock: TimelineClock<'_>) -> Option<T> {
@@ -312,23 +359,10 @@ where
         })
     }
 
-    fn sample_stack_until_effect(
-        &self,
-        underlying: Option<T>,
-        clock: TimelineClock<'_>,
-    ) -> Option<T> {
-        let effect_start = self
-            .layers
-            .iter()
-            .position(|layer| layer.kind == TimelineAnimationLayerKind::Effect)
-            .unwrap_or(self.layers.len());
-        self.layers[..effect_start]
-            .iter()
-            .fold(underlying, |value, layer| {
-                layer
-                    .instance
-                    .sample_over(value, layer.instance.timeline_time(clock))
-            })
+    fn sample_transition(&self, clock: TimelineClock<'_>) -> Option<T> {
+        self.transition
+            .current_value(0, 0, clock.document_instant())
+            .and_then(B::transition_value)
     }
 
     fn animation(&self, id: AnimationId) -> Option<&ValueAnimationInstance<T, E>> {
@@ -352,7 +386,7 @@ where
     ) -> TimelineTargetControlResult {
         B::control_result(
             key,
-            self.sample(B::default_underlying(key.target()), clock),
+            self.sample(self.retained_underlying(key.target()), clock),
             self.motion_is_empty(),
         )
     }
@@ -408,35 +442,12 @@ where
         events.push(AnimationEvent::new(layer.instance.id(), key, kind, now));
         true
     }
-
-    fn cancel_layers(
-        &mut self,
-        key: TimelineTrackKey,
-        now: TimerInstant,
-        kind: TimelineAnimationLayerKind,
-        events: &mut Vec<AnimationEvent>,
-    ) {
-        let mut retained = Vec::new();
-        for layer in self.layers.drain(..) {
-            if layer.kind == kind {
-                events.push(AnimationEvent::new(
-                    layer.instance.id(),
-                    key,
-                    AnimationEventKind::Canceled,
-                    now,
-                ));
-            } else {
-                retained.push(layer);
-            }
-        }
-        self.layers = retained;
-    }
 }
 
 impl<T, E, B> ErasedTargetState for ValueTargetState<T, E, B>
 where
     T: Clone + 'static,
-    E: RuntimeTransitionEffect<T>,
+    E: RuntimeEffect<T>,
     B: TargetValueBridge<T>,
 {
     fn as_any(&self) -> &dyn Any {
@@ -460,23 +471,20 @@ where
     }
 
     fn has_running_motion_on(&self, timeline: AnimationTimelineId) -> bool {
-        self.layers
-            .iter()
-            .any(|layer| layer.instance.timeline() == timeline && layer.instance.is_running())
+        (timeline == AnimationTimelineId::DOCUMENT && !self.transition.is_idle())
+            || self
+                .layers
+                .iter()
+                .any(|layer| layer.instance.timeline() == timeline && layer.instance.is_running())
     }
 
     fn running_transition_count(&self) -> usize {
-        self.layers
-            .iter()
-            .filter(|layer| layer.kind == TimelineAnimationLayerKind::Transition)
-            .filter(|layer| layer.instance.is_running())
-            .count()
+        usize::from(!self.transition.is_idle())
     }
 
     fn running_effect_count(&self) -> usize {
         self.layers
             .iter()
-            .filter(|layer| layer.kind == TimelineAnimationLayerKind::Effect)
             .filter(|layer| layer.instance.is_running())
             .count()
     }
@@ -520,11 +528,11 @@ where
         clock: TimelineClock<'_>,
         rows: &mut Vec<TimelineAnimationRuntimeRow>,
     ) {
-        rows.extend(self.layers.iter().map(|layer| {
-            layer
-                .instance
-                .runtime_row(key, layer.kind, self.value_kind, clock)
-        }));
+        rows.extend(
+            self.layers
+                .iter()
+                .map(|layer| layer.instance.runtime_row(key, self.value_kind, clock)),
+        );
     }
 
     fn advance(
@@ -537,7 +545,8 @@ where
         if self.motion_is_empty() {
             return None;
         }
-        let value = self.sample(B::default_underlying(key.target()), clock);
+        let _writes = self.transition.sample(event_at);
+        let value = self.sample(self.retained_underlying(key.target()), clock);
         self.remove_completed(key, clock, event_at, events);
         value.map(|value| B::sample(key, value, self.motion_is_empty()))
     }
@@ -550,7 +559,7 @@ where
         if self.motion_is_empty() {
             return None;
         }
-        self.sample(B::default_underlying(key.target()), clock)
+        self.sample(self.retained_underlying(key.target()), clock)
             .map(|value| B::sample(key, value, false))
     }
 
@@ -650,7 +659,7 @@ where
         if !instance.finish() {
             return None;
         }
-        let value = self.sample(B::default_underlying(key.target()), clock);
+        let value = self.sample(self.retained_underlying(key.target()), clock);
         self.remove_by_id(id, key, now, AnimationEventKind::Finished, events);
         Some(B::control_result(key, value, self.motion_is_empty()))
     }
@@ -661,6 +670,7 @@ where
         now: TimerInstant,
         events: &mut Vec<AnimationEvent>,
     ) {
+        let _ = self.transition.cancel(0, 0);
         for layer in self.layers.drain(..) {
             events.push(AnimationEvent::new(
                 layer.instance.id(),
@@ -674,20 +684,12 @@ where
 
 #[derive(Clone, Debug, PartialEq)]
 struct ValueAnimationLayer<T, E> {
-    kind: TimelineAnimationLayerKind,
     instance: ValueAnimationInstance<T, E>,
 }
 
 impl<T, E> ValueAnimationLayer<T, E> {
     const fn new(instance: ValueAnimationInstance<T, E>) -> Self {
-        Self::with_kind(TimelineAnimationLayerKind::Effect, instance)
-    }
-
-    const fn with_kind(
-        kind: TimelineAnimationLayerKind,
-        instance: ValueAnimationInstance<T, E>,
-    ) -> Self {
-        Self { kind, instance }
+        Self { instance }
     }
 }
 
@@ -739,7 +741,6 @@ where
     fn runtime_row(
         &self,
         key: TimelineTrackKey,
-        layer: TimelineAnimationLayerKind,
         target_value_kind: Option<PresentationValueKind>,
         clock: TimelineClock<'_>,
     ) -> TimelineAnimationRuntimeRow {
@@ -747,7 +748,6 @@ where
         TimelineAnimationRuntimeRow::new(
             self.id(),
             key,
-            layer,
             self.state(),
             timeline_time.and_then(|timeline_time| self.current_time(timeline_time)),
             timeline_time.and_then(|timeline_time| self.timing_sample(timeline_time)),
@@ -856,27 +856,6 @@ where
     }
 }
 
-impl<T> RuntimeTransitionEffect<T> for StackEffect<T>
-where
-    T: Animatable,
-{
-    fn transition(from: T, to: T, spec: ResolvedTransitionSpec) -> Self {
-        Self::new(
-            KeyframeEffect::new(Vec::from([
-                Keyframe::new(0.0, from),
-                Keyframe::new(1.0, to),
-            ]))
-            .with_composite(CompositeOperation::Replace),
-            AnimationTiming {
-                duration: spec.duration(),
-                easing: spec.timing(),
-                fill: FillMode::Forwards,
-                ..AnimationTiming::new(spec.duration())
-            },
-        )
-    }
-}
-
 impl RuntimeEffect<PresentationValue> for PresentationEffect {
     fn sample_value(&self, local_time: TimelineTime) -> Option<PresentationValue> {
         Self::sample(self, local_time)
@@ -896,16 +875,6 @@ impl RuntimeEffect<PresentationValue> for PresentationEffect {
 
     fn value_kind(&self) -> Option<PresentationValueKind> {
         Some(Self::value_kind(self))
-    }
-}
-
-impl RuntimeTransitionEffect<PresentationValue> for PresentationEffect {
-    fn transition(
-        from: PresentationValue,
-        to: PresentationValue,
-        spec: ResolvedTransitionSpec,
-    ) -> Self {
-        Self::transition(from, to, spec)
     }
 }
 

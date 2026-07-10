@@ -25,21 +25,11 @@ pub(super) enum TimelineEvaluationDomain {
 
 pub(crate) use crate::motion::PresentationAnimationValue as PresentationRuntimeValue;
 
-/// Kind of retained animation layer inside one target stack.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TimelineAnimationLayerKind {
-    /// Implicit transition layer generated from a target-value change.
-    Transition,
-    /// Explicit or style-triggered effect layer.
-    Effect,
-}
-
 /// Cold-path retained animation row exposed to inspection snapshot assembly.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TimelineAnimationRuntimeRow {
     id: AnimationId,
     key: TimelineTrackKey,
-    layer: TimelineAnimationLayerKind,
     state: AnimationPlayState,
     current_time: Option<TimerDuration>,
     timing_sample: Option<TimingSample>,
@@ -55,7 +45,6 @@ impl TimelineAnimationRuntimeRow {
     pub(crate) const fn new(
         id: AnimationId,
         key: TimelineTrackKey,
-        layer: TimelineAnimationLayerKind,
         state: AnimationPlayState,
         current_time: Option<TimerDuration>,
         timing_sample: Option<TimingSample>,
@@ -67,7 +56,6 @@ impl TimelineAnimationRuntimeRow {
         Self {
             id,
             key,
-            layer,
             state,
             current_time,
             timing_sample,
@@ -88,12 +76,6 @@ impl TimelineAnimationRuntimeRow {
     #[must_use]
     pub(crate) const fn key(self) -> TimelineTrackKey {
         self.key
-    }
-
-    /// Returns whether this row describes a transition or an effect.
-    #[must_use]
-    pub(crate) const fn layer(self) -> TimelineAnimationLayerKind {
-        self.layer
     }
 
     /// Returns the playback state.

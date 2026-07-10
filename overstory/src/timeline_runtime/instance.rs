@@ -115,13 +115,6 @@ impl AnimationEvent {
     pub const fn iteration(self) -> Option<u64> {
         self.iteration
     }
-
-    /// Returns the target key this animation instance affected.
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) const fn key(self) -> TimelineTrackKey {
-        self.key
-    }
 }
 
 pub(super) fn next_animation_id(next: &mut u64) -> AnimationId {

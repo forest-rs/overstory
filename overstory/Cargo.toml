@@ -29,6 +29,7 @@ std = [
     "understory_presentation/std",
     "understory_presentation_properties/std",
     "understory_responder/std",
+    "understory_transition/std",
 ]
 system-fonts = ["std", "parley/system"]
 
@@ -62,6 +63,7 @@ understory_responder = { default-features = false, features = ["box_tree_adapter
 understory_selection = { default-features = false, workspace = true }
 understory_style = { default-features = false, workspace = true }
 understory_timing = { default-features = false, workspace = true }
+understory_transition = { default-features = false, workspace = true }
 understory_virtual_list = { default-features = false, workspace = true }
 
 parley.workspace = true

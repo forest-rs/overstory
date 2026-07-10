@@ -3,8 +3,8 @@
 
 //! Signature interaction motion.
 //!
-//! These builders produce [`TransitionRules`] that the [`cascade`](crate::cascade)
-//! layers onto interactive controls. Durations, easing, and color
+//! These builders produce transition declarations that the
+//! [`cascade`](crate::cascade) layers onto interactive controls. Durations, easing, and color
 //! interpolation are read from theme resources, so retuning motion is a theme
 //! swap rather than a cascade rebuild.
 //!
@@ -22,8 +22,10 @@
 
 use overstory::BuiltInProperties;
 use overstory::motion::{
-    PresentationTarget, TimingFunction, TransitionRule, TransitionRules, TransitionSpec, millis,
+    PresentationTarget, TimingFunction, TransitionDeclaration, TransitionDeclarations,
+    TransitionResourceKey, TransitionTiming, millis,
 };
+use understory_style::ResourceKey;
 
 use crate::tokens::{
     MOTION_COLOR_INTERPOLATION, MOTION_FAST_DURATION, MOTION_NORMAL_DURATION,
@@ -34,18 +36,24 @@ const FALLBACK_TIMING: TimingFunction = TimingFunction::cubic_bezier(0.22, 1.0, 
 
 /// A color transition for a property, resolving duration/easing/interpolation
 /// from the standard motion theme tokens.
-fn color_spec() -> TransitionSpec {
-    TransitionSpec::timed(millis(140), FALLBACK_TIMING)
-        .with_duration_resource(MOTION_NORMAL_DURATION)
-        .with_easing_resource(MOTION_STANDARD_EASING)
-        .with_color_interpolation_resource(MOTION_COLOR_INTERPOLATION)
+fn color_transition(target: PresentationTarget) -> TransitionDeclaration<PresentationTarget> {
+    TransitionDeclaration::for_color_target(
+        target,
+        TransitionTiming::new(millis(140)).with_timing(FALLBACK_TIMING),
+    )
+    .with_duration_resource(transition_key(MOTION_NORMAL_DURATION))
+    .with_timing_resource(transition_key(MOTION_STANDARD_EASING))
+    .with_color_interpolation_resource(transition_key(MOTION_COLOR_INTERPOLATION))
 }
 
 /// A plain scalar transition (opacity), standard timing.
-fn scalar_spec() -> TransitionSpec {
-    TransitionSpec::timed(millis(90), FALLBACK_TIMING)
-        .with_duration_resource(MOTION_FAST_DURATION)
-        .with_easing_resource(MOTION_STANDARD_EASING)
+fn scalar_transition(target: PresentationTarget) -> TransitionDeclaration<PresentationTarget> {
+    TransitionDeclaration::for_target::<f32>(
+        target,
+        TransitionTiming::new(millis(90)).with_timing(FALLBACK_TIMING),
+    )
+    .with_duration_resource(transition_key(MOTION_FAST_DURATION))
+    .with_timing_resource(transition_key(MOTION_STANDARD_EASING))
 }
 
 /// The Signature interaction motion bundle for a bordered control: the four
@@ -54,22 +62,24 @@ fn scalar_spec() -> TransitionSpec {
 /// absent so focus/hover never reflow — the ring width stays constant and only
 /// its color changes (see the module docs and GAPS.md G7).
 #[must_use]
-pub fn interaction(properties: &BuiltInProperties, _tokens: &ResolvedTokens) -> TransitionRules {
+pub fn interaction(
+    properties: &BuiltInProperties,
+    _tokens: &ResolvedTokens,
+) -> TransitionDeclarations<PresentationTarget> {
     let brushes = properties.surface.border_brushes;
-    let mut rules = TransitionRules::new();
+    let mut rules = TransitionDeclarations::new();
     for brush in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
-        rules.push(TransitionRule::interaction(
-            PresentationTarget::property(brush.id()),
-            color_spec(),
-        ));
+        rules.push(color_transition(PresentationTarget::property(brush.id())));
     }
-    rules.push(TransitionRule::interaction(
-        PresentationTarget::property(properties.foreground.id()),
-        color_spec(),
-    ));
-    rules.push(TransitionRule::interaction(
-        PresentationTarget::property(properties.opacity.id()),
-        scalar_spec(),
-    ));
+    rules.push(color_transition(PresentationTarget::property(
+        properties.foreground.id(),
+    )));
+    rules.push(scalar_transition(PresentationTarget::property(
+        properties.opacity.id(),
+    )));
     rules
+}
+
+const fn transition_key(key: ResourceKey) -> TransitionResourceKey {
+    TransitionResourceKey::new(key.index())
 }
