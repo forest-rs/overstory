@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use understory_property::Property;
 use understory_style::{
     MatchState, ResolveCx, Resolved, ResolvedSource, ResourceKey, StyleCascade, StyleVocabulary,
-    Theme,
+    ThemeResolveOptions, ThemeVariant, VariantTheme,
 };
 
 use crate::channels::{LAYOUT, STYLE};
@@ -28,10 +28,10 @@ impl Ui {
         self.style.cascade()
     }
 
-    /// Returns the active theme.
+    /// Returns the active theme lookup, including variant and scope fallback.
     #[must_use]
     #[inline]
-    pub fn theme(&self) -> &Theme {
+    pub fn theme(&self) -> ThemeResolveOptions<'_> {
         self.style.theme()
     }
 
@@ -62,8 +62,18 @@ impl Ui {
 
     /// Swaps in a new theme. All elements are marked LAYOUT-dirty since theme
     /// resources can feed layout, text measurement, and paint values.
-    pub fn set_theme(&mut self, theme: Theme) {
+    pub fn set_theme(&mut self, theme: impl Into<VariantTheme>) {
         self.style.set_theme(theme);
+        self.invalidate_theme_dependents();
+    }
+
+    /// Selects a theme variant without rebuilding resource tables.
+    pub fn set_theme_variant(&mut self, variant: Option<ThemeVariant>) {
+        self.style.set_theme_variant(variant);
+        self.invalidate_theme_dependents();
+    }
+
+    fn invalidate_theme_dependents(&mut self) {
         let ids = collect_preorder(self, self.root());
         for id in ids {
             self.invalidation.mark(id, LAYOUT);

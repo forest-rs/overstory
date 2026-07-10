@@ -25,7 +25,7 @@ use core::ops::{Deref, DerefMut};
 
 use kurbo::{Rect, Size};
 use understory_property::{Property, PropertyRegistry};
-use understory_style::{ExpressionLayer, MatchState, ResolveCx, StyleCascade, Theme};
+use understory_style::{ExpressionLayer, MatchState, ResolveCx, StyleCascade, ThemeResolveOptions};
 
 use crate::element::{Element, ElementId};
 use crate::lookup::{ElementResolveLookup, UiResolveLookup};
@@ -302,7 +302,7 @@ pub struct PresentContext<'a> {
     pub properties: &'a BuiltInProperties,
     /// Active theme. Resources referenced by style entries resolve
     /// through it.
-    pub theme: &'a Theme,
+    pub theme: ThemeResolveOptions<'a>,
     /// Expression defaults and functions used by style resolution.
     pub(crate) expressions: &'a ExpressionLayer,
     /// The compiled style cascade rules apply through.
@@ -353,7 +353,7 @@ pub struct MeasureContext<'a> {
     /// Type-safe handles for the toolkit's built-in properties.
     pub properties: &'a BuiltInProperties,
     /// Active theme.
-    pub theme: &'a Theme,
+    pub theme: ThemeResolveOptions<'a>,
     /// Expression defaults and functions used by style resolution.
     pub(crate) expressions: &'a ExpressionLayer,
     /// The compiled style cascade.

@@ -23,7 +23,7 @@ pub use understory_motion::{
     TimingFunction, Transform2d, Transition, millis, normalized_progress,
 };
 use understory_property::{Property, PropertyId};
-use understory_style::{ResourceKey, Theme};
+use understory_style::{ResourceKey, ThemeResolveOptions};
 use understory_timing::TimerDuration;
 
 /// Presentation-only output sampled by the motion runtime.
@@ -248,7 +248,7 @@ impl TransitionSpec {
 
     /// Resolves theme-addressable motion tokens into concrete runtime values.
     #[must_use]
-    pub fn resolve(self, theme: &Theme) -> ResolvedTransitionSpec {
+    pub fn resolve(self, theme: ThemeResolveOptions<'_>) -> ResolvedTransitionSpec {
         ResolvedTransitionSpec {
             duration: self.duration.resolve(theme),
             timing: self.timing.resolve(theme),
@@ -276,7 +276,7 @@ impl TransitionDuration {
         }
     }
 
-    fn resolve(self, theme: &Theme) -> TimerDuration {
+    fn resolve(self, theme: ThemeResolveOptions<'_>) -> TimerDuration {
         match self {
             Self::Value(value) => value,
             Self::Resource { resource, fallback } => theme
@@ -306,7 +306,7 @@ impl TransitionTiming {
         }
     }
 
-    fn resolve(self, theme: &Theme) -> TimingFunction {
+    fn resolve(self, theme: ThemeResolveOptions<'_>) -> TimingFunction {
         match self {
             Self::Value(value) => value,
             Self::Resource { resource, fallback } => theme
@@ -336,7 +336,7 @@ impl TransitionColorInterpolation {
         }
     }
 
-    fn resolve(self, theme: &Theme) -> ColorInterpolation {
+    fn resolve(self, theme: ThemeResolveOptions<'_>) -> ColorInterpolation {
         match self {
             Self::Value(value) => value,
             Self::Resource { resource, fallback } => theme

@@ -4,6 +4,26 @@
 use super::*;
 
 #[test]
+fn theme_variant_switches_resource_lookup_without_rebuilding_theme() {
+    use understory_style::{ResourceKey, ThemeBuilder, ThemeVariant, VariantThemeBuilder};
+
+    const TOKEN: ResourceKey = ResourceKey::new(500);
+    let variants = VariantThemeBuilder::new()
+        .base(ThemeBuilder::new().set(TOKEN, 1_u32).build())
+        .variant(
+            ThemeVariant::DARK,
+            ThemeBuilder::new().set(TOKEN, 2_u32).build(),
+        )
+        .build();
+    let mut ui = Ui::new();
+    ui.set_theme(variants);
+
+    assert_eq!(ui.theme().get::<u32>(TOKEN), Some(&1));
+    ui.set_theme_variant(Some(ThemeVariant::DARK));
+    assert_eq!(ui.theme().get::<u32>(TOKEN), Some(&2));
+}
+
+#[test]
 fn styled_background_resolves_through_cascade() {
     // A style for `Type(TYPE_ROOT)` should supply the
     // background value for elements that don't have a local override.

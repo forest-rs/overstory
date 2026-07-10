@@ -17,7 +17,8 @@
 use smallvec::SmallVec;
 use understory_property::{PropertyId, PropertyRegistry};
 use understory_style::{
-    ExprDeps, ExpressionLayer, MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder, Theme,
+    ExprDeps, ExpressionLayer, MatchState, SelectorInputs, StyleCascade, StyleCascadeBuilder,
+    ThemeResolveOptions, ThemeVariant, VariantTheme,
 };
 
 use crate::element::{Element, ElementId};
@@ -56,8 +57,10 @@ pub(crate) struct StyleRuntime {
     app_cascade: StyleCascade,
     /// Combined selector cascade used to resolve styled property values.
     cascade: StyleCascade,
-    /// Theme resource table used by style resolution.
-    theme: Theme,
+    /// Variant-aware theme used by style resolution.
+    theme: VariantTheme,
+    /// Active theme variant.
+    theme_variant: Option<ThemeVariant>,
     /// Property default expressions and expression functions used by style
     /// resolution.
     expressions: ExpressionLayer,
@@ -77,7 +80,8 @@ impl StyleRuntime {
             framework_cascade,
             app_cascade,
             cascade,
-            theme: Theme::default(),
+            theme: VariantTheme::default(),
+            theme_variant: None,
             expressions: ExpressionLayer::new(),
             match_states: ElementSideMap::new(),
         }
@@ -87,8 +91,12 @@ impl StyleRuntime {
         &self.cascade
     }
 
-    pub(crate) fn theme(&self) -> &Theme {
-        &self.theme
+    pub(crate) fn theme(&self) -> ThemeResolveOptions<'_> {
+        let options = ThemeResolveOptions::from(&self.theme);
+        match self.theme_variant {
+            Some(variant) => options.with_variant(variant),
+            None => options,
+        }
     }
 
     pub(crate) fn expressions(&self) -> &ExpressionLayer {
@@ -101,8 +109,12 @@ impl StyleRuntime {
         self.match_states.clear();
     }
 
-    pub(crate) fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
+    pub(crate) fn set_theme(&mut self, theme: impl Into<VariantTheme>) {
+        self.theme = theme.into();
+    }
+
+    pub(crate) fn set_theme_variant(&mut self, variant: Option<ThemeVariant>) {
+        self.theme_variant = variant;
     }
 
     pub(crate) fn match_state(&self, id: ElementId) -> MatchState {
