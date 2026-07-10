@@ -382,23 +382,22 @@ pub(super) fn set_value(
 ) -> Option<SliderValueDelta> {
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
-    let range = ScalarRange::new(min, max);
-    let clamped = range.clamp(value);
     let value_prop = ui.properties().value;
     let previous = ui
         .get(slider)
         .map_or(min, |element| ui.resolve_value_for(element, value_prop));
-    ui.set_local(slider, value_prop, clamped);
-    let left = thumb_left_for_value(clamped, min, max);
+    ui.set_local(slider, value_prop, value);
+    let settled = slider_value(ui, slider);
+    let left = thumb_left_for_value(settled, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
     let placement = LayoutPlacement::absolute_at(left, top);
     match motion {
         ThumbMotion::Animate => ui.set_layout_placement(thumb, placement),
         ThumbMotion::Snap => ui.set_layout_placement_without_motion(thumb, placement),
     }
-    (previous != clamped).then_some(SliderValueDelta {
+    (previous != settled).then_some(SliderValueDelta {
         previous_value: previous,
-        value: clamped,
+        value: settled,
     })
 }
 

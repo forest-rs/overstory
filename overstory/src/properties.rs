@@ -225,9 +225,9 @@ pub struct BuiltInProperties {
     pub selected_index: Property<Option<usize>>,
 
     /// Numeric value for value-bearing controls (`Slider`,
-    /// `ProgressBar`, …). Default `0.0`. The semantic range is
-    /// `[Self::minimum, Self::maximum]`; consumers should clamp
-    /// writes that go outside it.
+    /// `ProgressBar`, …). Default `0.0`. Checked writes are validated as
+    /// finite and coerced into the unordered range formed by
+    /// [`Self::minimum`] and [`Self::maximum`].
     pub value: Property<f64>,
 
     /// Small keyboard increment for value-bearing controls. `Slider` uses this
@@ -255,6 +255,35 @@ impl BuiltInProperties {
         let surface = SurfaceProperties::register(
             registry,
             SurfacePropertyChannels::new(GEOMETRY.into_set(), PAINT.into_set()),
+        );
+        let minimum = registry.register(
+            "Minimum",
+            PropertyMetadataBuilder::new(0.0_f64)
+                .affects_channels(LAYOUT.into_set())
+                .validate(|value| value.is_finite())
+                .build(),
+        );
+        let maximum = registry.register(
+            "Maximum",
+            PropertyMetadataBuilder::new(1.0_f64)
+                .affects_channels(LAYOUT.into_set())
+                .validate(|value| value.is_finite())
+                .build(),
+        );
+        let value = registry.register(
+            "Value",
+            PropertyMetadataBuilder::new(0.0_f64)
+                // `Value` changes drive layout updates on controls like
+                // Slider (thumb position) plus the natural PAINT/COMPOSE
+                // cascade.
+                .affects_channels(LAYOUT.into_set())
+                .validate(|value| value.is_finite())
+                .coerce_with(move |cx, value| {
+                    let minimum: f64 = cx.get(minimum);
+                    let maximum: f64 = cx.get(maximum);
+                    value.clamp(minimum.min(maximum), minimum.max(maximum))
+                })
+                .build(),
         );
         Self {
             surface,
@@ -503,31 +532,21 @@ impl BuiltInProperties {
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),
-            value: registry.register(
-                "Value",
+            value,
+            small_change: registry.register(
+                "SmallChange",
                 PropertyMetadataBuilder::new(0.0_f64)
-                    // `Value` changes drive layout updates on
-                    // controls like Slider (thumb position) plus
-                    // the natural PAINT/COMPOSE cascade.
-                    .affects_channels(LAYOUT.into_set())
+                    .validate(|value| value.is_finite())
                     .build(),
             ),
-            small_change: registry
-                .register("SmallChange", PropertyMetadataBuilder::new(0.0_f64).build()),
-            large_change: registry
-                .register("LargeChange", PropertyMetadataBuilder::new(0.0_f64).build()),
-            minimum: registry.register(
-                "Minimum",
+            large_change: registry.register(
+                "LargeChange",
                 PropertyMetadataBuilder::new(0.0_f64)
-                    .affects_channels(LAYOUT.into_set())
+                    .validate(|value| value.is_finite())
                     .build(),
             ),
-            maximum: registry.register(
-                "Maximum",
-                PropertyMetadataBuilder::new(1.0_f64)
-                    .affects_channels(LAYOUT.into_set())
-                    .build(),
-            ),
+            minimum,
+            maximum,
         }
     }
 }

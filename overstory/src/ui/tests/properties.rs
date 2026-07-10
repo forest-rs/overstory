@@ -4,6 +4,38 @@
 use super::*;
 
 #[test]
+fn numeric_value_writes_use_property_metadata_coercion() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.set_local(root, ui.properties().minimum, 10.0);
+    ui.set_local(root, ui.properties().maximum, 20.0);
+    ui.set_local(root, ui.properties().value, 30.0);
+
+    assert_eq!(
+        ui.get(root)
+            .and_then(|element| element.get_local_value(ui.properties().value)),
+        Some(&20.0),
+    );
+}
+
+#[test]
+fn changing_a_range_bound_recoerces_the_stored_value() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+
+    ui.set_local(root, ui.properties().maximum, 10.0);
+    ui.set_local(root, ui.properties().value, 8.0);
+    ui.set_local(root, ui.properties().minimum, 9.0);
+
+    assert_eq!(
+        ui.get(root)
+            .and_then(|element| element.get_local_value(ui.properties().value)),
+        Some(&9.0),
+    );
+}
+
+#[test]
 fn set_local_marks_paint_dirty() {
     let mut ui = Ui::new();
     let root = ui.root();

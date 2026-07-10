@@ -90,13 +90,15 @@ impl Ui {
             let element = self.elements.get_mut(id)?;
             element.set_local_notifying(property, value, registry)
         };
-        Some(self.apply_property_change(PropertyChange {
+        let channels = self.apply_property_change(PropertyChange {
             element: id,
             property: property.id(),
             channels,
             template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
             state_projection: StateProjectionPolicy::ProjectSemanticState,
-        }))
+        });
+        self.recoerce_value_after_range_change(id, property.id());
+        Some(channels)
     }
 
     /// Clears a typed local value and applies normal element clear consequences.
@@ -126,6 +128,7 @@ impl Ui {
             template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
             state_projection: StateProjectionPolicy::ProjectSemanticState,
         });
+        self.recoerce_value_after_range_change(id, property.id());
         Some(true)
     }
 
@@ -152,13 +155,49 @@ impl Ui {
                 .set_local_erased_with_source_notifying(property, value, source, registry)
                 .ok()?
         };
-        Some(self.apply_property_change(PropertyChange {
+        let channels = self.apply_property_change(PropertyChange {
             element: id,
             property,
             channels,
             template_refresh,
             state_projection: StateProjectionPolicy::ProjectSemanticState,
-        }))
+        });
+        self.recoerce_value_after_range_change(id, property);
+        Some(channels)
+    }
+
+    /// Re-runs `Value` coercion when either range bound changes.
+    ///
+    /// `understory_property` deliberately leaves cross-property coercion
+    /// dependencies to its host. Overstory has one shared numeric range
+    /// contract, so the dependency is explicit here rather than repeated in
+    /// every value-bearing control.
+    fn recoerce_value_after_range_change(&mut self, id: ElementId, property: PropertyId) {
+        if property != self.properties.minimum.id() && property != self.properties.maximum.id() {
+            return;
+        }
+
+        let value = self.properties.value;
+        let channels = {
+            let registry = &self.registry;
+            let Some(element) = self.elements.get_mut(id) else {
+                return;
+            };
+            element.coerce_value_notifying(value, registry)
+        };
+        if channels.is_empty() {
+            return;
+        }
+
+        self.apply_property_change(PropertyChange {
+            element: id,
+            property: value.id(),
+            channels,
+            template_refresh: TemplateRefreshPolicy::RefreshRuntimeTemplate,
+            state_projection: StateProjectionPolicy::ProjectSemanticState,
+        });
+        self.binding_graph()
+            .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), value.id()));
     }
 
     /// Applies an erased local value during initial element construction.

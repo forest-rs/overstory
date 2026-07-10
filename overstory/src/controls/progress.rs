@@ -269,11 +269,7 @@ fn progress_template_spec() -> TemplateSpec {
 /// Sets a progress bar's value and synchronizes its default fill and label
 /// parts if they exist.
 pub fn set_progress_value(ui: &mut Ui, progress: ElementId, value: f64) {
-    let min = read_local_or(ui, progress, ui.properties().minimum, 0.0);
-    let max = read_local_or(ui, progress, ui.properties().maximum, 1.0);
-    let range = ScalarRange::new(min, max);
-    let clamped = range.clamp(value);
-    ui.set_local(progress, ui.properties().value, clamped);
+    ui.set_local(progress, ui.properties().value, value);
     sync_progress_parts(ui, progress, None);
 }
 
@@ -283,20 +279,9 @@ fn sync_progress_parts(ui: &mut Ui, progress: ElementId, show_label: Option<bool
     let range = ScalarRange::new(min, max);
     let value_prop = ui.properties().value;
     let value = read_local_or(ui, progress, value_prop, 0.0);
-    let clamped = range.clamp(value);
     let mut changed = false;
 
-    if ui
-        .get(progress)
-        .and_then(|element| element.get_local_value(value_prop))
-        .copied()
-        != Some(clamped)
-    {
-        ui.set_local(progress, value_prop, clamped);
-        changed = true;
-    }
-
-    let fraction = range.fraction(clamped);
+    let fraction = range.fraction(value);
     if let Some(fill) = ui.slot(progress, SLOT_PROGRESS_BAR_FILL) {
         let size = LayoutSize::percent(fraction.clamp(0.0, 1.0), 1.0);
         let size_changed = ui
