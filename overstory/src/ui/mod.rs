@@ -31,12 +31,12 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use invalidation::{ChannelSet, InvalidationTracker};
-use understory_property::{PropertyId, PropertyRegistry};
+use understory_property::{LocalValueSource, PropertyId, PropertyRegistry};
+use understory_property_binding::BindingGraph;
 use understory_style::StyleVocabulary;
 
-use crate::binding::BindingSourceRuntime;
-use crate::binding_runtime::BindingRuntime;
-use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::binding::{BindingOwner, BindingSourceRuntime};
+use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
 use crate::element::{Element, ElementId};
@@ -117,8 +117,11 @@ pub struct Ui {
     /// Shared text shaping engine. `RefCell` because text behaviors borrow
     /// it mutably while the owning `&Ui` borrow is otherwise immutable.
     text: RefCell<TextEngine>,
-    /// One-way property binding graph and binding invalidation state.
-    bindings: BindingRuntime,
+    /// Property binding graph; temporarily absent while a drain owns it.
+    bindings: Option<BindingGraph<BindingOwner, LocalValueSource>>,
+    /// Template owners whose binding-driven template write is deferred until
+    /// the active graph drain releases the graph.
+    binding_retemplates: Vec<ElementId>,
     /// Local app state and external value adapters that feed bindings.
     binding_sources: BindingSourceRuntime,
     /// Routed event handlers, pointer capture, hover, click, and drag state.
@@ -313,7 +316,8 @@ impl Ui {
             layout: LayoutRuntime::new(),
             templates: TemplateRuntime::new(),
             text: RefCell::new(text_engine),
-            bindings: BindingRuntime::new(),
+            bindings: Some(BindingGraph::new(BINDING)),
+            binding_retemplates: Vec::new(),
             binding_sources: BindingSourceRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),

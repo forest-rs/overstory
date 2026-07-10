@@ -17,7 +17,7 @@ cargo run --bin binding
 | Example | Bin | Shows |
 | --- | --- | --- |
 | [`hello`](hello/) | `hello` | The minimal end-to-end path: build a `Ui`, run it through the `overstory_app` host facade, handle a routed `Button` activation, and push state back into the tree. |
-| [`binding`](binding/) | `binding` | The reactive path: one `LocalState` source fanned out to a progress bar and two `.map()`-transformed labels via one-way bindings — no per-view event handlers. Read it after `hello` to contrast manual `set_local` with declarative binding. |
+| [`binding`](binding/) | `binding` | The reactive path: a slider and `LocalState` joined by a two-way binding, then fanned out to a progress bar and two `.map()`-transformed labels — no synchronization handlers. Read it after `hello` to contrast manual `set_local` with declarative binding. |
 
 ## Conventions
 

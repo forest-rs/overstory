@@ -3,13 +3,15 @@
 
 //! Property writes and dependency-property binding integration.
 
+use alloc::boxed::Box;
+
 use invalidation::ChannelSet;
 use understory_property::{
     DependencyObject, DependencyObjectExt, ErasedValue, LocalValueSource, Property, PropertyId,
 };
 use understory_property_binding::{
-    BindingDrainError, BindingError, BindingHost, BindingId, BindingReport, BindingWrite,
-    EndpointKey, PropertyEndpoint,
+    BindingError, BindingHost, BindingId, BindingWrite, EndpointKey, PropertyEndpoint,
+    TwoWayBindingId, TwoWayDrainError, TwoWayReport,
 };
 
 use crate::binding::{BindingOwner, ExternalSource, LocalState};
@@ -19,6 +21,14 @@ use super::Ui;
 use super::property_changes::{PropertyChange, StateProjectionPolicy, TemplateRefreshPolicy};
 
 impl Ui {
+    pub(in crate::ui) fn binding_graph(
+        &mut self,
+    ) -> &mut understory_property_binding::BindingGraph<BindingOwner, LocalValueSource> {
+        self.bindings
+            .as_mut()
+            .expect("binding graph is only absent while flushing")
+    }
+
     /// Writes a property value with notification.
     ///
     /// Marks affected channels in the invalidation tracker and notifies the
@@ -33,7 +43,7 @@ impl Ui {
         let Some(_) = self.write_typed_local(id, property, value) else {
             return;
         };
-        self.bindings
+        self.binding_graph()
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
     }
 
@@ -56,7 +66,7 @@ impl Ui {
             return false;
         };
         if removed {
-            self.bindings
+            self.binding_graph()
                 .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property.id()));
         }
         removed
@@ -170,7 +180,7 @@ impl Ui {
         ) else {
             return;
         };
-        self.bindings
+        self.binding_graph()
             .mark_endpoint_changed(EndpointKey::new(BindingOwner::element(id), property));
     }
 
@@ -206,7 +216,8 @@ impl Ui {
         if !self.binding_sources.set_local(state, value) {
             return false;
         }
-        self.bindings.mark_endpoint_changed(state.endpoint().key());
+        self.binding_graph()
+            .mark_endpoint_changed(state.endpoint().key());
         true
     }
 
@@ -228,7 +239,8 @@ impl Ui {
     where
         T: Clone + 'static,
     {
-        self.bindings.mark_endpoint_changed(source.endpoint().key())
+        self.binding_graph()
+            .mark_endpoint_changed(source.endpoint().key())
     }
 
     /// Returns a typed binding endpoint for `property` on `id`.
@@ -268,7 +280,11 @@ impl Ui {
     where
         T: Clone + 'static,
     {
-        self.bindings.bind(source, target)
+        let binding =
+            self.binding_graph()
+                .bind(source, target, LocalValueSource::TemplateBinding)?;
+        self.binding_graph().mark_binding_dirty(binding);
+        Ok(binding)
     }
 
     /// Registers a mapped template-precedence one-way binding from `source` to
@@ -288,7 +304,68 @@ impl Ui {
         T: Clone + 'static,
         F: Fn(&S) -> T + 'static,
     {
-        self.bindings.bind_map(source, target, map)
+        self.bind_map_with_target_source(source, target, map, LocalValueSource::TemplateBinding)
+    }
+
+    /// Registers an app-authored two-way identity binding.
+    ///
+    /// The initial and subsequent source values flow forward into `target`.
+    /// Host or control writes to `target` flow back into `source` during the
+    /// next binding drain. Binding-driven target writes are not echoed back.
+    pub fn bind_two_way<T>(
+        &mut self,
+        source: PropertyEndpoint<BindingOwner, T>,
+        target: PropertyEndpoint<BindingOwner, T>,
+    ) -> Result<TwoWayBindingId, BindingError<BindingOwner>>
+    where
+        T: Clone + 'static,
+    {
+        let binding = self.binding_graph().bind_two_way(
+            source,
+            target,
+            LocalValueSource::Local,
+            LocalValueSource::Local,
+        )?;
+        let forward = self
+            .binding_graph()
+            .forward_binding(binding)
+            .expect("new two-way binding has a forward edge");
+        self.binding_graph().mark_binding_dirty(forward);
+        Ok(binding)
+    }
+
+    /// Registers an app-authored mapped two-way binding.
+    ///
+    /// `forward` maps source values into the target type. `reverse` may reject
+    /// a target value by returning `None`; rejections are reported by
+    /// [`Self::flush_bindings`] without poisoning other graph work.
+    pub fn bind_two_way_map<S, T, F, R>(
+        &mut self,
+        source: PropertyEndpoint<BindingOwner, S>,
+        target: PropertyEndpoint<BindingOwner, T>,
+        forward: F,
+        reverse: R,
+    ) -> Result<TwoWayBindingId, BindingError<BindingOwner>>
+    where
+        S: Clone + 'static,
+        T: Clone + 'static,
+        F: Fn(&S) -> T + 'static,
+        R: Fn(&T) -> Option<S> + 'static,
+    {
+        let binding = self.binding_graph().try_bind_two_way_map(
+            source,
+            target,
+            LocalValueSource::Local,
+            LocalValueSource::Local,
+            forward,
+            reverse,
+        )?;
+        let forward = self
+            .binding_graph()
+            .forward_binding(binding)
+            .expect("new two-way binding has a forward edge");
+        self.binding_graph().mark_binding_dirty(forward);
+        Ok(binding)
     }
 
     pub(crate) fn bind_map_with_target_source<S, T, F>(
@@ -303,24 +380,35 @@ impl Ui {
         T: Clone + 'static,
         F: Fn(&S) -> T + 'static,
     {
-        self.bindings
-            .bind_map_with_target_source(source, target, map, write_source)
+        let binding = self
+            .binding_graph()
+            .bind_map(source, target, write_source, map)?;
+        self.binding_graph().mark_binding_dirty(binding);
+        Ok(binding)
     }
 
     /// Drains the binding set, propagating dirty bindings through the host.
     /// Channels affected by binding writes are unioned into the invalidation
     /// tracker as a side effect of the host's `set_erased` impl.
-    pub fn try_flush_bindings(&mut self) -> Result<BindingReport, BindingDrainError<BindingOwner>> {
-        let mut bindings = self.bindings.take();
+    pub fn try_flush_bindings(
+        &mut self,
+    ) -> Result<TwoWayReport<BindingOwner>, Box<TwoWayDrainError<BindingOwner>>> {
+        let mut bindings = self
+            .bindings
+            .take()
+            .expect("binding graph is only absent while flushing");
         let result = bindings.drain(self);
-        self.bindings.restore(bindings);
-        result
+        self.bindings = Some(bindings);
+        for owner in core::mem::take(&mut self.binding_retemplates) {
+            self.retemplate_if_needed(owner);
+        }
+        result.map_err(Box::new)
     }
 
     /// Drains dirty bindings and panics if a real binding evaluation error is
     /// found. Use [`Self::try_flush_bindings`] when binding graph or host type
     /// errors should be handled by the caller.
-    pub fn flush_bindings(&mut self) -> BindingReport {
+    pub fn flush_bindings(&mut self) -> TwoWayReport<BindingOwner> {
         self.try_flush_bindings()
             .expect("binding drain failed; use try_flush_bindings to inspect the error")
     }
@@ -351,15 +439,19 @@ impl BindingHost<BindingOwner, LocalValueSource> for Ui {
         match endpoint.owner() {
             BindingOwner::Element(id) => {
                 let prop_id = endpoint.property();
-                let Some(channels) = self.write_local_erased(
-                    id,
-                    prop_id,
-                    value,
-                    write_source,
-                    TemplateRefreshPolicy::RefreshRuntimeTemplate,
-                ) else {
+                let refresh = if prop_id == self.properties.control_template.id() {
+                    TemplateRefreshPolicy::DoNotRefreshTemplate
+                } else {
+                    TemplateRefreshPolicy::RefreshRuntimeTemplate
+                };
+                let Some(channels) =
+                    self.write_local_erased(id, prop_id, value, write_source, refresh)
+                else {
                     return BindingWrite::unchanged();
                 };
+                if refresh == TemplateRefreshPolicy::DoNotRefreshTemplate {
+                    self.binding_retemplates.push(id);
+                }
                 if channels.is_empty() {
                     BindingWrite::unchanged()
                 } else {

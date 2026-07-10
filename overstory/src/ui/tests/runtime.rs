@@ -411,7 +411,7 @@ fn remove_clears_bindings_for_subtree() {
     let report = ui
         .try_flush_bindings()
         .expect("removed target binding should have been cleared");
-    assert_eq!(report.evaluated_bindings(), 0);
+    assert_eq!(report.forward().evaluated_bindings(), 0);
 }
 
 #[test]
@@ -448,6 +448,29 @@ fn local_state_binding_updates_element_text() {
             .as_deref(),
         Some("Count: 42")
     );
+}
+
+#[test]
+fn two_way_binding_writes_control_changes_back_to_local_state() {
+    let mut ui = Ui::new();
+    let amount = ui.local_state(0.25_f64);
+    let target = ui.insert_child(ui.root());
+    let value = ui.properties().value;
+
+    ui.bind_two_way(amount.endpoint(), Ui::element_endpoint(target, value))
+        .expect("two-way binding registers");
+    ui.flush_bindings();
+    assert_eq!(
+        ui.get(target)
+            .and_then(|element| element.get_local_value(value)),
+        Some(&0.25),
+    );
+
+    ui.set_local(target, value, 0.75);
+    let report = ui.flush_bindings();
+
+    assert_eq!(report.reverse_writes(), 1);
+    assert_eq!(amount.get(&ui), Some(0.75));
 }
 
 #[test]

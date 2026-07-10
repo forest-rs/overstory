@@ -5,11 +5,10 @@
 //!
 //! Where `hello` pushed state into the tree by hand from an event handler,
 //! this shows the declarative path: a single [`Ui::local_state`] is the source
-//! of truth, and every readout below is a one-way binding off it. The slider is
-//! the only input adapter — its [`Slider::on_value_changed`] commits the new
-//! value into the state. The percentage label, the progress bar, and the
-//! qualitative label are all `.map()`-transformed bindings, so nothing needs
-//! manual syncing when the value changes.
+//! of truth. The slider uses a two-way property binding, while every readout
+//! below is a one-way binding off the same state. The percentage label, the
+//! progress bar, and the qualitative label are all `.map()`-transformed
+//! bindings, so nothing needs manual syncing when the value changes.
 //!
 //! Installing the default theme colors the window and text (see the `hello`
 //! example), so this file has no literal colors.
@@ -54,18 +53,15 @@ fn build_ui() -> Ui {
 
     ui.append(stack, Text::new("Reactive value").font_size(22.0));
 
-    // The one input adapter: commit the slider's value into the source state.
     // The slider self-sizes (track + ticks + labels) from its default template,
-    // so there's no layout to hand-tune here.
-    ui.append(
+    // so there's no layout to hand-tune here. Its Value property and `amount`
+    // are peers in one two-way binding; no event handler copies values around.
+    let slider = ui.append(
         stack,
-        Slider::new()
-            .range(0.0, 100.0)
-            .value(40.0)
-            .on_value_changed(move |ui, event| {
-                ui.set_local_state(amount, event.value);
-            }),
+        Slider::new().range(0.0, 100.0).value(40.0).fill_width(),
     );
+    ui.bind_two_way(amount.endpoint(), Ui::element_endpoint(slider, value_prop))
+        .expect("slider two-way binding should be valid");
 
     // Bound readouts — no handlers. Each is a `.map()` off the same source.
     ui.append(

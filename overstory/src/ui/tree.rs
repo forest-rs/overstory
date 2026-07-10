@@ -699,7 +699,7 @@ impl Ui {
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);
-        self.bindings.clear_owner(BindingOwner::element(id));
+        self.binding_graph().clear_owner(BindingOwner::element(id));
         self.templates.remove_element(id);
         self.events.remove_target(id);
         self.timeline.remove_element(id, self.now());
