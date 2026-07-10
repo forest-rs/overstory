@@ -2252,6 +2252,7 @@ dependencies = [
  "understory_focus",
  "understory_motion",
  "understory_outline",
+ "understory_overlay",
  "understory_presentation",
  "understory_presentation_properties",
  "understory_property",
@@ -3754,6 +3755,15 @@ version = "0.1.0"
 source = "git+https://github.com/forest-rs/understory.git?rev=dc00773f9c3de15b294a503c9e8a2e7508213f97#dc00773f9c3de15b294a503c9e8a2e7508213f97"
 dependencies = [
  "hashbrown 0.17.1",
+]
+
+[[package]]
+name = "understory_overlay"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=dc00773f9c3de15b294a503c9e8a2e7508213f97#dc00773f9c3de15b294a503c9e8a2e7508213f97"
+dependencies = [
+ "kurbo",
+ "understory_anchor",
 ]
 
 [[package]]

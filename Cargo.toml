@@ -85,6 +85,7 @@ understory_focus = { default-features = false, git = "https://github.com/forest-
 understory_motion = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
 understory_node_graph = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
 understory_outline = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
+understory_overlay = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
 understory_precise_hit = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
 understory_presentation = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }
 understory_presentation_properties = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "dc00773f9c3de15b294a503c9e8a2e7508213f97" }

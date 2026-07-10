@@ -5,7 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
-use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind, resolve_placement};
+use crate::overlay::{OverlayHost, resolve_placement};
 
 use super::Ui;
 
@@ -33,11 +33,8 @@ impl Ui {
 
     /// Removes any tooltip attached to `target`.
     pub fn clear_tooltip(&mut self, target: ElementId) {
-        if let Some(element) = self.overlays.remove_tooltip(target)
-            && self.get(element).is_some()
-        {
-            self.remove(element);
-        }
+        let active = self.overlays.remove_tooltip(target);
+        self.close_overlay_hosts(active);
         self.refresh_tooltip_from_focus();
     }
 
@@ -97,24 +94,18 @@ impl Ui {
             offset,
         );
         let tooltip_element = append_overlay_tooltip(self, &tooltip, origin);
-        self.overlays.open(ActiveOverlay {
-            kind: OverlayKind::Tooltip,
+        self.overlays.open_tooltip(OverlayHost {
             target,
             element: tooltip_element,
             placement,
             offset,
-            dismissal: OverlayDismissal::none(),
+            restore_focus: None,
         });
         true
     }
 
     fn hide_active_tooltip(&mut self) -> bool {
-        let Some(active) = self.overlays.take_kind(OverlayKind::Tooltip) else {
-            return false;
-        };
-        if self.get(active.element).is_some() {
-            self.remove(active.element);
-        }
-        true
+        let active = self.overlays.take_tooltip();
+        self.close_overlay_hosts(active)
     }
 }

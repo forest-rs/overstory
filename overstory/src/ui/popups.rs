@@ -5,12 +5,13 @@
 
 use alloc::vec::Vec;
 
-use kurbo::Size;
+use kurbo::{Point, Size};
 use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
+use understory_overlay::{OverlayEvent, OverlayKey};
 
 use crate::controls::popup::{Popup, append_overlay_popup};
 use crate::element::ElementId;
-use crate::overlay::{ActiveOverlay, OverlayDismissal, OverlayKind, resolve_placement};
+use crate::overlay::{OverlayHost, resolve_placement};
 
 use super::Ui;
 
@@ -36,18 +37,17 @@ impl Ui {
         let origin = resolve_placement(placement, bounds, Size::ZERO, self.last_viewport, offset);
         let popup_element = append_overlay_popup(self, &popup, origin);
         build(self, popup_element);
-        self.overlays.open(ActiveOverlay {
-            kind: OverlayKind::Popup,
-            target,
-            element: popup_element,
-            placement,
-            offset,
-            dismissal: OverlayDismissal {
-                outside_pointer: popup.dismiss_on_outside_pointer_value(),
-                escape: popup.dismiss_on_escape_value(),
+        self.overlays.open_popup(
+            OverlayHost {
+                target,
+                element: popup_element,
+                placement,
+                offset,
                 restore_focus,
             },
-        });
+            popup.dismiss_on_outside_pointer_value(),
+            popup.dismiss_on_escape_value(),
+        );
         Some(popup_element)
     }
 
@@ -55,64 +55,25 @@ impl Ui {
     ///
     /// Returns `true` when `popup` was an active popup root.
     pub fn close_popup(&mut self, popup: ElementId) -> bool {
-        let Some(active) = self.overlays.take_element_kind(popup, OverlayKind::Popup) else {
-            return false;
-        };
-        self.close_popup_entry(active);
-        true
+        let active = self.overlays.close_popup(popup);
+        self.close_overlay_hosts(active)
     }
 
     pub(in crate::ui) fn dismiss_popup_for_escape(&mut self, event: &KeyboardEvent) -> bool {
         if event.state != KeyState::Down || !matches!(event.key, Key::Named(NamedKey::Escape)) {
             return false;
         }
-        let Some(active) = self.overlays.active_popup() else {
-            return false;
-        };
-        if !active.dismissal.escape {
-            return false;
-        }
-        let Some(active) = self
-            .overlays
-            .take_element_kind(active.element, OverlayKind::Popup)
-        else {
-            return false;
-        };
-        self.close_popup_entry(active);
-        true
+        self.apply_overlay_event(OverlayEvent::KeyDown {
+            key: OverlayKey::Escape,
+        })
     }
 
-    pub(in crate::ui) fn dismiss_popups_for_pointer_down(
-        &mut self,
-        hit: Option<ElementId>,
-    ) -> bool {
-        let active = self
-            .overlays
-            .active_popups_top_to_bottom()
-            .collect::<Vec<_>>();
-        let mut to_close = Vec::new();
-        for entry in active {
-            if let Some(hit) = hit
-                && (self.is_descendant_or_self(hit, entry.element)
-                    || self.is_descendant_or_self(hit, entry.target))
-            {
-                break;
-            }
-            if !entry.dismissal.outside_pointer {
-                break;
-            }
-            to_close.push(entry.element);
-        }
-
-        let mut changed = false;
-        for popup in to_close {
-            changed |= self.close_popup(popup);
-        }
-        changed
+    pub(in crate::ui) fn dismiss_popups_for_pointer_down(&mut self, point: Point) -> bool {
+        self.apply_overlay_event(OverlayEvent::PointerDown { point })
     }
 
-    fn close_popup_entry(&mut self, active: ActiveOverlay) {
-        let should_restore_focus = match (active.dismissal.restore_focus, self.focused()) {
+    pub(in crate::ui) fn close_overlay_host(&mut self, active: OverlayHost) {
+        let should_restore_focus = match (active.restore_focus, self.focused()) {
             (Some(restore), Some(focused)) => {
                 self.get(restore).is_some() && self.is_descendant_or_self(focused, active.element)
             }
@@ -122,7 +83,15 @@ impl Ui {
             self.remove(active.element);
         }
         if should_restore_focus {
-            let _ = self.set_focus(active.dismissal.restore_focus);
+            let _ = self.set_focus(active.restore_focus);
         }
+    }
+
+    pub(in crate::ui) fn close_overlay_hosts(&mut self, active: Vec<OverlayHost>) -> bool {
+        let changed = !active.is_empty();
+        for host in active.into_iter().rev() {
+            self.close_overlay_host(host);
+        }
+        changed
     }
 }

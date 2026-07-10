@@ -23,6 +23,10 @@ use understory_anchor::{
     Anchor, AnchorConstraint, AnchorInput, AnchorPolicy, AnchorPositionOption, ScoringPolicy, Side,
     resolve_anchor,
 };
+use understory_overlay::{
+    AnchorId, DismissPolicy, FocusPolicy, OverlayBehavior, OverlayEntry, OverlayId, OverlayLayer,
+    OverlayOp, OverlayStack,
+};
 
 use crate::controls::tooltip::Tooltip;
 use crate::element::ElementId;
@@ -75,18 +79,8 @@ fn anchor_offsets(side: Side, offset: Vec2) -> (f64, f64) {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OverlayKind {
-    /// Transient descriptive overlay anchored to an element.
-    Tooltip,
-    /// User-opened popup overlay that may participate in dismissal policy.
-    Popup,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ActiveOverlay {
-    /// Overlay category.
-    pub(crate) kind: OverlayKind,
+pub(crate) struct OverlayHost {
     /// Element the overlay is anchored to.
     pub(crate) target: ElementId,
     /// Overlay element inserted into the retained UI tree.
@@ -95,23 +89,13 @@ pub(crate) struct ActiveOverlay {
     pub(crate) placement: Placement,
     /// Placement offset in logical pixels.
     pub(crate) offset: Vec2,
-    /// Dismissal behavior for this active overlay.
-    pub(crate) dismissal: OverlayDismissal,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct OverlayDismissal {
-    /// Close when a pointer down occurs outside the overlay.
-    pub(crate) outside_pointer: bool,
-    /// Close when Escape is pressed.
-    pub(crate) escape: bool,
-    /// Focus target to restore when the overlay is dismissed.
+    /// Focus target captured when the overlay opened.
     pub(crate) restore_focus: Option<ElementId>,
 }
 
-impl OverlayDismissal {
-    pub(crate) fn none() -> Self {
-        Self::default()
+impl OverlayHost {
+    pub(crate) fn overlay_id(self) -> OverlayId {
+        overlay_id(self.element)
     }
 }
 
@@ -119,11 +103,10 @@ impl OverlayDismissal {
 pub(crate) struct OverlayRuntime {
     /// Tooltip declarations keyed by the element they describe.
     tooltips: HashMap<ElementId, Tooltip>,
-    /// Active overlay entries in opening order.
-    ///
-    /// Popups are treated as stack-like, so queries walk this vector from the
-    /// end when they need the topmost popup.
-    active: Vec<ActiveOverlay>,
+    /// Headless overlay lifecycle, ordering, and dismissal policy.
+    stack: OverlayStack,
+    /// Overstory-owned element and placement state for each headless entry.
+    hosts: HashMap<OverlayId, OverlayHost>,
 }
 
 impl OverlayRuntime {
@@ -139,67 +122,91 @@ impl OverlayRuntime {
         self.tooltips.contains_key(&target)
     }
 
-    pub(crate) fn active_tooltip(&self) -> Option<ActiveOverlay> {
-        self.active
+    pub(crate) fn active_tooltip(&self) -> Option<OverlayHost> {
+        self.stack
+            .entries()
             .iter()
-            .find(|entry| entry.kind == OverlayKind::Tooltip)
+            .find(|entry| entry.behavior == OverlayBehavior::Tooltip)
+            .and_then(|entry| self.hosts.get(&entry.id))
             .copied()
     }
 
-    pub(crate) fn active_popup(&self) -> Option<ActiveOverlay> {
-        self.active
+    pub(crate) fn active_entries(&self) -> impl Iterator<Item = OverlayHost> + '_ {
+        self.stack
+            .entries()
             .iter()
-            .rev()
-            .find(|entry| entry.kind == OverlayKind::Popup)
-            .copied()
+            .filter_map(|entry| self.hosts.get(&entry.id).copied())
     }
 
-    pub(crate) fn active_popups_top_to_bottom(&self) -> impl Iterator<Item = ActiveOverlay> + '_ {
-        self.active
-            .iter()
-            .rev()
-            .filter(|entry| entry.kind == OverlayKind::Popup)
-            .copied()
+    pub(crate) fn stack(&self) -> &OverlayStack {
+        &self.stack
     }
 
-    pub(crate) fn active_entries(&self) -> impl Iterator<Item = ActiveOverlay> + '_ {
-        self.active.iter().copied()
+    pub(crate) fn open_tooltip(&mut self, host: OverlayHost) {
+        let entry = OverlayEntry::new(
+            overlay_id(host.element),
+            OverlayLayer::Tooltip,
+            OverlayBehavior::Tooltip,
+        )
+        .with_anchor(anchor_id(host.target))
+        .with_dismiss(DismissPolicy::default());
+        self.open(entry, host);
     }
 
-    pub(crate) fn open(&mut self, entry: ActiveOverlay) {
-        self.active.push(entry);
+    pub(crate) fn open_popup(&mut self, host: OverlayHost, outside_pointer: bool, escape: bool) {
+        let entry = OverlayEntry::new(
+            overlay_id(host.element),
+            OverlayLayer::Popover,
+            OverlayBehavior::Popover,
+        )
+        .with_anchor(anchor_id(host.target))
+        .with_dismiss(DismissPolicy {
+            escape_key: escape,
+            pointer_down_outside: outside_pointer,
+            ..DismissPolicy::default()
+        })
+        .with_focus(if host.restore_focus.is_some() {
+            FocusPolicy::RestoreOnClose
+        } else {
+            FocusPolicy::None
+        });
+        self.open(entry, host);
     }
 
-    /// Removes an active overlay for the exact element/kind pair.
-    pub(crate) fn take_element_kind(
-        &mut self,
-        element: ElementId,
-        kind: OverlayKind,
-    ) -> Option<ActiveOverlay> {
-        let index = self
-            .active
-            .iter()
-            .position(|entry| entry.element == element && entry.kind == kind)?;
-        Some(self.active.remove(index))
+    fn open(&mut self, entry: OverlayEntry, host: OverlayHost) {
+        let id = entry.id;
+        let report = self
+            .stack
+            .apply(OverlayOp::Open { entry })
+            .expect("fresh retained overlay element has a unique valid id");
+        debug_assert!(
+            report.is_empty(),
+            "opening an overlay must not remove entries"
+        );
+        self.hosts.insert(id, host);
     }
 
-    /// Removes the oldest active overlay of `kind`.
-    ///
-    /// Tooltip activation uses this to keep only one live tooltip at a time.
-    pub(crate) fn take_kind(&mut self, kind: OverlayKind) -> Option<ActiveOverlay> {
-        let index = self.active.iter().position(|entry| entry.kind == kind)?;
-        Some(self.active.remove(index))
+    pub(crate) fn close_popup(&mut self, element: ElementId) -> Vec<OverlayHost> {
+        self.take_element_behavior(element, OverlayBehavior::Popover)
+    }
+
+    pub(crate) fn take_tooltip(&mut self) -> Vec<OverlayHost> {
+        let Some(element) = self.active_tooltip().map(|host| host.element) else {
+            return Vec::new();
+        };
+        self.take_element_behavior(element, OverlayBehavior::Tooltip)
     }
 
     /// Removes a tooltip declaration and closes it if it is active.
-    pub(crate) fn remove_tooltip(&mut self, target: ElementId) -> Option<ElementId> {
+    pub(crate) fn remove_tooltip(&mut self, target: ElementId) -> Vec<OverlayHost> {
         self.tooltips.remove(&target);
-        let active = self.active_tooltip()?;
+        let Some(active) = self.active_tooltip() else {
+            return Vec::new();
+        };
         if active.target == target {
-            self.take_kind(OverlayKind::Tooltip)
-                .map(|entry| entry.element)
+            self.take_tooltip()
         } else {
-            None
+            Vec::new()
         }
     }
 
@@ -209,14 +216,98 @@ impl OverlayRuntime {
     /// tree by the caller.
     pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<ElementId> {
         self.tooltips.remove(&id);
-        let mut removed = Vec::new();
-        self.active.retain(|entry| {
-            let keep = entry.target != id && entry.element != id;
-            if !keep {
-                removed.push(entry.element);
-            }
-            keep
-        });
-        removed
+        let overlays = self
+            .stack
+            .entries()
+            .iter()
+            .filter_map(|entry| {
+                let host = self.hosts.get(&entry.id)?;
+                (host.target == id || host.element == id).then_some(entry.id)
+            })
+            .collect::<Vec<_>>();
+        overlays
+            .into_iter()
+            .flat_map(|overlay| self.close(overlay))
+            .map(|host| host.element)
+            .collect()
+    }
+
+    pub(crate) fn apply_operation(&mut self, operation: OverlayOp) -> Vec<OverlayHost> {
+        assert!(
+            !matches!(operation, OverlayOp::Open { .. }),
+            "opening an overlay also requires an Overstory host"
+        );
+        self.stack
+            .apply(operation)
+            .expect("resolved overlay operation references the current stack")
+            .into_removed()
+            .into_iter()
+            .filter_map(|overlay| self.hosts.remove(&overlay))
+            .collect()
+    }
+
+    fn take_element_behavior(
+        &mut self,
+        element: ElementId,
+        behavior: OverlayBehavior,
+    ) -> Vec<OverlayHost> {
+        let overlay = overlay_id(element);
+        if self
+            .stack
+            .entry(overlay)
+            .is_none_or(|entry| entry.behavior != behavior)
+        {
+            return Vec::new();
+        }
+        self.close(overlay)
+    }
+
+    fn close(&mut self, overlay: OverlayId) -> Vec<OverlayHost> {
+        if self.stack.entry(overlay).is_none() {
+            return Vec::new();
+        }
+        self.apply_operation(OverlayOp::Close { overlay })
+    }
+}
+
+fn overlay_id(element: ElementId) -> OverlayId {
+    OverlayId(element_token(element))
+}
+
+fn anchor_id(element: ElementId) -> AnchorId {
+    AnchorId(element_token(element))
+}
+
+fn element_token(element: ElementId) -> u64 {
+    (u64::from(element.generation()) << 32) | u64::from(element.slot())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn host(target: u32, element: u32) -> OverlayHost {
+        OverlayHost {
+            target: ElementId::new(target, 0),
+            element: ElementId::new(element, 0),
+            placement: Placement::BOTTOM,
+            offset: Vec2::ZERO,
+            restore_focus: None,
+        }
+    }
+
+    #[test]
+    fn mutation_report_removes_every_host_closed_by_an_operation() {
+        let mut runtime = OverlayRuntime::default();
+        let popup = host(1, 2);
+        let tooltip = host(3, 4);
+        runtime.open_popup(popup, true, true);
+        runtime.open_tooltip(tooltip);
+
+        let removed = runtime.apply_operation(OverlayOp::CloseAll);
+
+        assert_eq!(removed, [popup, tooltip]);
+        assert!(runtime.stack().entries().is_empty());
+        assert!(runtime.hosts.is_empty());
     }
 }

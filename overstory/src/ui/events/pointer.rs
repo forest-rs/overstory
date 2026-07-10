@@ -195,9 +195,7 @@ impl Ui {
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
                 if is_primary_activation_contact(button_event) {
-                    let hit_before_dismissal = self.responder().hit_test(pos);
-                    result.overlay_changed |=
-                        self.dismiss_popups_for_pointer_down(hit_before_dismissal);
+                    result.overlay_changed |= self.dismiss_popups_for_pointer_down(pos);
                     if result.overlay_changed {
                         self.geometry.commit();
                     }

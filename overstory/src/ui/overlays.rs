@@ -5,7 +5,10 @@
 
 use alloc::vec::Vec;
 
-use kurbo::{Point, Size};
+use kurbo::{Point, Rect, Size};
+use understory_overlay::{
+    OverlayEvent, OverlayFrameInput, OverlayGeometry, build_overlay_frame, resolve_event,
+};
 
 use crate::element::ElementId;
 use crate::layouts::LayoutPlacement;
@@ -46,6 +49,37 @@ impl Ui {
                 LayoutPlacement::absolute_at(origin.x, origin.y),
             );
             changed = true;
+        }
+        changed
+    }
+
+    pub(in crate::ui) fn apply_overlay_event(&mut self, event: OverlayEvent) -> bool {
+        let geometries = self
+            .overlays
+            .active_entries()
+            .filter_map(|entry| {
+                if self.get(entry.target).is_none() || self.get(entry.element).is_none() {
+                    return None;
+                }
+                Some(
+                    OverlayGeometry::new(entry.overlay_id(), self.effective_bounds(entry.element))
+                        .with_anchor_rect(self.effective_bounds(entry.target)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let input = OverlayFrameInput::new(
+            Rect::from_origin_size(Point::ZERO, self.last_viewport),
+            &geometries,
+        );
+        let frame = build_overlay_frame(self.overlays.stack(), input);
+        let operations = resolve_event(self.overlays.stack(), &frame, event).ops;
+        let closed = operations
+            .into_iter()
+            .flat_map(|operation| self.overlays.apply_operation(operation))
+            .collect::<Vec<_>>();
+        let changed = !closed.is_empty();
+        for host in closed.into_iter().rev() {
+            self.close_overlay_host(host);
         }
         changed
     }
