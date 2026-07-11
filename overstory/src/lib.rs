@@ -120,6 +120,7 @@ pub use controls::accordion::{
     TYPE_ACCORDION, TYPE_ACCORDION_SECTION, accordion_section_content, accordion_section_expanded,
     set_accordion_section_expanded, toggle_accordion_section,
 };
+pub use controls::badge::{Badge, BadgeCountOverflow, TYPE_BADGE};
 pub use controls::button::{
     Button, ButtonActivatedEvent, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };
@@ -275,16 +276,16 @@ pub mod prelude {
     pub use crate::{
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, ActivationDeniedEvent,
         ActivationDeniedReason, ActivationSource, AnimationId, AnimationPlayState, AnimationTarget,
-        AnimationTimelineId, AnimationTiming, AppendSpec, BindingSpecExt, Button,
-        ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color, CompositeOperation,
-        ContentSlotSpec, ControlStateSpecExt, ControlTemplate, ControlTemplateSpec,
-        ControlTemplateSpecExt, CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED,
-        EffectClip, EffectKeyframe, ElementId, ElementRef, ElementRefSpecExt, ElementSpec,
-        ElementSpecExt, Expander, ExternalSource, FillMode, IndexedStack, Layout, ListBox,
-        ListItemContext, LocalState, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
-        PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
-        PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
-        RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
+        AnimationTimelineId, AnimationTiming, AppendSpec, Badge, BadgeCountOverflow,
+        BindingSpecExt, Button, ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color,
+        CompositeOperation, ContentSlotSpec, ControlStateSpecExt, ControlTemplate,
+        ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
+        EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
+        ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
+        IndexedStack, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, PartTag,
+        PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot, PresentationTarget,
+        PresentationValue, PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId,
+        RadioButton, RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
         ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
         SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
         Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,

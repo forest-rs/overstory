@@ -268,6 +268,17 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         true
     }
 
+    /// Returns whether retained descendants participate in pointer hit
+    /// testing.
+    ///
+    /// This is independent from [`Self::is_hit_test_visible`]: a transparent
+    /// container may decline hits on its own box while keeping interactive
+    /// children, whereas a decorative subtree such as a badge can disable
+    /// both itself and every descendant.
+    fn is_hit_test_subtree_visible(&self, _element: &Element) -> bool {
+        true
+    }
+
     /// Returns whether this widget clips its subtree to its arranged bounds.
     ///
     /// The default leaves descendants visible and pickable outside the

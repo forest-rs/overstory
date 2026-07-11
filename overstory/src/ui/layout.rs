@@ -436,7 +436,7 @@ impl Ui {
         // hit testing, and composition in sync without re-entering Taffy; once
         // the pipeline has subtree arrangement roots, this is the obvious
         // place to narrow the walk.
-        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO, true);
+        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO, true, true);
     }
 
     fn write_bounds_recursive(
@@ -445,6 +445,7 @@ impl Ui {
         parent_origin: Point,
         parent_child_offset: Vec2,
         parent_visible: bool,
+        parent_hit_test_visible: bool,
     ) {
         let Some(taffy_node) = self.layout.node_for(id) else {
             return;
@@ -500,10 +501,19 @@ impl Ui {
             let mut flags = self.geometry.flags(primary).unwrap_or_default();
             flags.set(
                 understory_box_tree::NodeFlags::PICKABLE,
-                visible && widget_pickable,
+                visible && parent_hit_test_visible && widget_pickable,
             );
             self.geometry.set_flags(primary, flags);
         }
+        let subtree_hit_test_visible = parent_hit_test_visible
+            && self
+                .get(id)
+                .and_then(|element| {
+                    element
+                        .widget()
+                        .map(|widget| widget.is_hit_test_subtree_visible(element))
+                })
+                .unwrap_or(true);
         let local_clip = clips_subtree.then(|| {
             RoundedRect::from_rect(
                 Rect::from_origin_size((0.0, 0.0), Size::new(rect.width(), rect.height())),
@@ -532,7 +542,13 @@ impl Ui {
             .unwrap_or_default();
         let child_origin = origin + child_offset;
         for child in children {
-            self.write_bounds_recursive(child, child_origin, child_offset, visible);
+            self.write_bounds_recursive(
+                child,
+                child_origin,
+                child_offset,
+                visible,
+                subtree_hit_test_visible,
+            );
         }
     }
 

@@ -63,6 +63,7 @@ use crate::controls::accordion::{
     PART_ACCORDION_SECTION_HEADER, PART_ACCORDION_SECTION_LABEL, TYPE_ACCORDION,
     TYPE_ACCORDION_SECTION, default_accordion_section_template,
 };
+use crate::controls::badge::TYPE_BADGE;
 use crate::controls::button::{TYPE_BUTTON, default_button_template};
 use crate::controls::checkbox::{
     PART_CHECK_BOX_BOX, PART_CHECK_BOX_LABEL, PART_CHECK_BOX_MARK, TYPE_CHECK_BOX,
@@ -127,6 +128,7 @@ use crate::selectors;
 use crate::selectors::TemplatePartSelector;
 use crate::spec_ext::SurfaceStyleExt;
 use crate::widget::TYPE_ROOT;
+use understory_presentation::FontWeight;
 use understory_timing::TimerDuration;
 
 const TOGGLE_THUMB_PART: TemplatePartSelector =
@@ -1016,6 +1018,14 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_width(properties, 1.0_f64)
         .corner_radius(properties, 8.0_f64)
         .build();
+    let badge_idle = StyleBuilder::new()
+        .background_resource(properties, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .set(properties.font_size, 12.0_f64)
+        .set(properties.font_weight, FontWeight::BOLD)
+        .corner_radius(properties, 999.0_f64)
+        .padding_xy(properties, 7.0, 2.0)
+        .build();
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
@@ -1566,6 +1576,11 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::type_tag(TYPE_POPUP),
             popup_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_BADGE),
+            badge_idle,
         )
 }
 
