@@ -121,6 +121,10 @@ pub use controls::accordion::{
     set_accordion_section_expanded, toggle_accordion_section,
 };
 pub use controls::badge::{Badge, BadgeCountOverflow, TYPE_BADGE};
+pub use controls::badged::{
+    BadgePlacement, Badged, TYPE_BADGED, badged_badge, badged_content, clear_badged_badge,
+    replace_badged_badge,
+};
 pub use controls::button::{
     Button, ButtonActivatedEvent, PART_BUTTON_LABEL, SLOT_BUTTON_CONTENT, TYPE_BUTTON,
 };
@@ -277,8 +281,8 @@ pub mod prelude {
         Accordion, AccordionChildUiExt, AccordionMode, AccordionSection, ActivationDeniedEvent,
         ActivationDeniedReason, ActivationSource, AnimationId, AnimationPlayState, AnimationTarget,
         AnimationTimelineId, AnimationTiming, AppendSpec, Badge, BadgeCountOverflow,
-        BindingSpecExt, Button, ButtonActivatedEvent, CheckBox, ChildUi, ClassId, Color,
-        CompositeOperation, ContentSlotSpec, ControlStateSpecExt, ControlTemplate,
+        BadgePlacement, Badged, BindingSpecExt, Button, ButtonActivatedEvent, CheckBox, ChildUi,
+        ClassId, Color, CompositeOperation, ContentSlotSpec, ControlStateSpecExt, ControlTemplate,
         ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
