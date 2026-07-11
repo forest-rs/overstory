@@ -17,7 +17,8 @@ use imaging::record::{Clip, Geometry, Group, Scene};
 use kurbo::{Affine, Rect, RoundedRect, Size, Vec2};
 use peniko::BlendMode;
 use subduction_core::layer::{
-    ClipShape, FrameChanges, HitPolicy, HitRegion, LayerId, LayerStore, SurfaceId, SurfaceIds,
+    ClipShape, FrameChanges, HitPolicy, HitRegion, LayerFlags, LayerId, LayerStore, SurfaceId,
+    SurfaceIds,
 };
 use subduction_core::transform::Transform3d;
 
@@ -237,6 +238,14 @@ impl CompositionRuntime {
     /// Returns the compositor-local bounds size for `id`.
     pub(crate) fn bounds_for(&self, id: ElementId) -> Option<Size> {
         self.layer_for(id).map(|layer| self.layers.bounds(layer))
+    }
+
+    /// Sets whether an element's composition subtree is hidden.
+    pub(crate) fn set_hidden(&mut self, id: ElementId, hidden: bool) {
+        let Some(layer) = self.layer_for(id) else {
+            return;
+        };
+        self.layers.set_flags(layer, LayerFlags { hidden });
     }
 
     /// Returns the overlay root layer.

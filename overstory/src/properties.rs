@@ -36,6 +36,20 @@ use crate::layouts::{
 use crate::motion::{EffectRules, PresentationTarget, TransitionDeclarations};
 use crate::template::ControlTemplate;
 
+/// Whether an element participates in presentation and layout.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Visibility {
+    /// The element is laid out, presented, hit-testable, and accessible.
+    #[default]
+    Visible,
+    /// The element keeps its layout space but is not presented, hit-testable,
+    /// or exposed to accessibility.
+    Hidden,
+    /// The element and its descendants generate no layout boxes and are not
+    /// presented, hit-testable, or exposed to accessibility.
+    Collapsed,
+}
+
 /// Handles to the dependency properties Overstory registers in every
 /// [`crate::Ui`]'s `PropertyRegistry`.
 ///
@@ -98,6 +112,9 @@ pub struct BuiltInProperties {
     /// Placement contribution for this element. This covers the element's
     /// own flow/absolute positioning.
     pub layout_placement: Property<LayoutPlacement>,
+
+    /// Presentation and layout participation for this element.
+    pub visibility: Property<Visibility>,
 
     /// Semantic owner content for controls and content presenters.
     ///
@@ -332,6 +349,12 @@ impl BuiltInProperties {
             layout_placement: registry.register(
                 "LayoutPlacement",
                 PropertyMetadataBuilder::new(LayoutPlacement::default())
+                    .affects_channels(LAYOUT.into_set())
+                    .build(),
+            ),
+            visibility: registry.register(
+                "Visibility",
+                PropertyMetadataBuilder::new(Visibility::Visible)
                     .affects_channels(LAYOUT.into_set())
                     .build(),
             ),

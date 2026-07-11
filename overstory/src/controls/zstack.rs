@@ -66,7 +66,7 @@ impl StackAlignment {
         }
     }
 
-    const fn container_alignment(self) -> LayoutAlignment {
+    pub(crate) const fn container_alignment(self) -> LayoutAlignment {
         LayoutAlignment::new()
             .align_items(self.block())
             .justify_items(self.inline())

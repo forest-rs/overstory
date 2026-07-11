@@ -17,6 +17,7 @@ use crate::layouts::{
     LayoutSize, LayoutSpacing, taffy_scalar,
 };
 use crate::motion::{PresentationSlot, PresentationTarget};
+use crate::properties::Visibility;
 
 use super::Ui;
 
@@ -118,6 +119,34 @@ impl Ui {
         self.set_layout_placement_raw(id, placement);
     }
 
+    /// Sets whether an element participates in presentation and layout.
+    pub fn set_visibility(&mut self, id: ElementId, visibility: Visibility) {
+        self.set_local(id, self.properties.visibility, visibility);
+    }
+
+    /// Returns an element's resolved visibility.
+    #[must_use]
+    pub fn visibility(&self, id: ElementId) -> Option<Visibility> {
+        let element = self.get(id)?;
+        Some(self.resolve_value_for(element, self.properties.visibility))
+    }
+
+    /// Returns whether an element and every retained ancestor are visible.
+    #[must_use]
+    pub fn is_effectively_visible(&self, id: ElementId) -> bool {
+        let mut current = Some(id);
+        while let Some(candidate) = current {
+            let Some(element) = self.get(candidate) else {
+                return false;
+            };
+            if self.resolve_value_for(element, self.properties.visibility) != Visibility::Visible {
+                return false;
+            }
+            current = element.parent();
+        }
+        true
+    }
+
     /// Sets an element's layout placement without requesting presentation
     /// motion, cancelling any active layer-offset transition for the element.
     pub(crate) fn set_layout_placement_without_motion(
@@ -189,6 +218,9 @@ impl Ui {
         layout.merge_alignment(self.resolve_value_for(element, self.properties.layout_alignment));
         layout.merge_overflow(self.resolve_value_for(element, self.properties.layout_overflow));
         layout.merge_placement(self.resolve_value_for(element, self.properties.layout_placement));
+        if self.resolve_value_for(element, self.properties.visibility) == Visibility::Collapsed {
+            layout.merge_container(LayoutContainer::new().display(crate::LayoutDisplay::None));
+        }
         layout
     }
 
@@ -404,7 +436,7 @@ impl Ui {
         // hit testing, and composition in sync without re-entering Taffy; once
         // the pipeline has subtree arrangement roots, this is the obvious
         // place to narrow the walk.
-        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO);
+        self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO, true);
     }
 
     fn write_bounds_recursive(
@@ -412,6 +444,7 @@ impl Ui {
         id: ElementId,
         parent_origin: Point,
         parent_child_offset: Vec2,
+        parent_visible: bool,
     ) {
         let Some(taffy_node) = self.layout.node_for(id) else {
             return;
@@ -434,6 +467,7 @@ impl Ui {
         let bounds_prop = self.properties.bounds;
         self.set_local(id, bounds_prop, rect);
         self.frame_stats.bounds_written += 1;
+        let visible = parent_visible && self.visibility(id) == Some(Visibility::Visible);
         let child_offset = self
             .get(id)
             .and_then(|element| {
@@ -455,6 +489,20 @@ impl Ui {
             self.geometry.set_local_bounds(primary, rect);
             let clip = clips_subtree.then(|| RoundedRect::from_rect(rect, 0.0));
             self.geometry.set_local_clip(primary, clip);
+            let widget_pickable = self
+                .get(id)
+                .and_then(|element| {
+                    element
+                        .widget()
+                        .map(|widget| widget.is_hit_test_visible(element))
+                })
+                .unwrap_or(true);
+            let mut flags = self.geometry.flags(primary).unwrap_or_default();
+            flags.set(
+                understory_box_tree::NodeFlags::PICKABLE,
+                visible && widget_pickable,
+            );
+            self.geometry.set_flags(primary, flags);
         }
         let local_clip = clips_subtree.then(|| {
             RoundedRect::from_rect(
@@ -476,6 +524,7 @@ impl Ui {
         );
         let opacity = self.presented_layer_opacity(id);
         self.composition.set_opacity(id, opacity);
+        self.composition.set_hidden(id, !visible);
 
         let children: Vec<ElementId> = self
             .get(id)
@@ -483,7 +532,7 @@ impl Ui {
             .unwrap_or_default();
         let child_origin = origin + child_offset;
         for child in children {
-            self.write_bounds_recursive(child, child_origin, child_offset);
+            self.write_bounds_recursive(child, child_origin, child_offset, visible);
         }
     }
 

@@ -672,7 +672,11 @@ impl Ui {
             .collect::<Vec<_>>();
 
         if let Some(parent) = self.elements.detach_from_parent(id) {
-            self.invalidation.mark(parent, COMPOSE);
+            // Removing an in-flow child changes the parent's intrinsic size
+            // and may change container-owned child policy. Marking only
+            // composition left retained layout stale until some unrelated
+            // property happened to request a later layout pass.
+            self.invalidation.mark(parent, LAYOUT);
             self.mark_child_dependent_presentation(parent);
         }
         self.remove_subtree(id);

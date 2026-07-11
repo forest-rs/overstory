@@ -135,6 +135,10 @@ pub use controls::expander::{
     SLOT_EXPANDER_HEADER, SLOT_EXPANDER_LABEL, TYPE_EXPANDER, expander_content, expander_expanded,
     set_expander_expanded, toggle_expander,
 };
+pub use controls::indexed_stack::{
+    IndexedStack, TYPE_INDEXED_STACK, indexed_stack_visible_child, indexed_stack_visible_index,
+    set_indexed_stack_visible_index,
+};
 pub use controls::list::{
     ListBox, ListBoxScrollArea, ListItemContext, ListSelectionChangedEvent, ListSelectionMode,
     PART_LIST_ITEM_CONTENT, PART_LIST_ITEM_LABEL, SLOT_LIST_ITEM_CONTENT, TYPE_LIST_BOX,
@@ -234,7 +238,7 @@ pub use motion::{
     PresentationTarget, PresentationValue, PresentationValueKind, TimingFunction,
 };
 pub use overlay::Placement;
-pub use properties::BuiltInProperties;
+pub use properties::{BuiltInProperties, Visibility};
 pub use scroll_runtime::ScrollState;
 pub use style_class::StyleClass;
 pub use template::{
@@ -276,8 +280,8 @@ pub mod prelude {
         ContentSlotSpec, ControlStateSpecExt, ControlTemplate, ControlTemplateSpec,
         ControlTemplateSpecExt, CursorIcon, Divider, EFFECT_SEGMENTED_ACTIVATION_DENIED,
         EffectClip, EffectKeyframe, ElementId, ElementRef, ElementRefSpecExt, ElementSpec,
-        ElementSpecExt, Expander, ExternalSource, FillMode, Layout, ListBox, ListItemContext,
-        LocalState, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
+        ElementSpecExt, Expander, ExternalSource, FillMode, IndexedStack, Layout, ListBox,
+        ListItemContext, LocalState, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
         PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
         PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
         RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
@@ -289,7 +293,7 @@ pub mod prelude {
         TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
         TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,
         TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath,
-        View, Viewport, ZStack,
+        View, Viewport, Visibility, ZStack,
     };
 }
 

@@ -348,8 +348,10 @@ impl Ui {
             .iter()
             .copied()
             .filter(|child| {
-                self.get(*child)
-                    .is_some_and(|child| child.templated_parent().is_none())
+                self.is_effectively_visible(*child)
+                    && self
+                        .get(*child)
+                        .is_some_and(|child| child.templated_parent().is_none())
             })
             .collect()
     }
