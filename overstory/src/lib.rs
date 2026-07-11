@@ -203,6 +203,11 @@ pub use controls::splitter::{
     Splitter, SplitterOrientation, SplitterResizeEvent, TYPE_SPLITTER, resize_split_pair,
 };
 pub use controls::support::CheckedChangedEvent;
+pub use controls::tab_bar::{
+    TYPE_TAB_BAR, TYPE_TAB_ITEM, TabBar, TabItemContext, TabKey, TabOption,
+    TabSelectionChangedEvent, replace_tab_options, select_tab_key, selected_tab_index,
+    selected_tab_key,
+};
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, SLOT_TEXT_INPUT_CARET,
@@ -293,12 +298,12 @@ pub mod prelude {
         ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
         SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
         Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,
-        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason,
-        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
-        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
-        TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,
-        TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath,
-        View, Viewport, Visibility, ZStack,
+        SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, Text, TextInput,
+        TextInputEditCommitReason, TextInputEditCommittedEvent, TextInputEditRejectReason,
+        TextInputEditRejectedEvent, TextInputSubmitAction, TextInputSubmitEvent,
+        TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt, TimerDuration,
+        TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag,
+        Ui, ValueBinding, VectorPath, View, Viewport, Visibility, ZStack,
     };
 }
 

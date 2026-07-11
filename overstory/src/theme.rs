@@ -104,6 +104,7 @@ use crate::controls::slider::{
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, TYPE_SLIDER, default_slider_template,
 };
 use crate::controls::splitter::TYPE_SPLITTER;
+use crate::controls::tab_bar::{TYPE_TAB_BAR, TYPE_TAB_ITEM};
 use crate::controls::text_input::{
     PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION, PART_TEXT_INPUT_TEXT, TYPE_TEXT_INPUT,
     default_text_input_template,
@@ -1026,6 +1027,29 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .corner_radius(properties, 999.0_f64)
         .padding_xy(properties, 7.0, 2.0)
         .build();
+    let tab_bar_idle = StyleBuilder::new()
+        .background_resource(properties, TRACK_BG)
+        .corner_radius(properties, 8.0_f64)
+        .padding_all(properties, 3.0)
+        .build();
+    let tab_item_idle = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 14.0_f64)
+        .corner_radius(properties, 6.0_f64)
+        .padding_xy(properties, 14.0, 8.0)
+        .build();
+    let tab_item_hover = StyleBuilder::new()
+        .background_resource(properties, CONTROL_HOVER_BG)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .build();
+    let tab_item_selected = StyleBuilder::new()
+        .background_resource(properties, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .build();
+    let tab_item_disabled = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.opacity, 0.55_f32)
+        .build();
     StyleCascadeBuilder::new()
         .push_rule(
             StyleOrigin::Base,
@@ -1581,6 +1605,31 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::type_tag(TYPE_BADGE),
             badge_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_TAB_BAR),
+            tab_bar_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_TAB_ITEM),
+            tab_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TAB_ITEM, PSEUDO_HOVER),
+            tab_item_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TAB_ITEM, PSEUDO_SELECTED),
+            tab_item_selected,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_TAB_ITEM, PSEUDO_DISABLED),
+            tab_item_disabled,
         )
 }
 
