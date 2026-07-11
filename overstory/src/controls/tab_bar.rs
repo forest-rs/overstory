@@ -396,7 +396,7 @@ impl Widget for TabItemWidget {
         node.set_position_in_set(self.index + 1);
     }
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
-        if !event.is_semantic_target() || !ctx.is_enabled(ctx.id()) {
+        if !ctx.is_enabled(ctx.id()) {
             return;
         }
         let Some(parent) = ctx.ui().get(ctx.id()).and_then(Element::parent) else {
@@ -475,6 +475,10 @@ fn valid_key(options: &[TabOption], key: Option<TabKey>) -> Option<TabKey> {
 }
 fn tab_bar_widget(ui: &Ui, id: ElementId) -> Option<&TabBarWidget> {
     ui.get(id)?.widget()?.downcast_ref()
+}
+
+pub(crate) fn tab_options(ui: &Ui, id: ElementId) -> Option<&[TabOption]> {
+    Some(&tab_bar_widget(ui, id)?.options)
 }
 fn tab_key_at(ui: &Ui, id: ElementId, index: usize) -> Option<TabKey> {
     tab_bar_widget(ui, id)?
