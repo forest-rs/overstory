@@ -33,6 +33,16 @@ pub enum LayoutPlacement {
         /// Top inset in logical pixels.
         top: f64,
     },
+    /// Places an in-flow item into one explicit grid cell.
+    ///
+    /// Grid line numbers are one-based and must not be zero. Multiple
+    /// children assigned to the same cell overlap in document order.
+    GridCell {
+        /// One-based grid column line.
+        column: i16,
+        /// One-based grid row line.
+        row: i16,
+    },
 }
 
 impl LayoutPlacement {
@@ -54,6 +64,18 @@ impl LayoutPlacement {
         Self::AbsoluteAt { left, top }
     }
 
+    /// Places an item into a one-based grid cell.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `column` or `row` is zero.
+    #[must_use]
+    pub const fn grid_cell(column: i16, row: i16) -> Self {
+        assert!(column != 0, "grid column must not be zero");
+        assert!(row != 0, "grid row must not be zero");
+        Self::GridCell { column, row }
+    }
+
     pub(crate) fn inspection_summary(self) -> String {
         match self {
             Self::Auto => String::from("auto"),
@@ -66,6 +88,7 @@ impl LayoutPlacement {
                     scalar_summary(top)
                 )
             }
+            Self::GridCell { column, row } => format!("grid cell {column}, {row}"),
         }
     }
 
@@ -79,6 +102,11 @@ impl LayoutPlacement {
                 fields.push(("Mode", String::from("absolute")));
                 fields.push(("Left", format!("{}px", scalar_summary(left))));
                 fields.push(("Top", format!("{}px", scalar_summary(top))));
+            }
+            Self::GridCell { column, row } => {
+                fields.push(("Mode", String::from("grid cell")));
+                fields.push(("Column", format!("{column}")));
+                fields.push(("Row", format!("{row}")));
             }
         }
         fields
@@ -103,6 +131,12 @@ impl LayoutPlacement {
                     right: taffy::LengthPercentageAuto::auto(),
                     bottom: taffy::LengthPercentageAuto::auto(),
                 };
+            }
+            Self::GridCell { column, row } => {
+                style.position = taffy::Position::Relative;
+                style.inset = auto_insets();
+                style.grid_column = taffy::style_helpers::line(column);
+                style.grid_row = taffy::style_helpers::line(row);
             }
         }
     }

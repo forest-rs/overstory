@@ -211,6 +211,7 @@ pub use controls::tooltip::{
 };
 pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
+pub use controls::zstack::{StackAlignment, TYPE_ZSTACK, ZStack};
 pub use cursor_icon::CursorIcon;
 pub use diagnostics::{ChannelMarkStats, UiFrameStats, UiFrameTimings, UiRendererTimings};
 pub use element::{Element, ElementId};
@@ -282,12 +283,13 @@ pub mod prelude {
         RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
         ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
         SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
-        Spinner, Splitter, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
-        SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
-        TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
-        TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,
-        TimerDuration, TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip,
-        TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
+        Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,
+        SurfaceSpecExt, SurfaceStyleExt, Text, TextInput, TextInputEditCommitReason,
+        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
+        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
+        TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,
+        TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath,
+        View, Viewport, ZStack,
     };
 }
 

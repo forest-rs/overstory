@@ -52,6 +52,12 @@ impl Layout {
         Self::new().container(LayoutContainer::flex())
     }
 
+    /// Creates a grid container.
+    #[must_use]
+    pub fn grid() -> Self {
+        Self::new().container(LayoutContainer::grid())
+    }
+
     /// Creates a horizontal flex row with a uniform child gap.
     #[must_use]
     pub fn row(gap: f64) -> Self {

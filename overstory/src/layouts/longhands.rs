@@ -16,6 +16,8 @@ use super::taffy_scalar;
 pub enum LayoutDisplay {
     /// Flexbox layout.
     Flex,
+    /// Two-dimensional grid layout.
+    Grid,
     /// The element and its descendants do not generate layout boxes.
     None,
 }
@@ -24,6 +26,7 @@ impl LayoutDisplay {
     fn inspection_summary(self) -> &'static str {
         match self {
             Self::Flex => "flex",
+            Self::Grid => "grid",
             Self::None => "none",
         }
     }
@@ -31,6 +34,7 @@ impl LayoutDisplay {
     fn to_taffy(self) -> taffy::Display {
         match self {
             Self::Flex => taffy::Display::Flex,
+            Self::Grid => taffy::Display::Grid,
             Self::None => taffy::Display::None,
         }
     }
@@ -212,6 +216,12 @@ impl LayoutContainer {
     #[must_use]
     pub const fn flex() -> Self {
         Self::new().display(LayoutDisplay::Flex)
+    }
+
+    /// Creates a grid container contribution.
+    #[must_use]
+    pub const fn grid() -> Self {
+        Self::new().display(LayoutDisplay::Grid)
     }
 
     /// Creates a horizontal flex-row contribution.
@@ -805,6 +815,8 @@ impl LayoutSpacing {
 pub struct LayoutAlignment {
     align_items: Option<LayoutAlign>,
     align_self: Option<LayoutAlign>,
+    justify_items: Option<LayoutAlign>,
+    justify_self: Option<LayoutAlign>,
     justify_content: Option<LayoutJustify>,
 }
 
@@ -815,6 +827,8 @@ impl LayoutAlignment {
         Self {
             align_items: None,
             align_self: None,
+            justify_items: None,
+            justify_self: None,
             justify_content: None,
         }
     }
@@ -830,6 +844,20 @@ impl LayoutAlignment {
     #[must_use]
     pub const fn align_self(mut self, align: LayoutAlign) -> Self {
         self.align_self = Some(align);
+        self
+    }
+
+    /// Sets child alignment in a grid container's inline axis.
+    #[must_use]
+    pub const fn justify_items(mut self, align: LayoutAlign) -> Self {
+        self.justify_items = Some(align);
+        self
+    }
+
+    /// Sets this grid item's alignment in its parent's inline axis.
+    #[must_use]
+    pub const fn justify_self(mut self, align: LayoutAlign) -> Self {
+        self.justify_self = Some(align);
         self
     }
 
@@ -852,6 +880,16 @@ impl LayoutAlignment {
         if let Some(align_self) = self.align_self {
             push_labeled_summary_part(&mut parts, "self", align_self.inspection_summary());
         }
+        if let Some(justify_items) = self.justify_items {
+            push_labeled_summary_part(
+                &mut parts,
+                "inline items",
+                justify_items.inspection_summary(),
+            );
+        }
+        if let Some(justify_self) = self.justify_self {
+            push_labeled_summary_part(&mut parts, "inline self", justify_self.inspection_summary());
+        }
         if let Some(justify_content) = self.justify_content {
             push_labeled_summary_part(&mut parts, "content", justify_content.inspection_summary());
         }
@@ -869,6 +907,18 @@ impl LayoutAlignment {
         if let Some(align_self) = self.align_self {
             fields.push(("Align self", String::from(align_self.inspection_summary())));
         }
+        if let Some(justify_items) = self.justify_items {
+            fields.push((
+                "Justify items",
+                String::from(justify_items.inspection_summary()),
+            ));
+        }
+        if let Some(justify_self) = self.justify_self {
+            fields.push((
+                "Justify self",
+                String::from(justify_self.inspection_summary()),
+            ));
+        }
         if let Some(justify_content) = self.justify_content {
             fields.push((
                 "Justify content",
@@ -885,6 +935,12 @@ impl LayoutAlignment {
         if other.align_self.is_some() {
             self.align_self = other.align_self;
         }
+        if other.justify_items.is_some() {
+            self.justify_items = other.justify_items;
+        }
+        if other.justify_self.is_some() {
+            self.justify_self = other.justify_self;
+        }
         if other.justify_content.is_some() {
             self.justify_content = other.justify_content;
         }
@@ -896,6 +952,12 @@ impl LayoutAlignment {
         }
         if let Some(align_self) = self.align_self {
             style.align_self = Some(align_self.to_taffy());
+        }
+        if let Some(justify_items) = self.justify_items {
+            style.justify_items = Some(justify_items.to_taffy());
+        }
+        if let Some(justify_self) = self.justify_self {
+            style.justify_self = Some(justify_self.to_taffy());
         }
         if let Some(justify_content) = self.justify_content {
             style.justify_content = Some(justify_content.to_taffy());
