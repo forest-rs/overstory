@@ -99,6 +99,57 @@ impl View for SelectionPage {
                             .tooltip("Popup-backed select using the ListBox path"),
                     )
                 });
+
+            },
+        );
+
+        stage.with_child(
+            Panel::new().layout(Layout::row(18.0).wrap().fill_width()),
+            |row| {
+                row.demo_responsive_card("KEYED TABS", PAGE_CARD_WIDTH, |card| {
+                    card.add(body_text(
+                        "Pages stay retained while keyed selection switches their visibility.",
+                    ));
+                    card.with_child(
+                        TabView::new()
+                            .selected_key(2)
+                            .item_template(|header, item| {
+                                if item.option().key() == TabKey::new(2) {
+                                    header.with_child(Panel::row(7.0).align_center(), |header| {
+                                        header.add(Text::new(item.option().label()));
+                                        header.add(Badge::count(3));
+                                    });
+                                } else {
+                                    header.add(Text::new(item.option().label()));
+                                }
+                            }),
+                        |tabs| {
+                            tabs.tab(1, "Layers", |page| {
+                                page.add(body_text("Retained composition layers and surfaces."));
+                            });
+                            tabs.tab(2, "Diagnostics", |page| {
+                                page.with_child(
+                                    ZStack::new().alignment(StackAlignment::TopLeft),
+                                    |stack| {
+                                        stack.add(
+                                            Panel::new()
+                                                .background(Some(solid(0x34, 0x3a, 0x46, 0xff)))
+                                                .corner_radius(8.0)
+                                                .layout(Layout::new().logical_size(260.0, 72.0)),
+                                        );
+                                        stack.add(
+                                            Text::new("3 diagnostics ready")
+                                                .layout(Layout::new().margin_all(16.0)),
+                                        );
+                                    },
+                                );
+                            });
+                            tabs.tab(3, "Accessibility", |page| {
+                                page.add(body_text("Inactive pages leave the accessibility tree."));
+                            });
+                        },
+                    );
+                });
             },
         );
     }
