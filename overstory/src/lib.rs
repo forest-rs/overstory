@@ -204,13 +204,14 @@ pub use controls::splitter::{
 };
 pub use controls::support::CheckedChangedEvent;
 pub use controls::tab_bar::{
-    TYPE_TAB_BAR, TYPE_TAB_ITEM, TabBar, TabItemContext, TabKey, TabOption,
-    TabSelectionChangedEvent, replace_tab_options, select_tab_key, selected_tab_index,
-    selected_tab_key,
+    TYPE_TAB_BAR, TYPE_TAB_CLOSE_BUTTON, TYPE_TAB_ITEM, TabBar, TabCloseRequestedEvent,
+    TabItemContext, TabKey, TabOption, TabOverflow, TabSelectionChangedEvent, replace_tab_options,
+    select_tab_key, selected_tab_index, selected_tab_key,
 };
 pub use controls::tab_view::{
-    TYPE_TAB_PAGE, TYPE_TAB_VIEW, TabPage, TabView, TabViewChildUiExt, select_tab_view_key,
-    selected_tab_view_key, tab_view_content_stack, tab_view_tab_bar,
+    TYPE_TAB_PAGE, TYPE_TAB_VIEW, TabPage, TabView, TabViewChildUiExt, TabViewCloseRequestedEvent,
+    remove_tab_view_page, select_tab_view_key, selected_tab_view_key, tab_view_content_stack,
+    tab_view_leading_actions, tab_view_tab_bar, tab_view_trailing_actions,
 };
 pub use controls::text::{TYPE_TEXT, Text, TextWidget};
 pub use controls::text_input::{
@@ -302,7 +303,7 @@ pub mod prelude {
         ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
         SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
         Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,
-        SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, TabPage, TabView,
+        SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow, TabPage, TabView,
         TabViewChildUiExt, Text, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
         TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
         TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,

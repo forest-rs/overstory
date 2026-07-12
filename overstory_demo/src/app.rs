@@ -27,10 +27,10 @@ use overstory::{
     RadioGroup, Rect, SLOT_BUTTON_CONTENT, SLOT_CHECK_BOX_BOX, SLOT_CHECK_BOX_LABEL,
     SLOT_CHECK_BOX_MARK, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK, ScrollView, SegmentedControl,
     Select, Slider, Spinner, Splitter, StackAlignment, SurfaceSpecExt, SurfaceStyleExt,
-    TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, TabKey, TabView, TabViewChildUiExt, TemplateNode,
-    TemplateSpec, Text, TextInput, TextInputSubmitAction, TextSpecExt, TimerDuration, TimerId,
-    ToggleSwitch, Tooltip, TooltipSpecExt, Ui, View, Viewport, ZStack, layouts, set_progress_value,
-    set_text_input_text, text_input_text, theme,
+    TYPE_BUTTON, TYPE_GENERIC, TYPE_TEXT, TabKey, TabPage, TabView, TabViewChildUiExt,
+    TemplateNode, TemplateSpec, Text, TextInput, TextInputSubmitAction, TextSpecExt, TimerDuration,
+    TimerId, ToggleSwitch, Tooltip, TooltipSpecExt, Ui, View, Viewport, ZStack, layouts,
+    remove_tab_view_page, set_progress_value, set_text_input_text, text_input_text, theme,
 };
 use overstory_svg::{HitParams, SvgElementTree, SvgImportOptions};
 use peniko::kurbo::{Point, Vec2};

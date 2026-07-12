@@ -20,7 +20,7 @@ mod area;
 mod bar;
 mod events;
 mod ids;
-mod runtime;
+pub(crate) mod runtime;
 mod view;
 
 #[cfg(test)]

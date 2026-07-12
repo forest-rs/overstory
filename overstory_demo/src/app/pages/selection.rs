@@ -113,6 +113,9 @@ impl View for SelectionPage {
                     card.with_child(
                         TabView::new()
                             .selected_key(2)
+                            .on_close_requested(|ui, event| {
+                                remove_tab_view_page(ui, event.tab_view, event.key);
+                            })
                             .item_template(|header, item| {
                                 if item.option().key() == TabKey::new(2) {
                                     header.with_child(Panel::row(7.0).align_center(), |header| {
@@ -124,10 +127,12 @@ impl View for SelectionPage {
                                 }
                             }),
                         |tabs| {
+                            let tab_view = tabs.parent();
+                            let next_key = Rc::new(Cell::new(7_u64));
                             tabs.tab(1, "Layers", |page| {
                                 page.add(body_text("Retained composition layers and surfaces."));
                             });
-                            tabs.tab(2, "Diagnostics", |page| {
+                            tabs.tab_with(TabPage::new(2, "Diagnostics").closable(true), |page| {
                                 page.with_child(
                                     ZStack::new().alignment(StackAlignment::TopLeft),
                                     |stack| {
@@ -144,8 +149,50 @@ impl View for SelectionPage {
                                     },
                                 );
                             });
-                            tabs.tab(3, "Accessibility", |page| {
-                                page.add(body_text("Inactive pages leave the accessibility tree."));
+                            tabs.tab_with(
+                                TabPage::new(3, "Accessibility").closable(true),
+                                |page| {
+                                    page.add(body_text(
+                                        "Inactive pages leave the accessibility tree.",
+                                    ));
+                                },
+                            );
+                            tabs.tab_with(TabPage::new(4, "Events").closable(true), |page| {
+                                page.add(body_text(
+                                    "Routed input remains attached to retained pages.",
+                                ));
+                            });
+                            tabs.tab_with(TabPage::new(5, "Layout").closable(true), |page| {
+                                page.add(body_text("The selected page participates in layout."));
+                            });
+                            tabs.tab_with(TabPage::new(6, "Rendering").closable(true), |page| {
+                                page.add(body_text(
+                                    "Overflow keeps every header at its natural width.",
+                                ));
+                            });
+                            tabs.trailing_actions(|actions| {
+                                actions.add(
+                                    Button::new("+")
+                                        .font_size(14.0)
+                                        .padding_xy(12.0, 8.0)
+                                        .corner_radius(6.0)
+                                        .on_activate(move |ui, _| {
+                                            let key = next_key.get();
+                                            next_key.set(key + 1);
+                                            ui.with_children(tab_view, |tabs| {
+                                                tabs.tab_with(
+                                                    TabPage::new(key, format!("New {key}"))
+                                                        .closable(true),
+                                                    |page| {
+                                                        page.add(body_text(
+                                                            "A dynamically inserted retained page.",
+                                                        ));
+                                                    },
+                                                );
+                                            });
+                                        })
+                                        .tooltip("Add a closable tab"),
+                                );
                             });
                         },
                     );

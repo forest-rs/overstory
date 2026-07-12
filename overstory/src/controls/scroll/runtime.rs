@@ -74,7 +74,7 @@ pub(crate) fn wheel_scroll_delta(
     }
 }
 
-pub(super) fn scroll_by_accessibility_action(
+pub(crate) fn scroll_by_accessibility_action(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
@@ -113,12 +113,12 @@ pub(crate) fn state_scroll_offset_y(state: &ScrollState) -> f64 {
     state.offset_y()
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ScrollOffsetChange {
+pub(crate) struct ScrollOffsetChange {
     pub(super) previous: Vec2,
     pub(super) offset: Vec2,
 }
 
-pub(super) fn scroll_by(
+pub(crate) fn scroll_by(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
@@ -141,7 +141,7 @@ pub(super) fn set_scroll_offset(
     true
 }
 
-pub(super) fn set_scroll_offset_raw(
+pub(crate) fn set_scroll_offset_raw(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
@@ -206,7 +206,7 @@ fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 
     state.max_offset()
 }
 
-pub(super) fn update_scroll_metrics_from_layout(ctx: &ArrangeContext<'_>, state: &ScrollState) {
+pub(crate) fn update_scroll_metrics_from_layout(ctx: &ArrangeContext<'_>, state: &ScrollState) {
     let Some(viewport_bounds) = ctx.effective_bounds(ctx.id()) else {
         return;
     };

@@ -3,7 +3,7 @@
 
 //! Small shared helpers for built-in controls.
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, rc::Rc};
 use core::cell::{Cell, RefCell};
 use core::ops::Range;
 
@@ -69,13 +69,21 @@ impl ElementSlot {
 pub(crate) type EventHandler<E> = Box<dyn FnMut(&mut Ui, E) + 'static>;
 
 pub(crate) struct CallbackSlot<E> {
-    handler: RefCell<Option<EventHandler<E>>>,
+    handler: Rc<RefCell<Option<EventHandler<E>>>>,
+}
+
+impl<E> Clone for CallbackSlot<E> {
+    fn clone(&self) -> Self {
+        Self {
+            handler: self.handler.clone(),
+        }
+    }
 }
 
 impl<E> CallbackSlot<E> {
-    pub(crate) const fn new(handler: Option<EventHandler<E>>) -> Self {
+    pub(crate) fn new(handler: Option<EventHandler<E>>) -> Self {
         Self {
-            handler: RefCell::new(handler),
+            handler: Rc::new(RefCell::new(handler)),
         }
     }
 
