@@ -44,10 +44,16 @@ mod selected {
     pub use overstory_host_wayland::{HostResult, WindowOptions, run};
 }
 
+#[cfg(all(feature = "windows-host", target_os = "windows"))]
+mod selected {
+    pub use overstory_host_windows::{HostResult, WindowOptions, run};
+}
+
 #[cfg(all(
     feature = "winit-host",
     any(not(feature = "appkit-host"), not(target_os = "macos")),
-    not(all(feature = "wayland-host", target_os = "linux"))
+    not(all(feature = "wayland-host", target_os = "linux")),
+    not(all(feature = "windows-host", target_os = "windows")),
 ))]
 mod selected {
     pub use overstory_host_winit::{HostResult, WindowOptions, run};
