@@ -9,15 +9,10 @@
 //! effectively instant.
 
 use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use overstory_look::color::{lighten, rgb};
-use peniko::{Brush, Color};
+use peniko::{Brush, Color, color::palette::css};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
-
-fn solid(color: Color) -> Option<Brush> {
-    Some(Brush::Solid(color))
-}
 
 /// The flat system colors a Chicago theme is built from.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -44,14 +39,14 @@ pub struct Seeds {
 #[must_use]
 pub fn classic_seeds() -> Seeds {
     Seeds {
-        face: rgb(0xc0, 0xc0, 0xc0),
-        window: rgb(0xff, 0xff, 0xff),
-        bevel_light: rgb(0xff, 0xff, 0xff),
-        bevel_dark: rgb(0x80, 0x80, 0x80),
-        accent: rgb(0x00, 0x00, 0x80),
-        text: rgb(0x00, 0x00, 0x00),
-        muted: rgb(0x80, 0x80, 0x80),
-        on_accent: rgb(0xff, 0xff, 0xff),
+        face: css::SILVER,
+        window: css::WHITE,
+        bevel_light: css::WHITE,
+        bevel_dark: css::GRAY,
+        accent: css::NAVY,
+        text: css::BLACK,
+        muted: css::GRAY,
+        on_accent: css::WHITE,
     }
 }
 
@@ -59,15 +54,15 @@ pub fn classic_seeds() -> Seeds {
 #[must_use]
 pub fn dark_chrome_seeds() -> Seeds {
     Seeds {
-        face: rgb(0x3a, 0x3a, 0x3a),
-        window: rgb(0x1e, 0x1e, 0x1e),
-        bevel_light: rgb(0x6a, 0x6a, 0x6a),
-        bevel_dark: rgb(0x00, 0x00, 0x00),
+        face: Color::from_rgb8(0x3a, 0x3a, 0x3a),
+        window: Color::from_rgb8(0x1e, 0x1e, 0x1e),
+        bevel_light: Color::from_rgb8(0x6a, 0x6a, 0x6a),
+        bevel_dark: css::BLACK,
         // Navy is illegible on dark chrome; use a brighter selection blue.
-        accent: rgb(0x5a, 0x7f, 0xe6),
-        text: rgb(0xf0, 0xf0, 0xf0),
-        muted: rgb(0xa0, 0xa0, 0xa0),
-        on_accent: rgb(0xff, 0xff, 0xff),
+        accent: Color::from_rgb8(0x5a, 0x7f, 0xe6),
+        text: Color::from_rgb8(0xf0, 0xf0, 0xf0),
+        muted: Color::from_rgb8(0xa0, 0xa0, 0xa0),
+        on_accent: css::WHITE,
     }
 }
 
@@ -119,29 +114,29 @@ const LINEAR: TimingFunction = TimingFunction::cubic_bezier(0.0, 0.0, 1.0, 1.0);
 /// Builds the flat token values from `seeds`.
 pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
     TokenValues {
-        surface_bg: solid(s.face),
-        accent_bg: solid(s.accent),
-        accent_hover_bg: solid(s.accent),
-        accent_pressed_bg: solid(s.accent),
-        success_bg: solid(s.accent),
-        track_bg: solid(s.face),
-        thumb_bg: solid(s.face),
-        panel_bg: solid(s.face),
-        control_bg: solid(s.window),
-        control_border: solid(s.bevel_dark),
-        control_hover_border: solid(s.bevel_dark),
+        surface_bg: Some(Brush::Solid(s.face)),
+        accent_bg: Some(Brush::Solid(s.accent)),
+        accent_hover_bg: Some(Brush::Solid(s.accent)),
+        accent_pressed_bg: Some(Brush::Solid(s.accent)),
+        success_bg: Some(Brush::Solid(s.accent)),
+        track_bg: Some(Brush::Solid(s.face)),
+        thumb_bg: Some(Brush::Solid(s.face)),
+        panel_bg: Some(Brush::Solid(s.face)),
+        control_bg: Some(Brush::Solid(s.window)),
+        control_border: Some(Brush::Solid(s.bevel_dark)),
+        control_hover_border: Some(Brush::Solid(s.bevel_dark)),
         // A lighter face so hover reads as a distinct row, not the panel itself.
-        control_hover_bg: solid(lighten(s.face, 0.12)),
-        focus_ring_border: solid(s.text),
-        text_caret_bg: solid(s.text),
-        text_selection_bg: solid(s.accent),
-        slider_major_tick_bg: solid(s.text),
-        slider_minor_tick_bg: solid(s.muted),
+        control_hover_bg: Some(Brush::Solid(s.face.lerp_rect(Color::WHITE, 0.12))),
+        focus_ring_border: Some(Brush::Solid(s.text)),
+        text_caret_bg: Some(Brush::Solid(s.text)),
+        text_selection_bg: Some(Brush::Solid(s.accent)),
+        slider_major_tick_bg: Some(Brush::Solid(s.text)),
+        slider_minor_tick_bg: Some(Brush::Solid(s.muted)),
         on_accent_fg: Brush::Solid(s.on_accent),
         on_surface_fg: Brush::Solid(s.text),
         on_surface_muted_fg: Brush::Solid(s.muted),
-        bevel_light: solid(s.bevel_light),
-        bevel_dark: solid(s.bevel_dark),
+        bevel_light: Some(Brush::Solid(s.bevel_light)),
+        bevel_dark: Some(Brush::Solid(s.bevel_dark)),
         motion_fast: INSTANT,
         motion_normal: INSTANT,
         motion_emphasized: INSTANT,

@@ -51,7 +51,7 @@ pub use client::{InspectionClient, InspectionMirror};
 #[cfg(feature = "spoor-session")]
 pub use live::{DevtoolsRefresh, DevtoolsRefreshChanges, DevtoolsTreePatchCounts, LiveDevtools};
 pub use property_grid::{
-    PropertyGrid, PropertyGridColor, PropertyGridElementLink, PropertyGridOrigin, PropertyGridRow,
+    PropertyGrid, PropertyGridElementLink, PropertyGridOrigin, PropertyGridRow,
     PropertyGridSection, PropertyGridToken, PropertyGridValue,
 };
 #[cfg(feature = "spoor-session")]
@@ -2503,12 +2503,7 @@ mod tests {
         );
         assert_eq!(
             background.value(),
-            &PropertyGridValue::color(overstory::Rgba8 {
-                r: 0x12,
-                g: 0x34,
-                b: 0x56,
-                a: 0xff,
-            })
+            &PropertyGridValue::color_rgba8(0x12, 0x34, 0x56, 0xff)
         );
 
         let box_model = grid

@@ -4,15 +4,16 @@
 //! Headless assertions that the Signature look resolves through the real
 //! cascade + theme path — no renderer required.
 
-use overstory::{Brush, Button, Panel, Rgba8, Ui};
+use overstory::color::palette::css;
+use overstory::{Brush, Button, Color, Panel, Ui};
 use overstory_look_signature::{
     Scheme, SignatureTokens, design_md, theme, theme_from_design_md, tokens,
 };
 use understory_style::Theme;
 
-fn solid_rgba(theme: &Theme, key: understory_style::ResourceKey) -> Rgba8 {
+fn solid_color(theme: &Theme, key: understory_style::ResourceKey) -> Color {
     match theme.get::<Brush>(key) {
-        Some(Brush::Solid(color)) => color.to_rgba8(),
+        Some(Brush::Solid(color)) => *color,
         other => panic!("expected a solid brush, got {other:?}"),
     }
 }
@@ -59,7 +60,7 @@ fn card_class_resolves_to_gradient_with_translucent_hairline() {
     );
     match ui.resolved_value(card, top_border).flatten() {
         Some(Brush::Solid(color)) => assert!(
-            color.to_rgba8().a < 0x40,
+            color.split().1 < 64.0 / 255.0,
             "the card's top edge should be a translucent hairline highlight",
         ),
         other => panic!("expected a translucent hairline, got {other:?}"),
@@ -74,8 +75,8 @@ fn dark_and_light_schemes_differ() {
     let light = theme(Scheme::Light, &resolved);
 
     assert_ne!(
-        solid_rgba(&dark, tokens::ON_SURFACE_FG),
-        solid_rgba(&light, tokens::ON_SURFACE_FG),
+        solid_color(&dark, tokens::ON_SURFACE_FG),
+        solid_color(&light, tokens::ON_SURFACE_FG),
         "foreground should change between dark and light schemes",
     );
 }
@@ -89,13 +90,8 @@ fn theme_is_actually_loaded_from_design_md() {
     let edited = "---\ncolors:\n  on-surface: { dark: \"#ff0000\" }\n---\n";
     let from_md = theme_from_design_md(edited, Scheme::Dark, &resolved).expect("parses");
     assert_eq!(
-        solid_rgba(&from_md, tokens::ON_SURFACE_FG),
-        Rgba8 {
-            r: 0xff,
-            g: 0,
-            b: 0,
-            a: 0xff
-        },
+        solid_color(&from_md, tokens::ON_SURFACE_FG),
+        css::RED,
         "an edited DESIGN.md should change the resolved foreground",
     );
 }
@@ -109,8 +105,8 @@ fn bundled_design_md_theme_matches_default_theme() {
         .expect("bundled DESIGN.md parses");
 
     assert_eq!(
-        solid_rgba(&from_defaults, tokens::ON_SURFACE_FG),
-        solid_rgba(&from_md, tokens::ON_SURFACE_FG),
+        solid_color(&from_defaults, tokens::ON_SURFACE_FG),
+        solid_color(&from_md, tokens::ON_SURFACE_FG),
         "DESIGN.md-built theme should match the Rust-default theme",
     );
 }

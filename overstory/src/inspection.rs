@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use core::fmt;
 
 use kurbo::{Rect, Size};
-use peniko::color::Rgba8;
+use peniko::Color;
 use understory_animation::{AnimationPlayState, CompositeOperation, TimingSample};
 use understory_style::{ClassId, PartTag, PseudoClassId, StyleVocabulary, TypeTag};
 use understory_timing::TimerDuration;
@@ -331,8 +331,8 @@ pub enum ElementPropertyInspectionValue {
         /// Structured fields shown as child rows.
         fields: Vec<ElementPropertyInspectionField>,
     },
-    /// 8-bit RGBA color value suitable for a color swatch.
-    Color(Rgba8),
+    /// Canonical sRGB color value suitable for inspection and presentation.
+    Color(Color),
     /// Logical rectangle value.
     Rect {
         /// Minimum x coordinate.

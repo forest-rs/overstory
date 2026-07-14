@@ -390,7 +390,7 @@ fn render_devtools_event_entry(
                 Text::new(devtools_event_body(context.entry()))
                     .wrap()
                     .font_size(11.0)
-                    .foreground(solid(0xee, 0xf1, 0xfa, 0xff))
+                    .foreground(Color::from_rgb8(0xee, 0xf1, 0xfa))
                     .layout(Layout::new().min_logical_size(0.0, 0.0).flex_shrink(1.0)),
             );
         },
@@ -453,12 +453,15 @@ fn append_devtools_event_chip(ui: &mut ChildUi<'_>, style: DevtoolsEventStyle) {
             .border_width(1.0)
             .corner_radius(10.0),
         |chip| {
-            chip.add(Text::new(style.label).font_size(9.0).foreground(solid(
-                style.accent.0,
-                style.accent.1,
-                style.accent.2,
-                0xff,
-            )));
+            chip.add(
+                Text::new(style.label)
+                    .font_size(9.0)
+                    .foreground(Color::from_rgb8(
+                        style.accent.0,
+                        style.accent.1,
+                        style.accent.2,
+                    )),
+            );
         },
     );
 }

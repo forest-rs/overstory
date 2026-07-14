@@ -20,7 +20,7 @@ use alloc::string::String;
 
 use kurbo::{Affine, Rect};
 use parley::{FontFeature, FontVariation};
-use peniko::Brush;
+use peniko::{Brush, Color};
 use understory_presentation::{
     FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
     TextStyle, TextWrapMode, WordBreak,
@@ -384,17 +384,15 @@ impl BuiltInProperties {
             ),
             foreground: registry.register(
                 "Foreground",
-                PropertyMetadataBuilder::new(Brush::Solid(peniko::Color::from_rgba8(
-                    0, 0, 0, 0xff,
-                )))
-                .affects_channels(PAINT.into_set())
-                // Inherits so a foreground resolved on an ancestor
-                // control reaches text descendants. Overstory's
-                // presentation path performs style-aware inheritance
-                // for this; the raw property-store inheritance helper
-                // only sees animation/local ancestor values.
-                .inherits(true)
-                .build(),
+                PropertyMetadataBuilder::new(Brush::Solid(Color::BLACK))
+                    .affects_channels(PAINT.into_set())
+                    // Inherits so a foreground resolved on an ancestor
+                    // control reaches text descendants. Overstory's
+                    // presentation path performs style-aware inheritance
+                    // for this; the raw property-store inheritance helper
+                    // only sees animation/local ancestor values.
+                    .inherits(true)
+                    .build(),
             ),
             font_size: registry.register(
                 "FontSize",

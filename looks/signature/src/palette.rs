@@ -14,8 +14,7 @@
 //! scales them to each element's bounds (see GAPS.md G1).
 
 use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use overstory_look::color::{darken, lighten, rgb, with_alpha};
-use peniko::{Brush, Color, Gradient};
+use peniko::{Brush, Color, Gradient, color::palette::css};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
@@ -88,21 +87,21 @@ pub struct Seeds {
 #[must_use]
 pub fn dark_seeds() -> Seeds {
     Seeds {
-        accent: rgb(0x63, 0x66, 0xf1),
-        surface: rgb(0x18, 0x1a, 0x22),
-        panel: rgb(0x1c, 0x1e, 0x27),
-        card: rgb(0x22, 0x25, 0x30),
+        accent: Color::from_rgb8(0x63, 0x66, 0xf1),
+        surface: Color::from_rgb8(0x18, 0x1a, 0x22),
+        panel: Color::from_rgb8(0x1c, 0x1e, 0x27),
+        card: Color::from_rgb8(0x22, 0x25, 0x30),
         // Recessed controls read as dark insets against the lighter card.
-        control: rgb(0x14, 0x16, 0x1d),
-        control_border: rgb(0x44, 0x49, 0x5b),
-        track: rgb(0x12, 0x14, 0x1a),
-        thumb: rgb(0xf6, 0xf7, 0xfb),
-        on_accent: rgb(0xff, 0xff, 0xff),
-        on_surface: rgb(0xec, 0xee, 0xf6),
-        muted: rgb(0xa3, 0xa8, 0xbb),
-        heading: rgb(0xf5, 0xf6, 0xfc),
-        body: rgb(0xcd, 0xd0, 0xdc),
-        focus: rgb(0xaa, 0xb2, 0xff),
+        control: Color::from_rgb8(0x14, 0x16, 0x1d),
+        control_border: Color::from_rgb8(0x44, 0x49, 0x5b),
+        track: Color::from_rgb8(0x12, 0x14, 0x1a),
+        thumb: Color::from_rgb8(0xf6, 0xf7, 0xfb),
+        on_accent: css::WHITE,
+        on_surface: Color::from_rgb8(0xec, 0xee, 0xf6),
+        muted: Color::from_rgb8(0xa3, 0xa8, 0xbb),
+        heading: Color::from_rgb8(0xf5, 0xf6, 0xfc),
+        body: Color::from_rgb8(0xcd, 0xd0, 0xdc),
+        focus: Color::from_rgb8(0xaa, 0xb2, 0xff),
         motion_fast_ms: 90,
         motion_normal_ms: 140,
         motion_emphasized_ms: 220,
@@ -114,21 +113,21 @@ pub fn dark_seeds() -> Seeds {
 #[must_use]
 pub fn light_seeds() -> Seeds {
     Seeds {
-        accent: rgb(0x5b, 0x5e, 0xf0),
-        surface: rgb(0xee, 0xf0, 0xf7),
-        panel: rgb(0xff, 0xff, 0xff),
-        card: rgb(0xff, 0xff, 0xff),
+        accent: Color::from_rgb8(0x5b, 0x5e, 0xf0),
+        surface: Color::from_rgb8(0xee, 0xf0, 0xf7),
+        panel: css::WHITE,
+        card: css::WHITE,
         // A touch greyer than the white card so input/checkbox wells read.
-        control: rgb(0xea, 0xed, 0xf4),
-        control_border: rgb(0xb7, 0xbe, 0xd0),
-        track: rgb(0xd7, 0xdc, 0xe8),
-        thumb: rgb(0xff, 0xff, 0xff),
-        on_accent: rgb(0xff, 0xff, 0xff),
-        on_surface: rgb(0x1b, 0x1d, 0x27),
-        muted: rgb(0x5d, 0x63, 0x7a),
-        heading: rgb(0x14, 0x16, 0x1f),
-        body: rgb(0x3a, 0x3f, 0x51),
-        focus: rgb(0x4b, 0x51, 0xe6),
+        control: Color::from_rgb8(0xea, 0xed, 0xf4),
+        control_border: Color::from_rgb8(0xb7, 0xbe, 0xd0),
+        track: Color::from_rgb8(0xd7, 0xdc, 0xe8),
+        thumb: css::WHITE,
+        on_accent: css::WHITE,
+        on_surface: Color::from_rgb8(0x1b, 0x1d, 0x27),
+        muted: Color::from_rgb8(0x5d, 0x63, 0x7a),
+        heading: Color::from_rgb8(0x14, 0x16, 0x1f),
+        body: Color::from_rgb8(0x3a, 0x3f, 0x51),
+        focus: Color::from_rgb8(0x4b, 0x51, 0xe6),
         motion_fast_ms: 90,
         motion_normal_ms: 140,
         motion_emphasized_ms: 220,
@@ -200,30 +199,58 @@ const OVERSHOOT_EASING: TimingFunction = TimingFunction::cubic_bezier(0.34, 1.56
 /// Derives the full token value set from `seeds`.
 pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
     TokenValues {
-        surface_bg: Some(vertical(lighten(s.surface, 0.03), darken(s.surface, 0.02))),
-        accent_bg: Some(diagonal(lighten(s.accent, 0.12), darken(s.accent, 0.04))),
-        accent_hover_bg: Some(diagonal(lighten(s.accent, 0.20), lighten(s.accent, 0.02))),
-        accent_pressed_bg: Some(diagonal(darken(s.accent, 0.02), darken(s.accent, 0.14))),
-        success_bg: Some(diagonal(lighten(s.accent, 0.12), darken(s.accent, 0.04))),
-        track_bg: Some(vertical(darken(s.track, 0.05), lighten(s.track, 0.03))),
-        thumb_bg: Some(vertical(lighten(s.thumb, 0.0), darken(s.thumb, 0.06))),
-        panel_bg: Some(vertical(lighten(s.panel, 0.04), s.panel)),
-        control_bg: Some(vertical(lighten(s.control, 0.05), darken(s.control, 0.02))),
+        surface_bg: Some(vertical(
+            s.surface.lerp_rect(Color::WHITE, 0.03),
+            s.surface.lerp_rect(Color::BLACK, 0.02),
+        )),
+        accent_bg: Some(diagonal(
+            s.accent.lerp_rect(Color::WHITE, 0.12),
+            s.accent.lerp_rect(Color::BLACK, 0.04),
+        )),
+        accent_hover_bg: Some(diagonal(
+            s.accent.lerp_rect(Color::WHITE, 0.20),
+            s.accent.lerp_rect(Color::WHITE, 0.02),
+        )),
+        accent_pressed_bg: Some(diagonal(
+            s.accent.lerp_rect(Color::BLACK, 0.02),
+            s.accent.lerp_rect(Color::BLACK, 0.14),
+        )),
+        success_bg: Some(diagonal(
+            s.accent.lerp_rect(Color::WHITE, 0.12),
+            s.accent.lerp_rect(Color::BLACK, 0.04),
+        )),
+        track_bg: Some(vertical(
+            s.track.lerp_rect(Color::BLACK, 0.05),
+            s.track.lerp_rect(Color::WHITE, 0.03),
+        )),
+        thumb_bg: Some(vertical(s.thumb, s.thumb.lerp_rect(Color::BLACK, 0.06))),
+        panel_bg: Some(vertical(s.panel.lerp_rect(Color::WHITE, 0.04), s.panel)),
+        control_bg: Some(vertical(
+            s.control.lerp_rect(Color::WHITE, 0.05),
+            s.control.lerp_rect(Color::BLACK, 0.02),
+        )),
         control_border: Some(Brush::Solid(s.control_border)),
-        control_hover_border: Some(Brush::Solid(lighten(s.control_border, 0.18))),
-        control_hover_bg: Some(vertical(lighten(s.control, 0.18), lighten(s.control, 0.08))),
+        control_hover_border: Some(Brush::Solid(s.control_border.lerp_rect(Color::WHITE, 0.18))),
+        control_hover_bg: Some(vertical(
+            s.control.lerp_rect(Color::WHITE, 0.18),
+            s.control.lerp_rect(Color::WHITE, 0.08),
+        )),
         focus_ring_border: Some(Brush::Solid(s.focus)),
         text_caret_bg: Some(Brush::Solid(s.heading)),
-        text_selection_bg: Some(Brush::Solid(with_alpha(s.accent, 0x59))),
+        text_selection_bg: Some(Brush::Solid(s.accent.with_alpha(89.0 / 255.0))),
         slider_major_tick_bg: Some(Brush::Solid(s.muted)),
-        slider_minor_tick_bg: Some(Brush::Solid(with_alpha(s.muted, 0x88))),
+        slider_minor_tick_bg: Some(Brush::Solid(s.muted.with_alpha(136.0 / 255.0))),
         on_accent_fg: Brush::Solid(s.on_accent),
         on_surface_fg: Brush::Solid(s.on_surface),
         on_surface_muted_fg: Brush::Solid(s.muted),
-        card_gradient: Some(vertical(lighten(s.card, 0.05), s.card)),
-        card_border: Some(Brush::Solid(lighten(s.control_border, 0.04))),
-        hairline: Some(Brush::Solid(with_alpha(Color::WHITE, 0x14))),
-        focus_glow: Some(Brush::Solid(with_alpha(lighten(s.focus, 0.10), 0x66))),
+        card_gradient: Some(vertical(s.card.lerp_rect(Color::WHITE, 0.05), s.card)),
+        card_border: Some(Brush::Solid(s.control_border.lerp_rect(Color::WHITE, 0.04))),
+        hairline: Some(Brush::Solid(Color::WHITE.with_alpha(20.0 / 255.0))),
+        focus_glow: Some(Brush::Solid(
+            s.focus
+                .lerp_rect(Color::WHITE, 0.10)
+                .with_alpha(102.0 / 255.0),
+        )),
         heading_fg: Brush::Solid(s.heading),
         body_fg: Brush::Solid(s.body),
         motion_fast: millis(s.motion_fast_ms),

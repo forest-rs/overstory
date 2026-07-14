@@ -112,7 +112,7 @@ fn add_corner_sample(parent: &mut ChildUi<'_>, label: &str, kind: CornerShapeKin
 fn border_pill(label: &str, r: u8, g: u8, b: u8) -> Text {
     Text::new(label)
         .font_size(13.0)
-        .foreground(solid(r, g, b, 255))
+        .foreground(Color::from_rgb8(r, g, b))
 }
 
 fn add_border_style_sample(parent: &mut ChildUi<'_>, label: &str, style: BorderStyle) {

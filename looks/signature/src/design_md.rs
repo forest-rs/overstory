@@ -139,13 +139,10 @@ mod tests {
     fn missing_roles_fall_back_to_defaults() {
         let src = "---\ncolors:\n  accent: { dark: \"#112233\" }\nmotion:\n  fast: 42\n---\n";
         let s = seeds(src, Scheme::Dark).expect("parses");
-        assert_eq!(
-            s.accent.to_rgba8(),
-            Color::from_rgba8(0x11, 0x22, 0x33, 0xff).to_rgba8()
-        );
+        assert_eq!(s.accent, Color::from_rgb8(0x11, 0x22, 0x33));
         assert_eq!(s.motion_fast_ms, 42);
         // Untouched tokens keep their defaults.
-        assert_eq!(s.surface.to_rgba8(), dark_seeds().surface.to_rgba8());
+        assert_eq!(s.surface, dark_seeds().surface);
         assert_eq!(s.motion_normal_ms, dark_seeds().motion_normal_ms);
     }
 

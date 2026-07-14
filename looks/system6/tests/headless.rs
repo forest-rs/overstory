@@ -3,27 +3,23 @@
 
 //! Headless assertions that the System 6 look resolves through the real cascade.
 
-use overstory::{Brush, Button, CheckBox, ElementSpecExt, Ui};
+use overstory::color::palette::css;
+use overstory::{Brush, Button, CheckBox, Color, ElementSpecExt, Ui};
 
 use overstory_look_system6::{Scheme, templates, theme, tokens};
 
-fn rgba(c: peniko::Color) -> [u8; 4] {
-    let c = c.to_rgba8();
-    [c.r, c.g, c.b, c.a]
-}
-
 /// A foreground role, stored as a bare `Brush`.
-fn fg(theme: &understory_style::Theme, key: understory_style::ResourceKey) -> [u8; 4] {
+fn fg(theme: &understory_style::Theme, key: understory_style::ResourceKey) -> Color {
     match theme.get::<Brush>(key) {
-        Some(Brush::Solid(c)) => rgba(*c),
+        Some(Brush::Solid(color)) => *color,
         other => panic!("expected a solid foreground brush, got {other:?}"),
     }
 }
 
 /// A surface/border role, stored as `Option<Brush>`.
-fn surface(theme: &understory_style::Theme, key: understory_style::ResourceKey) -> [u8; 4] {
+fn surface(theme: &understory_style::Theme, key: understory_style::ResourceKey) -> Color {
     match theme.get::<Option<Brush>>(key) {
-        Some(Some(Brush::Solid(c))) => rgba(*c),
+        Some(Some(Brush::Solid(color))) => *color,
         other => panic!("expected a solid surface brush, got {other:?}"),
     }
 }
@@ -34,12 +30,9 @@ fn is_one_bit_black_on_white() {
     let resolved = ui.style_tokens::<overstory_look_system6::System6Tokens>();
     let light = theme(Scheme::Light, &resolved);
     // Ink is black, paper is white, foreground is the ink.
-    assert_eq!(fg(&light, tokens::ON_SURFACE_FG), [0, 0, 0, 0xff]);
-    assert_eq!(
-        surface(&light, tokens::CONTROL_BG),
-        [0xff, 0xff, 0xff, 0xff]
-    );
-    assert_eq!(surface(&light, tokens::CONTROL_BORDER), [0, 0, 0, 0xff]);
+    assert_eq!(fg(&light, tokens::ON_SURFACE_FG), css::BLACK);
+    assert_eq!(surface(&light, tokens::CONTROL_BG), css::WHITE);
+    assert_eq!(surface(&light, tokens::CONTROL_BORDER), css::BLACK);
 }
 
 #[test]
@@ -53,14 +46,14 @@ fn button_is_paper_with_solid_ink_frame() {
         .resolved_value(button, ui.properties().surface.background)
         .flatten()
     {
-        Some(Brush::Solid(c)) => assert_eq!(c.to_rgba8().r, 0xff, "button fill is paper"),
+        Some(Brush::Solid(color)) => assert_eq!(color, css::WHITE, "button fill is paper"),
         other => panic!("expected solid paper fill, got {other:?}"),
     }
     match ui
         .resolved_value(button, ui.properties().surface.border_brushes.top)
         .flatten()
     {
-        Some(Brush::Solid(c)) => assert_eq!(c.to_rgba8().r, 0x00, "button frame is ink"),
+        Some(Brush::Solid(color)) => assert_eq!(color, css::BLACK, "button frame is ink"),
         other => panic!("expected solid ink frame, got {other:?}"),
     }
 }
@@ -111,6 +104,6 @@ fn schemes_invert() {
     let light = theme(Scheme::Light, &resolved);
     let dark = theme(Scheme::Dark, &resolved);
     // Foreground ink flips from black to white between the schemes.
-    assert_eq!(fg(&light, tokens::ON_SURFACE_FG), [0, 0, 0, 0xff]);
-    assert_eq!(fg(&dark, tokens::ON_SURFACE_FG), [0xff, 0xff, 0xff, 0xff]);
+    assert_eq!(fg(&light, tokens::ON_SURFACE_FG), css::BLACK);
+    assert_eq!(fg(&dark, tokens::ON_SURFACE_FG), css::WHITE);
 }

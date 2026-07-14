@@ -73,7 +73,7 @@ impl View for TranscriptPage {
                             state.add(
                                 Text::new("Run state")
                                     .font_size(13.0)
-                                    .foreground(solid(0xa9, 0xae, 0xbd, 0xff))
+                                    .foreground(Color::from_rgb8(0xa9, 0xae, 0xbd))
                                     .layout(Layout::new().logical_size(72.0, 24.0)),
                             );
                             state.add(ProgressBar::new().value(0.82).size(184.0, 12.0));
@@ -85,7 +85,7 @@ impl View for TranscriptPage {
                                 Text::new("Rows are ordinary retained elements.")
                                     .wrap()
                                     .font_size(13.0)
-                                    .foreground(solid(0xd3, 0xd6, 0xe2, 0xff))
+                                    .foreground(Color::from_rgb8(0xd3, 0xd6, 0xe2))
                                     .layout(
                                         Layout::new().min_logical_size(0.0, 0.0).flex_shrink(1.0),
                                     ),
@@ -387,7 +387,7 @@ fn render_message(
                 Text::new(body_text_or_empty(context.entry()))
                     .wrap()
                     .font_size(15.0)
-                    .foreground(solid(0xf6, 0xf7, 0xfb, 0xff)),
+                    .foreground(Color::from_rgb8(0xf6, 0xf7, 0xfb)),
             );
             if role == MessageRole::Assistant && context.index() > 6 {
                 bubble.with_child(
@@ -425,7 +425,7 @@ fn render_tool_call(
                 Text::new(body_text_or_empty(context.entry()))
                     .wrap()
                     .font_size(14.0)
-                    .foreground(solid(0xec, 0xee, 0xf8, 0xff)),
+                    .foreground(Color::from_rgb8(0xec, 0xee, 0xf8)),
             );
             card.with_child(Panel::row(12.0).align_center(), |controls| {
                 controls.add(ProgressBar::new().value(0.82).size(210.0, 12.0));
@@ -458,7 +458,7 @@ fn render_tool_result(
                 Text::new(body_text_or_empty(context.entry()))
                     .wrap()
                     .font_size(14.0)
-                    .foreground(solid(0xf2, 0xf8, 0xf5, 0xff)),
+                    .foreground(Color::from_rgb8(0xf2, 0xf8, 0xf5)),
             );
             card.with_child(Panel::row(8.0).layout(Layout::row(8.0).wrap()), |row| {
                 row.add(CheckBox::new("release fast").checked(true));
@@ -492,7 +492,7 @@ fn render_process_output(
                 Text::new(body_text_or_empty(context.entry()))
                     .wrap()
                     .font_size(13.0)
-                    .foreground(solid(0xd9, 0xe0, 0xff, 0xff)),
+                    .foreground(Color::from_rgb8(0xd9, 0xe0, 0xff)),
             );
         },
     );
@@ -522,7 +522,7 @@ fn render_annotation(
                 Text::new(body_text_or_empty(context.entry()))
                     .wrap()
                     .font_size(14.0)
-                    .foreground(solid(0xf2, 0xf3, 0xf8, 0xff))
+                    .foreground(Color::from_rgb8(0xf2, 0xf3, 0xf8))
                     .layout(Layout::new().min_logical_size(0.0, 0.0).flex_shrink(1.0)),
             );
         },
@@ -567,7 +567,7 @@ fn add_metric_tile(ui: &mut ChildUi<'_>, label: &str, value: &str, accent: (u8, 
             tile.add(
                 Text::new(label)
                     .font_size(11.0)
-                    .foreground(solid(0xbd, 0xc3, 0xd2, 0xff)),
+                    .foreground(Color::from_rgb8(0xbd, 0xc3, 0xd2)),
             );
             tile.add(
                 Text::new(value)

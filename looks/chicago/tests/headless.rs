@@ -51,8 +51,7 @@ fn button_has_a_raised_bevel() {
         panic!("expected solid bevel edges");
     };
     assert_ne!(
-        top.to_rgba8(),
-        bottom.to_rgba8(),
+        top, bottom,
         "raised bevel: top highlight should differ from bottom shadow",
     );
 }
@@ -64,7 +63,7 @@ fn schemes_differ() {
     let light = theme(Scheme::Light, &resolved);
     let dark = theme(Scheme::Dark, &resolved);
     let fg = |t: &understory_style::Theme| match t.get::<Brush>(tokens::ON_SURFACE_FG) {
-        Some(Brush::Solid(c)) => c.to_rgba8(),
+        Some(Brush::Solid(color)) => *color,
         other => panic!("expected solid fg, got {other:?}"),
     };
     assert_ne!(fg(&light), fg(&dark));

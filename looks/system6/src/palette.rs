@@ -7,18 +7,13 @@
 //! pragmatic concessions for things the original faked with 50% dither: the
 //! desktop backdrop and disabled text. (A real stipple would need a pattern
 //! brush, which the toolkit doesn't expose yet.) The text-selection wash is
-//! derived from ink over paper via the shared color math.
+//! derived from ink over paper via the canonical color interpolation API.
 
 use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use overstory_look::color::{mix, rgb};
-use peniko::{Brush, Color};
+use peniko::{Brush, Color, color::palette::css};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
-
-fn solid(color: Color) -> Option<Brush> {
-    Some(Brush::Solid(color))
-}
 
 /// The colors a System 6 theme is built from.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -37,10 +32,10 @@ pub struct Seeds {
 #[must_use]
 pub fn classic_seeds() -> Seeds {
     Seeds {
-        ink: rgb(0x00, 0x00, 0x00),
-        paper: rgb(0xff, 0xff, 0xff),
-        desktop: rgb(0xa0, 0xa0, 0xa0),
-        muted: rgb(0x80, 0x80, 0x80),
+        ink: css::BLACK,
+        paper: css::WHITE,
+        desktop: Color::from_rgb8(0xa0, 0xa0, 0xa0),
+        muted: css::GRAY,
     }
 }
 
@@ -48,10 +43,10 @@ pub fn classic_seeds() -> Seeds {
 #[must_use]
 pub fn dark_seeds() -> Seeds {
     Seeds {
-        ink: rgb(0xff, 0xff, 0xff),
-        paper: rgb(0x10, 0x10, 0x10),
-        desktop: rgb(0x30, 0x30, 0x30),
-        muted: rgb(0x90, 0x90, 0x90),
+        ink: css::WHITE,
+        paper: Color::from_rgb8(0x10, 0x10, 0x10),
+        desktop: Color::from_rgb8(0x30, 0x30, 0x30),
+        muted: Color::from_rgb8(0x90, 0x90, 0x90),
     }
 }
 
@@ -102,32 +97,32 @@ const LINEAR: TimingFunction = TimingFunction::cubic_bezier(0.0, 0.0, 1.0, 1.0);
 /// Builds the token values from `seeds`.
 pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
     // A light wash so selected text stays legible without a text inversion.
-    let selection = mix(s.paper, s.ink, 0.2);
+    let selection = s.paper.lerp_rect(s.ink, 0.2);
     TokenValues {
-        surface_bg: solid(s.desktop),
-        accent_bg: solid(s.ink),
-        accent_hover_bg: solid(s.ink),
-        accent_pressed_bg: solid(s.ink),
-        success_bg: solid(s.ink),
-        track_bg: solid(s.paper),
-        thumb_bg: solid(s.paper),
-        panel_bg: solid(s.paper),
-        control_bg: solid(s.paper),
-        control_border: solid(s.ink),
-        control_hover_border: solid(s.ink),
+        surface_bg: Some(Brush::Solid(s.desktop)),
+        accent_bg: Some(Brush::Solid(s.ink)),
+        accent_hover_bg: Some(Brush::Solid(s.ink)),
+        accent_pressed_bg: Some(Brush::Solid(s.ink)),
+        success_bg: Some(Brush::Solid(s.ink)),
+        track_bg: Some(Brush::Solid(s.paper)),
+        thumb_bg: Some(Brush::Solid(s.paper)),
+        panel_bg: Some(Brush::Solid(s.paper)),
+        control_bg: Some(Brush::Solid(s.paper)),
+        control_border: Some(Brush::Solid(s.ink)),
+        control_hover_border: Some(Brush::Solid(s.ink)),
         // A faint ink wash so hover reads as a row — not paper (which is near
         // black in the dark scheme, making hover look black).
-        control_hover_bg: solid(mix(s.paper, s.ink, 0.14)),
-        focus_ring_border: solid(s.ink),
-        text_caret_bg: solid(s.ink),
-        text_selection_bg: solid(selection),
-        slider_major_tick_bg: solid(s.ink),
-        slider_minor_tick_bg: solid(s.muted),
+        control_hover_bg: Some(Brush::Solid(s.paper.lerp_rect(s.ink, 0.14))),
+        focus_ring_border: Some(Brush::Solid(s.ink)),
+        text_caret_bg: Some(Brush::Solid(s.ink)),
+        text_selection_bg: Some(Brush::Solid(selection)),
+        slider_major_tick_bg: Some(Brush::Solid(s.ink)),
+        slider_minor_tick_bg: Some(Brush::Solid(s.muted)),
         on_accent_fg: Brush::Solid(s.paper),
         on_surface_fg: Brush::Solid(s.ink),
         on_surface_muted_fg: Brush::Solid(s.muted),
-        ink: solid(s.ink),
-        paper: solid(s.paper),
+        ink: Some(Brush::Solid(s.ink)),
+        paper: Some(Brush::Solid(s.paper)),
         motion_fast: INSTANT,
         motion_normal: INSTANT,
         motion_emphasized: INSTANT,

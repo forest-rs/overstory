@@ -19,7 +19,7 @@
 //!   block mapping a token name to a millisecond count.
 //!
 //! Color values accept any CSS color the `color` crate parses (hex, `rgb()`,
-//! `oklch()`, named); hex takes an exact fast path.
+//! `oklch()`, named).
 //!
 //! [spec]: https://github.com/google-labs-code/design.md
 
@@ -70,13 +70,13 @@ impl fmt::Display for DesignError {
 
 impl std::error::Error for DesignError {}
 
-/// A color token: one value, or one per named scheme.
+/// A parsed token value shared by every scheme or selected by scheme name.
 #[derive(Clone, Debug)]
-pub enum ColorValue {
-    /// One color for every scheme.
-    Single(Color),
-    /// A color per scheme name (e.g. `light`, `dark`).
-    PerScheme(BTreeMap<String, Color>),
+enum SchemeValue<T> {
+    /// One value for every scheme.
+    Shared(T),
+    /// A value per scheme name (e.g. `light`, `dark`).
+    ByScheme(BTreeMap<String, T>),
 }
 
 /// The parsed token frontmatter of a DESIGN.md file.
@@ -86,8 +86,8 @@ pub struct DesignDoc {
     pub name: Option<String>,
     /// The `description` token.
     pub description: Option<String>,
-    /// `colors` token map (role → value).
-    pub colors: BTreeMap<String, ColorValue>,
+    /// Parsed color roles, resolved through [`Self::color`].
+    colors: BTreeMap<String, SchemeValue<Color>>,
     /// `rounded` scale (level → dimension string).
     pub rounded: BTreeMap<String, String>,
     /// `spacing` scale (level → dimension string).
@@ -101,8 +101,8 @@ impl DesignDoc {
     #[must_use]
     pub fn color(&self, role: &str, scheme: &str) -> Option<Color> {
         match self.colors.get(role)? {
-            ColorValue::Single(c) => Some(*c),
-            ColorValue::PerScheme(by_scheme) => by_scheme.get(scheme).copied(),
+            SchemeValue::Shared(color) => Some(*color),
+            SchemeValue::ByScheme(by_scheme) => by_scheme.get(scheme).copied(),
         }
     }
 
@@ -138,7 +138,7 @@ pub fn parse(src: &str) -> Result<DesignDoc, DesignError> {
         for (key, value) in colors {
             let Some(role) = key.as_str() else { continue };
             doc.colors
-                .insert(role.to_owned(), parse_color_value(role, value)?);
+                .insert(role.to_owned(), parse_scheme_color(role, value)?);
         }
     }
 
@@ -169,14 +169,14 @@ fn frontmatter(src: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
-fn parse_color_value(role: &str, value: &Yaml) -> Result<ColorValue, DesignError> {
+fn parse_scheme_color(role: &str, value: &Yaml) -> Result<SchemeValue<Color>, DesignError> {
     match value {
-        Yaml::String(s) => Ok(ColorValue::Single(parse_css_color(s).ok_or_else(|| {
-            DesignError::BadColor {
+        Yaml::String(s) => Ok(SchemeValue::Shared(parse_css_color(s).ok_or_else(
+            || DesignError::BadColor {
                 role: role.to_owned(),
                 value: s.clone(),
-            }
-        })?)),
+            },
+        )?)),
         Yaml::Hash(by_scheme) => {
             let mut map = BTreeMap::new();
             for (key, color) in by_scheme {
@@ -189,7 +189,7 @@ fn parse_color_value(role: &str, value: &Yaml) -> Result<ColorValue, DesignError
                 })?;
                 map.insert(scheme.to_owned(), parsed);
             }
-            Ok(ColorValue::PerScheme(map))
+            Ok(SchemeValue::ByScheme(map))
         }
         other => Err(DesignError::BadColor {
             role: role.to_owned(),
@@ -198,26 +198,12 @@ fn parse_color_value(role: &str, value: &Yaml) -> Result<ColorValue, DesignError
     }
 }
 
-/// Parses a CSS color string. Hex takes an exact `from_rgba8` fast path so hex
-/// tokens round-trip bit-for-bit; everything else goes through the `color`
-/// crate (`rgb()`, `oklch()`, named, …) and is converted to sRGB.
+/// Parses a CSS color string through the `color` crate and converts it to sRGB.
 #[must_use]
 pub fn parse_css_color(text: &str) -> Option<Color> {
-    let text = text.trim();
-    if let Some(hex) = parse_hex(text) {
-        return Some(hex);
-    }
-    parse_color(text).ok().map(|c| c.to_alpha_color::<Srgb>())
-}
-
-fn parse_hex(text: &str) -> Option<Color> {
-    let hex = text.strip_prefix('#')?;
-    let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
-    match hex.len() {
-        6 => Some(Color::from_rgba8(byte(0)?, byte(2)?, byte(4)?, 0xff)),
-        8 => Some(Color::from_rgba8(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
-        _ => None,
-    }
+    parse_color(text.trim())
+        .ok()
+        .map(|color| color.to_alpha_color::<Srgb>())
 }
 
 fn string_map(value: &Yaml) -> BTreeMap<String, String> {
@@ -271,18 +257,15 @@ mod tests {
         let doc = parse(SAMPLE).expect("parses");
         assert_eq!(doc.name.as_deref(), Some("Sample"));
         assert_eq!(
-            doc.color("accent", "light").map(Color::to_rgba8),
-            Some(Color::from_rgba8(0x11, 0x22, 0x33, 0xff).to_rgba8())
+            doc.color("accent", "light"),
+            Some(Color::from_rgb8(0x11, 0x22, 0x33))
         );
         assert_eq!(
-            doc.color("accent", "dark").map(Color::to_rgba8),
-            Some(Color::from_rgba8(0x44, 0x55, 0x66, 0xff).to_rgba8())
+            doc.color("accent", "dark"),
+            Some(Color::from_rgb8(0x44, 0x55, 0x66))
         );
         // A single scalar applies to every scheme.
-        assert_eq!(
-            doc.color("paper", "dark").map(Color::to_rgba8),
-            Some(Color::from_rgba8(0xff, 0xff, 0xff, 0xff).to_rgba8())
-        );
+        assert_eq!(doc.color("paper", "dark"), Some(Color::WHITE));
         assert_eq!(doc.rounded.get("md").map(String::as_str), Some("12px"));
         assert_eq!(doc.motion_ms("fast"), Some(42));
     }

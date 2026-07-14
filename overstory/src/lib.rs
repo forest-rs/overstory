@@ -316,8 +316,9 @@ pub mod prelude {
 // `ClickEvent::phase()` / `KeyEvent::phase()` etc. without depending
 // on `understory_responder` directly.
 pub use parley::{FontFeature, FontVariation};
+pub use peniko::color;
 pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};
-pub use peniko::{Brush, Color, Fill, color::Rgba8};
+pub use peniko::{Brush, Color, Fill};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
     BorderStyle, CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle,

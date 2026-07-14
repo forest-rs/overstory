@@ -767,7 +767,7 @@ fn option_brush_value(value: Option<Brush>) -> ElementPropertyInspectionValue {
 
 fn brush_value(value: Brush) -> ElementPropertyInspectionValue {
     match value {
-        Brush::Solid(color) => ElementPropertyInspectionValue::Color(color.to_rgba8()),
+        Brush::Solid(color) => ElementPropertyInspectionValue::Color(color),
         Brush::Gradient(_) => ElementPropertyInspectionValue::Token(String::from("gradient")),
         Brush::Image(_) => ElementPropertyInspectionValue::Token(String::from("image")),
     }

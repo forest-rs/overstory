@@ -352,7 +352,7 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         row.properties.iter().any(|property| {
             property.name == "Background"
                 && property.group == ElementPropertyInspectionGroup::Appearance
-                && property.value == ElementPropertyInspectionValue::Color(background.to_rgba8())
+                && property.value == ElementPropertyInspectionValue::Color(background)
         }),
         "snapshot should expose effective appearance properties"
     );

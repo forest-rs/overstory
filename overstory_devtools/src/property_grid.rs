@@ -13,7 +13,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use overstory::Rgba8;
+use overstory::color::DynamicColor;
 use overstory::{
     Brush, Color, ElementId, Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize,
     OutlineNodeKey, Panel, SurfaceSpecExt, Text, TooltipSpecExt, Ui, select_outline_key, theme,
@@ -28,7 +28,7 @@ use crate::InspectionClient;
 ///
 /// This is intentionally only a presentation model. It does not resolve
 /// properties, mutate live UI state, or define editor widgets.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PropertyGrid {
     sections: Vec<PropertyGridSection>,
 }
@@ -68,7 +68,7 @@ impl PropertyGrid {
 }
 
 /// A named property-grid section.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PropertyGridSection {
     title: String,
     rows: Vec<PropertyGridRow>,
@@ -113,7 +113,7 @@ impl PropertyGridSection {
 ///
 /// Rows may have child rows so structured values can be shown as small trees
 /// without changing the parent section model.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PropertyGridRow {
     label: String,
     value: PropertyGridValue,
@@ -235,7 +235,7 @@ impl PropertyGridOrigin {
 /// The value is intentionally not a prebuilt element subtree. It describes the
 /// kind of value being inspected, and the property-grid renderer lowers it to
 /// the concrete elements that fit the current devtools UI.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PropertyGridValue {
     /// Plain text with no richer display semantics.
     Text(String),
@@ -250,7 +250,7 @@ pub enum PropertyGridValue {
     /// Token-like value such as a class, pseudo, slot, or type tag.
     Token(PropertyGridToken),
     /// Color value with a swatch.
-    Color(PropertyGridColor),
+    Color(Color),
 }
 
 impl PropertyGridValue {
@@ -286,14 +286,14 @@ impl PropertyGridValue {
 
     /// Creates a color swatch value from 8-bit RGBA components.
     #[must_use]
-    pub fn color_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
-        Self::Color(PropertyGridColor::from_rgba8(red, green, blue, alpha))
+    pub const fn color_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self::Color(Color::from_rgba8(red, green, blue, alpha))
     }
 
-    /// Creates a color swatch value from an existing 8-bit RGBA color.
+    /// Creates a color swatch value from a canonical sRGB color.
     #[must_use]
-    pub fn color(value: Rgba8) -> Self {
-        Self::Color(PropertyGridColor::new(value))
+    pub const fn color(value: Color) -> Self {
+        Self::Color(value)
     }
 
     /// Returns a plain-text summary for tests, logs, and fallback displays.
@@ -306,7 +306,7 @@ impl PropertyGridValue {
             Self::Count(value) => value.to_string(),
             Self::ElementLink(link) => link.label().into(),
             Self::Token(token) => token.label().into(),
-            Self::Color(color) => color.label().into(),
+            Self::Color(color) => DynamicColor::from(*color).to_string(),
         }
     }
 
@@ -395,55 +395,6 @@ impl PropertyGridToken {
     #[must_use]
     pub fn label(&self) -> &str {
         &self.label
-    }
-}
-
-/// RGBA color value for property-grid swatches.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PropertyGridColor {
-    rgba: Rgba8,
-    label: String,
-}
-
-impl PropertyGridColor {
-    /// Creates a color from an existing 8-bit RGBA color.
-    #[must_use]
-    pub fn new(rgba: Rgba8) -> Self {
-        Self {
-            rgba,
-            label: rgba_label(rgba),
-        }
-    }
-
-    /// Creates a color from 8-bit RGBA components.
-    #[must_use]
-    pub fn from_rgba8(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
-        Self::new(Rgba8 {
-            r: red,
-            g: green,
-            b: blue,
-            a: alpha,
-        })
-    }
-
-    /// Returns the 8-bit RGBA components.
-    #[must_use]
-    pub const fn rgba8(&self) -> Rgba8 {
-        self.rgba
-    }
-
-    /// Returns the display label.
-    #[must_use]
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-}
-
-fn rgba_label(rgba: Rgba8) -> String {
-    if rgba.a == 0xff {
-        format!("#{:02x}{:02x}{:02x}", rgba.r, rgba.g, rgba.b)
-    } else {
-        format!("#{:02x}{:02x}{:02x}{:02x}", rgba.r, rgba.g, rgba.b, rgba.a)
     }
 }
 
@@ -738,7 +689,7 @@ fn append_grid_value(
             append_chip(ui, parent, token.label(), primary_text_brush(ui));
         }
         PropertyGridValue::Color(color) => {
-            append_color_value(ui, parent, color);
+            append_color_value(ui, parent, *color);
         }
     }
 }
@@ -793,23 +744,22 @@ fn append_chip(
     chip
 }
 
-fn append_color_value(ui: &mut Ui, parent: ElementId, color: &PropertyGridColor) -> ElementId {
+fn append_color_value(ui: &mut Ui, parent: ElementId, color: Color) -> ElementId {
     let swatch = ui.append(
         parent,
         Panel::new().layout(Layout::new().logical_size(14.0, 14.0).flex_shrink(0.0)),
     );
-    let rgba = color.rgba8();
     set_grid_surface(
         ui,
         swatch,
-        Some(Color::from_rgba8(rgba.r, rgba.g, rgba.b, rgba.a).into()),
+        Some(Brush::Solid(color)),
         control_border(ui),
         3.0,
     );
     append_grid_text(
         ui,
         parent,
-        color.label(),
+        DynamicColor::from(color).to_string(),
         primary_text_brush(ui),
         GRID_FONT_SIZE,
         None,
