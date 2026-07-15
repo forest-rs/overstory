@@ -9,6 +9,10 @@
 //!   opened popup delegates list realization and selection to `ListBox`.
 //! - Keep richer popup item visuals on the `ListBox` item-template path instead
 //!   of inventing a separate menu-item visual model.
+//! - Owner keyboard and programmatic changes commit immediately. While open,
+//!   the popup mirrors that committed selection and scrolls it into view without
+//!   reporting a second `ListBox` selection event. Activating a popup item commits
+//!   and dismisses; there is no separate preview selection state yet.
 //! - Move string/index-only selection toward shared typed option keys with
 //!   `RadioGroup`, `ListBox`, and segmented selection. `Select` should not grow
 //!   a private item model just because it is the first popup-backed picker.
@@ -18,6 +22,7 @@
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
+use understory_overlay::OverlayBehavior;
 use understory_property::DependencyObjectExt;
 use understory_style::{PartTag, TypeTag};
 
@@ -29,9 +34,10 @@ use crate::controls::choice::{
 };
 use crate::controls::list::{
     ListBox, ListItemContext, ListSelectionChangedEvent, SharedListItemTemplate,
+    synchronize_list_selection,
 };
 use crate::controls::popup::Popup;
-use crate::controls::support::{CallbackSlot, ElementSlot, EventHandler};
+use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{LayoutDimension, LayoutSize};
@@ -256,7 +262,6 @@ impl AppendSpec for Select {
             item_template: self.item_template,
             selected_index,
             placeholder: self.placeholder,
-            popup: ElementSlot::new(),
             popup_height: self.popup_height,
             item_extent: self.item_extent,
             selection_changed: SharedSelectSelectionChangedHandler::new(self.on_selection_changed),
@@ -292,7 +297,6 @@ pub(crate) struct SelectWidget {
     item_template: Option<SharedListItemTemplate>,
     selected_index: Option<usize>,
     placeholder: String,
-    popup: ElementSlot,
     popup_height: f64,
     item_extent: f64,
     selection_changed: SharedSelectSelectionChangedHandler,
@@ -304,7 +308,6 @@ impl core::fmt::Debug for SelectWidget {
             .field("options_len", &self.options.len())
             .field("has_item_template", &self.item_template.is_some())
             .field("selected_index", &self.selected_index)
-            .field("popup", &self.popup.get())
             .field("popup_height", &self.popup_height)
             .field("item_extent", &self.item_extent)
             .finish_non_exhaustive()
@@ -332,7 +335,7 @@ impl Widget for SelectWidget {
     ) {
         node.set_value(ctx.content(element));
         node.set_has_popup(accesskit::HasPopup::Listbox);
-        let open = self.popup.get().is_some();
+        let open = ctx.has_active_overlay_for(element.id(), OverlayBehavior::ComboboxPopup);
         node.set_expanded(open);
         if ctx.is_enabled(element.id()) {
             ctx.add_click_action_if_enabled(element, node);
@@ -399,7 +402,7 @@ impl Widget for SelectWidget {
         }
 
         match &event.key.key {
-            Key::Named(NamedKey::Escape) if self.close_popup(ctx) => {
+            Key::Named(NamedKey::Escape) if self.close_popup(ctx, select) => {
                 event.mark_handled();
             }
             Key::Named(NamedKey::Escape) => {}
@@ -434,12 +437,9 @@ impl Widget for SelectWidget {
         }
         match request.action {
             accesskit::Action::Expand => {
-                if self.popup.get().is_none() {
-                    self.open_popup(ctx, select);
-                }
-                true
+                select_popup(ctx, select).is_some() || self.open_popup(ctx, select)
             }
-            accesskit::Action::Collapse => self.close_popup(ctx),
+            accesskit::Action::Collapse => self.close_popup(ctx, select),
             _ => false,
         }
     }
@@ -447,15 +447,16 @@ impl Widget for SelectWidget {
 
 impl SelectWidget {
     fn toggle_popup(&self, ui: &mut Ui, select: ElementId) {
-        if self.close_popup(ui) {
+        if self.close_popup(ui, select) {
             return;
         }
         self.open_popup(ui, select);
     }
 
-    fn open_popup(&self, ui: &mut Ui, select: ElementId) {
-        if self.options.is_empty() || ui.get(select).is_none() {
-            return;
+    fn open_popup(&self, ui: &mut Ui, select: ElementId) -> bool {
+        if select_popup(ui, select).is_some() || self.options.is_empty() || ui.get(select).is_none()
+        {
+            return false;
         }
         let popup_height = self.popup_list_height();
         let popup_width = self.popup_width(ui, select);
@@ -463,30 +464,30 @@ impl SelectWidget {
         let item_template = self.item_template.clone();
         let selected_index = self.selected_index;
         let options = self.options.clone();
-        let popup = ui.open_popup(
+        ui.open_popup_with_behavior(
             select,
             Popup::new().padding(0.0, 0.0).offset(0.0, 4.0),
+            OverlayBehavior::ComboboxPopup,
             |ui, popup| {
                 let mut list = ListBox::new()
                     .options(options)
                     .size(popup_width, popup_height)
                     .item_extent(item_extent)
-                    .selected_index(selected_index.unwrap_or(usize::MAX))
                     .on_selection_changed(select_commit_handler(select));
                 if let Some(template) = item_template {
                     list = list.shared_item_template(template);
                 }
-                let _list = ui.append(popup, list);
+                let listbox = ui.append(popup, list);
+                synchronize_list_selection(ui, listbox, selected_index);
             },
-        );
-        self.popup.set_option(popup);
+        )
+        .is_some()
     }
 
-    fn close_popup(&self, ui: &mut Ui) -> bool {
-        let Some(popup) = self.popup.get() else {
+    fn close_popup(&self, ui: &mut Ui, select: ElementId) -> bool {
+        let Some(popup) = select_popup(ui, select) else {
             return false;
         };
-        self.popup.clear();
         ui.close_popup(popup)
     }
 
@@ -524,6 +525,7 @@ impl SelectWidget {
         self.selected_index = selection.index;
         ui.set_local(select, props.selected_index, selection.index);
         ui.set_local(select, props.content, content);
+        self.synchronize_popup_selection(ui, select, selection.index);
         dispatch_select_selection_changed(
             ui,
             Some(&self.selection_changed),
@@ -534,6 +536,17 @@ impl SelectWidget {
             },
         );
         true
+    }
+
+    fn synchronize_popup_selection(&self, ui: &mut Ui, select: ElementId, index: Option<usize>) {
+        let Some(listbox) = select_popup(ui, select)
+            .and_then(|popup| ui.get(popup))
+            .and_then(|popup| popup.children().first())
+            .copied()
+        else {
+            return;
+        };
+        synchronize_list_selection(ui, listbox, index);
     }
 
     fn popup_list_height(&self) -> f64 {
@@ -557,6 +570,10 @@ impl SelectWidget {
             DEFAULT_SELECT_WIDTH
         }
     }
+}
+
+fn select_popup(ui: &Ui, select: ElementId) -> Option<ElementId> {
+    ui.active_overlay_for(select, OverlayBehavior::ComboboxPopup)
 }
 
 static SELECT_TEMPLATE: TemplateSpecRecipe = TemplateSpecRecipe::new(select_template_spec);
@@ -623,7 +640,7 @@ fn commit_select_popup_selection(ui: &mut Ui, select: ElementId, index: usize) -
     with_select_widget_mut(ui, select, |widget, ui| {
         let changed = widget.set_selected_index(ui, select, Some(index));
         if changed {
-            let _ = widget.close_popup(ui);
+            let _ = widget.close_popup(ui, select);
             let _ = ui.set_focus(Some(select));
         }
         changed
@@ -687,7 +704,9 @@ fn normalize_item_extent(extent: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::accessibility::accesskit_node_id;
-    use crate::controls::list::{realized_list_item, selected_list_index};
+    use crate::controls::list::{list_scroll_offset_y, realized_list_item, selected_list_index};
+    use crate::pseudos::PSEUDO_SELECTED;
+    use crate::test_support::pointer_down;
     use accesskit::{Action, ActionRequest, HasPopup, Node, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
     use core::cell::{Cell, RefCell};
@@ -766,7 +785,7 @@ mod tests {
         ui.synthesize_click(select, Point::ZERO);
         compute_layout(&mut ui);
 
-        let popup = select_widget(&ui, select).unwrap().popup.get().unwrap();
+        let popup = select_popup(&ui, select).unwrap();
         let listbox = ui.get(popup).unwrap().children()[0];
         assert_eq!(selected_list_index(&ui, listbox), Some(0));
         let third = realized_list_item(&ui, listbox, 2).unwrap();
@@ -792,7 +811,7 @@ mod tests {
         ui.synthesize_click(select, Point::ZERO);
         compute_layout(&mut ui);
 
-        let popup = select_widget(&ui, select).unwrap().popup.get().unwrap();
+        let popup = select_popup(&ui, select).unwrap();
         let listbox = ui.get(popup).unwrap().children()[0];
         let third = realized_list_item(&ui, listbox, 2).unwrap();
         let slot = ui
@@ -825,6 +844,259 @@ mod tests {
     }
 
     #[test]
+    fn arrow_key_keeps_open_popup_selection_in_sync() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        compute_layout(&mut ui);
+        ui.synthesize_click(select, Point::ZERO);
+        compute_layout(&mut ui);
+        let popup = select_popup(&ui, select).unwrap();
+        let listbox = ui.get(popup).unwrap().children()[0];
+        ui.set_focus(Some(select));
+
+        let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+        assert!(ui.dispatch_key(&down).handled);
+
+        assert_eq!(selected_select_index(&ui, select), Some(1));
+        assert_eq!(selected_list_index(&ui, listbox), Some(1));
+    }
+
+    #[test]
+    fn escape_dismissal_clears_expansion_and_allows_reopening() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+        ui.set_focus(Some(select));
+
+        let escape = KeyboardEvent::key_down(Key::Named(NamedKey::Escape), Code::Escape);
+        assert!(ui.dispatch_key(&escape).handled);
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        let update = ui.accesskit_tree_update();
+        assert_eq!(
+            accesskit_node_for(&update, select).is_expanded(),
+            Some(false)
+        );
+
+        assert!(ui.handle_accesskit_action(&action(select, Action::Expand)));
+        let reopened = select_popup(&ui, select).unwrap();
+        assert_ne!(reopened, popup);
+        assert!(ui.get(reopened).is_some());
+    }
+
+    #[test]
+    fn open_popup_tracks_programmatic_and_property_selection_writes() {
+        let changes = Rc::new(Cell::new(0));
+        let changes_for_handler = Rc::clone(&changes);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            test_select()
+                .selected_index(0)
+                .on_selection_changed(move |_ui, _event| {
+                    changes_for_handler.set(changes_for_handler.get() + 1);
+                }),
+        );
+        let (popup, listbox) = open_test_popup(&mut ui, select);
+
+        assert!(set_select_index(&mut ui, select, 2));
+        assert_eq!(selected_list_index(&ui, listbox), Some(2));
+        assert_eq!(changes.get(), 1);
+        assert!(ui.get(popup).is_some());
+
+        ui.set_local(select, ui.properties().selected_index, Some(3));
+        compute_layout(&mut ui);
+        assert_eq!(selected_select_index(&ui, select), Some(3));
+        assert_eq!(selected_list_index(&ui, listbox), Some(3));
+        assert_eq!(changes.get(), 2);
+        assert!(ui.get(popup).is_some());
+    }
+
+    #[test]
+    fn opening_long_select_realizes_and_reveals_committed_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            Select::new()
+                .items((0..50).map(|index| alloc::format!("Item {index}")))
+                .selected_index(40)
+                .width(180.0)
+                .popup_height(90.0)
+                .item_extent(30.0),
+        );
+
+        let (_popup, listbox) = open_test_popup(&mut ui, select);
+
+        assert_eq!(selected_list_index(&ui, listbox), Some(40));
+        assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
+        let selected = realized_list_item(&ui, listbox, 40).unwrap();
+        assert!(
+            ui.get(selected)
+                .unwrap()
+                .pseudos()
+                .contains(&PSEUDO_SELECTED)
+        );
+        assert!(realized_list_item(&ui, listbox, 0).is_none());
+    }
+
+    #[test]
+    fn accesskit_popup_item_activation_commits_and_dismisses() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, listbox) = open_test_popup(&mut ui, select);
+        let third = realized_list_item(&ui, listbox, 2).unwrap();
+
+        assert!(ui.handle_accesskit_action(&action(third, Action::Click)));
+
+        assert_eq!(selected_select_index(&ui, select), Some(2));
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+    }
+
+    #[test]
+    fn outside_pointer_dismissal_clears_select_expansion() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        let result = ui.dispatch_pointer_event(&pointer_down(Point::new(350.0, 250.0), 1));
+
+        assert!(result.overlay_changed);
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        let update = ui.accesskit_tree_update();
+        assert_eq!(
+            accesskit_node_for(&update, select).is_expanded(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn direct_popup_close_clears_select_expansion() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        assert!(ui.close_popup(popup));
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        assert!(!ui.close_popup(popup));
+    }
+
+    #[test]
+    fn removing_popup_root_clears_select_expansion() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        ui.remove(popup);
+
+        assert!(select_popup(&ui, select).is_none());
+        assert!(ui.handle_accesskit_action(&action(select, Action::Expand)));
+        assert!(select_popup(&ui, select).is_some());
+    }
+
+    #[test]
+    fn disabling_select_dismisses_popup_and_reenable_can_reopen() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        ui.set_enabled(select, false);
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        assert!(!ui.handle_accesskit_action(&action(select, Action::Expand)));
+
+        ui.set_enabled(select, true);
+        assert!(ui.handle_accesskit_action(&action(select, Action::Expand)));
+        assert!(select_popup(&ui, select).is_some());
+    }
+
+    #[test]
+    fn focus_outside_dismisses_select_popup_but_owner_and_list_focus_do_not() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let outside = ui.append(root, crate::Button::new("Other"));
+        let (popup, listbox) = open_test_popup(&mut ui, select);
+
+        ui.set_focus(Some(select));
+        assert!(ui.get(popup).is_some());
+        ui.set_focus(Some(listbox));
+        assert!(ui.get(popup).is_some());
+
+        ui.set_focus(Some(outside));
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        assert_eq!(ui.focused(), Some(outside));
+        let update = ui.accesskit_tree_update();
+        assert_eq!(
+            accesskit_node_for(&update, select).is_expanded(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn collapsing_select_dismisses_popup_and_visible_select_can_reopen() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        ui.set_visibility(select, crate::Visibility::Collapsed);
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        assert!(!ui.handle_accesskit_action(&action(select, Action::Expand)));
+        ui.set_visibility(select, crate::Visibility::Visible);
+        assert!(ui.handle_accesskit_action(&action(select, Action::Expand)));
+        assert!(select_popup(&ui, select).is_some());
+    }
+
+    #[test]
+    fn collapsing_anchor_ancestor_dismisses_popup_without_restoring_hidden_focus() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let container = ui.insert_child(root);
+        let select = ui.append(container, test_select().selected_index(0));
+        let (popup, listbox) = open_test_popup(&mut ui, select);
+        assert!(ui.set_focus(Some(listbox)));
+
+        ui.set_visibility(container, crate::Visibility::Collapsed);
+
+        assert!(ui.get(popup).is_none());
+        assert!(select_popup(&ui, select).is_none());
+        assert_eq!(ui.focused(), None);
+        assert!(!ui.set_focus(Some(select)));
+    }
+
+    #[test]
+    fn removing_select_removes_its_popup() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(root, test_select().selected_index(0));
+        let (popup, _listbox) = open_test_popup(&mut ui, select);
+
+        ui.remove(select);
+
+        assert!(ui.get(select).is_none());
+        assert!(ui.get(popup).is_none());
+    }
+
+    #[test]
     fn disabled_options_are_skipped_by_selection() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -846,8 +1118,12 @@ mod tests {
         let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
         assert!(ui.dispatch_key(&down).handled);
         assert_eq!(selected_select_index(&ui, select), Some(0));
+
+        compute_layout(&mut ui);
+        let (_popup, listbox) = open_test_popup(&mut ui, select);
         assert!(ui.dispatch_key(&down).handled);
         assert_eq!(selected_select_index(&ui, select), Some(2));
+        assert_eq!(selected_list_index(&ui, listbox), Some(2));
     }
 
     #[test]
@@ -1000,6 +1276,15 @@ mod tests {
 
     fn compute_layout(ui: &mut Ui) {
         ui.compute_layout(Size::new(400.0, 300.0));
+    }
+
+    fn open_test_popup(ui: &mut Ui, select: ElementId) -> (ElementId, ElementId) {
+        compute_layout(ui);
+        ui.synthesize_click(select, Point::ZERO);
+        compute_layout(ui);
+        let popup = select_popup(ui, select).unwrap();
+        let listbox = ui.get(popup).unwrap().children()[0];
+        (popup, listbox)
     }
 
     fn action(element: ElementId, action: Action) -> ActionRequest {

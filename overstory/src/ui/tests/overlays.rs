@@ -178,6 +178,29 @@ fn tooltip_follows_keyboard_focus_and_clears_with_focus() {
 }
 
 #[test]
+fn collapsing_tooltip_anchor_ancestor_closes_hover_tooltip() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(220.0, 120.0));
+    let container = ui.insert_child(root);
+    let target = ui.insert_child(container);
+    ui.set_layout(target, Layout::new().logical_size(80.0, 30.0));
+    ui.set_tooltip(target, crate::Tooltip::new("Anchored helper"));
+
+    ui.compute_layout(Size::new(220.0, 120.0));
+    let _ = ui.dispatch_pointer_event(&pointer_move(Point::new(20.0, 12.0), 1, false));
+    let active = ui
+        .overlays
+        .active_tooltip()
+        .expect("hovering the target should open its tooltip");
+
+    ui.set_visibility(container, crate::Visibility::Collapsed);
+
+    assert_eq!(ui.overlays.active_tooltip(), None);
+    assert!(ui.get(active.element).is_none());
+}
+
+#[test]
 fn pointer_leave_does_not_restore_previous_focused_tooltip() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -384,6 +407,86 @@ fn popup_repositions_with_target_and_closes_by_root_element() {
 }
 
 #[test]
+fn popup_placement_keeps_a_viable_incumbent_near_a_viewport_edge() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(200.0, 100.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 65.0)
+            .logical_size(60.0, 20.0),
+    );
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.set_layout(popup, Layout::new().logical_size(80.0, 30.0));
+        })
+        .unwrap();
+    ui.compute_layout(Size::new(200.0, 100.0));
+    let first_popup = ui.effective_bounds(popup);
+    let first_target = ui.effective_bounds(target);
+    assert!(
+        first_popup.y1 <= first_target.y0,
+        "the first measured placement should flip above the crowded anchor: popup={first_popup:?}, target={first_target:?}"
+    );
+
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 55.0)
+            .logical_size(60.0, 20.0),
+    );
+    ui.compute_layout(Size::new(200.0, 100.0));
+
+    assert!(
+        ui.effective_bounds(popup).y1 <= ui.effective_bounds(target).y0,
+        "a small geometry change should retain the viable previous placement"
+    );
+}
+
+#[test]
+fn popup_repositions_with_arrange_only_anchor_movement() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(200.0, 120.0));
+    let scroll = ui.append(root, crate::ScrollView::new().size(120.0, 48.0));
+    let spacer = ui.insert_child(scroll);
+    ui.set_layout(
+        spacer,
+        Layout::new().logical_size(120.0, 60.0).flex_shrink(0.0),
+    );
+    let target = ui.insert_child(scroll);
+    ui.set_layout(
+        target,
+        Layout::new().logical_size(80.0, 24.0).flex_shrink(0.0),
+    );
+    ui.compute_layout(Size::new(200.0, 120.0));
+
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.set_layout(popup, Layout::new().logical_size(90.0, 30.0));
+        })
+        .unwrap();
+    ui.compute_layout(Size::new(200.0, 120.0));
+    let before_target = ui.effective_bounds(target);
+    let before_popup = ui.effective_bounds(popup);
+    ui.reset_frame_stats();
+
+    assert!(crate::set_scroll_view_offset_y(&mut ui, scroll, 12.0));
+    assert!(!ui.invalidation().has_invalidated(LAYOUT));
+    ui.compute_layout(Size::new(200.0, 120.0));
+
+    let after_target = ui.effective_bounds(target);
+    let after_popup = ui.effective_bounds(popup);
+    assert_eq!(ui.frame_stats().layout_passes, 0);
+    assert!((after_target.y0 - (before_target.y0 - 12.0)).abs() <= 0.01);
+    assert!((after_popup.y0 - (before_popup.y0 - 12.0)).abs() <= 0.01);
+}
+
+#[test]
 fn escape_closes_topmost_popup_and_restores_focus() {
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
@@ -419,6 +522,62 @@ fn escape_closes_topmost_popup_and_restores_focus() {
     assert!(result.focus_changed);
     assert_eq!(result.focused, Some(target));
     assert!(ui.get(popup).is_none());
+}
+
+#[test]
+fn focus_outside_closes_popup_without_stealing_new_focus() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(320.0, 140.0));
+    let target = ui.append(root, crate::Button::new("Open"));
+    let outside = ui.append(root, crate::Button::new("Other"));
+    ui.compute_layout(Size::new(320.0, 140.0));
+    assert!(ui.set_focus(Some(target)));
+
+    let mut focused_inside = None;
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            let child = ui.insert_child(popup);
+            ui.set_focusable(child, true);
+            focused_inside = Some(child);
+        })
+        .unwrap();
+    assert!(ui.set_focus(focused_inside));
+    assert!(
+        ui.get(popup).is_some(),
+        "focus inside should keep the popup open"
+    );
+
+    assert!(ui.set_focus(Some(outside)));
+
+    assert!(ui.get(popup).is_none());
+    assert_eq!(ui.focused(), Some(outside));
+}
+
+#[test]
+fn overlay_resolution_observes_focus_after_routed_handlers_settle() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let target = ui.append(root, crate::Button::new("Open"));
+    let redirect = ui.append(root, crate::Button::new("Redirect"));
+    ui.compute_layout(Size::new(320.0, 140.0));
+    assert!(ui.set_focus(Some(target)));
+    let popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            ui.append(popup, crate::Text::new("Popup"));
+        })
+        .unwrap();
+
+    ui.events(redirect).focus(move |ui, event| {
+        if event.phase().is_target() && event.kind == RoutedEventKind::FocusGained {
+            let _ = ui.set_focus(Some(target));
+        }
+    });
+
+    assert!(ui.set_focus(Some(redirect)));
+
+    assert_eq!(ui.focused(), Some(target));
+    assert!(ui.get(popup).is_some());
 }
 
 #[test]

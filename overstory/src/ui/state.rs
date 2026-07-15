@@ -229,8 +229,10 @@ impl Ui {
             .unwrap_or(false)
     }
 
-    fn apply_focusable_preference(&mut self, id: ElementId) {
-        let focusable = self.focus.focusable_preference(id) && self.is_enabled(id);
+    pub(in crate::ui) fn apply_focusable_preference(&mut self, id: ElementId) {
+        let focusable = self.focus.focusable_preference(id)
+            && self.is_enabled(id)
+            && self.is_effectively_visible(id);
         self.set_focusable_flag(id, focusable);
     }
 
@@ -261,9 +263,9 @@ impl Ui {
 
     /// Enables or disables a control element.
     ///
-    /// Disabling clears focus, pressed state, and pointer capture for `id`,
-    /// removes it from focus traversal, and applies `:disabled` for style
-    /// matching.
+    /// Disabling dismisses popups anchored to `id`, clears focus, pressed state,
+    /// and pointer capture, removes it from focus traversal, and applies
+    /// `:disabled` for style matching.
     pub fn set_enabled(&mut self, id: ElementId, enabled: bool) {
         if self.get(id).is_none() {
             return;
@@ -310,6 +312,7 @@ impl Ui {
             self.remove_pseudo(id, PSEUDO_DISABLED);
             self.apply_focusable_preference(id);
         } else {
+            let _ = self.dismiss_overlay_anchor(id);
             self.add_pseudo(id, PSEUDO_DISABLED);
             self.set_focusable_flag(id, false);
             if self.focus.focused() == Some(id) {
@@ -336,9 +339,9 @@ impl Ui {
     }
 
     /// Sets keyboard-visible focus. Passes `None` to clear focus. Disabled or
-    /// stale target ids are treated as `None`. Applies / removes `:focused`
-    /// and `:focus-visible` on the affected elements. Returns `true` if the
-    /// focus state changed.
+    /// stale, disabled, or effectively hidden target ids are treated as
+    /// `None`. Applies / removes `:focused` and `:focus-visible` on the affected
+    /// elements. Returns `true` if the focus state changed.
     pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
         self.set_focus_with_visibility(new, true, FocusChangeReason::Programmatic)
     }
@@ -364,7 +367,7 @@ impl Ui {
         reason: FocusChangeReason,
     ) -> bool {
         let previous = self.focus.focused();
-        let accepted = new.filter(|id| self.is_enabled(*id));
+        let accepted = new.filter(|id| self.is_enabled(*id) && self.is_effectively_visible(*id));
         let mut changed = false;
         if self.focus.focused() == accepted {
             if let Some(id) = accepted {
@@ -394,6 +397,7 @@ impl Ui {
             }
             self.dispatch_focus_change(previous, accepted, focus_visible, reason);
             self.refresh_tooltip_from_focus();
+            self.apply_overlay_focus_change(self.focused());
         }
         changed
     }

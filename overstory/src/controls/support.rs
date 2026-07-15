@@ -56,14 +56,6 @@ impl ElementSlot {
     pub(crate) fn set(&self, element: ElementId) {
         self.element.set(Some(element));
     }
-
-    pub(crate) fn set_option(&self, element: Option<ElementId>) {
-        self.element.set(element);
-    }
-
-    pub(crate) fn clear(&self) {
-        self.element.set(None);
-    }
 }
 
 pub(crate) type EventHandler<E> = Box<dyn FnMut(&mut Ui, E) + 'static>;

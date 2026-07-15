@@ -67,6 +67,7 @@ impl Ui {
             change.property,
             change.template_refresh,
         );
+        self.sync_element_lifecycle_projection(change.element, change.property);
         if change.state_projection == StateProjectionPolicy::ProjectSemanticState {
             self.sync_state_property_projection(change.element, change.property);
         }
@@ -119,6 +120,7 @@ impl Ui {
                     self.surface_aware_channels(target, self.registry.affects_channels(target));
                 affected |= channels;
                 self.apply_effective_property_channels(element, target, channels);
+                self.sync_element_lifecycle_projection(element, target);
                 if template_refresh == TemplateRefreshPolicy::RefreshRuntimeTemplate
                     && target == self.properties.control_template.id()
                 {
@@ -129,6 +131,32 @@ impl Ui {
         }
 
         affected
+    }
+
+    fn sync_element_lifecycle_projection(&mut self, element: ElementId, property: PropertyId) {
+        if property != self.properties.visibility.id() {
+            return;
+        }
+
+        let mut pending = SmallVec::<[ElementId; 16]>::from_slice(&[element]);
+        while let Some(candidate) = pending.pop() {
+            let Some(children) = self
+                .get(candidate)
+                .map(|candidate| candidate.children().to_vec())
+            else {
+                continue;
+            };
+            self.apply_focusable_preference(candidate);
+            pending.extend(children);
+        }
+
+        self.dismiss_ineligible_overlay_anchors();
+        if self
+            .focused()
+            .is_some_and(|focused| !self.is_effectively_visible(focused))
+        {
+            self.set_focus(None);
+        }
     }
 
     /// Marks template-generated elements that depend on an owner property.

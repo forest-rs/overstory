@@ -128,6 +128,26 @@ fn set_enabled_false_clears_focus_and_pressed_state() {
 }
 
 #[test]
+fn ancestor_visibility_controls_focus_eligibility_and_restores_preference() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.insert_child(root);
+    let button = ui.append(container, crate::Button::new("Run"));
+    assert!(ui.set_focus(Some(button)));
+
+    ui.set_visibility(container, crate::Visibility::Hidden);
+
+    assert_eq!(ui.focused(), None);
+    assert!(!ui.is_focusable(button));
+    assert!(!ui.set_focus(Some(button)));
+
+    ui.set_visibility(container, crate::Visibility::Visible);
+
+    assert!(ui.is_focusable(button));
+    assert!(ui.set_focus(Some(button)));
+}
+
+#[test]
 fn direct_is_checked_write_updates_checked_pseudo() {
     use crate::CheckBox;
 

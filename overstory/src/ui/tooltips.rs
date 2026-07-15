@@ -5,7 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
-use crate::overlay::{OverlayHost, resolve_placement};
+use crate::overlay::OverlayHost;
 
 use super::Ui;
 
@@ -80,20 +80,15 @@ impl Ui {
     }
 
     fn show_tooltip_for(&mut self, target: ElementId) -> bool {
+        if !self.is_overlay_anchor_eligible(target) {
+            return false;
+        }
         let Some(tooltip) = self.overlays.tooltip_for(target).cloned() else {
             return false;
         };
-        let bounds = self.effective_bounds(target);
         let placement = tooltip.placement_value();
         let offset = tooltip.offset_value();
-        let origin = resolve_placement(
-            placement,
-            bounds,
-            kurbo::Size::ZERO,
-            self.last_viewport,
-            offset,
-        );
-        let tooltip_element = append_overlay_tooltip(self, &tooltip, origin);
+        let tooltip_element = append_overlay_tooltip(self, &tooltip, kurbo::Point::ZERO);
         self.overlays.open_tooltip(OverlayHost {
             target,
             element: tooltip_element,
@@ -101,6 +96,7 @@ impl Ui {
             offset,
             restore_focus: None,
         });
+        self.refresh_overlay_frame();
         true
     }
 

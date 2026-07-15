@@ -862,6 +862,26 @@ impl ListBoxWidget {
             .is_some()
     }
 
+    fn synchronize_single_selection(
+        &mut self,
+        ui: &mut Ui,
+        listbox: ElementId,
+        index: Option<usize>,
+    ) {
+        if self.selection_mode != ListSelectionMode::Single {
+            return;
+        }
+        let index = index.filter(|index| option_enabled(&self.options, *index));
+        match index {
+            Some(index) => self.selection.select_only(index),
+            None => self.selection.replace_with(Vec::new()),
+        };
+        self.sync_realized_selected_pseudos(ui);
+        if let Some(index) = index {
+            self.scroll_index_into_view(listbox, ui, index);
+        }
+    }
+
     fn select_range(
         &mut self,
         ui: &mut Ui,
@@ -1094,6 +1114,14 @@ pub fn select_list_index(ui: &mut Ui, listbox: ElementId, index: usize) -> bool 
         widget.select_index(ui, listbox, index)
     })
     .unwrap_or(false)
+}
+
+/// Synchronizes a composed owner's single selection without reporting user
+/// intent through the list's selection-changed callback.
+pub(crate) fn synchronize_list_selection(ui: &mut Ui, listbox: ElementId, index: Option<usize>) {
+    let _ = with_list_box_mut(ui, listbox, |widget, ui| {
+        widget.synchronize_single_selection(ui, listbox, index);
+    });
 }
 
 /// Returns the currently selected item index in `listbox`, if any.

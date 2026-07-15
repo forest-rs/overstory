@@ -257,19 +257,23 @@ impl Ui {
             self.mark_channels(self.root(), LAYOUT.into());
         }
         let needs_layout = self.invalidation.has_invalidated(LAYOUT);
+        let needs_arrange = self.invalidation.has_invalidated(ARRANGE);
         self.frame_stats.layout_requested |= needs_layout;
         if needs_layout {
             self.compute_layout_until_stable(viewport);
-            if self.reposition_overlays(viewport) {
-                self.compute_layout_until_stable(viewport);
-            }
-        } else if self.invalidation.has_invalidated(ARRANGE) {
+        } else if needs_arrange {
             self.write_arranged_bounds();
+        }
+        if needs_layout || needs_arrange {
+            self.reposition_overlays(viewport);
         }
         // Finalize the box tree: refresh world-space data and the
         // spatial index so the next `hit_test` (or any other tree
         // query) reflects this frame's geometry.
         self.geometry.commit();
+        if needs_layout || needs_arrange || self.overlays.frame_needs_refresh() {
+            self.refresh_overlay_frame();
+        }
         self.flush_composition();
     }
 
@@ -437,6 +441,37 @@ impl Ui {
         // the pipeline has subtree arrangement roots, this is the obvious
         // place to narrow the walk.
         self.write_bounds_recursive(self.root(), Point::ZERO, Vec2::ZERO, true, true);
+    }
+
+    pub(in crate::ui) fn arrange_overlay_at(&mut self, id: ElementId, origin: Point) {
+        let Some(node) = self.layout.node_for(id) else {
+            return;
+        };
+        let Some(layout) = self.layout.layout(node) else {
+            return;
+        };
+        let translation = Vec2::new(
+            origin.x - f64::from(layout.location.x),
+            origin.y - f64::from(layout.location.y),
+        );
+        let parent = self.get(id).and_then(Element::parent);
+        let parent_visible = parent.is_none_or(|parent| self.is_effectively_visible(parent));
+        let parent_hit_test_visible = parent.is_none_or(|parent| {
+            self.get(parent)
+                .and_then(|element| {
+                    element
+                        .widget()
+                        .map(|widget| widget.is_hit_test_subtree_visible(element))
+                })
+                .unwrap_or(true)
+        });
+        self.write_bounds_recursive(
+            id,
+            Point::new(translation.x, translation.y),
+            translation,
+            parent_visible,
+            parent_hit_test_visible,
+        );
     }
 
     fn write_bounds_recursive(

@@ -5,13 +5,13 @@
 
 use alloc::vec::Vec;
 
-use kurbo::{Point, Size};
+use kurbo::Point;
 use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
-use understory_overlay::{OverlayEvent, OverlayKey};
+use understory_overlay::{FocusPolicy, OverlayBehavior, OverlayEvent, OverlayKey};
 
 use crate::controls::popup::{Popup, append_overlay_popup};
 use crate::element::ElementId;
-use crate::overlay::{OverlayHost, resolve_placement};
+use crate::overlay::OverlayHost;
 
 use super::Ui;
 
@@ -25,8 +25,22 @@ impl Ui {
     where
         F: FnOnce(&mut Self, ElementId),
     {
-        self.get(target)?;
-        let bounds = self.effective_bounds(target);
+        self.open_popup_with_behavior(target, popup, OverlayBehavior::Popover, build)
+    }
+
+    pub(crate) fn open_popup_with_behavior<F>(
+        &mut self,
+        target: ElementId,
+        popup: Popup,
+        behavior: OverlayBehavior,
+        build: F,
+    ) -> Option<ElementId>
+    where
+        F: FnOnce(&mut Self, ElementId),
+    {
+        if !self.is_overlay_anchor_eligible(target) {
+            return None;
+        }
         let placement = popup.placement_value();
         let offset = popup.offset_value();
         let restore_focus = if popup.restore_focus_on_close_value() {
@@ -34,8 +48,7 @@ impl Ui {
         } else {
             None
         };
-        let origin = resolve_placement(placement, bounds, Size::ZERO, self.last_viewport, offset);
-        let popup_element = append_overlay_popup(self, &popup, origin);
+        let popup_element = append_overlay_popup(self, &popup, Point::ZERO);
         build(self, popup_element);
         self.overlays.open_popup(
             OverlayHost {
@@ -45,9 +58,12 @@ impl Ui {
                 offset,
                 restore_focus,
             },
+            behavior,
             popup.dismiss_on_outside_pointer_value(),
             popup.dismiss_on_escape_value(),
+            popup_focus_policy(behavior, restore_focus.is_some()),
         );
+        self.refresh_overlay_frame();
         Some(popup_element)
     }
 
@@ -73,25 +89,42 @@ impl Ui {
     }
 
     pub(in crate::ui) fn close_overlay_host(&mut self, active: OverlayHost) {
-        let should_restore_focus = match (active.restore_focus, self.focused()) {
-            (Some(restore), Some(focused)) => {
-                self.get(restore).is_some() && self.is_descendant_or_self(focused, active.element)
-            }
-            _ => false,
-        };
+        let focused_inside = self
+            .focused()
+            .is_some_and(|focused| self.is_descendant_or_self(focused, active.element));
+        if focused_inside {
+            let _ = self.set_focus(active.restore_focus);
+        }
         if self.get(active.element).is_some() {
             self.remove(active.element);
-        }
-        if should_restore_focus {
-            let _ = self.set_focus(active.restore_focus);
         }
     }
 
     pub(in crate::ui) fn close_overlay_hosts(&mut self, active: Vec<OverlayHost>) -> bool {
         let changed = !active.is_empty();
+        if self.overlays.frame_needs_refresh() {
+            self.refresh_overlay_frame();
+        }
         for host in active.into_iter().rev() {
             self.close_overlay_host(host);
         }
         changed
+    }
+}
+
+fn popup_focus_policy(behavior: OverlayBehavior, restore: bool) -> FocusPolicy {
+    // A Select keeps real focus on its owner and projects the active option to
+    // its listbox. It therefore has no contained focus scope even though
+    // keyboard-driven menu-family overlays generally do.
+    let contain = behavior != OverlayBehavior::ComboboxPopup
+        && matches!(
+            behavior.focus_policy(),
+            FocusPolicy::Contain | FocusPolicy::ContainAndRestore
+        );
+    match (contain, restore) {
+        (false, false) => FocusPolicy::None,
+        (false, true) => FocusPolicy::RestoreOnClose,
+        (true, false) => FocusPolicy::Contain,
+        (true, true) => FocusPolicy::ContainAndRestore,
     }
 }

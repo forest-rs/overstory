@@ -18,6 +18,7 @@ use accesskit::{
     TreeUpdate,
 };
 use alloc::{string::String, vec::Vec};
+use understory_overlay::OverlayBehavior;
 use understory_property::Property;
 
 use crate::behavior::WidgetEventContext;
@@ -70,6 +71,14 @@ impl<'a> AccessibilityContext<'a> {
     #[must_use]
     pub fn element(&self, id: ElementId) -> Option<&Element> {
         self.ui.get(id)
+    }
+
+    pub(crate) fn has_active_overlay_for(
+        &self,
+        target: ElementId,
+        behavior: OverlayBehavior,
+    ) -> bool {
+        self.ui.active_overlay_for(target, behavior).is_some()
     }
 
     /// Returns the latest computed bounds for `id`.
