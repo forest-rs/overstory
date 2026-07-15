@@ -273,7 +273,7 @@ impl ExpanderWidget {
         self.expanded = expanded;
         sync_expander_state(ui, expander, expanded);
         self.expanded_changed
-            .dispatch(ui, ExpandedChangedEvent { expander, expanded });
+            .dispatch(ui, expander, ExpandedChangedEvent { expander, expanded });
         true
     }
 }

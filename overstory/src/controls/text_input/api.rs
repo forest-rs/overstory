@@ -3,7 +3,7 @@ use alloc::string::String;
 use crate::element::ElementId;
 use crate::ui::Ui;
 
-use super::events::TextInputTextChangeSource;
+use super::events::{TextInputSubmitAction, TextInputTextChangeSource};
 use super::widget::TextInputWidget;
 
 /// Sets whether `input` is read-only.
@@ -25,7 +25,47 @@ pub fn text_input_text(ui: &Ui, input: ElementId) -> Option<String> {
 /// template parts. Use this for programmatic edits such as clearing a composer
 /// after a send action.
 pub fn set_text_input_text(ui: &mut Ui, input: ElementId, text: impl Into<String>) -> bool {
-    let text = text.into();
+    replace_text_input_text(
+        ui,
+        input,
+        text.into(),
+        TextInputTextChangeSource::Programmatic,
+    )
+}
+
+pub(super) fn apply_text_input_submit_action(
+    ui: &mut Ui,
+    input: ElementId,
+    action: TextInputSubmitAction,
+) {
+    let replacement = match action {
+        TextInputSubmitAction::Keep => None,
+        TextInputSubmitAction::Clear => Some(String::new()),
+        TextInputSubmitAction::Replace(text) => Some(text),
+    };
+    let read_only = ui
+        .get(input)
+        .is_some_and(|element| ui.resolve_value_for(element, ui.properties().is_read_only));
+    ui.with_widget_mut(input, |widget, ui| {
+        let Some(widget) = widget.downcast_mut::<TextInputWidget>() else {
+            return;
+        };
+        if let Some(text) = replacement
+            && !read_only
+        {
+            widget.replace_text(ui, input, text, TextInputTextChangeSource::SubmitAction);
+        }
+        widget.edit_session_start = String::from(widget.edit.text());
+        widget.refresh_parts(ui, input);
+    });
+}
+
+fn replace_text_input_text(
+    ui: &mut Ui,
+    input: ElementId,
+    text: String,
+    source: TextInputTextChangeSource,
+) -> bool {
     let mut changed = false;
     ui.with_widget_mut(input, |widget, ui| {
         let Some(widget) = widget.downcast_mut::<TextInputWidget>() else {
@@ -34,7 +74,7 @@ pub fn set_text_input_text(ui: &mut Ui, input: ElementId, text: impl Into<String
         if widget.edit.text() == text {
             return;
         }
-        widget.replace_text(ui, input, text, TextInputTextChangeSource::Programmatic);
+        widget.replace_text(ui, input, text, source);
         widget.edit_session_start = String::from(widget.edit.text());
         widget.refresh_parts(ui, input);
         changed = true;

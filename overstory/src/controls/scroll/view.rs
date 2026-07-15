@@ -304,6 +304,7 @@ impl ScrollViewWidget {
     ) {
         self.offset_changed.dispatch(
             ui,
+            scroll_view,
             ScrollOffsetChangedEvent {
                 scroll_view,
                 previous_offset: change.previous,

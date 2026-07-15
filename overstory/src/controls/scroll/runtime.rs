@@ -183,7 +183,7 @@ fn dispatch_scroll_offset_changed(
         let Some(widget) = widget.downcast_mut::<ScrollViewWidget>() else {
             return;
         };
-        widget.offset_changed.dispatch(ui, event);
+        widget.offset_changed.dispatch(ui, scroll_view, event);
     });
 }
 

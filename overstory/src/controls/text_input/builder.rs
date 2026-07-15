@@ -11,8 +11,8 @@ use super::editor::{TextInputEditState, TextInputPointerState, initial_text_inpu
 use super::events::{
     TextInputEditCommittedEvent, TextInputEditCommittedHandler, TextInputEditCommittedSlot,
     TextInputEditRejectedEvent, TextInputEditRejectedHandler, TextInputEditRejectedSlot,
-    TextInputSubmitAction, TextInputSubmitEvent, TextInputSubmitHandler, TextInputTextChangedEvent,
-    TextInputTextChangedHandler, TextInputTextChangedSlot,
+    TextInputSubmitAction, TextInputSubmitEvent, TextInputSubmitHandler, TextInputSubmitSlot,
+    TextInputTextChangedEvent, TextInputTextChangedHandler, TextInputTextChangedSlot,
 };
 use super::ids::{DEFAULT_FONT_SIZE, TEXT_INPUT_HEIGHT, TEXT_INPUT_WIDTH};
 use super::widget::TextInputWidget;
@@ -231,7 +231,7 @@ impl AppendSpec for TextInput {
             edit,
             pointer: TextInputPointerState::default(),
             edit_session_start: text.clone(),
-            on_submit,
+            submit: TextInputSubmitSlot::new(on_submit),
             text_changed: TextInputTextChangedSlot::new(on_text_changed),
             edit_committed: TextInputEditCommittedSlot::new(on_edit_committed),
             edit_rejected: TextInputEditRejectedSlot::new(on_edit_rejected),

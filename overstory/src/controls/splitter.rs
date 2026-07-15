@@ -22,7 +22,9 @@ use kurbo::Axis;
 use understory_style::TypeTag;
 
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::{PointAxisExt, RectAxisExt, Vec2AxisExt};
+use crate::controls::support::{
+    CallbackSlot, EventHandler, PointAxisExt, RectAxisExt, Vec2AxisExt,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutSize};
@@ -99,7 +101,8 @@ impl SplitterResizeEvent {
     }
 }
 
-type SplitterResizeHandler = Box<dyn FnMut(&mut Ui, SplitterResizeEvent)>;
+type SplitterResizeHandler = EventHandler<SplitterResizeEvent>;
+type SplitterResizeSlot = CallbackSlot<SplitterResizeEvent>;
 
 /// Builder + spec for a draggable splitter.
 pub struct Splitter {
@@ -248,7 +251,7 @@ impl AppendSpec for Splitter {
                 orientation: self.orientation,
                 keyboard_step: self.keyboard_step,
                 keyboard_large_step: self.keyboard_large_step,
-                on_resize: self.on_resize,
+                resize: SplitterResizeSlot::new(self.on_resize),
             }),
         );
         ui.set_layout(id, layout);
@@ -268,7 +271,7 @@ pub(crate) struct SplitterWidget {
     orientation: SplitterOrientation,
     keyboard_step: f64,
     keyboard_large_step: f64,
-    on_resize: Option<SplitterResizeHandler>,
+    resize: SplitterResizeSlot,
 }
 
 impl core::fmt::Debug for SplitterWidget {
@@ -287,7 +290,7 @@ impl Default for SplitterWidget {
             orientation: SplitterOrientation::default(),
             keyboard_step: DEFAULT_KEYBOARD_STEP,
             keyboard_large_step: DEFAULT_KEYBOARD_LARGE_STEP,
-            on_resize: None,
+            resize: SplitterResizeSlot::new(None),
         }
     }
 }
@@ -333,11 +336,10 @@ impl Widget for SplitterWidget {
         }
         let orientation = self.orientation;
         let delta = movement_delta(orientation, event.delta);
-        if delta != 0.0
-            && let Some(handler) = self.on_resize.as_mut()
-        {
-            handler(
+        if delta != 0.0 {
+            self.resize.dispatch(
                 ctx,
+                splitter,
                 SplitterResizeEvent {
                     splitter,
                     orientation,
@@ -380,20 +382,19 @@ impl Widget for SplitterWidget {
             | (Key::Named(NamedKey::ArrowDown), SplitterOrientation::Horizontal) => step,
             _ => return,
         };
-        if let Some(handler) = self.on_resize.as_mut() {
-            let position = ctx.effective_bounds(splitter).origin();
-            handler(
-                ctx,
-                SplitterResizeEvent {
-                    splitter,
-                    orientation,
-                    delta,
-                    total_delta: delta,
-                    position,
-                    press_position: position,
-                },
-            );
-        }
+        let position = ctx.effective_bounds(splitter).origin();
+        self.resize.dispatch(
+            ctx,
+            splitter,
+            SplitterResizeEvent {
+                splitter,
+                orientation,
+                delta,
+                total_delta: delta,
+                position,
+                press_position: position,
+            },
+        );
         event.mark_handled();
     }
 }

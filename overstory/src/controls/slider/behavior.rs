@@ -52,6 +52,7 @@ impl SliderWidget {
         };
         self.value_changed.dispatch(
             ui,
+            slider,
             SliderValueChangedEvent {
                 element: slider,
                 previous_value: change.previous_value,

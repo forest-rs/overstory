@@ -516,6 +516,7 @@ fn dispatch_tab_view_close_request(
     };
     close_requested.dispatch(
         ui,
+        tab_view,
         TabViewCloseRequestedEvent {
             tab_view,
             key: event.key,

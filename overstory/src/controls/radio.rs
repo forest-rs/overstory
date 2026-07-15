@@ -583,6 +583,7 @@ impl RadioGroupWidget {
         }
         self.selection_changed.dispatch(
             ui,
+            group,
             RadioSelectionChangedEvent {
                 group,
                 selected_index: index,

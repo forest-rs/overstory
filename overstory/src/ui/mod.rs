@@ -50,6 +50,7 @@ use crate::overlay::OverlayRuntime;
 use crate::presentation_runtime::PresentationRuntime;
 use crate::properties::BuiltInProperties;
 use crate::scroll_runtime::ScrollRuntime;
+use crate::semantic_callback_runtime::SemanticCallbackRuntime;
 use crate::style_runtime::StyleRuntime;
 use crate::template::TemplateRuntime;
 use crate::text::{TextEngine, TextLayoutCacheStats, TextResources};
@@ -68,6 +69,7 @@ mod popups;
 mod property_changes;
 mod responder;
 mod scroll;
+mod semantic_callbacks;
 mod state;
 mod style;
 mod style_vocabulary;
@@ -140,6 +142,8 @@ pub struct Ui {
     overlays: OverlayRuntime,
     /// Scrollable target registry shared by scrollbars and semantic actions.
     scrolling: ScrollRuntime,
+    /// FIFO application callbacks deferred until toolkit widget behavior settles.
+    semantic_callbacks: SemanticCallbackRuntime,
     /// Cheap counters for the current or most recently prepared frame.
     frame_stats: UiFrameStats,
     /// Live inspection change accumulator drained by devtools/hosts.
@@ -327,6 +331,7 @@ impl Ui {
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
             scrolling: ScrollRuntime::new(),
+            semantic_callbacks: SemanticCallbackRuntime::default(),
             frame_stats: UiFrameStats::default(),
             inspection_changes: InspectionChangeRuntime::default(),
             style_vocabulary: StyleVocabulary::new(),

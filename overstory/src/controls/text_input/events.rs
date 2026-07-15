@@ -1,4 +1,5 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String};
+use core::cell::RefCell;
 
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::ElementId;
@@ -6,6 +7,43 @@ use crate::ui::Ui;
 
 pub(super) type TextInputSubmitHandler =
     Box<dyn FnMut(&mut Ui, TextInputSubmitEvent) -> TextInputSubmitAction>;
+
+#[derive(Clone)]
+pub(super) struct TextInputSubmitSlot {
+    handler: Rc<RefCell<Option<TextInputSubmitHandler>>>,
+}
+
+impl TextInputSubmitSlot {
+    pub(super) fn new(handler: Option<TextInputSubmitHandler>) -> Self {
+        Self {
+            handler: Rc::new(RefCell::new(handler)),
+        }
+    }
+
+    pub(super) fn has_handler(&self) -> bool {
+        self.handler.borrow().is_some()
+    }
+
+    pub(super) fn dispatch(&self, ui: &mut Ui, event: TextInputSubmitEvent) {
+        let slot = self.clone();
+        ui.enqueue_semantic_callback(event.input, move |ui| slot.dispatch_now(ui, event));
+    }
+
+    fn dispatch_now(&self, ui: &mut Ui, event: TextInputSubmitEvent) {
+        let input = event.input;
+        let callback = self.handler.borrow_mut().take();
+        let action = if let Some(mut callback) = callback {
+            let action = callback(ui, event);
+            if self.handler.borrow().is_none() {
+                *self.handler.borrow_mut() = Some(callback);
+            }
+            action
+        } else {
+            TextInputSubmitAction::Keep
+        };
+        super::api::apply_text_input_submit_action(ui, input, action);
+    }
+}
 pub(super) type TextInputTextChangedHandler = EventHandler<TextInputTextChangedEvent>;
 pub(super) type TextInputTextChangedSlot = CallbackSlot<TextInputTextChangedEvent>;
 pub(super) type TextInputEditCommittedHandler = EventHandler<TextInputEditCommittedEvent>;

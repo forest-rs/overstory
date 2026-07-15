@@ -1047,6 +1047,7 @@ impl OutlineViewWidget {
         let _ = self.sync_virtual_items(outline, ui);
         self.expansion_changed.dispatch(
             ui,
+            outline,
             OutlineExpansionChangedEvent {
                 outline,
                 key,
@@ -1067,6 +1068,7 @@ impl OutlineViewWidget {
         if changed {
             self.selection_changed.dispatch(
                 ui,
+                outline,
                 OutlineSelectionChangedEvent {
                     outline,
                     selected_key: self.selected_key(),

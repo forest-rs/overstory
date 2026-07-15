@@ -1,5 +1,5 @@
 use alloc::{rc::Rc, string::String, vec::Vec};
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
 use super::widget::text_input_text_run_node_id;
 use super::*;
@@ -136,6 +136,79 @@ fn text_input_text_changed_reports_programmatic_and_accessibility_sources() {
                 source: TextInputTextChangeSource::Accessibility,
             },
         ]
+    );
+}
+
+#[test]
+fn text_changed_handler_can_query_and_mutate_same_input() {
+    let input_id = Rc::new(Cell::new(None));
+    let input_id_for_handler = Rc::clone(&input_id);
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let observations_for_handler = Rc::clone(&observations);
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let input = ui.append(
+        root,
+        TextInput::new().on_text_changed(move |ui, event| {
+            let input = input_id_for_handler
+                .get()
+                .expect("text input id is installed before text changes");
+            observations_for_handler.borrow_mut().push((
+                ui.get(input).and_then(|element| element.widget()).is_some(),
+                text_input_text(ui, input),
+                event.text.clone(),
+            ));
+            if event.text == "first" {
+                assert!(set_text_input_text(ui, input, "second"));
+            }
+        }),
+    );
+    input_id.set(Some(input));
+
+    assert!(set_text_input_text(&mut ui, input, "first"));
+
+    assert_eq!(
+        observations.borrow().as_slice(),
+        [
+            (true, Some(String::from("first")), String::from("first")),
+            (true, Some(String::from("second")), String::from("second")),
+        ]
+    );
+    assert_eq!(text_input_text(&ui, input).as_deref(), Some("second"));
+}
+
+#[test]
+fn submit_handler_can_mutate_same_input_before_submit_action() {
+    let input_id = Rc::new(Cell::new(None));
+    let input_id_for_handler = Rc::clone(&input_id);
+    let widget_was_installed = Rc::new(Cell::new(false));
+    let widget_was_installed_for_handler = Rc::clone(&widget_was_installed);
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let input = ui.append(
+        root,
+        TextInput::new()
+            .text("send me")
+            .on_submit(move |ui, _event| {
+                let input = input_id_for_handler
+                    .get()
+                    .expect("text input id is installed before submission");
+                widget_was_installed_for_handler
+                    .set(ui.get(input).and_then(|element| element.widget()).is_some());
+                assert!(set_text_input_text(ui, input, "handler edit"));
+                TextInputSubmitAction::Replace(String::from("submit action"))
+            }),
+    );
+    input_id.set(Some(input));
+    ui.set_focus(Some(input));
+
+    let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+    assert!(ui.dispatch_key(&enter).handled);
+
+    assert!(widget_was_installed.get());
+    assert_eq!(
+        text_input_text(&ui, input).as_deref(),
+        Some("submit action")
     );
 }
 

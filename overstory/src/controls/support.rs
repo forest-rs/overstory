@@ -80,7 +80,7 @@ impl<E> Clone for CallbackSlot<E> {
     }
 }
 
-impl<E> CallbackSlot<E> {
+impl<E: 'static> CallbackSlot<E> {
     pub(crate) fn new(handler: Option<EventHandler<E>>) -> Self {
         Self {
             handler: Rc::new(RefCell::new(handler)),
@@ -91,7 +91,12 @@ impl<E> CallbackSlot<E> {
         self.handler.borrow().is_some()
     }
 
-    pub(crate) fn dispatch(&self, ui: &mut Ui, event: E) {
+    pub(crate) fn dispatch(&self, ui: &mut Ui, source: ElementId, event: E) {
+        let slot = self.clone();
+        ui.enqueue_semantic_callback(source, move |ui| slot.dispatch_now(ui, event));
+    }
+
+    fn dispatch_now(&self, ui: &mut Ui, event: E) {
         let Some(mut callback) = self.handler.borrow_mut().take() else {
             return;
         };
@@ -120,7 +125,7 @@ pub(crate) fn dispatch_checked_changed(
     handler: &CheckedChangedSlot,
     event: CheckedChangedEvent,
 ) {
-    handler.dispatch(ui, event);
+    handler.dispatch(ui, event.element, event);
 }
 
 pub(crate) fn is_descendant_or_self(ui: &Ui, descendant: ElementId, ancestor: ElementId) -> bool {

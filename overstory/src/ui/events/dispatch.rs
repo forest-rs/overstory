@@ -51,18 +51,20 @@ impl Ui {
         dispatch: Vec<UiDispatchStep>,
         mut dispatch_current: impl FnMut(&mut Self, RoutedEventContext<'_>),
     ) -> RoutedDispatchResult {
-        let state = RoutedEventState::new();
-        let origin = self.routed_event_origin(source);
-        let _ = dispatcher::run(&dispatch, self, |step, ui| {
-            let route = RoutedEventContext::new(kind, origin, step, &state);
-            dispatch_current(ui, route);
-            if state.should_stop_route() {
-                Outcome::Stop
-            } else {
-                Outcome::Continue
-            }
-        });
-        RoutedDispatchResult::from_state(&state)
+        self.with_semantic_callback_boundary(|ui| {
+            let state = RoutedEventState::new();
+            let origin = ui.routed_event_origin(source);
+            let _ = dispatcher::run(&dispatch, ui, |step, ui| {
+                let route = RoutedEventContext::new(kind, origin, step, &state);
+                dispatch_current(ui, route);
+                if state.should_stop_route() {
+                    Outcome::Stop
+                } else {
+                    Outcome::Continue
+                }
+            });
+            RoutedDispatchResult::from_state(&state)
+        })
     }
 
     fn routed_event_origin(&self, source: ElementId) -> RoutedEventOrigin {
@@ -88,15 +90,17 @@ impl Ui {
         id: ElementId,
         dispatch: impl FnOnce(&mut dyn Widget, &mut Self),
     ) {
-        let Some(mut widget) = self.elements.get_mut(id).and_then(Element::take_widget) else {
-            return;
-        };
+        self.with_semantic_callback_boundary(|ui| {
+            let Some(mut widget) = ui.elements.get_mut(id).and_then(Element::take_widget) else {
+                return;
+            };
 
-        dispatch(widget.as_mut(), self);
+            dispatch(widget.as_mut(), ui);
 
-        if let Some(element) = self.elements.get_mut(id) {
-            element.restore_widget(widget);
-        }
+            if let Some(element) = ui.elements.get_mut(id) {
+                element.restore_widget(widget);
+            }
+        });
     }
 
     fn dispatch_handler_registration<E, F>(

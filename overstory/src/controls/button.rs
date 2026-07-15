@@ -217,6 +217,7 @@ impl ButtonWidget {
     fn activate(&self, ui: &mut Ui, button: ElementId, source: ActivationSource) {
         self.activated.dispatch(
             ui,
+            button,
             ButtonActivatedEvent {
                 element: button,
                 source,
@@ -321,9 +322,13 @@ fn button_template_spec() -> TemplateSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event_runtime::{RoutedHandlerOptions, RoutedHandlerScope};
+    use crate::layouts::Layout;
     use accesskit::{Action, ActionRequest, TreeId};
     use alloc::rc::Rc;
-    use core::cell::Cell;
+    use alloc::vec::Vec;
+    use core::cell::{Cell, RefCell};
+    use kurbo::Size;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
     #[test]
@@ -344,6 +349,78 @@ mod tests {
 
         assert!(result.handled);
         assert_eq!(observed.get(), Some((button, ActivationSource::Keyboard)));
+    }
+
+    #[test]
+    fn activation_runs_after_widget_restoration_and_routed_behavior() {
+        let button_id = Rc::new(Cell::new(None));
+        let button_id_for_handler = Rc::clone(&button_id);
+        let order = Rc::new(RefCell::new(Vec::new()));
+        let order_for_activation = Rc::clone(&order);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(
+            root,
+            Button::new("Run").on_activate(move |ui, _event| {
+                let button = button_id_for_handler
+                    .get()
+                    .expect("button id is installed before activation");
+                assert!(
+                    ui.get(button).and_then(Element::widget).is_some(),
+                    "semantic callbacks must observe their widget installed"
+                );
+                ui.add_class(button, ".activated");
+                ui.set_layout(button, Layout::new().logical_size(120.0, 32.0));
+                ui.compute_layout(Size::new(300.0, 100.0));
+                order_for_activation.borrow_mut().push("semantic");
+            }),
+        );
+        button_id.set(Some(button));
+        let order_for_bubble = Rc::clone(&order);
+        ui.events(root).key_with_options(
+            RoutedHandlerOptions::new()
+                .scope(RoutedHandlerScope::Bubble)
+                .handled_events_too(true),
+            move |_ui, _event| order_for_bubble.borrow_mut().push("bubble"),
+        );
+        ui.set_focus(Some(button));
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert_eq!(order.borrow().as_slice(), ["bubble", "semantic"]);
+        let activated = ui.style_vocabulary_mut().class_id(".activated");
+        assert!(ui.get(button).unwrap().classes().contains(&activated));
+        assert_eq!(ui.effective_bounds(button).width(), 120.0);
+    }
+
+    #[test]
+    fn activation_is_cancelled_if_routed_behavior_removes_button() {
+        let activations = Rc::new(Cell::new(0));
+        let activations_for_handler = Rc::clone(&activations);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(
+            root,
+            Button::new("Run").on_activate(move |_ui, _event| {
+                activations_for_handler.set(activations_for_handler.get() + 1);
+            }),
+        );
+        ui.events(root).key_with_options(
+            RoutedHandlerOptions::new()
+                .scope(RoutedHandlerScope::Bubble)
+                .handled_events_too(true),
+            move |ui, _event| ui.remove(button),
+        );
+        ui.set_focus(Some(button));
+
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+        let result = ui.dispatch_key(&key);
+
+        assert!(result.handled);
+        assert!(ui.get(button).is_none());
+        assert_eq!(activations.get(), 0);
     }
 
     #[test]

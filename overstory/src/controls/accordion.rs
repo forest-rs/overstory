@@ -443,6 +443,7 @@ impl AccordionSectionWidget {
         if notify {
             self.expanded_changed.dispatch(
                 ui,
+                section,
                 AccordionExpandedChangedEvent {
                     accordion,
                     section,

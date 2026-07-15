@@ -945,6 +945,7 @@ impl ListBoxWidget {
         if changed {
             self.selection_changed.dispatch(
                 ui,
+                listbox,
                 ListSelectionChangedEvent {
                     listbox,
                     selected_indices: self.selected_indices(),

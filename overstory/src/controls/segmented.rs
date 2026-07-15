@@ -373,6 +373,7 @@ impl SegmentedControlWidget {
         }
         self.selection_changed.dispatch(
             ui,
+            segmented,
             SegmentedSelectionChangedEvent {
                 segmented,
                 selected_index: index,

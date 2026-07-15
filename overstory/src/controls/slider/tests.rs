@@ -67,6 +67,46 @@ fn slider_value_changed_reports_keyboard_step() {
 }
 
 #[test]
+fn value_changed_handler_can_query_and_mutate_same_slider() {
+    let slider_id = Rc::new(Cell::new(None));
+    let slider_id_for_handler = Rc::clone(&slider_id);
+    let observation = Rc::new(Cell::new(None));
+    let observation_for_handler = Rc::clone(&observation);
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let slider = ui.append(
+        root,
+        Slider::new()
+            .range(0.0, 10.0)
+            .step(2.0)
+            .value(4.0)
+            .on_value_changed(move |ui, event| {
+                let slider = slider_id_for_handler
+                    .get()
+                    .expect("slider id is installed before value changes");
+                observation_for_handler.set(Some((
+                    ui.get(slider)
+                        .and_then(|element| element.widget())
+                        .is_some(),
+                    event.value,
+                    set_slider_value(ui, slider, 8.0),
+                )));
+            }),
+    );
+    slider_id.set(Some(slider));
+    ui.set_focus(Some(slider));
+
+    let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+    assert!(ui.dispatch_key(&right).handled);
+
+    assert_eq!(observation.get(), Some((true, 6.0, true)));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(slider).unwrap(), ui.properties().value),
+        8.0
+    );
+}
+
+#[test]
 fn slider_value_changed_reports_accessibility_set_value() {
     let observed = Rc::new(Cell::new(None));
     let observed_for_handler = Rc::clone(&observed);

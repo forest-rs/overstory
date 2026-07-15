@@ -18,7 +18,7 @@ use super::editor::{
 use super::events::{
     TextInputEditCommitReason, TextInputEditCommittedEvent, TextInputEditCommittedSlot,
     TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputEditRejectedSlot,
-    TextInputSubmitAction, TextInputSubmitEvent, TextInputSubmitHandler, TextInputTextChangeSource,
+    TextInputSubmitEvent, TextInputSubmitSlot, TextInputTextChangeSource,
     TextInputTextChangedEvent, TextInputTextChangedSlot,
 };
 use super::ids::{
@@ -32,7 +32,7 @@ pub(crate) struct TextInputWidget {
     pub(super) edit: TextInputEditState,
     pub(super) pointer: TextInputPointerState,
     pub(super) edit_session_start: String,
-    pub(super) on_submit: Option<TextInputSubmitHandler>,
+    pub(super) submit: TextInputSubmitSlot,
     pub(super) text_changed: TextInputTextChangedSlot,
     pub(super) edit_committed: TextInputEditCommittedSlot,
     pub(super) edit_rejected: TextInputEditRejectedSlot,
@@ -42,7 +42,7 @@ impl core::fmt::Debug for TextInputWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TextInputWidget")
             .field("placeholder", &self.placeholder)
-            .field("has_submit_handler", &self.on_submit.is_some())
+            .field("has_submit_handler", &self.submit.has_handler())
             .field("has_text_changed_handler", &self.text_changed.has_handler())
             .field(
                 "has_edit_committed_handler",
@@ -424,14 +424,7 @@ fn text_word_starts(text: &str) -> Vec<u8> {
 impl TextInputWidget {
     fn submit(&mut self, ctx: &mut WidgetEventContext<'_>, input: ElementId) {
         let submit = TextInputSubmitEvent::new(input, self.edit.text());
-        let action = self
-            .on_submit
-            .as_mut()
-            .map(|handler| handler(ctx.ui_mut(), submit))
-            .unwrap_or_default();
-        self.apply_submit_action(ctx, input, action);
-        self.edit_session_start = String::from(self.edit.text());
-        self.refresh_parts(ctx, input);
+        self.submit.dispatch(ctx, submit);
     }
 
     fn commit_content(&self, ui: &mut Ui, input: ElementId) {
@@ -453,6 +446,7 @@ impl TextInputWidget {
         self.commit_content(ui, input);
         self.text_changed.dispatch(
             ui,
+            input,
             TextInputTextChangedEvent::new(input, previous_text, text, source),
         );
         true
@@ -476,31 +470,6 @@ impl TextInputWidget {
         self.commit_content_changed(ui, input, previous_text, source)
     }
 
-    fn apply_submit_action(
-        &mut self,
-        ctx: &mut WidgetEventContext<'_>,
-        input: ElementId,
-        action: TextInputSubmitAction,
-    ) {
-        if read_only_from_ctx(ctx) {
-            return;
-        }
-        match action {
-            TextInputSubmitAction::Keep => {}
-            TextInputSubmitAction::Clear => {
-                self.replace_text(
-                    ctx,
-                    input,
-                    String::new(),
-                    TextInputTextChangeSource::SubmitAction,
-                );
-            }
-            TextInputSubmitAction::Replace(text) => {
-                self.replace_text(ctx, input, text, TextInputTextChangeSource::SubmitAction);
-            }
-        }
-    }
-
     fn commit_edit_session(
         &mut self,
         ui: &mut Ui,
@@ -515,6 +484,7 @@ impl TextInputWidget {
         self.edit_session_start = text.clone();
         self.edit_committed.dispatch(
             ui,
+            input,
             TextInputEditCommittedEvent {
                 input,
                 previous_text,
@@ -544,6 +514,7 @@ impl TextInputWidget {
         self.edit_session_start = restored_text.clone();
         self.edit_rejected.dispatch(
             ui,
+            input,
             TextInputEditRejectedEvent {
                 input,
                 restored_text,

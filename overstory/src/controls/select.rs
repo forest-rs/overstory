@@ -637,7 +637,7 @@ fn dispatch_select_selection_changed(
     event: SelectSelectionChangedEvent,
 ) {
     if let Some(handler) = handler {
-        handler.dispatch(ui, event);
+        handler.dispatch(ui, event.select, event);
     }
 }
 
@@ -690,7 +690,7 @@ mod tests {
     use crate::controls::list::{realized_list_item, selected_list_index};
     use accesskit::{Action, ActionRequest, HasPopup, Node, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
-    use core::cell::RefCell;
+    use core::cell::{Cell, RefCell};
     use kurbo::{Point, Size};
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
@@ -871,6 +871,95 @@ mod tests {
             seen.borrow().as_slice(),
             &[(Some(2), Some(String::from("Ready")))]
         );
+    }
+
+    #[test]
+    fn selection_changed_handler_can_query_and_mutate_same_select() {
+        let select_id = Rc::new(Cell::new(None));
+        let select_id_for_handler = Rc::clone(&select_id);
+        let callback_observation = Rc::new(RefCell::new(None));
+        let callback_observation_for_handler = Rc::clone(&callback_observation);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            test_select().on_selection_changed(move |ui, event| {
+                if event.selected_index != Some(1) {
+                    return;
+                }
+                let select = select_id_for_handler
+                    .get()
+                    .expect("select id is installed before selection changes");
+                *callback_observation_for_handler.borrow_mut() = Some((
+                    selected_select_index(ui, select),
+                    set_select_index(ui, select, 2),
+                ));
+            }),
+        );
+        select_id.set(Some(select));
+
+        assert!(set_select_index(&mut ui, select, 1));
+
+        assert_eq!(*callback_observation.borrow(), Some((Some(1), true)));
+        assert_eq!(selected_select_index(&ui, select), Some(2));
+    }
+
+    #[test]
+    fn selection_changed_handler_can_remove_and_replace_same_select() {
+        let select_id = Rc::new(Cell::new(None));
+        let select_id_for_handler = Rc::clone(&select_id);
+        let replacement_id = Rc::new(Cell::new(None));
+        let replacement_id_for_handler = Rc::clone(&replacement_id);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            test_select().on_selection_changed(move |ui, _event| {
+                let select = select_id_for_handler
+                    .get()
+                    .expect("select id is installed before selection changes");
+                assert!(ui.get(select).and_then(Element::widget).is_some());
+                ui.remove(select);
+                replacement_id_for_handler
+                    .set(Some(ui.append(root, test_select().selected_index(2))));
+            }),
+        );
+        select_id.set(Some(select));
+
+        assert!(set_select_index(&mut ui, select, 1));
+
+        let replacement = replacement_id
+            .get()
+            .expect("handler should append a replacement");
+        assert!(ui.get(select).is_none());
+        assert_ne!(replacement, select);
+        assert_eq!(selected_select_index(&ui, replacement), Some(2));
+    }
+
+    #[test]
+    #[should_panic(expected = "semantic callback dispatch did not converge")]
+    fn cyclic_selection_callbacks_fail_at_the_semantic_budget() {
+        let select_id = Rc::new(Cell::new(None));
+        let select_id_for_handler = Rc::clone(&select_id);
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let select = ui.append(
+            root,
+            test_select().on_selection_changed(move |ui, event| {
+                let select = select_id_for_handler
+                    .get()
+                    .expect("select id is installed before selection changes");
+                let next = if event.selected_index == Some(1) {
+                    2
+                } else {
+                    1
+                };
+                assert!(set_select_index(ui, select, next));
+            }),
+        );
+        select_id.set(Some(select));
+
+        let _ = set_select_index(&mut ui, select, 1);
     }
 
     #[test]

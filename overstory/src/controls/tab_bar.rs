@@ -536,6 +536,7 @@ impl TabBarWidget {
         ui.set_local(tab_bar, ui.properties().selected_index, Some(index));
         self.changed.dispatch(
             ui,
+            tab_bar,
             TabSelectionChangedEvent {
                 tab_bar,
                 selected_key: Some(key),
@@ -682,7 +683,7 @@ fn dispatch_close_request(ui: &mut Ui, tab_bar: ElementId, key: TabKey, tab: Ele
     else {
         return;
     };
-    close_requested.dispatch(ui, TabCloseRequestedEvent { tab_bar, key, tab });
+    close_requested.dispatch(ui, tab_bar, TabCloseRequestedEvent { tab_bar, key, tab });
 }
 
 fn rebuild_items(ui: &mut Ui, tab_bar: ElementId) {

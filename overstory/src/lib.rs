@@ -48,6 +48,20 @@
 //!   style properties, handle semantic control callbacks, and use raw routed
 //!   events only when custom input behavior needs them.
 //!
+//! # Semantic callback ordering
+//!
+//! Control callbacks run after the emitting widget has been restored to its
+//! retained element. For callbacks caused by routed input, Overstory first
+//! completes the route and its toolkit behavior. Delivery is still synchronous:
+//! callbacks and any nested semantic changes settle before the outer dispatch or
+//! direct mutation returns.
+//!
+//! Nested callbacks are delivered in FIFO order. A pending callback is discarded
+//! if its emitting element is removed or no longer has a widget before delivery.
+//! Reparenting does not cancel it. Repeated callbacks that do not converge panic
+//! at a bounded dispatch budget instead of leaving a synchronous operation only
+//! partially settled.
+//!
 //! Detailed roadmap tickets live under `.tickets/`; see epic `ove-p3tl`.
 
 #[cfg(any(feature = "std", test))]
@@ -85,6 +99,7 @@ mod properties;
 pub mod pseudos;
 mod scroll_runtime;
 pub mod selectors;
+mod semantic_callback_runtime;
 mod spec_ext;
 mod style_class;
 mod style_runtime;
