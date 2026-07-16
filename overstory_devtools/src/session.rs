@@ -157,12 +157,19 @@ impl DevtoolsSession {
 
         let tree_topology_changed =
             !changes.tree.removed.is_empty() || !changes.tree.upserted.is_empty();
+        let overlays_changed = changes.overlays.is_some();
         let previous_tree = tree_topology_changed.then(|| self.snapshot.inspection_element_tree());
         self.snapshot.apply_inspection_changes(changes);
         self.normalize_selected_element();
         let Some(previous_tree) = previous_tree else {
-            return Some(DevtoolsEvent::TargetChanged {
-                selected: self.selected_element,
+            return Some(if overlays_changed {
+                DevtoolsEvent::OverlaysChanged {
+                    selected: self.selected_element,
+                }
+            } else {
+                DevtoolsEvent::TargetChanged {
+                    selected: self.selected_element,
+                }
             });
         };
 
@@ -413,6 +420,10 @@ fn inspection_stream_item_for_event(event: DevtoolsEvent) -> InspectionStreamIte
             InspectionSubsystem::Elements,
             InspectionUpdateReason::TargetChanged,
         )),
+        DevtoolsEvent::OverlaysChanged { .. } => InspectionStreamItem::Delta(InspectionDelta::new(
+            InspectionSubsystem::Overlays,
+            InspectionUpdateReason::TargetChanged,
+        )),
         DevtoolsEvent::ElementTreePatched { tree_patch, .. } => {
             InspectionStreamItem::ElementTreePatch(tree_patch)
         }
@@ -465,6 +476,12 @@ pub enum DevtoolsEvent {
     /// Target details changed without changing the projected element tree.
     #[cfg(feature = "spoor-session")]
     TargetChanged {
+        /// Selection after stale ids were normalized.
+        selected: Option<ElementId>,
+    },
+    /// Overlay state changed without changing the projected element tree.
+    #[cfg(feature = "spoor-session")]
+    OverlaysChanged {
         /// Selection after stale ids were normalized.
         selected: Option<ElementId>,
     },

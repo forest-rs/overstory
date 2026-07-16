@@ -11,7 +11,7 @@ use understory_overlay::{
 };
 
 use crate::element::ElementId;
-use crate::overlay::{anchor_id, element_token};
+use crate::overlay::{OverlayHost, anchor_id, element_token};
 
 use super::Ui;
 
@@ -21,9 +21,11 @@ impl Ui {
         if self.overlays.frame_needs_refresh() {
             self.refresh_overlay_frame();
         }
-        for element in removed {
-            if element != id && self.get(element).is_some() {
-                self.remove(element);
+        for host in removed.into_iter().rev() {
+            if host.element == id {
+                self.release_overlay_host_state(host);
+            } else {
+                self.close_overlay_host(host);
             }
         }
     }
@@ -51,9 +53,11 @@ impl Ui {
     }
 
     pub(in crate::ui) fn refresh_overlay_frame(&mut self) {
-        let geometries = self
-            .overlays
-            .active_entries()
+        let active = self.overlays.active_entries().collect::<Vec<_>>();
+        self.sync_overlay_hit_order(&active);
+        let geometries = active
+            .iter()
+            .copied()
             .filter_map(|entry| {
                 if self.get(entry.target).is_none() || self.get(entry.element).is_none() {
                     return None;
@@ -69,6 +73,33 @@ impl Ui {
             &geometries,
         );
         self.overlays.rebuild_frame(input);
+        self.inspection_changes.record_overlays();
+    }
+
+    fn sync_overlay_hit_order(&mut self, active: &[OverlayHost]) {
+        // Box-tree hit testing compares z-index before tree depth. Apply the
+        // overlay stack's order to each whole retained overlay subtree so deep
+        // application content cannot receive input through a painted overlay.
+        for (index, host) in active.iter().enumerate() {
+            let z_index = i32::try_from(index.saturating_add(1)).unwrap_or(i32::MAX);
+            let mut pending = Vec::from([host.element]);
+            while let Some(element) = pending.pop() {
+                self.geometry.set_z_index(element, z_index);
+                if let Some(element) = self.get(element) {
+                    pending.extend(element.children().iter().copied());
+                }
+            }
+        }
+    }
+
+    pub(in crate::ui) fn update_overlay_pointer(&mut self, point: Point) {
+        self.overlays.set_pointer(point);
+    }
+
+    pub(crate) fn begin_submenu_pointer_grace(&mut self, target: ElementId) {
+        if self.overlays.begin_submenu_grace(target) {
+            self.refresh_overlay_frame();
+        }
     }
 
     pub(in crate::ui) fn apply_overlay_event(&mut self, event: OverlayEvent) -> bool {
@@ -117,6 +148,53 @@ impl Ui {
         self.overlays
             .active_for_target(target, behavior)
             .map(|host| host.element)
+    }
+
+    pub(crate) fn active_overlay_content_for(
+        &self,
+        target: ElementId,
+        behavior: OverlayBehavior,
+    ) -> Option<ElementId> {
+        self.overlays
+            .active_for_target(target, behavior)
+            .map(|host| host.content)
+    }
+
+    pub(crate) fn containing_overlay_for(&self, descendant: ElementId) -> Option<ElementId> {
+        self.overlays
+            .active_entries()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .find(|host| self.is_descendant_or_self(descendant, host.element))
+            .map(|host| host.element)
+    }
+
+    pub(crate) fn overlay_tree_anchor(&self, popup: ElementId) -> Option<ElementId> {
+        self.overlays.root_of(popup).map(|host| host.target)
+    }
+
+    pub(crate) fn overlay_ancestor_targets(&self, descendant: ElementId) -> Vec<ElementId> {
+        self.containing_overlay_for(descendant)
+            .map_or_else(Vec::new, |popup| self.overlays.targets_to_root(popup))
+    }
+
+    pub(crate) fn active_descendant_for_overlay_content(
+        &self,
+        content: ElementId,
+    ) -> Option<ElementId> {
+        let focused = self.focused()?;
+        if self.is_descendant_or_self(focused, content) {
+            return Some(focused);
+        }
+        let owner = self.overlays.active_for_content(content)?;
+        let focused_popup = self.containing_overlay_for(focused)?;
+        self.overlays
+            .child_anchor_towards(owner.element, focused_popup)
+    }
+
+    pub(crate) fn pointer_keeps_submenu_open(&self, target: ElementId) -> bool {
+        self.overlays.pointer_keeps_submenu_open(target)
     }
 
     fn overlay_focus_target(&self, focused: Option<ElementId>) -> FocusTarget {

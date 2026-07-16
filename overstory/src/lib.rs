@@ -166,6 +166,12 @@ pub use controls::list::{
     list_scroll_offset_y, realized_list_item_index, scroll_list_index_into_view, select_list_index,
     selected_list_index, selected_list_indices, set_list_scroll_offset_y,
 };
+pub use controls::menu::{
+    Menu, MenuButton, MenuItem, MenuItemActivatedEvent, PART_MENU_BUTTON_INDICATOR,
+    PART_MENU_BUTTON_LABEL, PART_MENU_ITEM_INDICATOR, PART_MENU_ITEM_LABEL,
+    SLOT_MENU_BUTTON_INDICATOR, SLOT_MENU_BUTTON_LABEL, SLOT_MENU_ITEM_INDICATOR,
+    SLOT_MENU_ITEM_LABEL, TYPE_MENU, TYPE_MENU_BUTTON, TYPE_MENU_ITEM,
+};
 pub use controls::outline::{
     OutlineExpansionChangedEvent, OutlineItemInfo, OutlineNodeKey, OutlineSelectionChangedEvent,
     OutlineView, OutlineViewNode, OutlineViewScrollArea, PART_OUTLINE_ITEM_CONTENT,
@@ -311,10 +317,11 @@ pub mod prelude {
         ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
-        IndexedStack, Layout, ListBox, ListItemContext, LocalState, OutlineView, Panel, PartTag,
-        PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot, PresentationTarget,
-        PresentationValue, PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId,
-        RadioButton, RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
+        IndexedStack, Layout, ListBox, ListItemContext, LocalState, Menu, MenuButton, MenuItem,
+        MenuItemActivatedEvent, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
+        PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
+        PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
+        RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
         ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
         SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
         Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,

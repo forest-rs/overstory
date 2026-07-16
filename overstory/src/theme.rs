@@ -77,6 +77,11 @@ use crate::controls::expander::{
 use crate::controls::list::{
     PART_LIST_ITEM_CONTENT, TYPE_LIST_BOX, TYPE_LIST_ITEM, default_list_item_template,
 };
+use crate::controls::menu::{
+    PART_MENU_BUTTON_INDICATOR, PART_MENU_BUTTON_LABEL, PART_MENU_ITEM_INDICATOR,
+    PART_MENU_ITEM_LABEL, TYPE_MENU, TYPE_MENU_BUTTON, TYPE_MENU_ITEM,
+    default_menu_button_template, default_menu_item_template,
+};
 use crate::controls::outline::{
     PART_OUTLINE_ITEM_CONTENT, PART_OUTLINE_ITEM_DISCLOSURE, PART_OUTLINE_ITEM_LABEL,
     TYPE_OUTLINE_ITEM, TYPE_OUTLINE_VIEW, default_outline_item_template,
@@ -184,6 +189,14 @@ const SELECT_INDICATOR_PART: TemplatePartSelector =
     selectors::template_part(TYPE_SELECT, PART_SELECT_INDICATOR);
 const LIST_ITEM_CONTENT_PART: TemplatePartSelector =
     selectors::template_part(TYPE_LIST_ITEM, PART_LIST_ITEM_CONTENT);
+const MENU_BUTTON_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_MENU_BUTTON, PART_MENU_BUTTON_LABEL);
+const MENU_BUTTON_INDICATOR_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_MENU_BUTTON, PART_MENU_BUTTON_INDICATOR);
+const MENU_ITEM_LABEL_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_MENU_ITEM, PART_MENU_ITEM_LABEL);
+const MENU_ITEM_INDICATOR_PART: TemplatePartSelector =
+    selectors::template_part(TYPE_MENU_ITEM, PART_MENU_ITEM_INDICATOR);
 const OUTLINE_ITEM_CONTENT_PART: TemplatePartSelector =
     selectors::template_part(TYPE_OUTLINE_ITEM, PART_OUTLINE_ITEM_CONTENT);
 const OUTLINE_ITEM_DISCLOSURE_PART: TemplatePartSelector =
@@ -843,6 +856,102 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .set(properties.font_size, 12.0_f64)
         .build();
 
+    let menu_button_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_menu_button_template()),
+        )
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            border_affordance_transition_rules(properties),
+        )
+        .set(properties.font_size, 14.0_f64)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
+        .set(properties.layout_container, LayoutContainer::row())
+        .padding_xy(properties, 12.0, 8.0)
+        .set(
+            properties.layout_alignment,
+            LayoutAlignment::new()
+                .align_items(LayoutAlign::Center)
+                .justify_content(LayoutJustify::Start),
+        )
+        .build();
+    let menu_button_hover = StyleBuilder::new()
+        .border_brush_resource(properties, CONTROL_HOVER_BORDER)
+        .background_resource(properties, CONTROL_HOVER_BG)
+        .build();
+    let menu_button_focused = StyleBuilder::new()
+        .border_brush_resource(properties, FOCUS_RING_BORDER)
+        .border_width(properties, 2.0_f64)
+        .build();
+    let menu_button_disabled = StyleBuilder::new()
+        .background_resource(properties, TRACK_BG)
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .build();
+    let menu_button_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let menu_button_indicator = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 12.0_f64)
+        .build();
+    let menu_idle = StyleBuilder::new()
+        .background_resource(properties, CONTROL_BG)
+        .border_brush_resource(properties, CONTROL_BORDER)
+        .border_width(properties, 1.0_f64)
+        .corner_radius(properties, 8.0_f64)
+        .padding_all(properties, 4.0)
+        .build();
+    let menu_item_idle = StyleBuilder::new()
+        .set(
+            properties.control_template,
+            Some(default_menu_item_template()),
+        )
+        .set_resource(properties.foreground, ON_SURFACE_FG)
+        .set(
+            properties.transitions,
+            background_transition_rules(properties),
+        )
+        .set(properties.font_size, 14.0_f64)
+        .corner_radius(properties, 6.0_f64)
+        .padding_xy(properties, 10.0, 0.0)
+        .build();
+    let menu_item_hover = StyleBuilder::new()
+        .background_resource(properties, CONTROL_HOVER_BG)
+        .build();
+    let menu_item_focused = StyleBuilder::new()
+        .background_resource(properties, ACCENT_BG)
+        .set_resource(properties.foreground, ON_ACCENT_FG)
+        .build();
+    let menu_item_disabled = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.opacity, 0.55_f32)
+        .build();
+    let menu_item_label = StyleBuilder::new()
+        .set(
+            properties.layout_size,
+            LayoutSize::new()
+                .min_width(LayoutDimension::Logical(0.0))
+                .flex_grow(1.0)
+                .flex_shrink(1.0),
+        )
+        .build();
+    let menu_item_indicator = StyleBuilder::new()
+        .set_resource(properties.foreground, ON_SURFACE_MUTED_FG)
+        .set(properties.font_size, 15.0_f64)
+        .set(properties.layout_size, LayoutSize::new().flex_shrink(0.0))
+        .build();
+
     let list_box_idle = StyleBuilder::new()
         .background_resource(properties, CONTROL_BG)
         .border_brush_resource(properties, CONTROL_BORDER)
@@ -1477,6 +1586,72 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
             StyleOrigin::Base,
             selectors::part(SELECT_INDICATOR_PART),
             select_indicator,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_MENU_BUTTON),
+            menu_button_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_BUTTON, PSEUDO_HOVER),
+            menu_button_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_BUTTON, PSEUDO_FOCUS_VISIBLE),
+            menu_button_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_BUTTON, PSEUDO_DISABLED),
+            menu_button_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(MENU_BUTTON_LABEL_PART),
+            menu_button_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(MENU_BUTTON_INDICATOR_PART),
+            menu_button_indicator,
+        )
+        .push_rule(StyleOrigin::Base, selectors::type_tag(TYPE_MENU), menu_idle)
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::type_tag(TYPE_MENU_ITEM),
+            menu_item_idle,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_ITEM, PSEUDO_HOVER),
+            menu_item_hover,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_ITEM, PSEUDO_FOCUSED),
+            menu_item_focused.clone(),
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_ITEM, PSEUDO_EXPANDED),
+            menu_item_focused,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::state(TYPE_MENU_ITEM, PSEUDO_DISABLED),
+            menu_item_disabled,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(MENU_ITEM_LABEL_PART),
+            menu_item_label,
+        )
+        .push_rule(
+            StyleOrigin::Base,
+            selectors::part(MENU_ITEM_INDICATOR_PART),
+            menu_item_indicator,
         )
         .push_rule(
             StyleOrigin::Base,

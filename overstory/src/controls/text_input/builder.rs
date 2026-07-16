@@ -246,7 +246,6 @@ impl AppendSpec for TextInput {
         element.apply_to(ui, id);
         set_text_input_read_only(ui, id, read_only);
         ui.expand_resolved_template(id);
-        ui.with_widget_mut(id, |widget, ui| widget.template_expanded(id, ui));
         id
     }
 }

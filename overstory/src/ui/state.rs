@@ -10,6 +10,7 @@ use cursor_icon::CursorIcon;
 use kurbo::Point;
 use understory_box_tree::NodeFlags;
 use understory_event_state::hover::HoverEvent;
+use understory_focus::Navigation;
 use understory_property::PropertyId;
 use understory_style::PseudoClassId;
 
@@ -263,9 +264,9 @@ impl Ui {
 
     /// Enables or disables a control element.
     ///
-    /// Disabling dismisses popups anchored to `id`, clears focus, pressed state,
-    /// and pointer capture, removes it from focus traversal, and applies
-    /// `:disabled` for style matching.
+    /// Disabling dismisses popups anchored to `id`, repairs or clears focus,
+    /// clears pressed state and pointer capture, removes it from focus
+    /// traversal, and applies `:disabled` for style matching.
     pub fn set_enabled(&mut self, id: ElementId, enabled: bool) {
         if self.get(id).is_none() {
             return;
@@ -316,7 +317,15 @@ impl Ui {
             self.add_pseudo(id, PSEUDO_DISABLED);
             self.set_focusable_flag(id, false);
             if self.focus.focused() == Some(id) {
-                self.set_focus(None);
+                let contained = self
+                    .overlays
+                    .topmost_containing_focus_scope()
+                    .is_some_and(|scope| self.is_descendant_or_self(id, scope.element));
+                if contained {
+                    let _ = self.focus_navigate(Navigation::Next);
+                } else {
+                    self.set_focus(None);
+                }
             }
             let clear_pointer =
                 self.events.press_target() == Some(id) || self.events.pointer_capture() == Some(id);

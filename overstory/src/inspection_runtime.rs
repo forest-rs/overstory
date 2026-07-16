@@ -19,6 +19,7 @@ use crate::inspection::ElementInspectionRemoval;
 pub(crate) struct InspectionChangeRuntime {
     recording_depth: u32,
     tree: ElementTreeChangeRuntime,
+    overlays_dirty: bool,
     frame_dirty: bool,
 }
 
@@ -66,19 +67,28 @@ impl InspectionChangeRuntime {
         self.frame_dirty = true;
     }
 
+    pub(crate) fn record_overlays(&mut self) {
+        if self.is_recording() {
+            self.overlays_dirty = true;
+        }
+    }
+
     pub(crate) fn drain(&mut self, frame: UiFrameStats) -> PendingInspectionChanges {
         let changes = PendingInspectionChanges {
             removed: core::mem::take(&mut self.tree.removed),
             upserted: self.tree.drain_upserts(),
             updated: self.tree.drain_updates(),
+            overlays_dirty: self.overlays_dirty,
             frame: self.frame_dirty.then_some(frame),
         };
+        self.overlays_dirty = false;
         self.frame_dirty = false;
         changes
     }
 
     pub(crate) fn clear(&mut self) {
         self.tree.clear();
+        self.overlays_dirty = false;
         self.frame_dirty = false;
     }
 }
@@ -88,6 +98,7 @@ pub(crate) struct PendingInspectionChanges {
     pub(crate) removed: Vec<ElementInspectionRemoval>,
     pub(crate) upserted: Vec<ElementId>,
     pub(crate) updated: Vec<ElementId>,
+    pub(crate) overlays_dirty: bool,
     pub(crate) frame: Option<UiFrameStats>,
 }
 

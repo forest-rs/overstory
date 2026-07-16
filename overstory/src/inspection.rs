@@ -14,6 +14,7 @@ use core::fmt;
 use kurbo::{Rect, Size};
 use peniko::Color;
 use understory_animation::{AnimationPlayState, CompositeOperation, TimingSample};
+use understory_overlay::{GraceShape, OverlayBehavior, OverlayLayer};
 use understory_style::{ClassId, PartTag, PseudoClassId, StyleVocabulary, TypeTag};
 use understory_timing::TimerDuration;
 
@@ -33,6 +34,8 @@ pub struct UiInspectionSnapshot {
     pub elements: Vec<ElementInspectionRow>,
     /// Composition layer tree and surface summary.
     pub composition: CompositionInspectionSnapshot,
+    /// Active overlay lifecycle, geometry, focus scopes, and hover grace.
+    pub overlays: OverlayInspectionSnapshot,
     /// Storage and cache size counters.
     pub storage: UiStorageInspectionSnapshot,
     /// Timeline runtime counters.
@@ -41,6 +44,66 @@ pub struct UiInspectionSnapshot {
     pub style_vocabulary: StyleVocabulary,
     /// Frame counters captured at the same instant as the snapshot.
     pub frame: UiFrameStats,
+}
+
+/// Inspectable projection of the retained overlay stack and its current frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OverlayInspectionSnapshot {
+    /// Open overlays in deterministic stack order.
+    pub entries: Vec<OverlayInspectionRow>,
+    /// Containing or restoring focus scopes derived for the current frame.
+    pub focus_scopes: Vec<OverlayFocusScopeInspectionRow>,
+    /// Pointer-travel grace relationships derived for nested overlays.
+    pub grace_regions: Vec<OverlayGraceInspectionRow>,
+}
+
+/// One active overlay and its Overstory-owned retained identities.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayInspectionRow {
+    /// Retained popup host that owns placement and composition.
+    pub element: ElementId,
+    /// Semantic retained content represented by the host.
+    pub content: ElementId,
+    /// Retained element used as the overlay anchor.
+    pub target: ElementId,
+    /// Parent popup host for a nested overlay.
+    pub parent: Option<ElementId>,
+    /// Semantic overlay behavior supplied to Understory.
+    pub behavior: OverlayBehavior,
+    /// Deterministic overlay layer supplied to Understory.
+    pub layer: OverlayLayer,
+    /// Current scene-space overlay rectangle.
+    pub rect: Rect,
+    /// Current deterministic z-order.
+    pub z: i32,
+    /// Focus target captured when the overlay opened.
+    pub restore_focus: Option<ElementId>,
+}
+
+/// Inspectable focus-scope metadata derived from an active overlay.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayFocusScopeInspectionRow {
+    /// Popup host that owns the scope.
+    pub overlay: ElementId,
+    /// Semantic content contained by the scope.
+    pub content: ElementId,
+    /// Scene-space scope rectangle.
+    pub rect: Rect,
+    /// Whether traversal should remain inside the scope.
+    pub contain: bool,
+    /// Whether closing the scope should restore captured focus.
+    pub restore_on_close: bool,
+}
+
+/// Inspectable pointer-travel relationship between nested overlays.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayGraceInspectionRow {
+    /// Parent popup host.
+    pub parent: ElementId,
+    /// Child popup host protected during pointer travel.
+    pub child: ElementId,
+    /// Current scene-space grace shape from Understory.
+    pub shape: GraceShape,
 }
 
 /// Batched inspectable changes produced by normal [`crate::Ui`] mutation.
@@ -52,6 +115,8 @@ pub struct UiInspectionSnapshot {
 pub struct UiInspectionChanges {
     /// Retained-element tree changes.
     pub tree: ElementTreeInspectionPatch,
+    /// Latest overlay state when lifecycle or derived geometry changed.
+    pub overlays: Option<OverlayInspectionSnapshot>,
     /// Frame counters and host-supplied timings, when the most recent frame
     /// summary changed since the previous drain.
     pub frame: Option<UiFrameStats>,
@@ -61,7 +126,7 @@ impl UiInspectionChanges {
     /// Returns whether this batch carries no changes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tree.is_empty() && self.frame.is_none()
+        self.tree.is_empty() && self.overlays.is_none() && self.frame.is_none()
     }
 }
 

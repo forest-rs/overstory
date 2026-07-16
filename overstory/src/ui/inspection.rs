@@ -10,9 +10,10 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
-    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection,
-    TimelineAnimationInspectionRow, TimelineInspectionSnapshot, UiInspectionChanges,
-    UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    LayerInspectionId, OverlayFocusScopeInspectionRow, OverlayGraceInspectionRow,
+    OverlayInspectionRow, OverlayInspectionSnapshot, SurfaceInspectionId,
+    TemplateContractInspection, TimelineAnimationInspectionRow, TimelineInspectionSnapshot,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
@@ -50,10 +51,69 @@ impl Ui {
             root: self.root(),
             elements: self.element_inspection_rows(),
             composition: self.composition_inspection_snapshot(),
+            overlays: self.overlay_inspection_snapshot(),
             storage: self.storage_inspection_snapshot(),
             timeline: self.timeline_inspection_snapshot(),
             style_vocabulary: self.style_vocabulary_snapshot(),
             frame: self.frame_stats(),
+        }
+    }
+
+    fn overlay_inspection_snapshot(&self) -> OverlayInspectionSnapshot {
+        let frame = self.overlays.frame();
+        let entries = self
+            .overlays
+            .entries()
+            .map(|(entry, host)| {
+                let derived = frame.overlays.iter().find(|derived| derived.id == entry.id);
+                OverlayInspectionRow {
+                    element: host.element,
+                    content: host.content,
+                    target: host.target,
+                    parent: entry
+                        .parent
+                        .and_then(|parent| self.overlays.host_for(parent))
+                        .map(|parent| parent.element),
+                    behavior: entry.behavior,
+                    layer: entry.layer,
+                    rect: derived
+                        .map_or_else(|| self.effective_bounds(host.element), |entry| entry.rect),
+                    z: derived.map_or(0, |entry| entry.z),
+                    restore_focus: host.restore_focus,
+                }
+            })
+            .collect();
+        let focus_scopes = frame
+            .focus_scopes
+            .iter()
+            .filter_map(|scope| {
+                let host = self.overlays.host_for(scope.overlay)?;
+                Some(OverlayFocusScopeInspectionRow {
+                    overlay: host.element,
+                    content: host.content,
+                    rect: scope.rect,
+                    contain: scope.contain,
+                    restore_on_close: scope.restore_on_close,
+                })
+            })
+            .collect();
+        let grace_regions = frame
+            .grace_regions
+            .iter()
+            .filter_map(|region| {
+                let parent = self.overlays.host_for(region.parent)?;
+                let child = self.overlays.host_for(region.child)?;
+                Some(OverlayGraceInspectionRow {
+                    parent: parent.element,
+                    child: child.element,
+                    shape: region.shape,
+                })
+            })
+            .collect();
+        OverlayInspectionSnapshot {
+            entries,
+            focus_scopes,
+            grace_regions,
         }
     }
 
@@ -76,6 +136,9 @@ impl Ui {
             .into_iter()
             .filter_map(|id| self.element_inspection_row(id))
             .collect();
+        let overlays = pending
+            .overlays_dirty
+            .then(|| self.overlay_inspection_snapshot());
         UiInspectionChanges {
             tree: ElementTreeInspectionPatch {
                 root: Some(root),
@@ -83,6 +146,7 @@ impl Ui {
                 upserted,
                 updated,
             },
+            overlays,
             frame: pending.frame,
         }
     }

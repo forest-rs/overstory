@@ -100,6 +100,14 @@ impl GeometryRuntime {
         self.tree.set_flags(node, flags);
     }
 
+    pub(crate) fn set_z_index(&mut self, id: ElementId, z_index: i32) {
+        if let Some(nodes) = self.element_to_nodes.get(id) {
+            for node in nodes {
+                self.tree.set_z_index(*node, z_index);
+            }
+        }
+    }
+
     pub(crate) fn set_local_bounds(&mut self, node: NodeId, bounds: Rect) {
         self.tree.set_local_bounds(node, bounds);
     }

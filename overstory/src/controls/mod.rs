@@ -49,6 +49,7 @@ pub(crate) mod divider;
 pub(crate) mod expander;
 pub(crate) mod indexed_stack;
 pub(crate) mod list;
+pub(crate) mod menu;
 pub(crate) mod outline;
 pub(crate) mod panel;
 pub(crate) mod popup;

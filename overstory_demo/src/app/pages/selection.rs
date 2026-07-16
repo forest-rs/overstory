@@ -197,6 +197,60 @@ impl View for SelectionPage {
                         },
                     );
                 });
+
+                row.demo_responsive_card("NESTED COMMAND MENU", PAGE_CARD_WIDTH, |card| {
+                    let summary = card.local_state(String::from("No command invoked"));
+                    card.add(body_text(
+                        "A retained menu tree shares overlay ordering, focus scopes, pointer grace, and accessibility state.",
+                    ));
+                    card.add(caption("").bind_text(summary.binding()));
+                    card.add(
+                        MenuButton::new(
+                            "Renderer actions",
+                            Menu::new()
+                                .item(MenuItem::new("Capture frame").on_activate(move |ui, _| {
+                                    summary.set(ui, String::from("Captured the current frame"));
+                                }))
+                                .item(MenuItem::new("Unavailable while recording").disabled())
+                                .item(MenuItem::submenu(
+                                    "Export",
+                                    Menu::new()
+                                        .item(MenuItem::new("Scene archive").on_activate(
+                                            move |ui, _| {
+                                                summary.set(
+                                                    ui,
+                                                    String::from("Exported a scene archive"),
+                                                );
+                                            },
+                                        ))
+                                        .item(MenuItem::submenu(
+                                            "Image",
+                                            Menu::new()
+                                                .item(MenuItem::new("PNG").on_activate(
+                                                    move |ui, _| {
+                                                        summary.set(
+                                                            ui,
+                                                            String::from("Exported a PNG image"),
+                                                        );
+                                                    },
+                                                ))
+                                                .item(MenuItem::new("OpenEXR").on_activate(
+                                                    move |ui, _| {
+                                                        summary.set(
+                                                            ui,
+                                                            String::from("Exported an OpenEXR image"),
+                                                        );
+                                                    },
+                                                )),
+                                        )),
+                                ))
+                                .item(MenuItem::new("Close capture").on_activate(move |ui, _| {
+                                    summary.set(ui, String::from("Closed the capture"));
+                                })),
+                        )
+                        .tooltip("Arrow keys traverse nested retained menu scopes"),
+                    );
+                });
             },
         );
     }

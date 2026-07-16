@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 
 use kurbo::Point;
 use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
+use understory_focus::Navigation;
 use understory_overlay::{FocusPolicy, OverlayBehavior, OverlayEvent, OverlayKey};
 
 use crate::controls::popup::{Popup, append_overlay_popup};
@@ -38,7 +39,26 @@ impl Ui {
     where
         F: FnOnce(&mut Self, ElementId),
     {
-        if !self.is_overlay_anchor_eligible(target) {
+        self.open_semantic_popup_with_behavior(target, None, popup, behavior, |ui, popup| {
+            build(ui, popup);
+            popup
+        })
+    }
+
+    pub(crate) fn open_semantic_popup_with_behavior<F>(
+        &mut self,
+        target: ElementId,
+        parent: Option<ElementId>,
+        popup: Popup,
+        behavior: OverlayBehavior,
+        build: F,
+    ) -> Option<ElementId>
+    where
+        F: FnOnce(&mut Self, ElementId) -> ElementId,
+    {
+        if !self.is_overlay_anchor_eligible(target)
+            || parent.is_some_and(|parent| self.overlays.active_for_element(parent).is_none())
+        {
             return None;
         }
         let placement = popup.placement_value();
@@ -49,20 +69,31 @@ impl Ui {
             None
         };
         let popup_element = append_overlay_popup(self, &popup, Point::ZERO);
-        build(self, popup_element);
+        let content = build(self, popup_element);
+        if self.get(content).is_none() || !self.is_descendant_or_self(content, popup_element) {
+            if self.get(popup_element).is_some() {
+                self.remove(popup_element);
+            }
+            return None;
+        }
         self.overlays.open_popup(
             OverlayHost {
+                behavior,
                 target,
                 element: popup_element,
+                content,
                 placement,
                 offset,
                 restore_focus,
             },
-            behavior,
+            parent,
             popup.dismiss_on_outside_pointer_value(),
             popup.dismiss_on_escape_value(),
             popup_focus_policy(behavior, restore_focus.is_some()),
         );
+        if behavior == OverlayBehavior::Submenu {
+            self.add_pseudo(target, crate::pseudos::PSEUDO_EXPANDED);
+        }
         self.refresh_overlay_frame();
         Some(popup_element)
     }
@@ -72,6 +103,16 @@ impl Ui {
     /// Returns `true` when `popup` was an active popup root.
     pub fn close_popup(&mut self, popup: ElementId) -> bool {
         let active = self.overlays.close_popup(popup);
+        self.close_overlay_hosts(active)
+    }
+
+    pub(crate) fn close_overlay_descendants(&mut self, popup: ElementId) -> bool {
+        let active = self.overlays.close_descendants(popup);
+        self.close_overlay_hosts(active)
+    }
+
+    pub(crate) fn close_overlay_tree(&mut self, popup: ElementId) -> bool {
+        let active = self.overlays.close_tree(popup);
         self.close_overlay_hosts(active)
     }
 
@@ -89,14 +130,40 @@ impl Ui {
     }
 
     pub(in crate::ui) fn close_overlay_host(&mut self, active: OverlayHost) {
+        self.release_overlay_host_state(active);
+        if self.get(active.element).is_some() {
+            self.remove(active.element);
+        }
+    }
+
+    pub(in crate::ui) fn release_overlay_host_state(&mut self, active: OverlayHost) {
         let focused_inside = self
             .focused()
             .is_some_and(|focused| self.is_descendant_or_self(focused, active.element));
         if focused_inside {
-            let _ = self.set_focus(active.restore_focus);
+            let restored = active
+                .restore_focus
+                .filter(|target| self.is_enabled(*target) && self.is_effectively_visible(*target))
+                .is_some_and(|target| {
+                    self.set_focus(Some(target)) || self.focused() == Some(target)
+                });
+            if !restored {
+                let repaired = active.restore_focus.is_some_and(|target| {
+                    let Some(scope) = self.overlays.topmost_containing_focus_scope() else {
+                        return false;
+                    };
+                    self.is_descendant_or_self(target, scope.element)
+                        && self
+                            .focus_scope_from(scope.element, Some(target), Navigation::Next)
+                            .is_some()
+                });
+                if !repaired {
+                    let _ = self.set_focus(None);
+                }
+            }
         }
-        if self.get(active.element).is_some() {
-            self.remove(active.element);
+        if active.behavior == OverlayBehavior::Submenu {
+            self.remove_pseudo(active.target, crate::pseudos::PSEUDO_EXPANDED);
         }
     }
 

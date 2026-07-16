@@ -90,8 +90,10 @@ impl Ui {
         let offset = tooltip.offset_value();
         let tooltip_element = append_overlay_tooltip(self, &tooltip, kurbo::Point::ZERO);
         self.overlays.open_tooltip(OverlayHost {
+            behavior: understory_overlay::OverlayBehavior::Tooltip,
             target,
             element: tooltip_element,
+            content: tooltip_element,
             placement,
             offset,
             restore_focus: None,

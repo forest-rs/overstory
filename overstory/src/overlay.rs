@@ -11,7 +11,7 @@
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;
-use kurbo::{Insets, Rect, Size, Vec2};
+use kurbo::{Insets, Point, Rect, Size, Vec2};
 pub use understory_anchor::Placement;
 use understory_anchor::{
     Anchor, AnchorConstraint, AnchorFrame, AnchorInput, AnchorPolicy, AnchorPositionOption,
@@ -20,7 +20,7 @@ use understory_anchor::{
 use understory_overlay::{
     AnchorId, FocusPolicy, OverlayBehavior, OverlayEntry, OverlayEvent, OverlayEventResult,
     OverlayFrame, OverlayFrameInput, OverlayGeometry, OverlayId, OverlayLayer, OverlayOp,
-    OverlayStack, build_overlay_frame, resolve_event,
+    OverlayStack, build_overlay_frame, point_in_grace_shape, resolve_event,
 };
 
 use crate::controls::tooltip::Tooltip;
@@ -71,10 +71,14 @@ fn anchor_offsets(side: Side, offset: Vec2) -> (f64, f64) {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct OverlayHost {
+    /// Semantic interaction policy governing this overlay.
+    pub(crate) behavior: OverlayBehavior,
     /// Element the overlay is anchored to.
     pub(crate) target: ElementId,
     /// Overlay element inserted into the retained UI tree.
     pub(crate) element: ElementId,
+    /// Semantic content represented by the overlay host.
+    pub(crate) content: ElementId,
     /// Preferred placement relative to `target`.
     pub(crate) placement: Placement,
     /// Placement offset in logical pixels.
@@ -105,6 +109,10 @@ pub(crate) struct OverlayRuntime {
     instances: HashMap<OverlayId, OverlayInstance>,
     /// Latest coherent derived frame for event routing and future rendering.
     frame: OverlayFrame,
+    /// Latest scene-space pointer position used to test submenu grace.
+    pointer: Option<Point>,
+    /// Stable pointer origin for the current submenu-travel grace shape.
+    grace_pointer: Option<Point>,
     /// Whether stack or geometry changes require a replacement frame.
     frame_dirty: bool,
 }
@@ -139,6 +147,22 @@ impl OverlayRuntime {
             .map(|instance| instance.host)
     }
 
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (&OverlayEntry, OverlayHost)> + '_ {
+        self.stack.entries().iter().filter_map(|entry| {
+            self.instances
+                .get(&entry.id)
+                .map(|instance| (entry, instance.host))
+        })
+    }
+
+    pub(crate) fn frame(&self) -> &OverlayFrame {
+        &self.frame
+    }
+
+    pub(crate) fn host_for(&self, overlay: OverlayId) -> Option<OverlayHost> {
+        self.instances.get(&overlay).map(|instance| instance.host)
+    }
+
     pub(crate) fn active_for_target(
         &self,
         target: ElementId,
@@ -152,6 +176,114 @@ impl OverlayRuntime {
             .filter_map(|entry| self.instances.get(&entry.id))
             .find(|instance| instance.host.target == target)
             .map(|instance| instance.host)
+    }
+
+    pub(crate) fn active_for_element(&self, element: ElementId) -> Option<OverlayHost> {
+        self.instances
+            .get(&overlay_id(element))
+            .map(|instance| instance.host)
+    }
+
+    pub(crate) fn active_for_content(&self, content: ElementId) -> Option<OverlayHost> {
+        self.instances
+            .values()
+            .find(|instance| instance.host.content == content)
+            .map(|instance| instance.host)
+    }
+
+    pub(crate) fn child_anchor_towards(
+        &self,
+        ancestor: ElementId,
+        descendant: ElementId,
+    ) -> Option<ElementId> {
+        let ancestor = overlay_id(ancestor);
+        let mut child = overlay_id(descendant);
+        self.stack.entry(ancestor)?;
+        self.stack.entry(child)?;
+        while let Some(parent) = self.stack.parent_of(child) {
+            if parent == ancestor {
+                return self
+                    .instances
+                    .get(&child)
+                    .map(|instance| instance.host.target);
+            }
+            child = parent;
+        }
+        None
+    }
+
+    pub(crate) fn root_of(&self, element: ElementId) -> Option<OverlayHost> {
+        let mut root = overlay_id(element);
+        self.stack.entry(root)?;
+        while let Some(parent) = self.stack.parent_of(root) {
+            root = parent;
+        }
+        self.instances.get(&root).map(|instance| instance.host)
+    }
+
+    pub(crate) fn targets_to_root(&self, element: ElementId) -> Vec<ElementId> {
+        let mut overlay = overlay_id(element);
+        let mut targets = Vec::new();
+        while let Some(instance) = self.instances.get(&overlay) {
+            targets.push(instance.host.target);
+            let Some(parent) = self.stack.parent_of(overlay) else {
+                break;
+            };
+            overlay = parent;
+        }
+        targets
+    }
+
+    pub(crate) fn topmost_containing_focus_scope(&self) -> Option<OverlayHost> {
+        self.frame
+            .focus_scopes
+            .iter()
+            .rev()
+            .find(|scope| scope.contain)
+            .and_then(|scope| self.instances.get(&scope.overlay))
+            .map(|instance| instance.host)
+    }
+
+    pub(crate) fn set_pointer(&mut self, pointer: Point) {
+        self.pointer = Some(pointer);
+    }
+
+    pub(crate) fn begin_submenu_grace(&mut self, target: ElementId) -> bool {
+        if self.pointer.is_none()
+            || self
+                .active_for_target(target, OverlayBehavior::Submenu)
+                .is_none()
+        {
+            return false;
+        }
+        self.grace_pointer = self.pointer;
+        self.frame_dirty = true;
+        true
+    }
+
+    pub(crate) fn pointer_keeps_submenu_open(&self, target: ElementId) -> bool {
+        let Some(pointer) = self.pointer else {
+            return false;
+        };
+        let Some(child) = self.stack.entries().iter().rev().find(|entry| {
+            entry.behavior == OverlayBehavior::Submenu
+                && self
+                    .instances
+                    .get(&entry.id)
+                    .is_some_and(|instance| instance.host.target == target)
+        }) else {
+            return false;
+        };
+        if self.frame.overlays.iter().any(|entry| {
+            (entry.id == child.id || self.stack.is_descendant_of(entry.id, child.id))
+                && entry.rect.contains(pointer)
+        }) {
+            return true;
+        }
+        self.frame.grace_regions.iter().any(|region| {
+            (region.child == child.id || self.stack.is_descendant_of(region.child, child.id))
+                && point_in_grace_shape(pointer, region.shape)
+        })
     }
 
     fn anchor_frame(&self, overlay: OverlayId) -> Option<&AnchorFrame> {
@@ -208,7 +340,7 @@ impl OverlayRuntime {
                 OverlayFrameInput {
                     viewport: input.viewport,
                     geometries: &geometries,
-                    pointer: input.pointer,
+                    pointer: self.grace_pointer.or(input.pointer),
                     grace_policy: input.grace_policy,
                 },
             )
@@ -238,18 +370,26 @@ impl OverlayRuntime {
     pub(crate) fn open_popup(
         &mut self,
         host: OverlayHost,
-        behavior: OverlayBehavior,
+        parent: Option<ElementId>,
         outside_pointer: bool,
         escape: bool,
         focus: FocusPolicy,
     ) {
+        let behavior = host.behavior;
+        if behavior == OverlayBehavior::Submenu {
+            self.grace_pointer = self.pointer;
+        }
         let mut dismiss = behavior.dismiss_policy();
         dismiss.escape_key = escape;
         dismiss.pointer_down_outside = outside_pointer;
-        let entry = OverlayEntry::new(overlay_id(host.element), overlay_layer(behavior), behavior)
-            .with_anchor(anchor_id(host.target))
-            .with_dismiss(dismiss)
-            .with_focus(focus);
+        let mut entry =
+            OverlayEntry::new(overlay_id(host.element), overlay_layer(behavior), behavior)
+                .with_anchor(anchor_id(host.target))
+                .with_dismiss(dismiss)
+                .with_focus(focus);
+        if let Some(parent) = parent {
+            entry = entry.with_parent(overlay_id(parent));
+        }
         self.open(entry, host);
     }
 
@@ -277,6 +417,21 @@ impl OverlayRuntime {
         self.take_element(element, |entry| entry.layer != OverlayLayer::Tooltip)
     }
 
+    pub(crate) fn close_descendants(&mut self, element: ElementId) -> Vec<OverlayHost> {
+        let overlay = overlay_id(element);
+        if self.stack.entry(overlay).is_none() {
+            return Vec::new();
+        }
+        self.apply_operation(OverlayOp::CloseDescendants { overlay })
+    }
+
+    pub(crate) fn close_tree(&mut self, element: ElementId) -> Vec<OverlayHost> {
+        let Some(root) = self.root_of(element).map(OverlayHost::overlay_id) else {
+            return Vec::new();
+        };
+        self.apply_operation(OverlayOp::CloseSubtree { overlay: root })
+    }
+
     pub(crate) fn take_tooltip(&mut self) -> Vec<OverlayHost> {
         let Some(element) = self.active_tooltip().map(|host| host.element) else {
             return Vec::new();
@@ -301,7 +456,7 @@ impl OverlayRuntime {
     ///
     /// Returns overlay elements that must also be removed from the retained UI
     /// tree by the caller.
-    pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<ElementId> {
+    pub(crate) fn remove_element(&mut self, id: ElementId) -> Vec<OverlayHost> {
         self.tooltips.remove(&id);
         let overlays = self
             .stack
@@ -315,7 +470,6 @@ impl OverlayRuntime {
         overlays
             .into_iter()
             .flat_map(|overlay| self.close(overlay))
-            .map(|host| host.element)
             .collect()
     }
 
@@ -329,6 +483,14 @@ impl OverlayRuntime {
             .apply(operation)
             .expect("resolved overlay operation references the current stack")
             .into_removed();
+        if !self
+            .stack
+            .entries()
+            .iter()
+            .any(|entry| entry.behavior == OverlayBehavior::Submenu)
+        {
+            self.grace_pointer = None;
+        }
         self.frame_dirty = true;
         removed
             .into_iter()
@@ -389,10 +551,12 @@ pub(crate) fn element_token(element: ElementId) -> u64 {
 mod tests {
     use super::*;
 
-    fn host(target: u32, element: u32) -> OverlayHost {
+    fn host(target: u32, element: u32, behavior: OverlayBehavior) -> OverlayHost {
         OverlayHost {
+            behavior,
             target: ElementId::new(target, 0),
             element: ElementId::new(element, 0),
+            content: ElementId::new(element, 0),
             placement: Placement::BOTTOM,
             offset: Vec2::ZERO,
             restore_focus: None,
@@ -402,15 +566,9 @@ mod tests {
     #[test]
     fn mutation_report_removes_every_host_closed_by_an_operation() {
         let mut runtime = OverlayRuntime::default();
-        let popup = host(1, 2);
-        let tooltip = host(3, 4);
-        runtime.open_popup(
-            popup,
-            OverlayBehavior::Popover,
-            true,
-            true,
-            FocusPolicy::None,
-        );
+        let popup = host(1, 2, OverlayBehavior::Popover);
+        let tooltip = host(3, 4, OverlayBehavior::Tooltip);
+        runtime.open_popup(popup, None, true, true, FocusPolicy::None);
         runtime.open_tooltip(tooltip);
 
         let removed = runtime.apply_operation(OverlayOp::CloseAll);
@@ -423,14 +581,8 @@ mod tests {
     #[test]
     fn retained_anchor_and_overlay_frames_drive_event_resolution() {
         let mut runtime = OverlayRuntime::default();
-        let popup = host(1, 2);
-        runtime.open_popup(
-            popup,
-            OverlayBehavior::Popover,
-            true,
-            true,
-            FocusPolicy::None,
-        );
+        let popup = host(1, 2, OverlayBehavior::Popover);
+        runtime.open_popup(popup, None, true, true, FocusPolicy::None);
         assert!(runtime.frame_needs_refresh());
 
         let overlay_rect = runtime.resolve_anchor_rect(

@@ -44,7 +44,8 @@ impl DevtoolsRefresh {
             Some(
                 DevtoolsEvent::SelectionChanged { .. }
                 | DevtoolsEvent::SnapshotReplaced { .. }
-                | DevtoolsEvent::TargetChanged { .. },
+                | DevtoolsEvent::TargetChanged { .. }
+                | DevtoolsEvent::OverlaysChanged { .. },
             )
             | None => None,
         }
@@ -58,6 +59,8 @@ pub struct DevtoolsRefreshChanges {
     pub tree: bool,
     /// The details for the currently inspected element changed.
     pub details: bool,
+    /// Overlay lifecycle or derived overlay geometry changed.
+    pub overlays: bool,
     /// Frame timing or renderer summary counters changed.
     pub frame: bool,
 }
@@ -177,6 +180,7 @@ impl LiveDevtools {
             changes: DevtoolsRefreshChanges {
                 tree: true,
                 details: true,
+                overlays: true,
                 frame: true,
             },
         })
@@ -189,6 +193,7 @@ impl LiveDevtools {
     ) -> Result<DevtoolsRefresh, SessionError> {
         let changes = target.drain_inspection_changes();
         let frame_changed = changes.frame.is_some();
+        let overlays_changed = changes.overlays.is_some();
         let inspected_element = self
             .session
             .with(DevtoolsSession::selected_element)
@@ -209,11 +214,19 @@ impl LiveDevtools {
         let refresh_changes = DevtoolsRefreshChanges {
             tree: tree_changed,
             details: details_changed,
+            overlays: overlays_changed,
             frame: frame_changed,
         };
-        let stream_items = event
+        let mut stream_items = event
             .clone()
             .map_or_else(Vec::new, |event| self.client.stream_items_for_event(event));
+        if overlays_changed && !matches!(event, Some(DevtoolsEvent::OverlaysChanged { .. })) {
+            let selected = self.session.with(DevtoolsSession::selected_element);
+            stream_items.extend(
+                self.client
+                    .stream_items_for_event(DevtoolsEvent::OverlaysChanged { selected }),
+            );
+        }
         let stream_item_count = stream_items.len();
         for item in &stream_items {
             self.mirror.apply_stream_item(&self.client, item)?;
@@ -259,10 +272,11 @@ impl LiveDevtools {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
     use core::time::Duration;
 
     use overstory::pseudos::PSEUDO_HOVER;
-    use overstory::{Button, Panel, Ui};
+    use overstory::{Button, Layout, Panel, Popup, Size, Text, Ui};
 
     use super::*;
 
@@ -408,6 +422,47 @@ mod tests {
     }
 
     #[test]
+    fn live_devtools_refresh_keeps_overlay_summaries_current() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::new().logical_size(320.0, 180.0));
+        let button = ui.append(root, Button::new("Open"));
+        ui.compute_layout(Size::new(320.0, 180.0));
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, None).expect("devtools should attach");
+
+        let popup = ui
+            .open_popup(button, Popup::new(), |ui, popup| {
+                ui.append(popup, Text::new("Inspectable overlay"));
+            })
+            .expect("popup should open");
+        ui.compute_layout(Size::new(320.0, 180.0));
+        let opened = devtools
+            .refresh_from_live(&mut ui)
+            .expect("opening should refresh live overlay state");
+
+        assert!(opened.changes.overlays);
+        assert_eq!(
+            devtools
+                .mirror()
+                .summaries()
+                .overlays
+                .entries
+                .iter()
+                .map(|entry| entry.element)
+                .collect::<Vec<_>>(),
+            vec![popup]
+        );
+
+        assert!(ui.close_popup(popup));
+        let closed = devtools
+            .refresh_from_live(&mut ui)
+            .expect("closing should refresh live overlay state");
+        assert!(closed.changes.overlays);
+        assert!(devtools.mirror().summaries().overlays.entries.is_empty());
+    }
+
+    #[test]
     fn live_devtools_refresh_from_live_streams_frame_summary_updates() {
         let mut ui = Ui::new();
         let mut devtools =
@@ -431,6 +486,7 @@ mod tests {
             DevtoolsRefreshChanges {
                 tree: false,
                 details: false,
+                overlays: false,
                 frame: true,
             }
         );
@@ -485,6 +541,7 @@ mod tests {
             DevtoolsRefreshChanges {
                 tree: false,
                 details: true,
+                overlays: false,
                 frame: false,
             }
         );
@@ -527,6 +584,7 @@ mod tests {
             DevtoolsRefreshChanges {
                 tree: false,
                 details: false,
+                overlays: false,
                 frame: false,
             }
         );

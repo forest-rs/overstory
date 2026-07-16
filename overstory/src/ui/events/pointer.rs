@@ -162,8 +162,13 @@ impl Ui {
             PointerEvent::Move(update) => {
                 let data = pointer_route_data_for_move(event, update);
                 let pos = update.current.logical_point();
+                self.update_overlay_pointer(pos);
                 let mut result = PointerDispatchResult::default();
                 self.update_hover_at_with_pointer(pos, data, &mut result);
+                // Pointer-enter/leave handlers may retain or remove structure
+                // (for example, opening a submenu). The following hit test is
+                // a new routing phase and must observe a committed tree.
+                self.geometry.commit();
                 let pointer_move = if let Some(source) = self.events.pointer_capture() {
                     if self.is_enabled(self.press_visual_target(source)) {
                         self.dispatch_routed_pointer_event(
@@ -192,6 +197,7 @@ impl Ui {
             PointerEvent::Down(button_event) => {
                 let data = pointer_route_data_for_button(event, button_event);
                 let pos = button_event.state.logical_point();
+                self.update_overlay_pointer(pos);
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
                 if is_primary_activation_contact(button_event) {
@@ -204,6 +210,7 @@ impl Ui {
                 // platforms; refresh hover first so any newly-entered
                 // path is set up before we press.
                 self.update_hover_at_with_pointer(pos, data, &mut result);
+                self.geometry.commit();
                 if let Some(hit) = self.responder().hit_dispatch(pos) {
                     let target = hit.target;
                     let visual = self.press_visual_target(target);
@@ -249,6 +256,7 @@ impl Ui {
             PointerEvent::Up(button_event) => {
                 let data = pointer_route_data_for_button(event, button_event);
                 let pos = button_event.state.logical_point();
+                self.update_overlay_pointer(pos);
                 let time_ms = button_event.state.time / 1_000_000;
                 let hit = self.responder().hit_dispatch(pos);
                 let hit_target = hit.as_ref().map(|hit| hit.target);
@@ -307,6 +315,7 @@ impl Ui {
                 let pos = scroll_event.state.logical_point();
                 let mut result = PointerDispatchResult::default();
                 self.update_hover_at_with_pointer(pos, data, &mut result);
+                self.geometry.commit();
                 let routed = self
                     .responder()
                     .hit_dispatch(pos)

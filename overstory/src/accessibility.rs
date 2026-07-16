@@ -81,6 +81,29 @@ impl<'a> AccessibilityContext<'a> {
         self.ui.active_overlay_for(target, behavior).is_some()
     }
 
+    pub(crate) fn active_overlay_for(
+        &self,
+        target: ElementId,
+        behavior: OverlayBehavior,
+    ) -> Option<ElementId> {
+        self.ui.active_overlay_for(target, behavior)
+    }
+
+    pub(crate) fn active_overlay_content_for(
+        &self,
+        target: ElementId,
+        behavior: OverlayBehavior,
+    ) -> Option<ElementId> {
+        self.ui.active_overlay_content_for(target, behavior)
+    }
+
+    pub(crate) fn active_descendant_for_overlay_content(
+        &self,
+        content: ElementId,
+    ) -> Option<ElementId> {
+        self.ui.active_descendant_for_overlay_content(content)
+    }
+
     /// Returns the latest computed bounds for `id`.
     #[must_use]
     pub fn bounds(&self, id: ElementId) -> kurbo::Rect {

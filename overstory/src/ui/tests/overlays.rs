@@ -341,6 +341,154 @@ fn popup_opens_as_overlay_container_with_content() {
 }
 
 #[test]
+fn menu_popup_surface_owns_chrome_bounds_indicators_and_input() {
+    use crate::{
+        Menu, MenuButton, MenuItem, SLOT_MENU_ITEM_INDICATOR, SLOT_MENU_ITEM_LABEL, theme,
+    };
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+    use understory_overlay::OverlayBehavior;
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(640.0, 420.0));
+    let underlay = ui.insert_child(root);
+    ui.set_layout(
+        underlay,
+        Layout::new()
+            .absolute_at(0.0, 40.0)
+            .logical_size(300.0, 180.0),
+    );
+    let mut descendant = underlay;
+    for _ in 0..8 {
+        descendant = ui.insert_child(descendant);
+        ui.set_layout(descendant, Layout::new().logical_size(300.0, 180.0));
+    }
+    let button = ui.append(
+        root,
+        MenuButton::new(
+            "Actions",
+            Menu::new()
+                .item(MenuItem::new(
+                    "Copy status: Selected renderer queue item with a deliberately long name",
+                ))
+                .item(MenuItem::submenu(
+                    "Set priority",
+                    Menu::new().item(MenuItem::new("High")),
+                )),
+        ),
+    );
+    ui.set_layout(
+        button,
+        Layout::new()
+            .absolute_at(0.0, 0.0)
+            .logical_size(120.0, 36.0),
+    );
+    ui.compute_layout(Size::new(640.0, 420.0));
+    assert!(ui.set_focus(Some(button)));
+    let open = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+    assert!(ui.dispatch_key(&open).handled);
+    ui.compute_layout(Size::new(640.0, 420.0));
+
+    let popup = ui
+        .active_overlay_for(button, OverlayBehavior::Menu)
+        .expect("menu button should open a popup");
+    let menu = ui
+        .active_overlay_content_for(button, OverlayBehavior::Menu)
+        .expect("menu popup should expose its semantic surface");
+    let items = ui
+        .get(menu)
+        .expect("menu surface should be live")
+        .children()
+        .to_vec();
+    let submenu = items[1];
+    let long_label = ui
+        .slot(items[0], SLOT_MENU_ITEM_LABEL)
+        .expect("menu item should realize its label slot");
+    let indicator = ui
+        .slot(submenu, SLOT_MENU_ITEM_INDICATOR)
+        .expect("submenu item should realize its indicator slot");
+
+    assert!(
+        ui.effective_bounds(menu).width() > 220.0,
+        "a menu without an explicit width should grow to preserve its labels"
+    );
+    assert!(ui.effective_bounds(long_label).width() > 220.0);
+    assert!(ui.effective_bounds(long_label).x1 <= ui.effective_bounds(items[0]).x1);
+    assert!(ui.effective_bounds(items[0]).x1 <= ui.effective_bounds(menu).x1);
+    assert!(
+        ui.effective_bounds(indicator).width() > 0.0,
+        "indicator={:?}, submenu={:?}, layout={:?}, text={:?}",
+        ui.effective_bounds(indicator),
+        ui.effective_bounds(submenu),
+        ui.effective_layout(indicator),
+        ui.get(indicator)
+            .and_then(|element| element.get_local_value(ui.properties().text)),
+    );
+    assert!(ui.effective_bounds(indicator).x1 <= ui.effective_bounds(submenu).x1);
+    assert_eq!(
+        ui.get(indicator)
+            .and_then(|element| element.get_local_value(ui.properties().text))
+            .map(String::as_str),
+        Some("›")
+    );
+
+    let submenu_point = Point::new(
+        ui.effective_bounds(submenu).x0 + 8.0,
+        ui.effective_bounds(submenu).center().y,
+    );
+    assert!(ui.effective_bounds(underlay).contains(submenu_point));
+    let _ = ui.dispatch_pointer_event(&pointer_move(submenu_point, 2, false));
+    assert_eq!(
+        ui.focused(),
+        Some(submenu),
+        "overlay input should win over deeper retained content beneath it"
+    );
+    let open_child = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+    assert!(ui.dispatch_key(&open_child).handled);
+    ui.compute_layout(Size::new(640.0, 420.0));
+    assert_ne!(ui.focused(), Some(submenu));
+    assert!(
+        ui.get(submenu)
+            .unwrap()
+            .pseudos()
+            .contains(&crate::pseudos::PSEUDO_EXPANDED)
+    );
+    assert_ne!(
+        ui.resolve_value_for(ui.get(submenu).unwrap(), ui.properties().surface.background),
+        ui.resolve_value_for(
+            ui.get(items[0]).unwrap(),
+            ui.properties().surface.background
+        ),
+        "an expanded submenu ancestor should retain the active visual trail"
+    );
+
+    let item_layer = ui
+        .composition
+        .layer_for(items[0])
+        .expect("menu item should own a composition layer");
+    assert!(ui.composition_layers().clip(item_layer).is_some());
+
+    let mut output = Scene::new();
+    ui.paint(&mut output);
+    let popup_surface = ui
+        .presentation
+        .presentation(ui.box_for(popup).expect("popup should own a box"))
+        .and_then(|presentation| presentation.surface())
+        .expect("popup host should have a surface record");
+    assert!(popup_surface.backgrounds.is_empty());
+    assert!(popup_surface.border.is_empty());
+    let menu_surface = ui
+        .presentation
+        .presentation(ui.box_for(menu).expect("menu should own a box"))
+        .and_then(|presentation| presentation.surface())
+        .expect("menu should have a surface record");
+    assert!(!menu_surface.backgrounds.is_empty());
+    assert!(!menu_surface.border.is_empty());
+}
+
+#[test]
 fn popup_padding_writes_surface_padding_not_layout_padding() {
     let mut ui = Ui::new();
     let root = ui.root();

@@ -14,8 +14,8 @@ use core::cmp::Ordering;
 
 use overstory::UiFrameStats;
 use overstory::inspection::{
-    CompositionInspectionSnapshot, ElementInspectionRow, TimelineInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    CompositionInspectionSnapshot, ElementInspectionRow, OverlayInspectionSnapshot,
+    TimelineInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{ElementId, OutlineNodeKey, OutlineViewNode};
 use spoor_session::{
@@ -150,6 +150,8 @@ pub enum InspectionResponse {
 pub struct InspectionSummaries {
     /// Composition layer, surface, and change counters.
     pub composition: CompositionInspectionSnapshot,
+    /// Active overlay lifecycle, geometry, focus scopes, and hover grace.
+    pub overlays: OverlayInspectionSnapshot,
     /// Storage and cache size counters.
     pub storage: UiStorageInspectionSnapshot,
     /// Timeline runtime counters.
@@ -165,6 +167,7 @@ impl InspectionSummaries {
         let inspection = snapshot.inspection();
         Self {
             composition: inspection.composition.clone(),
+            overlays: inspection.overlays.clone(),
             storage: inspection.storage,
             timeline: inspection.timeline.clone(),
             frame: inspection.frame,
@@ -570,6 +573,8 @@ pub enum InspectionSubsystem {
     Style,
     /// Composition layers, surfaces, clips, opacity, or transforms.
     Composition,
+    /// Overlay lifecycle, parentage, focus scopes, or pointer grace.
+    Overlays,
     /// Property binding graph or binding results.
     Bindings,
     /// Timeline tracks, clips, or sampled presentation values.

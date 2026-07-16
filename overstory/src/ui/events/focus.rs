@@ -14,17 +14,53 @@ impl Ui {
     /// [`understory_focus::DefaultPolicy`] with `WrapMode::Scope` so
     /// focus cycles within the tree. Returns the new focused element.
     pub fn focus_navigate(&mut self, direction: Navigation) -> Option<ElementId> {
+        let scope = self
+            .overlays
+            .topmost_containing_focus_scope()
+            .map_or_else(|| self.root(), |host| host.element);
+        let current = self
+            .focus
+            .focused()
+            .filter(|focused| self.is_descendant_or_self(*focused, scope));
+        let new_element = self.focus_in_scope(scope, current, direction);
+        self.set_keyboard_focus(new_element);
+        new_element
+    }
+
+    pub(crate) fn focus_scope_edge(
+        &mut self,
+        scope: ElementId,
+        direction: Navigation,
+    ) -> Option<ElementId> {
+        self.focus_scope_from(scope, None, direction)
+    }
+
+    pub(crate) fn focus_scope_from(
+        &mut self,
+        scope: ElementId,
+        current: Option<ElementId>,
+        direction: Navigation,
+    ) -> Option<ElementId> {
+        let new_element = self.focus_in_scope(scope, current, direction);
+        self.set_keyboard_focus(new_element);
+        new_element
+    }
+
+    fn focus_in_scope(
+        &mut self,
+        scope: ElementId,
+        current: Option<ElementId>,
+        direction: Navigation,
+    ) -> Option<ElementId> {
         self.geometry.commit();
-        let root_node = self.box_for(self.root())?;
+        let root_node = self.box_for(scope)?;
         // Resolve the current focus's node before we borrow `tree`
         // and `focus_buf` to build the FocusSpace.
-        let current_node = self.focus.focused().and_then(|id| self.box_for(id));
+        let current_node = current.and_then(|id| self.box_for(id));
         let new_node =
             self.focus
                 .navigate(self.geometry.tree(), root_node, current_node, direction);
-        let new_element = new_node.and_then(|n| self.node_to_element(n));
-        self.set_keyboard_focus(new_element);
-        new_element
+        new_node.and_then(|node| self.node_to_element(node))
     }
     pub(in crate::ui) fn dispatch_focus_change(
         &mut self,

@@ -26,8 +26,9 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, SurfaceInspectionId, TemplateContractInspection, TemplateSlotInspectionRow,
-    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    LayerInspectionId, OverlayInspectionSnapshot, SurfaceInspectionId, TemplateContractInspection,
+    TemplateSlotInspectionRow, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
@@ -294,6 +295,9 @@ fn filter_inspection_changes(
     changes.tree.removed = removed;
     changes.tree.upserted = upserted;
     changes.tree.updated = updated;
+    changes.overlays = changes.overlays.map(|overlays| {
+        filter_overlay_snapshot(overlays, |element| target.element_is_included(element))
+    });
     changes
 }
 
@@ -357,6 +361,9 @@ impl DevtoolsSnapshot {
     pub fn apply_inspection_changes(&mut self, changes: UiInspectionChanges) {
         if let Some(frame) = changes.frame {
             self.inspection.frame = frame;
+        }
+        if let Some(overlays) = changes.overlays {
+            self.inspection.overlays = overlays;
         }
         self.apply_element_tree_patch(changes.tree);
     }
@@ -693,8 +700,35 @@ fn filter_inspection_snapshot(
         .collect();
     snapshot.root = root;
     snapshot.composition = filtered_composition_snapshot(snapshot.composition, &included);
+    snapshot.overlays = filter_overlay_snapshot(snapshot.overlays, |element| {
+        contains_element(&included, element)
+    });
     snapshot.storage = filtered_storage_snapshot(snapshot.storage, &snapshot);
     snapshot
+}
+
+fn filter_overlay_snapshot(
+    mut overlays: OverlayInspectionSnapshot,
+    is_included: impl Fn(ElementId) -> bool,
+) -> OverlayInspectionSnapshot {
+    let mut active = Vec::new();
+    overlays.entries.retain(|entry| {
+        let included = entry.parent.map_or_else(
+            || is_included(entry.target),
+            |parent| contains_element(&active, parent),
+        );
+        if included {
+            active.push(entry.element);
+        }
+        included
+    });
+    overlays
+        .focus_scopes
+        .retain(|scope| contains_element(&active, scope.overlay));
+    overlays.grace_regions.retain(|region| {
+        contains_element(&active, region.parent) && contains_element(&active, region.child)
+    });
+    overlays
 }
 
 fn element_is_descendant_or_self(ui: &Ui, root: ElementId, element: ElementId) -> bool {
@@ -2016,6 +2050,29 @@ mod tests {
             None
         );
         assert_eq!(snapshot.inspection().storage.live_elements, 3);
+    }
+
+    #[test]
+    fn subtree_inspection_keeps_overlays_owned_by_included_anchors() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::new().logical_size(320.0, 180.0));
+        let app = ui.append(root, Panel::new());
+        let anchor = ui.append(app, overstory::Button::new("Open"));
+        ui.compute_layout(overstory::Size::new(320.0, 180.0));
+        let popup = ui
+            .open_popup(anchor, overstory::Popup::new(), |ui, popup| {
+                ui.append(popup, Text::new("Owned outside the app subtree"));
+            })
+            .expect("popup should open");
+        ui.compute_layout(overstory::Size::new(320.0, 180.0));
+
+        let target = UiInspectionTarget::new(&ui).rooted_at(app);
+        let snapshot = DevtoolsSnapshot::capture(&target);
+
+        assert_eq!(snapshot.inspection().overlays.entries.len(), 1);
+        assert_eq!(snapshot.inspection().overlays.entries[0].element, popup);
+        assert_eq!(snapshot.inspection().overlays.entries[0].target, anchor);
     }
 
     #[test]

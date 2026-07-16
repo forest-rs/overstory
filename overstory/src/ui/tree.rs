@@ -511,6 +511,7 @@ impl Ui {
             return;
         };
         self.expand_template(owner, template);
+        self.with_widget_mut(owner, |widget, ui| widget.template_expanded(owner, ui));
     }
 
     pub(crate) fn retemplate_if_needed(&mut self, owner: ElementId) {
@@ -692,6 +693,7 @@ impl Ui {
     }
 
     fn remove_subtree(&mut self, id: ElementId) {
+        self.remove_overlay_state_for(id);
         let children: Vec<ElementId> = self
             .get(id)
             .map(|e| e.children().to_vec())
@@ -699,7 +701,6 @@ impl Ui {
         for child in children {
             self.remove_subtree(child);
         }
-        self.remove_overlay_state_for(id);
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);
