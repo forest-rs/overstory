@@ -489,6 +489,44 @@ fn menu_popup_surface_owns_chrome_bounds_indicators_and_input() {
 }
 
 #[test]
+fn tooltip_inside_an_active_popup_remains_available() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().relative().logical_size(320.0, 180.0));
+    let target = ui.insert_child(root);
+    ui.set_layout(
+        target,
+        Layout::new()
+            .absolute_at(20.0, 20.0)
+            .logical_size(80.0, 28.0),
+    );
+    ui.compute_layout(Size::new(320.0, 180.0));
+
+    let mut content = None;
+    let _popup = ui
+        .open_popup(target, crate::Popup::new(), |ui, popup| {
+            let child = ui.insert_child(popup);
+            ui.set_layout(child, Layout::new().logical_size(100.0, 32.0));
+            ui.set_tooltip(child, crate::Tooltip::new("Popup help"));
+            content = Some(child);
+        })
+        .expect("live target should open popup");
+    ui.compute_layout(Size::new(320.0, 180.0));
+    let content = content.expect("popup builder should create tooltip content");
+
+    let _ = ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(content).center(),
+        1,
+        false,
+    ));
+
+    assert_eq!(
+        ui.overlays.active_tooltip().map(|active| active.target),
+        Some(content)
+    );
+}
+
+#[test]
 fn popup_padding_writes_surface_padding_not_layout_padding() {
     let mut ui = Ui::new();
     let root = ui.root();

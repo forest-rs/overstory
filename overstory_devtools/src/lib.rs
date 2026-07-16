@@ -1416,6 +1416,10 @@ fn selected_element_property_grid(
         .row(PropertyGridRow::new(
             "Pointer capture",
             row.state.pointer_captured,
+        ))
+        .row(PropertyGridRow::new(
+            "Context menu",
+            row.state.has_context_menu,
         ));
 
     let layout = PropertyGridSection::new("Geometry")

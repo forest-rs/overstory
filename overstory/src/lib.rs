@@ -167,7 +167,8 @@ pub use controls::list::{
     selected_list_index, selected_list_indices, set_list_scroll_offset_y,
 };
 pub use controls::menu::{
-    Menu, MenuButton, MenuItem, MenuItemActivatedEvent, PART_MENU_BUTTON_INDICATOR,
+    ContextMenu, ContextMenuRequest, ContextMenuSource, ContextMenuSpec, ContextMenuSpecExt, Menu,
+    MenuButton, MenuItem, MenuItemActivatedEvent, PART_MENU_BUTTON_INDICATOR,
     PART_MENU_BUTTON_LABEL, PART_MENU_ITEM_INDICATOR, PART_MENU_ITEM_LABEL,
     SLOT_MENU_BUTTON_INDICATOR, SLOT_MENU_BUTTON_LABEL, SLOT_MENU_ITEM_INDICATOR,
     SLOT_MENU_ITEM_LABEL, TYPE_MENU, TYPE_MENU_BUTTON, TYPE_MENU_ITEM,
@@ -313,7 +314,8 @@ pub mod prelude {
         ActivationDeniedReason, ActivationSource, AnimationId, AnimationPlayState, AnimationTarget,
         AnimationTimelineId, AnimationTiming, AppendSpec, Badge, BadgeCountOverflow,
         BadgePlacement, Badged, BindingSpecExt, Button, ButtonActivatedEvent, CheckBox, ChildUi,
-        ClassId, Color, CompositeOperation, ContentSlotSpec, ControlStateSpecExt, ControlTemplate,
+        ClassId, Color, CompositeOperation, ContentSlotSpec, ContextMenu, ContextMenuRequest,
+        ContextMenuSource, ContextMenuSpecExt, ControlStateSpecExt, ControlTemplate,
         ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,

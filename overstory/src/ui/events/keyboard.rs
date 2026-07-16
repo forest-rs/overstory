@@ -21,6 +21,14 @@ fn focus_navigation_for_key(event: &KeyboardEvent) -> Option<Navigation> {
     })
 }
 
+fn is_context_menu_key(event: &KeyboardEvent) -> bool {
+    use ui_events::keyboard::{Key, KeyState, NamedKey};
+
+    event.state == KeyState::Down
+        && (matches!(&event.key, Key::Named(NamedKey::ContextMenu))
+            || (event.modifiers.shift() && matches!(&event.key, Key::Named(NamedKey::F10))))
+}
+
 impl Ui {
     /// Routes `event` through the framework keyboard policy and,
     /// when appropriate, to the currently focused element.
@@ -61,8 +69,13 @@ impl Ui {
             }
         });
 
+        let context_menu_opened = !routed.handled
+            && !routed.propagation_stopped
+            && is_context_menu_key(event)
+            && self.request_keyboard_context_menu(focused);
+
         KeyDispatchResult {
-            handled: routed.handled,
+            handled: routed.handled || context_menu_opened,
             propagation_stopped: routed.propagation_stopped,
             focus_changed: previous_focus != self.focus.focused(),
             focused: self.focus.focused(),

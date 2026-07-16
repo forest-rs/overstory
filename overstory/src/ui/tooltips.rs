@@ -5,7 +5,7 @@
 
 use crate::controls::tooltip::{Tooltip, append_overlay_tooltip};
 use crate::element::ElementId;
-use crate::overlay::OverlayHost;
+use crate::overlay::{OverlayAnchor, OverlayHost};
 
 use super::Ui;
 
@@ -57,6 +57,10 @@ impl Ui {
     }
 
     fn sync_tooltip(&mut self, requested: Option<ElementId>) -> bool {
+        let active_overlay = self.overlays.topmost_non_tooltip();
+        let requested = requested.filter(|target| {
+            active_overlay.is_none_or(|active| self.is_descendant_or_self(*target, active.element))
+        });
         match (requested, self.overlays.active_tooltip()) {
             (Some(target), Some(active)) if active.target == target => false,
             (Some(target), _) => {
@@ -94,6 +98,7 @@ impl Ui {
             target,
             element: tooltip_element,
             content: tooltip_element,
+            anchor: OverlayAnchor::TargetBounds,
             placement,
             offset,
             restore_focus: None,

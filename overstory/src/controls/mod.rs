@@ -23,9 +23,9 @@
 //!   `ListBox`, `ScrollView`, and `understory_selection`, then fold any shared
 //!   keyed-option behavior back into list/radio controls instead of letting
 //!   each control invent its own option model.
-//! - Add menu-family controls (`Menu`, `MenuItem`, `ContextMenu`, `Flyout`) to
-//!   exercise popup placement, focus scopes, dismiss routing, keyboard
-//!   navigation, and command-style activation.
+//! - Use `MenuButton` and `ContextMenu` as the proving consumers for shared
+//!   menu realization before adding menu bars, flyouts, check/radio items, or
+//!   other menu-family policy.
 //! - Add `TabView` / `TabControl` to cover keyed selection, header templates,
 //!   selected content panels, and overflow behavior.
 //! - Add multiline text editing (`TextArea`) once `TextInput`, `ScrollView`,

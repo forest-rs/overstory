@@ -1,14 +1,16 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Retained menu buttons, menu surfaces, command items, and submenus.
+//! Retained menu buttons, context menus, menu surfaces, command items, and
+//! submenus.
 //!
-//! `MenuButton` owns the reusable authored menu model. Opening it realizes an
-//! ordinary retained `Menu` below the shared popup root; nested menus
-//! entries become parented Understory overlays rather than a menu-local stack.
-//! Menu widgets own command and input policy only. Overlay lifetime,
-//! containment metadata, dismissal, placement continuity, and hover-grace
-//! geometry remain owned by the shared overlay runtime.
+//! `MenuButton` and `ContextMenu` are invocation policies over the same
+//! reusable authored menu model. Opening either realizes an ordinary retained
+//! `Menu` below the shared popup root; nested menu entries become parented
+//! Understory overlays rather than a menu-local stack. Menu widgets own command
+//! and input policy only. Overlay lifetime, containment metadata, dismissal,
+//! placement continuity, and hover-grace geometry remain owned by the shared
+//! overlay runtime.
 //!
 //! ```ignore
 //! ui.append(
@@ -26,20 +28,34 @@
 //!             )),
 //!     ),
 //! );
+//!
+//! ui.append(
+//!     parent,
+//!     Panel::new().context_menu(
+//!         Menu::new().item(MenuItem::new("Inspect").on_activate(|_, _| {})),
+//!     ),
+//! );
 //! ```
 
 mod button;
+mod context;
 mod item;
 mod model;
 mod runtime;
 mod templates;
 
 #[cfg(test)]
+mod context_tests;
+#[cfg(test)]
 mod tests;
 
 pub use button::MenuButton;
+pub use context::{
+    ContextMenu, ContextMenuRequest, ContextMenuSource, ContextMenuSpec, ContextMenuSpecExt,
+};
 pub use model::{Menu, MenuItem, MenuItemActivatedEvent};
 
+pub(crate) use runtime::open_context_menu_surface;
 pub(crate) use templates::{default_menu_button_template, default_menu_item_template};
 
 use understory_style::{PartTag, TypeTag};

@@ -17,7 +17,7 @@ impl View for SelectionPage {
                     );
                     let summary = list_card.local_state(initial_summary);
                     list_card.add(caption("").bind_text(summary.binding()));
-                    list_card.add(
+                    let renderer_list_frame = list_card.add(
                         ListBox::new()
                             .items(renderer_queue_items())
                             .item_template(|row, item| {
@@ -52,8 +52,17 @@ impl View for SelectionPage {
                             .gap(10.0)
                             .scrollbar_thickness(10.0)
                             .thumb_extent(40.0)
-                            .tooltip("Multi-select list with viewport clipping"),
-                    )
+                            .tooltip(
+                                "Multi-select list; secondary click or Shift+F10 opens row actions",
+                            ),
+                    );
+                    let renderer_list =
+                        list_box_scroll_area_list(list_card.ui(), renderer_list_frame)
+                            .expect("ListBoxScrollArea should retain its listbox");
+                    list_card.ui_mut().set_context_menu(
+                        renderer_list,
+                        renderer_queue_context_menu(renderer_list, summary),
+                    );
                 });
 
                 row.demo_responsive_card("DETAIL", PAGE_CARD_WIDTH, |detail| {
@@ -306,6 +315,71 @@ fn selection_summary(event: &overstory::ListSelectionChangedEvent) -> String {
     } else {
         format!("Selected: {count} items, primary {primary}")
     }
+}
+
+fn renderer_queue_context_menu(listbox: ElementId, summary: LocalState<String>) -> ContextMenu {
+    ContextMenu::dynamic(move |ui, request| {
+        let index = renderer_queue_context_index(ui, listbox, request.invoked_on)?;
+        let item_label = renderer_queue_label(index);
+        let current_summary = summary
+            .get(ui)
+            .unwrap_or_else(|| String::from("No current status"));
+        let inspect_label = item_label.clone();
+        let high_label = item_label.clone();
+        let normal_label = item_label.clone();
+        let copy_label = item_label.clone();
+        let cancel_label = item_label.clone();
+        Some(
+            Menu::new()
+                .item(
+                    MenuItem::new(format!("Inspect {item_label}")).on_activate(move |ui, _| {
+                        summary.set(ui, format!("Inspecting {inspect_label}"));
+                    }),
+                )
+                .item(MenuItem::submenu(
+                    "Set priority",
+                    Menu::new()
+                        .item(MenuItem::new("High").on_activate(move |ui, _| {
+                            summary.set(ui, format!("Raised {high_label} to high priority"));
+                        }))
+                        .item(MenuItem::new("Normal").on_activate(move |ui, _| {
+                            summary.set(ui, format!("Set {normal_label} to normal priority"));
+                        })),
+                ))
+                .item(
+                    MenuItem::new(format!("Copy status: {current_summary}")).on_activate(
+                        move |ui, _| {
+                            summary.set(ui, format!("Copied current status for {copy_label}"));
+                        },
+                    ),
+                )
+                .item(
+                    MenuItem::new(format!("Cancel {item_label}"))
+                        .enabled(index % 4 != 0)
+                        .on_activate(move |ui, _| {
+                            summary.set(ui, format!("Canceled {cancel_label}"));
+                        }),
+                ),
+        )
+    })
+}
+
+fn renderer_queue_context_index(
+    ui: &Ui,
+    listbox: ElementId,
+    invoked_on: ElementId,
+) -> Option<usize> {
+    let mut current = Some(invoked_on);
+    while let Some(element) = current {
+        if let Some(index) = realized_list_item_index(ui, element) {
+            return Some(index);
+        }
+        if element == listbox {
+            break;
+        }
+        current = ui.get(element).and_then(overstory::Element::parent);
+    }
+    selected_list_index(ui, listbox)
 }
 
 #[cfg(test)]

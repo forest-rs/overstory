@@ -64,7 +64,11 @@ impl Ui {
                 }
                 Some(
                     OverlayGeometry::new(entry.overlay_id(), self.effective_bounds(entry.element))
-                        .with_anchor_rect(self.effective_bounds(entry.target)),
+                        .with_anchor_rect(
+                            entry
+                                .anchor
+                                .reference_rect(self.effective_bounds(entry.target)),
+                        ),
                 )
             })
             .collect::<Vec<_>>();

@@ -11,7 +11,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
-use kurbo::{Rect, Size};
+use kurbo::{Point, Rect, Size};
 use peniko::Color;
 use understory_animation::{AnimationPlayState, CompositeOperation, TimingSample};
 use understory_overlay::{GraceShape, OverlayBehavior, OverlayLayer};
@@ -66,6 +66,8 @@ pub struct OverlayInspectionRow {
     pub content: ElementId,
     /// Retained element used as the overlay anchor.
     pub target: ElementId,
+    /// Geometry source used to position the overlay.
+    pub anchor: OverlayAnchorInspection,
     /// Parent popup host for a nested overlay.
     pub parent: Option<ElementId>,
     /// Semantic overlay behavior supplied to Understory.
@@ -78,6 +80,15 @@ pub struct OverlayInspectionRow {
     pub z: i32,
     /// Focus target captured when the overlay opened.
     pub restore_focus: Option<ElementId>,
+}
+
+/// Inspectable geometry source for an active overlay.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OverlayAnchorInspection {
+    /// The overlay follows the current bounds of its semantic target.
+    TargetBounds,
+    /// The overlay remains at a captured scene-space point.
+    Point(Point),
 }
 
 /// Inspectable focus-scope metadata derived from an active overlay.
@@ -428,6 +439,8 @@ pub struct ElementStateInspection {
     pub pressed: bool,
     /// Whether this element currently owns pointer capture.
     pub pointer_captured: bool,
+    /// Whether this element owns an attached context-menu factory.
+    pub has_context_menu: bool,
 }
 
 /// Composition-layer and surface rows for one UI snapshot.

@@ -28,7 +28,7 @@ use crate::element::ElementId;
 
 fn resolve_anchor_frame(
     placement: Placement,
-    target: Rect,
+    anchor: Anchor<'_>,
     overlay: Size,
     viewport: Size,
     offset: Vec2,
@@ -52,7 +52,7 @@ fn resolve_anchor_frame(
     policy.scoring = ScoringPolicy::collision_first();
     resolve_anchor(
         AnchorInput {
-            anchor: Anchor::Rect(target),
+            anchor,
             floating_size: overlay,
             viewport,
             boundary: viewport,
@@ -60,6 +60,32 @@ fn resolve_anchor_frame(
         },
         policy,
     )
+}
+
+/// Geometry used to place an overlay while retaining a semantic element
+/// target for lifecycle and accessibility relationships.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OverlayAnchor {
+    /// Follow the current bounds of the overlay target.
+    TargetBounds,
+    /// Stay at the scene-space point captured when the overlay opened.
+    Point(Point),
+}
+
+impl OverlayAnchor {
+    pub(crate) fn understory(self, target_bounds: Rect) -> Anchor<'static> {
+        match self {
+            Self::TargetBounds => Anchor::Rect(target_bounds),
+            Self::Point(point) => Anchor::Point(point),
+        }
+    }
+
+    pub(crate) fn reference_rect(self, target_bounds: Rect) -> Rect {
+        match self {
+            Self::TargetBounds => target_bounds,
+            Self::Point(point) => Rect::new(point.x, point.y, point.x, point.y),
+        }
+    }
 }
 
 fn anchor_offsets(side: Side, offset: Vec2) -> (f64, f64) {
@@ -79,6 +105,8 @@ pub(crate) struct OverlayHost {
     pub(crate) element: ElementId,
     /// Semantic content represented by the overlay host.
     pub(crate) content: ElementId,
+    /// Geometry source used by the shared anchor resolver.
+    pub(crate) anchor: OverlayAnchor,
     /// Preferred placement relative to `target`.
     pub(crate) placement: Placement,
     /// Placement offset in logical pixels.
@@ -175,6 +203,26 @@ impl OverlayRuntime {
             .filter(|entry| entry.behavior == behavior)
             .filter_map(|entry| self.instances.get(&entry.id))
             .find(|instance| instance.host.target == target)
+            .map(|instance| instance.host)
+    }
+
+    pub(crate) fn active_for_behavior(&self, behavior: OverlayBehavior) -> Option<OverlayHost> {
+        self.stack
+            .entries()
+            .iter()
+            .rev()
+            .find(|entry| entry.behavior == behavior)
+            .and_then(|entry| self.instances.get(&entry.id))
+            .map(|instance| instance.host)
+    }
+
+    pub(crate) fn topmost_non_tooltip(&self) -> Option<OverlayHost> {
+        self.stack
+            .entries()
+            .iter()
+            .rev()
+            .find(|entry| entry.behavior != OverlayBehavior::Tooltip)
+            .and_then(|entry| self.instances.get(&entry.id))
             .map(|instance| instance.host)
     }
 
@@ -307,7 +355,7 @@ impl OverlayRuntime {
             .map(PreviousAnchorFrame::from);
         let frame = resolve_anchor_frame(
             instance.host.placement,
-            target,
+            instance.host.anchor.understory(target),
             size,
             viewport,
             instance.host.offset,
@@ -557,6 +605,7 @@ mod tests {
             target: ElementId::new(target, 0),
             element: ElementId::new(element, 0),
             content: ElementId::new(element, 0),
+            anchor: OverlayAnchor::TargetBounds,
             placement: Placement::BOTTOM,
             offset: Vec2::ZERO,
             restore_focus: None,

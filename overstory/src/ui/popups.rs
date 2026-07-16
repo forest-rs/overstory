@@ -12,7 +12,7 @@ use understory_overlay::{FocusPolicy, OverlayBehavior, OverlayEvent, OverlayKey}
 
 use crate::controls::popup::{Popup, append_overlay_popup};
 use crate::element::ElementId;
-use crate::overlay::OverlayHost;
+use crate::overlay::{OverlayAnchor, OverlayHost};
 
 use super::Ui;
 
@@ -56,6 +56,28 @@ impl Ui {
     where
         F: FnOnce(&mut Self, ElementId) -> ElementId,
     {
+        self.open_semantic_popup_with_anchor(
+            target,
+            parent,
+            OverlayAnchor::TargetBounds,
+            popup,
+            behavior,
+            build,
+        )
+    }
+
+    pub(crate) fn open_semantic_popup_with_anchor<F>(
+        &mut self,
+        target: ElementId,
+        parent: Option<ElementId>,
+        anchor: OverlayAnchor,
+        popup: Popup,
+        behavior: OverlayBehavior,
+        build: F,
+    ) -> Option<ElementId>
+    where
+        F: FnOnce(&mut Self, ElementId) -> ElementId,
+    {
         if !self.is_overlay_anchor_eligible(target)
             || parent.is_some_and(|parent| self.overlays.active_for_element(parent).is_none())
         {
@@ -82,6 +104,7 @@ impl Ui {
                 target,
                 element: popup_element,
                 content,
+                anchor,
                 placement,
                 offset,
                 restore_focus,
@@ -95,6 +118,8 @@ impl Ui {
             self.add_pseudo(target, crate::pseudos::PSEUDO_EXPANDED);
         }
         self.refresh_overlay_frame();
+        // A popup supersedes tooltip requests outside its retained subtree.
+        let _ = self.refresh_tooltip_from_focus();
         Some(popup_element)
     }
 

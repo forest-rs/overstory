@@ -29,6 +29,26 @@ pub(crate) fn pointer_up(point: Point, time: u64) -> PointerEvent {
     })
 }
 
+/// Builds a secondary-pointer button-down event at `point`.
+pub(crate) fn secondary_pointer_down(point: Point, time: u64) -> PointerEvent {
+    let mut state = pointer_state(point, time, false);
+    state.buttons.insert(PointerButton::Secondary);
+    PointerEvent::Down(PointerButtonEvent {
+        pointer: pointer_info(),
+        button: Some(PointerButton::Secondary),
+        state,
+    })
+}
+
+/// Builds a secondary-pointer button-up event at `point`.
+pub(crate) fn secondary_pointer_up(point: Point, time: u64) -> PointerEvent {
+    PointerEvent::Up(PointerButtonEvent {
+        pointer: pointer_info(),
+        button: Some(PointerButton::Secondary),
+        state: pointer_state(point, time, false),
+    })
+}
+
 /// Builds a touch-contact down event at `point`.
 pub(crate) fn touch_down(point: Point, time: u64) -> PointerEvent {
     PointerEvent::Down(PointerButtonEvent {

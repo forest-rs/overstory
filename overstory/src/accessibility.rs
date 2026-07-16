@@ -371,6 +371,9 @@ impl Ui {
         if let Some(widget) = element.widget() {
             widget.configure_accessibility(element, ctx, &mut node);
         }
+        if self.has_context_menu(id) && self.is_enabled(id) {
+            node.add_action(Action::ShowContextMenu);
+        }
         node
     }
 
@@ -423,6 +426,9 @@ impl Ui {
         }
         match request.action {
             Action::Click => self.perform_accesskit_click(target),
+            Action::ShowContextMenu if self.has_context_menu(target) => {
+                self.request_accessible_context_menu(target)
+            }
             _ => false,
         }
     }

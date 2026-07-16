@@ -113,6 +113,10 @@ fn is_primary_activation_contact(event: &PointerButtonEvent) -> bool {
         || (event.button.is_none() && matches!(event.pointer.pointer_type, PointerType::Touch))
 }
 
+fn is_context_menu_contact(event: &PointerButtonEvent) -> bool {
+    event.button == Some(PointerButton::Secondary)
+}
+
 impl Ui {
     fn dispatch_pointer_hit(
         &mut self,
@@ -200,7 +204,9 @@ impl Ui {
                 self.update_overlay_pointer(pos);
                 let time_ms = button_event.state.time / 1_000_000;
                 let mut result = PointerDispatchResult::default();
-                if is_primary_activation_contact(button_event) {
+                if is_primary_activation_contact(button_event)
+                    || is_context_menu_contact(button_event)
+                {
                     result.overlay_changed |= self.dismiss_popups_for_pointer_down(pos);
                     if result.overlay_changed {
                         self.geometry.commit();
@@ -234,6 +240,17 @@ impl Ui {
                             data,
                         );
                         result.include_routed(pointer_down);
+                        if is_context_menu_contact(button_event)
+                            && !pointer_down.handled
+                            && !pointer_down.propagation_stopped
+                        {
+                            let opened = self.request_pointer_context_menu(target, pos);
+                            result.handled |= opened;
+                            result.overlay_changed |= opened;
+                            if opened {
+                                self.geometry.commit();
+                            }
+                        }
                         if is_primary_activation_contact(button_event)
                             && !pointer_down.handled
                             && !pointer_down.propagation_stopped

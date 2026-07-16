@@ -38,8 +38,10 @@ use understory_style::StyleVocabulary;
 use crate::binding::{BindingOwner, BindingSourceRuntime};
 use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
+use crate::controls::menu::ContextMenu;
 use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
 use crate::element::{Element, ElementId};
+use crate::element_side_map::ElementSideMap;
 use crate::element_store::ElementStore;
 use crate::event_runtime::EventRuntime;
 use crate::focus_runtime::FocusRuntime;
@@ -60,6 +62,7 @@ use crate::timer_runtime::TimerRuntime;
 use crate::widget::RootWidget;
 
 mod bindings;
+mod context_menus;
 mod events;
 mod inspection;
 mod layout;
@@ -140,6 +143,8 @@ pub struct Ui {
     timers: TimerRuntime,
     /// Tooltip and popup declarations plus currently active overlay stack.
     overlays: OverlayRuntime,
+    /// Context-menu declarations attached to retained elements.
+    context_menus: ElementSideMap<ContextMenu>,
     /// Scrollable target registry shared by scrollbars and semantic actions.
     scrolling: ScrollRuntime,
     /// FIFO application callbacks deferred until toolkit widget behavior settles.
@@ -330,6 +335,7 @@ impl Ui {
             timeline_properties,
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
+            context_menus: ElementSideMap::new(),
             scrolling: ScrollRuntime::new(),
             semantic_callbacks: SemanticCallbackRuntime::default(),
             frame_stats: UiFrameStats::default(),

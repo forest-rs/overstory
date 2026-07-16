@@ -3,6 +3,7 @@
 
 use alloc::boxed::Box;
 
+use kurbo::Point;
 use understory_focus::Navigation;
 use understory_overlay::OverlayBehavior;
 
@@ -12,7 +13,7 @@ use crate::SurfaceSpecExt;
 use crate::controls::popup::Popup;
 use crate::element::ElementId;
 use crate::layouts::{Layout, LayoutAlign, LayoutAlignment, LayoutDimension, LayoutSize};
-use crate::overlay::Placement;
+use crate::overlay::{OverlayAnchor, Placement};
 use crate::ui::Ui;
 
 const DEFAULT_MENU_ITEM_HEIGHT: f64 = 34.0;
@@ -29,24 +30,59 @@ pub(super) fn open_root_menu(
     menu: Menu,
     direction: Navigation,
 ) -> bool {
-    if ui
-        .active_overlay_for(button, OverlayBehavior::Menu)
-        .is_some()
-    {
-        return false;
-    }
-    let popup = ui.open_semantic_popup_with_behavior(
+    open_root_menu_surface(
+        ui,
         button,
-        None,
+        OverlayAnchor::TargetBounds,
         menu_popup_host().offset(0.0, 4.0),
         OverlayBehavior::Menu,
+        menu,
+        direction,
+    )
+    .is_some()
+}
+
+pub(crate) fn open_context_menu_surface(
+    ui: &mut Ui,
+    target: ElementId,
+    position: Point,
+    menu: Menu,
+) -> Option<ElementId> {
+    open_root_menu_surface(
+        ui,
+        target,
+        OverlayAnchor::Point(position),
+        menu_popup_host()
+            .placement(Placement::BOTTOM_START)
+            .offset(0.0, 0.0),
+        OverlayBehavior::ContextMenu,
+        menu,
+        Navigation::Down,
+    )
+}
+
+fn open_root_menu_surface(
+    ui: &mut Ui,
+    target: ElementId,
+    anchor: OverlayAnchor,
+    popup: Popup,
+    behavior: OverlayBehavior,
+    menu: Menu,
+    direction: Navigation,
+) -> Option<ElementId> {
+    if ui.active_overlay_for(target, behavior).is_some() {
+        return None;
+    }
+    let popup = ui.open_semantic_popup_with_anchor(
+        target,
+        None,
+        anchor,
+        popup,
+        behavior,
         move |ui, popup| append_menu_surface(ui, popup, menu, MenuLevel::Root),
-    );
-    let Some(popup) = popup else {
-        return false;
-    };
+    )?;
     let _ = ui.focus_scope_edge(popup, direction);
-    true
+    Some(popup)
 }
 
 pub(super) fn close_root_menu(ui: &mut Ui, button: ElementId) -> bool {

@@ -701,6 +701,7 @@ impl Ui {
         for child in children {
             self.remove_subtree(child);
         }
+        self.context_menus.remove(id);
         let _ = self.elements.remove_slot(id);
         self.style.remove(id);
         self.invalidation.remove_key(id);

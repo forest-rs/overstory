@@ -352,6 +352,67 @@ fn gallery_pages_stay_inside_initial_window_width() {
 }
 
 #[test]
+fn selection_page_renderer_rows_invoke_real_context_menus() {
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
+
+    let mut ui = build_ui();
+    let stage = stage_element(&ui);
+    show_demo_page(&mut ui, stage, DemoPage::Selection);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+    let (index, position) = ui
+        .inspection_snapshot()
+        .elements
+        .into_iter()
+        .find_map(|row| {
+            let index = realized_list_item_index(&ui, row.id)?;
+            let position = ui.effective_bounds(row.id).center();
+            let mut current = ui.hit_test(position);
+            let mut reaches_row = false;
+            let mut reaches_context_menu = false;
+            while let Some(element) = current {
+                reaches_row |= element == row.id;
+                reaches_context_menu |= ui.has_context_menu(element);
+                current = ui.get(element).and_then(overstory::Element::parent);
+            }
+            (reaches_row && reaches_context_menu).then_some((index, position))
+        })
+        .expect("the renderer queue should realize a hittable row");
+
+    let opened = ui.dispatch_pointer_event(&secondary_pointer_down(position, 1));
+    assert!(opened.handled);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    let snapshot = ui.inspection_snapshot();
+    assert_eq!(snapshot.overlays.entries.len(), 1);
+    let root = snapshot.overlays.entries[0];
+    assert_eq!(
+        root.anchor,
+        overstory::inspection::OverlayAnchorInspection::Point(position)
+    );
+    assert!(!snapshot.overlays.focus_scopes.is_empty());
+    let first_item = ui
+        .get(root.content)
+        .and_then(|menu| menu.children().first().copied())
+        .expect("the context menu should realize its first command");
+    assert_eq!(
+        ui.get(first_item)
+            .and_then(|item| item.get_local_value(ui.properties().content))
+            .map(String::as_str),
+        Some(format!("Inspect {}", renderer_queue_label(index)).as_str()),
+    );
+
+    let down = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowDown), Code::ArrowDown);
+    assert!(ui.dispatch_key(&down).handled);
+    let right = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowRight), Code::ArrowRight);
+    assert!(ui.dispatch_key(&right).handled);
+    ui.compute_layout(INITIAL_VIEWPORT_SIZE);
+
+    let nested = ui.inspection_snapshot();
+    assert_eq!(nested.overlays.entries.len(), 2);
+    assert_eq!(nested.overlays.entries[1].parent, Some(root.element));
+}
+
+#[test]
 fn gallery_pages_stay_inside_narrow_window_width() {
     const NARROW_WIDTH: f64 = 1180.0;
 
@@ -947,6 +1008,18 @@ fn pointer_up(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
         pointer: pointer_info(),
         button: Some(PointerButton::Primary),
         state: pointer_state(point, time, false),
+    })
+}
+
+fn secondary_pointer_down(point: Point, time: u64) -> ui_events::pointer::PointerEvent {
+    use ui_events::pointer::{PointerButton, PointerButtonEvent, PointerEvent};
+
+    let mut state = pointer_state(point, time, false);
+    state.buttons.insert(PointerButton::Secondary);
+    PointerEvent::Down(PointerButtonEvent {
+        pointer: pointer_info(),
+        button: Some(PointerButton::Secondary),
+        state,
     })
 }
 

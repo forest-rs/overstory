@@ -10,11 +10,13 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
-    LayerInspectionId, OverlayFocusScopeInspectionRow, OverlayGraceInspectionRow,
-    OverlayInspectionRow, OverlayInspectionSnapshot, SurfaceInspectionId,
-    TemplateContractInspection, TimelineAnimationInspectionRow, TimelineInspectionSnapshot,
-    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
+    LayerInspectionId, OverlayAnchorInspection, OverlayFocusScopeInspectionRow,
+    OverlayGraceInspectionRow, OverlayInspectionRow, OverlayInspectionSnapshot,
+    SurfaceInspectionId, TemplateContractInspection, TimelineAnimationInspectionRow,
+    TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
+    UiStorageInspectionSnapshot,
 };
+use crate::overlay::OverlayAnchor;
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
 use understory_presentation::{BorderStyle, CornerShape};
@@ -70,6 +72,10 @@ impl Ui {
                     element: host.element,
                     content: host.content,
                     target: host.target,
+                    anchor: match host.anchor {
+                        OverlayAnchor::TargetBounds => OverlayAnchorInspection::TargetBounds,
+                        OverlayAnchor::Point(point) => OverlayAnchorInspection::Point(point),
+                    },
                     parent: entry
                         .parent
                         .and_then(|parent| self.overlays.host_for(parent))
@@ -237,6 +243,7 @@ impl Ui {
                 hovered: element.pseudos().contains(&PSEUDO_HOVER),
                 pressed: element.pseudos().contains(&PSEUDO_PRESSED),
                 pointer_captured: self.pointer_capture() == Some(id),
+                has_context_menu: self.has_context_menu(id),
             },
             has_widget_identity: element.has_widget_identity(),
             bounds: self.effective_bounds(id),
