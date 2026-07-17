@@ -10,8 +10,70 @@
 use core::time::Duration;
 
 use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
+use crate::element::ElementId;
 use crate::text::TextLayoutCacheStats;
 use frameclock::{FrameDemand, FrameTimingSummary};
+
+/// Outcome of one bounded layout-stabilization attempt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutOutcome {
+    /// Layout reached a fixed point within the pass budget.
+    Stable {
+        /// Number of layout passes used by this attempt.
+        passes: usize,
+    },
+    /// Layout still requested another pass after consuming the pass budget.
+    ///
+    /// The pending work remains invalidated so a host can schedule another
+    /// frame. [`UiFrameStats::layout_stabilization_causes`] reports how many
+    /// widgets requested the final additional pass.
+    Deferred {
+        /// Number of layout passes used by this attempt.
+        passes: usize,
+    },
+}
+
+impl LayoutOutcome {
+    /// Returns the number of layout passes used by this attempt.
+    #[must_use]
+    pub const fn passes(self) -> usize {
+        match self {
+            Self::Stable { passes } | Self::Deferred { passes } => passes,
+        }
+    }
+
+    /// Returns whether another frame is required to continue stabilization.
+    #[must_use]
+    pub const fn needs_another_frame(self) -> bool {
+        matches!(self, Self::Deferred { .. })
+    }
+}
+
+impl Default for LayoutOutcome {
+    fn default() -> Self {
+        Self::Stable { passes: 0 }
+    }
+}
+
+/// Layout stage that requested another stabilization pass.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutStabilizationPhase {
+    /// A widget's arrange hook changed layout-affecting state.
+    Arrange,
+    /// A widget's element-realization hook changed retained layout structure.
+    ElementRealization,
+    /// Layout-affecting state remained invalidated after widget hooks.
+    LayoutInvalidation,
+}
+
+/// Widget responsible for requesting another layout-stabilization pass.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LayoutStabilizationCause {
+    /// Widget element that requested another pass.
+    pub element: ElementId,
+    /// Stage that requested another pass.
+    pub phase: LayoutStabilizationPhase,
+}
 
 /// Count of invalidation-channel marks observed during a frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -98,6 +160,11 @@ pub struct UiFrameStats {
     /// Number of layout passes run. Element realization can request more than
     /// one pass.
     pub layout_passes: usize,
+    /// Outcome of the most recent layout-stabilization attempt.
+    pub layout_outcome: LayoutOutcome,
+    /// Number of widgets that requested the final additional stabilization
+    /// pass.
+    pub layout_stabilization_causes: usize,
     /// Layout style records pushed into the layout engine.
     pub layout_style_updates: usize,
     /// Widget measure callbacks invoked by the layout engine.

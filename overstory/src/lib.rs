@@ -254,7 +254,10 @@ pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use controls::zstack::{StackAlignment, TYPE_ZSTACK, ZStack};
 pub use cursor_icon::CursorIcon;
-pub use diagnostics::{ChannelMarkStats, UiFrameStats, UiFrameTimings, UiRendererTimings};
+pub use diagnostics::{
+    ChannelMarkStats, LayoutOutcome, LayoutStabilizationCause, LayoutStabilizationPhase,
+    UiFrameStats, UiFrameTimings, UiRendererTimings,
+};
 pub use element::{Element, ElementId};
 pub use element_ref::{ElementRef, ElementRefSpecExt, ReferencedSpec};
 pub use event_runtime::{

@@ -249,6 +249,11 @@ fn filter_inspection_changes(
     mut changes: UiInspectionChanges,
     target: &UiLiveInspectionTarget<'_>,
 ) -> UiInspectionChanges {
+    if let Some(layout) = &mut changes.layout {
+        layout
+            .causes
+            .retain(|cause| target.element_is_included(cause.element));
+    }
     let mut removed_decisions = Vec::new();
     let mut removed = Vec::new();
     for removal in changes.tree.removed {
@@ -361,6 +366,9 @@ impl DevtoolsSnapshot {
     pub fn apply_inspection_changes(&mut self, changes: UiInspectionChanges) {
         if let Some(frame) = changes.frame {
             self.inspection.frame = frame;
+        }
+        if let Some(layout) = changes.layout {
+            self.inspection.layout = layout;
         }
         if let Some(overlays) = changes.overlays {
             self.inspection.overlays = overlays;
@@ -699,6 +707,10 @@ fn filter_inspection_snapshot(
         })
         .collect();
     snapshot.root = root;
+    snapshot
+        .layout
+        .causes
+        .retain(|cause| contains_element(&included, cause.element));
     snapshot.composition = filtered_composition_snapshot(snapshot.composition, &included);
     snapshot.overlays = filter_overlay_snapshot(snapshot.overlays, |element| {
         contains_element(&included, element)

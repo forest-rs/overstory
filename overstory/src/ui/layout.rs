@@ -11,6 +11,7 @@ use understory_presentation::{BorderStyle, Edges};
 
 use crate::behavior::{KnownDimensions, MeasureConstraints};
 use crate::channels::{ARRANGE, LAYOUT};
+use crate::diagnostics::{LayoutOutcome, LayoutStabilizationCause, LayoutStabilizationPhase};
 use crate::element::{Element, ElementId};
 use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
@@ -20,6 +21,8 @@ use crate::motion::{PresentationSlot, PresentationTarget};
 use crate::properties::Visibility;
 
 use super::Ui;
+
+const LAYOUT_PASS_BUDGET: usize = 4;
 
 fn available_to_f64(s: taffy::AvailableSpace) -> f64 {
     match s {
@@ -250,7 +253,16 @@ impl Ui {
     /// world-space bounds, hit-test geometry, and composition geometry.
     /// `Bounds` writes use the standard `set_local_notifying` path so
     /// GEOMETRY/PAINT cascade naturally for elements whose box changed.
-    pub fn compute_layout(&mut self, viewport: Size) {
+    ///
+    /// Returns whether layout stabilized within the bounded pass budget.
+    /// A [`LayoutOutcome::Deferred`] result preserves a `LAYOUT` invalidation;
+    /// direct callers should arrange another frame, while the `overstory_host`
+    /// driver does so automatically.
+    ///
+    /// Existing statement-style calls may ignore the returned value. Frame
+    /// drivers should handle [`LayoutOutcome::Deferred`] before treating the
+    /// current frame as terminal.
+    pub fn compute_layout(&mut self, viewport: Size) -> LayoutOutcome {
         self.flush_bindings();
         if self.last_viewport != viewport {
             self.last_viewport = viewport;
@@ -259,11 +271,17 @@ impl Ui {
         let needs_layout = self.invalidation.has_invalidated(LAYOUT);
         let needs_arrange = self.invalidation.has_invalidated(ARRANGE);
         self.frame_stats.layout_requested |= needs_layout;
-        if needs_layout {
-            self.compute_layout_until_stable(viewport);
-        } else if needs_arrange {
-            self.write_arranged_bounds();
-        }
+        let outcome = if needs_layout {
+            self.compute_layout_until_stable(viewport)
+        } else {
+            if needs_arrange {
+                self.write_arranged_bounds();
+            }
+            self.layout_stabilization_causes.clear();
+            LayoutOutcome::default()
+        };
+        self.frame_stats.layout_outcome = outcome;
+        self.frame_stats.layout_stabilization_causes = self.layout_stabilization_causes.len();
         if needs_layout || needs_arrange {
             self.reposition_overlays(viewport);
         }
@@ -275,18 +293,28 @@ impl Ui {
             self.refresh_overlay_frame();
         }
         self.flush_composition();
+        self.inspection_changes.record_frame();
+        outcome
     }
 
-    fn compute_layout_until_stable(&mut self, viewport: Size) {
-        for _ in 0..4 {
+    fn compute_layout_until_stable(&mut self, viewport: Size) -> LayoutOutcome {
+        for passes in 1..=LAYOUT_PASS_BUDGET {
             if !self.compute_layout_pass(viewport) {
-                return;
+                return LayoutOutcome::Stable { passes };
             }
+        }
+        // A widget explicitly requested another pass. Preserve that work for
+        // the next frame instead of committing an apparently stable terminal
+        // state after silently exhausting this frame's budget.
+        self.mark_channels(self.root(), LAYOUT.into());
+        LayoutOutcome::Deferred {
+            passes: LAYOUT_PASS_BUDGET,
         }
     }
 
     fn compute_layout_pass(&mut self, viewport: Size) -> bool {
         self.frame_stats.layout_passes += 1;
+        self.layout_stabilization_causes.clear();
         // Bindings first — they may dirty LAYOUT/GEOMETRY/PAINT for their
         // targets.
         self.flush_bindings();
@@ -376,30 +404,48 @@ impl Ui {
         self.frame_stats.measured_widgets += measured_widgets;
 
         self.write_arranged_bounds();
-        let arranged = self.run_arrange_widgets();
-        arranged || self.run_element_realization()
+        let mut causes = core::mem::take(&mut self.layout_stabilization_causes);
+        self.run_arrange_widgets(&mut causes);
+        if causes.is_empty() {
+            self.run_element_realization(&mut causes);
+        }
+        for element in self.invalidation.peek_sorted(LAYOUT) {
+            if !causes.iter().any(|cause| cause.element == element) {
+                causes.push(LayoutStabilizationCause {
+                    element,
+                    phase: LayoutStabilizationPhase::LayoutInvalidation,
+                });
+            }
+        }
+        let changed = !causes.is_empty();
+        self.layout_stabilization_causes = causes;
+        changed
     }
 
-    fn run_arrange_widgets(&mut self) -> bool {
+    fn run_arrange_widgets(&mut self, causes: &mut Vec<LayoutStabilizationCause>) {
         let mut ids = Vec::new();
         self.collect_subtree_ids(self.root(), &mut ids);
-        let mut changed = false;
         for id in ids {
             if self.get(id).is_none() {
                 continue;
             }
+            let mut changed = false;
             self.with_widget_mut(id, |widget, ui| {
                 let mut ctx = crate::behavior::ArrangeContext::new(id, ui);
-                changed |= widget.arrange(&mut ctx).layout_changed();
+                changed = widget.arrange(&mut ctx).layout_changed();
             });
+            if changed {
+                causes.push(LayoutStabilizationCause {
+                    element: id,
+                    phase: LayoutStabilizationPhase::Arrange,
+                });
+            }
         }
-        changed
     }
 
-    fn run_element_realization(&mut self) -> bool {
+    fn run_element_realization(&mut self, causes: &mut Vec<LayoutStabilizationCause>) {
         let mut ids = Vec::new();
         self.collect_subtree_ids(self.root(), &mut ids);
-        let mut changed = false;
         for id in ids {
             if self.get(id).is_none() {
                 continue;
@@ -411,9 +457,13 @@ impl Ui {
             });
             self.frame_stats.element_realize_visits += 1;
             self.frame_stats.element_realize_changes += usize::from(widget_changed);
-            changed |= widget_changed;
+            if widget_changed {
+                causes.push(LayoutStabilizationCause {
+                    element: id,
+                    phase: LayoutStabilizationPhase::ElementRealization,
+                });
+            }
         }
-        changed
     }
 
     fn collect_subtree_ids(&self, id: ElementId, ids: &mut Vec<ElementId>) {

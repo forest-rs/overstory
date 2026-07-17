@@ -19,7 +19,7 @@ use understory_style::{ClassId, PartTag, PseudoClassId, StyleVocabulary, TypeTag
 use understory_timing::TimerDuration;
 
 use crate::composition::{CompositionPolicy, SurfaceId};
-use crate::diagnostics::UiFrameStats;
+use crate::diagnostics::{LayoutOutcome, LayoutStabilizationCause, UiFrameStats};
 use crate::element::ElementId;
 use crate::motion::{PresentationTarget, PresentationValueKind};
 use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
@@ -32,6 +32,9 @@ pub struct UiInspectionSnapshot {
     pub root: ElementId,
     /// Elements in root-first document order.
     pub elements: Vec<ElementInspectionRow>,
+    /// Layout stabilization outcome and the widgets that requested its final
+    /// additional pass.
+    pub layout: LayoutInspectionSnapshot,
     /// Composition layer tree and surface summary.
     pub composition: CompositionInspectionSnapshot,
     /// Active overlay lifecycle, geometry, focus scopes, and hover grace.
@@ -44,6 +47,18 @@ pub struct UiInspectionSnapshot {
     pub style_vocabulary: StyleVocabulary,
     /// Frame counters captured at the same instant as the snapshot.
     pub frame: UiFrameStats,
+}
+
+/// Inspectable facts from the most recent layout-stabilization attempt.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LayoutInspectionSnapshot {
+    /// Whether the attempt stabilized or deferred remaining work.
+    pub outcome: LayoutOutcome,
+    /// Widgets that requested the final additional pass.
+    ///
+    /// This is empty after a stable attempt and contains only the last pass
+    /// after budget exhaustion, keeping diagnostics bounded.
+    pub causes: Vec<LayoutStabilizationCause>,
 }
 
 /// Inspectable projection of the retained overlay stack and its current frame.
@@ -126,6 +141,8 @@ pub struct OverlayGraceInspectionRow {
 pub struct UiInspectionChanges {
     /// Retained-element tree changes.
     pub tree: ElementTreeInspectionPatch,
+    /// Latest layout stabilization facts when a layout attempt ran.
+    pub layout: Option<LayoutInspectionSnapshot>,
     /// Latest overlay state when lifecycle or derived geometry changed.
     pub overlays: Option<OverlayInspectionSnapshot>,
     /// Frame counters and host-supplied timings, when the most recent frame
@@ -137,7 +154,10 @@ impl UiInspectionChanges {
     /// Returns whether this batch carries no changes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tree.is_empty() && self.overlays.is_none() && self.frame.is_none()
+        self.tree.is_empty()
+            && self.layout.is_none()
+            && self.overlays.is_none()
+            && self.frame.is_none()
     }
 }
 

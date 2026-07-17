@@ -10,11 +10,11 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
-    LayerInspectionId, OverlayAnchorInspection, OverlayFocusScopeInspectionRow,
-    OverlayGraceInspectionRow, OverlayInspectionRow, OverlayInspectionSnapshot,
-    SurfaceInspectionId, TemplateContractInspection, TimelineAnimationInspectionRow,
-    TimelineInspectionSnapshot, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    LayerInspectionId, LayoutInspectionSnapshot, OverlayAnchorInspection,
+    OverlayFocusScopeInspectionRow, OverlayGraceInspectionRow, OverlayInspectionRow,
+    OverlayInspectionSnapshot, SurfaceInspectionId, TemplateContractInspection,
+    TimelineAnimationInspectionRow, TimelineInspectionSnapshot, UiInspectionChanges,
+    UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::overlay::OverlayAnchor;
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
@@ -52,12 +52,20 @@ impl Ui {
         UiInspectionSnapshot {
             root: self.root(),
             elements: self.element_inspection_rows(),
+            layout: self.layout_inspection_snapshot(),
             composition: self.composition_inspection_snapshot(),
             overlays: self.overlay_inspection_snapshot(),
             storage: self.storage_inspection_snapshot(),
             timeline: self.timeline_inspection_snapshot(),
             style_vocabulary: self.style_vocabulary_snapshot(),
             frame: self.frame_stats(),
+        }
+    }
+
+    fn layout_inspection_snapshot(&self) -> LayoutInspectionSnapshot {
+        LayoutInspectionSnapshot {
+            outcome: self.frame_stats.layout_outcome,
+            causes: self.layout_stabilization_causes.clone(),
         }
     }
 
@@ -145,6 +153,10 @@ impl Ui {
         let overlays = pending
             .overlays_dirty
             .then(|| self.overlay_inspection_snapshot());
+        let layout = pending
+            .frame
+            .is_some()
+            .then(|| self.layout_inspection_snapshot());
         UiInspectionChanges {
             tree: ElementTreeInspectionPatch {
                 root: Some(root),
@@ -152,6 +164,7 @@ impl Ui {
                 upserted,
                 updated,
             },
+            layout,
             overlays,
             frame: pending.frame,
         }

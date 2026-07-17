@@ -341,8 +341,15 @@ impl UiHost {
         let set_now = phase_start.elapsed();
 
         let phase_start = Instant::now();
-        self.ui.compute_layout(viewport.logical_size());
+        let layout_outcome = self.ui.compute_layout(viewport.logical_size());
         let layout = phase_start.elapsed();
+        if layout_outcome.needs_another_frame() {
+            self.request_frame(if prepared_demand.is_empty() {
+                FrameDemand::BACKGROUND
+            } else {
+                prepared_demand
+            });
+        }
 
         let phase_start = Instant::now();
         self.ui.refresh_presentation_surfaces();
@@ -579,6 +586,36 @@ mod tests {
         assert!(diagnostics.ui.painted_elements >= 1);
         assert!(!diagnostics.output_empty);
         assert_eq!(diagnostics.ui.prepared_demand, FrameDemand::NONE);
+    }
+
+    #[test]
+    fn requested_frame_carries_deferred_layout_forward() {
+        #[derive(Debug)]
+        struct OscillatingLayout;
+
+        impl overstory::Widget for OscillatingLayout {
+            fn arrange(
+                &mut self,
+                _ctx: &mut overstory::ArrangeContext<'_>,
+            ) -> overstory::ArrangeResult {
+                overstory::ArrangeResult::LAYOUT_CHANGED
+            }
+        }
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let child = ui.append_widget(root, Box::new(OscillatingLayout));
+        ui.set_layout(child, Layout::new().logical_size(10.0, 10.0));
+        let mut host = UiHost::new(ui);
+        host.request_frame(FrameDemand::INPUT);
+
+        let _ = host.prepare_requested_frame(test_viewport(), pacing_only(HostTime(0)));
+
+        assert_eq!(
+            host.last_frame_diagnostics().ui.layout_outcome,
+            overstory::LayoutOutcome::Deferred { passes: 4 }
+        );
+        assert_eq!(host.pending_frame_demand(), FrameDemand::INPUT);
     }
 
     #[test]

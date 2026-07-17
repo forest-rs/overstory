@@ -115,11 +115,17 @@ fn clean_compute_layout_skips_widget_layout_work() {
     );
     ui.set_layout(child, Layout::new().logical_size(10.0, 10.0));
 
-    ui.compute_layout(Size::new(100.0, 50.0));
+    assert_eq!(
+        ui.compute_layout(Size::new(100.0, 50.0)),
+        crate::LayoutOutcome::Stable { passes: 1 }
+    );
     assert_eq!(count.get(), 1);
 
     ui.set_now(1);
-    ui.compute_layout(Size::new(100.0, 50.0));
+    assert_eq!(
+        ui.compute_layout(Size::new(100.0, 50.0)),
+        crate::LayoutOutcome::Stable { passes: 0 }
+    );
     assert_eq!(count.get(), 1);
 
     ui.compute_layout(Size::new(120.0, 50.0));
@@ -131,6 +137,60 @@ fn clean_compute_layout_skips_widget_layout_work() {
     ui.mark_channels(child, LAYOUT.into());
     ui.compute_layout(Size::new(120.0, 50.0));
     assert_eq!(count.get(), 3);
+}
+
+#[test]
+fn layout_stabilization_exhaustion_preserves_layout_work() {
+    #[derive(Debug)]
+    struct OscillatingLayout;
+
+    impl crate::Widget for OscillatingLayout {
+        fn arrange(&mut self, _ctx: &mut crate::ArrangeContext<'_>) -> crate::ArrangeResult {
+            crate::ArrangeResult::LAYOUT_CHANGED
+        }
+    }
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let child = ui.append_widget(root, Box::new(OscillatingLayout));
+    ui.set_layout(child, Layout::new().logical_size(10.0, 10.0));
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    let outcome = ui.compute_layout(Size::new(100.0, 50.0));
+
+    let expected = [LayoutStabilizationCause {
+        element: child,
+        phase: crate::LayoutStabilizationPhase::Arrange,
+    }];
+    assert_eq!(outcome, crate::LayoutOutcome::Deferred { passes: 4 });
+    assert_eq!(ui.frame_stats().layout_passes, 4);
+    assert_eq!(ui.frame_stats().layout_stabilization_causes, 1);
+    assert!(ui.invalidation().has_invalidated(LAYOUT));
+    assert_eq!(ui.inspection_snapshot().layout.causes, expected);
+    assert_eq!(
+        ui.drain_inspection_changes().layout.unwrap().causes,
+        expected
+    );
+}
+
+#[test]
+fn virtualized_list_stabilizes_after_late_realization() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.append(
+        root,
+        crate::ListBox::new()
+            .items(["One", "Two", "Three", "Four"])
+            .size(120.0, 48.0)
+            .item_extent(20.0)
+            .overscan(0.0),
+    );
+
+    let outcome = ui.compute_layout(Size::new(200.0, 100.0));
+
+    assert_eq!(outcome, crate::LayoutOutcome::Stable { passes: 2 });
+    assert!(ui.inspection_snapshot().layout.causes.is_empty());
 }
 
 #[test]

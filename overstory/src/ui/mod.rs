@@ -39,7 +39,9 @@ use crate::binding::{BindingOwner, BindingSourceRuntime};
 use crate::channels::{ARRANGE, BINDING, COMPOSE, GEOMETRY, LAYOUT, PAINT, STYLE, TEMPLATE};
 use crate::composition::{CompositionRuntime, CompositionSurface};
 use crate::controls::menu::ContextMenu;
-use crate::diagnostics::{UiFrameStats, UiFrameTimings, UiRendererTimings};
+use crate::diagnostics::{
+    LayoutStabilizationCause, UiFrameStats, UiFrameTimings, UiRendererTimings,
+};
 use crate::element::{Element, ElementId};
 use crate::element_side_map::ElementSideMap;
 use crate::element_store::ElementStore;
@@ -151,6 +153,8 @@ pub struct Ui {
     semantic_callbacks: SemanticCallbackRuntime,
     /// Cheap counters for the current or most recently prepared frame.
     frame_stats: UiFrameStats,
+    /// Widgets that requested the final additional layout pass.
+    layout_stabilization_causes: Vec<LayoutStabilizationCause>,
     /// Live inspection change accumulator drained by devtools/hosts.
     inspection_changes: InspectionChangeRuntime,
     /// Human-readable style vocabulary for selectors and inspectors.
@@ -339,6 +343,7 @@ impl Ui {
             scrolling: ScrollRuntime::new(),
             semantic_callbacks: SemanticCallbackRuntime::default(),
             frame_stats: UiFrameStats::default(),
+            layout_stabilization_causes: Vec::new(),
             inspection_changes: InspectionChangeRuntime::default(),
             style_vocabulary: StyleVocabulary::new(),
             last_viewport: kurbo::Size::ZERO,
@@ -450,6 +455,7 @@ impl Ui {
     pub fn reset_frame_stats(&mut self) {
         let renderer_timings = self.frame_stats.renderer_timings;
         let frame_timing = self.frame_stats.frame_timing;
+        self.layout_stabilization_causes.clear();
         self.frame_stats = UiFrameStats {
             renderer_timings,
             frame_timing,
