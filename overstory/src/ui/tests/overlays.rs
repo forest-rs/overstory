@@ -601,7 +601,7 @@ fn popup_placement_keeps_a_viable_incumbent_near_a_viewport_edge() {
     ui.set_layout(
         target,
         Layout::new()
-            .absolute_at(20.0, 65.0)
+            .absolute_at(120.0, 65.0)
             .logical_size(60.0, 20.0),
     );
     ui.compute_layout(Size::new(200.0, 100.0));
@@ -622,7 +622,7 @@ fn popup_placement_keeps_a_viable_incumbent_near_a_viewport_edge() {
     ui.set_layout(
         target,
         Layout::new()
-            .absolute_at(20.0, 55.0)
+            .absolute_at(120.0, 55.0)
             .logical_size(60.0, 20.0),
     );
     ui.compute_layout(Size::new(200.0, 100.0));
@@ -631,10 +631,14 @@ fn popup_placement_keeps_a_viable_incumbent_near_a_viewport_edge() {
         ui.effective_bounds(popup).y1 <= ui.effective_bounds(target).y0,
         "a small geometry change should retain the viable previous placement"
     );
+
+    ui.compute_layout(Size::new(160.0, 100.0));
+    let resized = ui.effective_bounds(popup);
+    assert!(resized.x0 >= 0.0 && resized.x1 <= 160.0);
 }
 
 #[test]
-fn popup_repositions_with_arrange_only_anchor_movement() {
+fn nested_popups_reposition_with_arrange_only_anchor_movement() {
     let mut ui = Ui::new();
     let root = ui.root();
     ui.set_layout(root, Layout::new().logical_size(200.0, 120.0));
@@ -651,25 +655,62 @@ fn popup_repositions_with_arrange_only_anchor_movement() {
     );
     ui.compute_layout(Size::new(200.0, 120.0));
 
+    let mut nested_target = None;
     let popup = ui
         .open_popup(target, crate::Popup::new(), |ui, popup| {
             ui.set_layout(popup, Layout::new().logical_size(90.0, 30.0));
+            let target = ui.insert_child(popup);
+            ui.set_layout(target, Layout::new().logical_size(40.0, 16.0));
+            nested_target = Some(target);
         })
         .unwrap();
     ui.compute_layout(Size::new(200.0, 120.0));
-    let before_target = ui.effective_bounds(target);
-    let before_popup = ui.effective_bounds(popup);
+    let nested_target = nested_target.unwrap();
+    let nested = ui
+        .open_semantic_popup_with_behavior(
+            nested_target,
+            Some(popup),
+            crate::Popup::new()
+                .placement(crate::Placement::RIGHT_START)
+                .offset(4.0, 0.0),
+            understory_overlay::OverlayBehavior::Submenu,
+            |ui, popup| {
+                ui.set_layout(popup, Layout::new().logical_size(50.0, 20.0));
+                popup
+            },
+        )
+        .unwrap();
+    ui.compute_layout(Size::new(200.0, 120.0));
+    let moving = [target, popup, nested_target, nested];
+    let before = moving.map(|element| ui.effective_bounds(element));
+    assert!(
+        before[0].y0 >= ui.effective_bounds(scroll).y1,
+        "ancestor clipping does not implicitly close an explicitly opened overlay"
+    );
     ui.reset_frame_stats();
 
     assert!(crate::set_scroll_view_offset_y(&mut ui, scroll, 12.0));
     assert!(!ui.invalidation().has_invalidated(LAYOUT));
     ui.compute_layout(Size::new(200.0, 120.0));
 
-    let after_target = ui.effective_bounds(target);
-    let after_popup = ui.effective_bounds(popup);
     assert_eq!(ui.frame_stats().layout_passes, 0);
-    assert!((after_target.y0 - (before_target.y0 - 12.0)).abs() <= 0.01);
-    assert!((after_popup.y0 - (before_popup.y0 - 12.0)).abs() <= 0.01);
+    for (element, before) in moving.into_iter().zip(before) {
+        let after = ui.effective_bounds(element);
+        assert!((after.y0 - (before.y0 - 12.0)).abs() <= 0.01);
+    }
+    let after_nested = ui.effective_bounds(nested);
+    assert_eq!(layer_origin(&ui, nested), after_nested.origin());
+    assert_eq!(ui.hit_test(after_nested.center()), Some(nested));
+    assert_eq!(
+        ui.inspection_snapshot()
+            .overlays
+            .entries
+            .iter()
+            .find(|entry| entry.element == nested)
+            .unwrap()
+            .rect,
+        after_nested
+    );
 }
 
 #[test]
