@@ -4,6 +4,16 @@
 use super::*;
 
 #[test]
+#[should_panic(expected = "is already registered")]
+fn scroll_target_registration_cannot_replace_widget_owned_state() {
+    let mut ui = Ui::new();
+    let target = ui.insert_child(ui.root());
+
+    ui.register_scroll_target(target, crate::ScrollState::new());
+    ui.register_scroll_target(target, crate::ScrollState::new());
+}
+
+#[test]
 fn hit_test_picks_topmost_child() {
     // Hit testing now goes through `understory_box_tree`'s
     // spatially-indexed box-tree hit testing, which reads the

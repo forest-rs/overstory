@@ -6,8 +6,9 @@
 use imaging::record::Scene;
 use kurbo::Size;
 use overstory::{
-    Button, Edges, Layout, ListBox, Panel, ProgressBar, Slider, Text, TextInput,
-    TextLayoutCacheStats, TextResources, ToggleSwitch, Ui, UiFrameStats, theme, toggle_checked,
+    Button, Edges, Layout, ListBox, Panel, ProgressBar, ScrollStateSnapshot, Slider, Text,
+    TextInput, TextLayoutCacheStats, TextResources, ToggleSwitch, Ui, UiFrameStats, theme,
+    toggle_checked,
 };
 use overstory::{list_scroll_offset_y, set_list_scroll_offset_y};
 use overstory_host::{FrameDiagnostics, FrameTimings, FrameViewport, UiHost};
@@ -159,6 +160,56 @@ pub fn scroll_virtual_list(items: usize) -> f64 {
     list_scroll_offset_y(&ui, listbox).expect("listbox scroll offset should be present")
 }
 
+/// Bounded work observed while applying repeated small deltas to a virtual list.
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollWorkSummary {
+    /// Final inspectable scroll state.
+    pub scroll: ScrollStateSnapshot,
+    /// Work observed for one unchanged layout after scrolling settled.
+    pub idle: UiFrameStats,
+    /// Largest retained element count observed after a delta.
+    pub max_elements: usize,
+    /// Largest layout-pass count observed after a delta.
+    pub max_layout_passes: usize,
+    /// Largest element-realization visit count observed after a delta.
+    pub max_realize_visits: usize,
+    /// Largest bounds-write count observed after a delta.
+    pub max_bounds_written: usize,
+}
+
+/// Applies repeated four-pixel deltas to a large virtualized list.
+pub fn scroll_virtual_list_small_deltas(items: usize, steps: usize) -> ScrollWorkSummary {
+    let (mut ui, listbox) = build_virtual_list(items);
+    ui.compute_layout(VIEWPORT);
+    let mut max_elements = 0;
+    let mut max_layout_passes = 0;
+    let mut max_realize_visits = 0;
+    let mut max_bounds_written = 0;
+    for _ in 0..steps {
+        ui.reset_frame_stats();
+        let offset = list_scroll_offset_y(&ui, listbox).unwrap_or(0.0) + 4.0;
+        let _ = set_list_scroll_offset_y(&mut ui, listbox, offset);
+        ui.compute_layout(VIEWPORT);
+        let stats = ui.frame_stats();
+        max_elements = max_elements.max(stats.elements);
+        max_layout_passes = max_layout_passes.max(stats.layout_passes);
+        max_realize_visits = max_realize_visits.max(stats.element_realize_visits);
+        max_bounds_written = max_bounds_written.max(stats.bounds_written);
+    }
+    ui.reset_frame_stats();
+    ui.compute_layout(VIEWPORT);
+    ScrollWorkSummary {
+        scroll: ui
+            .scroll_state_snapshot(listbox)
+            .expect("listbox scroll state should remain registered"),
+        idle: ui.frame_stats(),
+        max_elements,
+        max_layout_passes,
+        max_realize_visits,
+        max_bounds_written,
+    }
+}
+
 /// Builds and lays out the repeated text scenario, returning text cache stats.
 pub fn layout_repeated_text_labels(labels: usize) -> TextLayoutCacheStats {
     let mut ui = build_repeated_text_labels(labels);
@@ -302,4 +353,34 @@ fn frame_checksum(diagnostics: FrameDiagnostics) -> u64 {
         ^ ((stats.painted_elements as u64) << 16)
         ^ ((stats.rebuilt_surfaces as u64) << 24)
         ^ ((diagnostics.output_empty as u64) << 63)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn small_virtual_scroll_deltas_keep_work_bounded() {
+        let summary = scroll_virtual_list_small_deltas(LIST_ITEMS, 32);
+
+        assert_eq!(summary.scroll.offset.y, 128.0);
+        assert_eq!(summary.scroll.command_count, 32);
+        let last = summary
+            .scroll
+            .last_command
+            .expect("the final scroll command should be inspectable");
+        assert_eq!(last.requested_delta.y, 4.0);
+        assert_eq!(last.consumed_delta.y, 4.0);
+        assert_eq!(last.unconsumed_delta.y, 0.0);
+        assert_eq!(summary.idle.layout_passes, 0);
+        assert_eq!(summary.idle.element_realize_visits, 0);
+        assert_eq!(summary.idle.bounds_written, 0);
+        assert!(summary.max_layout_passes > 0);
+        assert!(summary.max_realize_visits > 0);
+        assert!(summary.max_bounds_written > 0);
+        assert!(summary.max_elements < 128);
+        assert!(summary.max_layout_passes <= 2);
+        assert!(summary.max_realize_visits < 128);
+        assert!(summary.max_bounds_written < 256);
+    }
 }

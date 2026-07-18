@@ -17,7 +17,7 @@ use crate::event_runtime::{
     ClickEvent, ClickHandlers, DragEvent, DragHandlers, FocusChangeReason, FocusEvent,
     FocusHandlers, HandlerFamily, KeyEvent, KeyHandlers, PointerEventKind, PointerHandlers,
     RoutedDispatchResult, RoutedEventContext, RoutedEventKind, RoutedEventOrigin, RoutedEventState,
-    ScrollEvent, ScrollHandlers,
+    ScrollEvent, ScrollHandlers, ScrollRouteState,
 };
 use crate::widget::Widget;
 
@@ -229,12 +229,14 @@ impl Ui {
     pub(in crate::ui::events) fn dispatch_scroll_handler_lane(
         &mut self,
         route: RoutedEventContext<'_>,
+        scroll: &ScrollRouteState,
         position: Point,
         delta: ScrollDelta,
         modifiers: Modifiers,
     ) {
         let event = ScrollEvent {
             route,
+            scroll,
             position,
             delta,
             modifiers,
@@ -245,6 +247,7 @@ impl Ui {
     pub(in crate::ui::events) fn dispatch_widget_scroll(
         &mut self,
         route: RoutedEventContext<'_>,
+        scroll: &ScrollRouteState,
         position: Point,
         delta: ScrollDelta,
         modifiers: Modifiers,
@@ -256,6 +259,7 @@ impl Ui {
                 &mut ctx,
                 ScrollEvent {
                     route,
+                    scroll,
                     position,
                     delta,
                     modifiers,

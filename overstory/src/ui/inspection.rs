@@ -258,6 +258,7 @@ impl Ui {
                 pointer_captured: self.pointer_capture() == Some(id),
                 has_context_menu: self.has_context_menu(id),
             },
+            scroll: self.scroll_state_snapshot(id),
             has_widget_identity: element.has_widget_identity(),
             bounds: self.effective_bounds(id),
             layer: self

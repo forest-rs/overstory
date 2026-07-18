@@ -197,10 +197,10 @@ pub use controls::radio::{
     set_radio_button_checked, set_radio_group_selected_index,
 };
 pub use controls::scroll::{
-    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollOffsetChangeSource,
-    ScrollOffsetChangedEvent, ScrollView, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW,
-    scroll_area_horizontal_bar, scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y,
-    scroll_view_offset_y, set_scroll_offset_y, set_scroll_view_offset_y,
+    PART_SCROLL_BAR_THUMB, SLOT_SCROLL_BAR_THUMB, ScrollArea, ScrollBar, ScrollOffsetChangedEvent,
+    ScrollView, TYPE_SCROLL_AREA, TYPE_SCROLL_BAR, TYPE_SCROLL_VIEW, scroll_area_horizontal_bar,
+    scroll_area_vertical_bar, scroll_area_viewport, scroll_offset_y, scroll_view_offset_y,
+    set_scroll_offset_y, set_scroll_view_offset_y,
 };
 pub use controls::segmented::{
     EFFECT_SEGMENTED_ACTIVATION_DENIED, PART_SEGMENTED_ITEM_LABEL,
@@ -279,7 +279,9 @@ pub use motion::{
 };
 pub use overlay::Placement;
 pub use properties::{BuiltInProperties, Visibility};
-pub use scroll_runtime::ScrollState;
+pub use scroll_runtime::{
+    ScrollCommandResult, ScrollInputSource, ScrollState, ScrollStateSnapshot,
+};
 pub use style_class::StyleClass;
 pub use template::{
     ControlTemplate, Template, TemplateChild, TemplateContext, TemplateContract,
@@ -327,10 +329,10 @@ pub mod prelude {
         PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
         PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
         RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
-        ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollState, ScrollView,
-        SegmentedControl, Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent,
-        Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary,
-        SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow, TabPage, TabView,
+        ScrollInputSource, ScrollOffsetChangedEvent, ScrollState, ScrollView, SegmentedControl,
+        Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter,
+        StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
+        SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow, TabPage, TabView,
         TabViewChildUiExt, Text, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
         TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
         TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,

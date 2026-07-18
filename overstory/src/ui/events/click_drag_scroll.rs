@@ -6,7 +6,7 @@ use ui_events::ScrollDelta;
 use ui_events::keyboard::Modifiers;
 
 use crate::element::ElementId;
-use crate::event_runtime::{RoutedDispatchResult, RoutedEventKind};
+use crate::event_runtime::{RoutedDispatchResult, RoutedEventKind, ScrollRouteState};
 
 use super::super::Ui;
 use super::super::responder::ResponderHit;
@@ -106,10 +106,11 @@ impl Ui {
             return RoutedDispatchResult::default();
         }
 
+        let scroll = ScrollRouteState::new();
         self.dispatch_routed(RoutedEventKind::Scroll, target, |ui, route| {
-            ui.dispatch_scroll_handler_lane(route, position, delta, modifiers);
+            ui.dispatch_scroll_handler_lane(route, &scroll, position, delta, modifiers);
             if !route.is_handled() && !route.is_propagation_stopped() {
-                ui.dispatch_widget_scroll(route, position, delta, modifiers);
+                ui.dispatch_widget_scroll(route, &scroll, position, delta, modifiers);
             }
         })
     }
@@ -125,14 +126,15 @@ impl Ui {
             return RoutedDispatchResult::default();
         }
 
+        let scroll = ScrollRouteState::new();
         self.dispatch_responder_sequence(
             RoutedEventKind::Scroll,
             hit.target,
             hit.dispatch,
             |ui, route| {
-                ui.dispatch_scroll_handler_lane(route, position, delta, modifiers);
+                ui.dispatch_scroll_handler_lane(route, &scroll, position, delta, modifiers);
                 if !route.is_handled() && !route.is_propagation_stopped() {
-                    ui.dispatch_widget_scroll(route, position, delta, modifiers);
+                    ui.dispatch_widget_scroll(route, &scroll, position, delta, modifiers);
                 }
             },
         )

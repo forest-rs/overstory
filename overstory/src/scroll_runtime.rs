@@ -1,17 +1,13 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Internal scroll target registry and shared scroll state.
+//! Shared scroll state and Overstory's retained scroll-target registry.
 //!
-//! Roadmap:
-//! - Keep scroll offset and extent state target-owned while allowing controls,
-//!   scrollbars, accessibility, and future virtualized widgets to bind by
-//!   element id.
-//! - Grow this into the common capability for scroll containers, list-like
-//!   virtualization, text viewport scrolling, and compositor-backed scroll
-//!   surfaces.
-//! - Keep app code out of scroll-state plumbing: builders should expose initial
-//!   intent, while target widgets and runtimes own live scrolling mechanics.
+//! The state owns backend-independent metrics, offset constraint once metrics
+//! are known, and delta accounting. The registry owns retained element
+//! identity and invalidation policy. Event routing, virtualization,
+//! accessibility projection, scrollbar rendering, and motion policy remain
+//! outside this module.
 
 use alloc::rc::Rc;
 use core::cell::Cell;
@@ -57,6 +53,77 @@ impl Default for ScrollTarget {
     }
 }
 
+/// Source of a scroll command or offset-changed event.
+///
+/// This enum is non-exhaustive so new input mechanisms do not require
+/// downstream exhaustive matches. This replaces the earlier exhaustive
+/// `ScrollOffsetChangeSource`; migrating matches should include a wildcard
+/// arm.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ScrollInputSource {
+    /// Command issued through pointer wheel or touchpad scrolling.
+    Wheel,
+    /// Command issued through a scrollbar click or drag.
+    ScrollBar,
+    /// Command issued through an accessibility action.
+    Accessibility,
+    /// Command issued while revealing keyboard navigation.
+    Keyboard,
+    /// Command issued through a direct programmatic request.
+    Programmatic,
+}
+
+/// Result of one constrained scroll command.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct ScrollCommandResult {
+    /// Input mechanism that issued the command.
+    pub source: ScrollInputSource,
+    /// Offset before the command was applied.
+    pub previous_offset: Vec2,
+    /// Requested movement from the previous offset.
+    pub requested_delta: Vec2,
+    /// Constrained offset after the command was applied.
+    pub offset: Vec2,
+    /// Movement applied after constraining the request to the scroll range.
+    pub consumed_delta: Vec2,
+    /// Movement left for an ancestor viewport or other boundary policy.
+    pub unconsumed_delta: Vec2,
+    /// Whether a non-finite or negative requested coordinate was normalized.
+    pub request_normalized: bool,
+}
+
+impl ScrollCommandResult {
+    /// Returns whether the command changed the constrained offset.
+    #[must_use]
+    pub fn changed(self) -> bool {
+        self.previous_offset != self.offset
+    }
+}
+
+/// Inspectable snapshot of one shared scroll state.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct ScrollStateSnapshot {
+    /// Current normalized offset in logical pixels.
+    ///
+    /// Once metrics have been supplied, this is constrained to `max_offset`.
+    pub offset: Vec2,
+    /// Latest viewport size in logical pixels.
+    pub viewport: Size,
+    /// Latest content size in logical pixels.
+    pub content: Size,
+    /// Maximum constrained offset derived from the current metrics.
+    pub max_offset: Vec2,
+    /// Revision of the offset or metrics.
+    pub revision: u64,
+    /// Number of constrained commands applied, including boundary hits.
+    pub command_count: u64,
+    /// Most recent constrained command result, including a boundary hit.
+    pub last_command: Option<ScrollCommandResult>,
+}
+
 /// Shared scroll offset state for viewport-like controls.
 ///
 /// A scrollable widget owns one `ScrollState` and registers it against its
@@ -65,18 +132,17 @@ impl Default for ScrollTarget {
 /// then share one offset and one viewport/content extent instead of
 /// maintaining side tables keyed by element id.
 ///
-/// The setters are intentionally low-level: they update the shared state only.
-/// Widgets that change the offset should also mark the target's registered
-/// offset-invalidation channels so ordinary viewports can reuse layout results
-/// while virtualized controls can rematerialize rows.
+/// The raw setters are synchronization hooks for adapters whose backing model
+/// remains authoritative. They do not issue a command or invalidate a retained
+/// target. Ordinary app requests should use target-level helpers such as
+/// [`crate::set_scroll_offset_y`] so mutation and invalidation stay together.
 #[derive(Clone)]
 pub struct ScrollState {
     inner: Rc<ScrollStateInner>,
 }
 
 struct ScrollStateInner {
-    offset: Cell<Vec2>,
-    metrics: Cell<ScrollMetrics>,
+    model: Cell<ScrollModel>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -107,6 +173,15 @@ impl ScrollMetrics {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ScrollModel {
+    offset: Vec2,
+    metrics: ScrollMetrics,
+    revision: u64,
+    command_count: u64,
+    last_command: Option<ScrollCommandResult>,
+}
+
 impl core::fmt::Debug for ScrollState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ScrollState")
@@ -127,8 +202,7 @@ impl ScrollState {
     pub fn new() -> Self {
         Self {
             inner: Rc::new(ScrollStateInner {
-                offset: Cell::new(Vec2::ZERO),
-                metrics: Cell::new(ScrollMetrics::default()),
+                model: Cell::new(ScrollModel::default()),
             }),
         }
     }
@@ -141,42 +215,45 @@ impl ScrollState {
         state
     }
 
-    /// Returns the current scroll offset in logical pixels.
+    /// Returns the current normalized scroll offset in logical pixels.
+    ///
+    /// Once metrics have been supplied, this is constrained to [`Self::max_offset`].
     #[must_use]
     pub fn offset(&self) -> Vec2 {
-        self.inner.offset.get()
+        self.inner.model.get().offset
     }
 
-    /// Returns the current vertical scroll offset in logical pixels.
+    /// Returns the current normalized vertical scroll offset in logical pixels.
     #[must_use]
     pub fn offset_y(&self) -> f64 {
-        self.inner.offset.get().y
+        self.inner.model.get().offset.y
     }
 
     /// Returns the current maximum scroll offset in logical pixels.
     #[must_use]
     pub fn max_offset(&self) -> Vec2 {
-        self.inner.metrics.get().max_offset()
-    }
-
-    /// Returns the current maximum vertical scroll offset in logical pixels.
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) fn max_offset_y(&self) -> f64 {
-        self.max_offset().y
+        self.inner.model.get().metrics.max_offset()
     }
 
     /// Returns the latest viewport size in logical pixels.
     #[must_use]
     pub fn viewport_size(&self) -> Size {
-        self.inner.metrics.get().viewport
+        self.inner.model.get().metrics.viewport
     }
 
-    /// Returns the latest scrollable content size in logical pixels.
+    /// Returns current metrics, revision, and the last command result.
     #[must_use]
-    #[cfg(test)]
-    pub(crate) fn content_size(&self) -> Size {
-        self.inner.metrics.get().content
+    pub fn snapshot(&self) -> ScrollStateSnapshot {
+        let model = self.inner.model.get();
+        ScrollStateSnapshot {
+            offset: model.offset,
+            viewport: model.metrics.viewport,
+            content: model.metrics.content,
+            max_offset: model.metrics.max_offset(),
+            revision: model.revision,
+            command_count: model.command_count,
+            last_command: model.last_command,
+        }
     }
 
     /// Sets the current logical scroll offset without clamping to metrics.
@@ -185,38 +262,93 @@ impl ScrollState {
     /// virtualization model to clamp the offset. General callers should prefer
     /// higher-level helpers such as [`crate::set_scroll_offset_y`].
     ///
+    /// This now treats every distinct normalized offset as a change rather
+    /// than suppressing sub-epsilon differences. Callers that need an
+    /// approximate synchronization policy should apply it before this call.
+    /// A changed raw offset also clears the most recent command because the new
+    /// position did not come from that command.
+    ///
     /// Returns `true` when the stored offset changed.
     pub fn set_offset_raw(&self, offset: Vec2) -> bool {
-        let offset = Vec2::new(
-            normalize_scroll_axis(offset.x),
-            normalize_scroll_axis(offset.y),
-        );
-        let current = self.inner.offset.get();
-        if (current.x - offset.x).abs() <= f64::EPSILON
-            && (current.y - offset.y).abs() <= f64::EPSILON
-        {
+        let (offset, _) = normalize_scroll_offset(offset);
+        let mut model = self.inner.model.get();
+        if model.offset == offset {
             return false;
         }
-        self.inner.offset.set(offset);
+        model.offset = offset;
+        model.revision = model.revision.wrapping_add(1);
+        model.last_command = None;
+        self.inner.model.set(model);
         true
     }
 
     /// Sets the current vertical scroll offset without clamping to metrics.
     ///
+    /// This has the same synchronization and exact-change semantics as
+    /// [`Self::set_offset_raw`].
+    ///
     /// Returns `true` when the stored offset changed.
     pub fn set_offset_y_raw(&self, offset_y: f64) -> bool {
-        self.set_offset_raw(Vec2::new(self.inner.offset.get().x, offset_y))
+        self.set_offset_raw(Vec2::new(self.offset().x, offset_y))
     }
 
     /// Replaces the latest viewport/content metrics in logical pixels.
     ///
     /// Virtualized controls should set this after recomputing their backing
     /// extent so scrollbars and accessibility can report the same range as the
-    /// widget's own realization model.
+    /// widget's own realization model. This now constrains an existing offset
+    /// to the new range; callers that previously clamped and wrote the offset
+    /// back separately can remove that write-back path. This state-only update
+    /// does not invalidate a retained target.
     pub fn set_metrics(&self, viewport: Size, content: Size) {
-        self.inner
-            .metrics
-            .set(ScrollMetrics::new(viewport, content));
+        let mut model = self.inner.model.get();
+        let metrics = ScrollMetrics::new(viewport, content);
+        let offset = constrain_scroll_offset(model.offset, metrics.max_offset());
+        if model.metrics == metrics && model.offset == offset {
+            return;
+        }
+        let offset_changed = model.offset != offset;
+        model.metrics = metrics;
+        model.offset = offset;
+        model.revision = model.revision.wrapping_add(1);
+        if offset_changed {
+            model.last_command = None;
+        }
+        self.inner.model.set(model);
+    }
+
+    pub(crate) fn apply_offset(
+        &self,
+        offset: Vec2,
+        source: ScrollInputSource,
+    ) -> ScrollCommandResult {
+        let mut model = self.inner.model.get();
+        let previous = model.offset;
+        let (requested_offset, normalized) = normalize_scroll_offset(offset);
+        let requested_delta = Vec2::new(
+            finite_delta(offset.x, requested_offset.x, previous.x),
+            finite_delta(offset.y, requested_offset.y, previous.y),
+        );
+        let offset = constrain_scroll_offset(requested_offset, model.metrics.max_offset());
+        let consumed_delta = offset - previous;
+        let unconsumed_delta = requested_delta - consumed_delta;
+        model.command_count = model.command_count.wrapping_add(1);
+        let change = ScrollCommandResult {
+            source,
+            previous_offset: previous,
+            requested_delta,
+            offset,
+            consumed_delta,
+            unconsumed_delta,
+            request_normalized: normalized,
+        };
+        model.last_command = Some(change);
+        if offset != previous {
+            model.offset = offset;
+            model.revision = model.revision.wrapping_add(1);
+        }
+        self.inner.model.set(model);
+        change
     }
 }
 
@@ -227,6 +359,26 @@ pub(crate) fn normalize_scroll_axis(value: f64) -> f64 {
         value.max(0.0)
     } else {
         0.0
+    }
+}
+
+fn normalize_scroll_offset(offset: Vec2) -> (Vec2, bool) {
+    let normalized = Vec2::new(
+        normalize_scroll_axis(offset.x),
+        normalize_scroll_axis(offset.y),
+    );
+    (normalized, normalized != offset)
+}
+
+fn constrain_scroll_offset(offset: Vec2, max: Vec2) -> Vec2 {
+    Vec2::new(offset.x.min(max.x), offset.y.min(max.y))
+}
+
+fn finite_delta(requested: f64, normalized: f64, previous: f64) -> f64 {
+    if requested.is_finite() {
+        requested - previous
+    } else {
+        normalized - previous
     }
 }
 
@@ -242,6 +394,10 @@ impl ScrollRuntime {
     }
 
     pub(crate) fn register_target(&mut self, target: ElementId, scroll_target: ScrollTarget) {
+        assert!(
+            self.targets.get(target).is_none(),
+            "scroll target {target:?} is already registered"
+        );
         self.targets.insert(target, scroll_target);
     }
 
@@ -251,5 +407,54 @@ impl ScrollRuntime {
 
     pub(crate) fn remove_target(&mut self, target: ElementId) {
         self.targets.remove(target);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constrained_commands_report_consumed_and_unconsumed_delta() {
+        let state = ScrollState::new();
+        state.set_metrics(Size::new(100.0, 40.0), Size::new(100.0, 100.0));
+
+        let change = state.apply_offset(Vec2::new(0.0, 75.0), ScrollInputSource::Programmatic);
+
+        assert_eq!(change.consumed_delta, Vec2::new(0.0, 60.0));
+        assert_eq!(
+            state.snapshot().last_command,
+            Some(ScrollCommandResult {
+                source: ScrollInputSource::Programmatic,
+                previous_offset: Vec2::ZERO,
+                requested_delta: Vec2::new(0.0, 75.0),
+                offset: Vec2::new(0.0, 60.0),
+                consumed_delta: Vec2::new(0.0, 60.0),
+                unconsumed_delta: Vec2::new(0.0, 15.0),
+                request_normalized: false,
+            })
+        );
+    }
+
+    #[test]
+    fn metrics_revision_clamps_offset_and_invalid_commands_remain_observable() {
+        let state = ScrollState::new();
+        state.set_metrics(Size::new(50.0, 50.0), Size::new(50.0, 150.0));
+        let _ = state.apply_offset(Vec2::new(0.0, 80.0), ScrollInputSource::Programmatic);
+        let before = state.snapshot();
+
+        state.set_metrics(Size::new(50.0, 50.0), Size::new(50.0, 40.0));
+        let after_metrics = state.snapshot();
+        assert_eq!(after_metrics.offset, Vec2::ZERO);
+        assert!(after_metrics.revision > before.revision);
+
+        let change =
+            state.apply_offset(Vec2::new(f64::NAN, -20.0), ScrollInputSource::Programmatic);
+        let snapshot = state.snapshot();
+        assert!(!change.changed());
+        assert_eq!(snapshot.command_count, 2);
+        let last = snapshot.last_command.expect("command should be recorded");
+        assert!(last.request_normalized);
+        assert_eq!(last.unconsumed_delta.y, -20.0);
     }
 }

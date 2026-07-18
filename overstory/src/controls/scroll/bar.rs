@@ -13,12 +13,11 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent};
 use crate::layouts::{Layout, LayoutSize};
-use crate::scroll_runtime::ScrollState;
+use crate::scroll_runtime::{ScrollInputSource, ScrollState};
 use crate::template::{TemplateContract, TemplateNode, TemplateSpec, TemplateSpecRecipe};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget};
 
-use super::events::ScrollOffsetChangeSource;
 use super::ids::{
     DEFAULT_SCROLL_BAR_LENGTH, DEFAULT_SCROLL_BAR_THICKNESS, DEFAULT_SCROLL_BAR_THUMB_EXTENT,
     DEFAULT_SCROLL_LINE_Y, SLOT_SCROLL_BAR_THUMB, TYPE_SCROLL_BAR,
@@ -270,7 +269,7 @@ impl Widget for ScrollBarWidget {
             &self.state,
             self.axis,
             next,
-            ScrollOffsetChangeSource::ScrollBar,
+            ScrollInputSource::ScrollBar,
         );
         event.mark_handled();
     }
@@ -320,7 +319,7 @@ impl Widget for ScrollBarWidget {
             &self.state,
             self.axis,
             next,
-            ScrollOffsetChangeSource::Accessibility,
+            ScrollInputSource::Accessibility,
         )
     }
 }
@@ -414,7 +413,7 @@ impl ScrollBarDragState {
             &widget.state,
             widget.axis,
             next,
-            ScrollOffsetChangeSource::ScrollBar,
+            ScrollInputSource::ScrollBar,
         );
     }
 }
@@ -496,7 +495,7 @@ fn set_axis_scroll_offset(
     state: &ScrollState,
     axis: Axis,
     offset: f64,
-    source: ScrollOffsetChangeSource,
+    source: ScrollInputSource,
 ) -> bool {
     let next = axis.pack_vec2(offset, state.offset().along(axis.cross()));
     set_scroll_offset(ui, viewport, state, next, source)

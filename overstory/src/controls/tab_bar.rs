@@ -9,11 +9,10 @@ use kurbo::{Axis, Vec2};
 use understory_selection::Selection;
 use understory_style::TypeTag;
 
-use crate::ScrollState;
 use crate::Text;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::scroll::runtime::{
-    scroll_by, scroll_by_accessibility_action, set_scroll_offset_raw,
+    apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
     update_scroll_metrics_from_layout, wheel_scroll_delta,
 };
 use crate::controls::support::{CallbackSlot, EventHandler};
@@ -21,6 +20,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
+use crate::scroll_runtime::{ScrollInputSource, ScrollState};
 use crate::ui::{ChildUi, ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -458,9 +458,19 @@ impl Widget for TabBarWidget {
             delta.y
         };
         let id = ctx.id();
-        if scroll_by(ctx, id, &self.scroll, Vec2::new(horizontal, 0.0)).is_some() {
-            event.mark_handled();
-        }
+        let change = scroll_by(
+            ctx,
+            id,
+            &self.scroll,
+            Vec2::new(horizontal, 0.0),
+            ScrollInputSource::Wheel,
+        );
+        let consumed = if delta.x.abs() > f64::EPSILON {
+            Vec2::new(change.consumed_delta.x, 0.0)
+        } else {
+            Vec2::new(0.0, change.consumed_delta.x)
+        };
+        event.consume_logical_delta(delta, consumed);
     }
 
     fn handle_accessibility_action(
@@ -496,7 +506,14 @@ impl Widget for TabBarWidget {
                 else {
                     return false;
                 };
-                set_scroll_offset_raw(ctx, id, &self.scroll, Vec2::new(point.x, 0.0)).is_some()
+                apply_scroll_offset(
+                    ctx,
+                    id,
+                    &self.scroll,
+                    Vec2::new(point.x, 0.0),
+                    ScrollInputSource::Accessibility,
+                )
+                .changed()
             }
             _ => false,
         }
@@ -572,7 +589,14 @@ impl TabBarWidget {
             current
         };
         let id = ctx.id();
-        set_scroll_offset_raw(ctx.ui_mut(), id, &self.scroll, Vec2::new(next, 0.0)).is_some()
+        apply_scroll_offset(
+            ctx.ui_mut(),
+            id,
+            &self.scroll,
+            Vec2::new(next, 0.0),
+            ScrollInputSource::Programmatic,
+        )
+        .changed()
     }
 }
 
@@ -898,7 +922,13 @@ mod tests {
         ui.compute_layout(Size::new(160.0, 80.0));
         assert!(state.offset().x > 0.0);
 
-        set_scroll_offset_raw(&mut ui, bar, &state, Vec2::ZERO);
+        apply_scroll_offset(
+            &mut ui,
+            bar,
+            &state,
+            Vec2::ZERO,
+            ScrollInputSource::Programmatic,
+        );
         ui.compute_layout(Size::new(160.0, 80.0));
         assert_eq!(state.offset().x, 0.0);
     }

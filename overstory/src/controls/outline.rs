@@ -11,8 +11,6 @@
 //! - Grow toward a `TreeView` / hierarchical `ListView` once item templates can
 //!   expose disclosure parts, row depth, selection, and per-node commands as
 //!   app-provided data instead of string-only rows.
-//! - Share scroll target registration, scrollbars, keyboard navigation, and
-//!   accessibility metadata with the other virtualized controls.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -26,21 +24,17 @@ use understory_style::{PartTag, TypeTag};
 
 use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
 use crate::controls::scroll::{
-    normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
+    FixedVirtualViewport, normalize_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
-    append_reserved_vertical_scroll_area, clamp_fixed_virtual_scroll_target,
-    configure_vertical_scroll_accessibility, fixed_virtual_accessibility_scroll_delta,
-    fixed_virtualizer, fixed_visible_item_count, is_descendant_or_self, layout_fixed_virtual_rows,
-    reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
-    set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
+    CallbackSlot, EventHandler, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
+    configure_vertical_scroll_accessibility, is_descendant_or_self, reserved_scroll_frame_widget,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::{Layout, LayoutDimension, LayoutSize};
 use crate::pseudos::PSEUDO_SELECTED;
-use crate::scroll_runtime::ScrollState;
+use crate::scroll_runtime::ScrollInputSource;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -371,9 +365,9 @@ impl Default for OutlineView {
 
 impl AppendSpec for OutlineView {
     fn append_to(self, ui: &mut Ui, parent: ElementId) -> ElementId {
-        let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
-        let virtual_list =
-            fixed_virtualizer(0, self.item_extent, self.scroll_offset_y, self.overscan);
+        let scroll =
+            FixedVirtualViewport::new(0, self.item_extent, self.scroll_offset_y, self.overscan);
+        let scroll_state = scroll.state().clone();
 
         let mut outline = Outline::new(OwnedOutlineModel {
             nodes: self.nodes,
@@ -395,11 +389,8 @@ impl AppendSpec for OutlineView {
                 selection,
                 selection_changed: OutlineSelectionChangedSlot::new(self.on_selection_changed),
                 expansion_changed: OutlineExpansionChangedSlot::new(self.on_expansion_changed),
-                scroll_state: scroll_state.clone(),
-                virtual_list,
-                item_extent: self.item_extent,
+                scroll,
                 realized: Vec::new(),
-                last_viewport: Size::ZERO,
                 visible_len: 0,
             }),
         );
@@ -608,11 +599,8 @@ pub(crate) struct OutlineViewWidget {
     selection: Selection<OutlineNodeKey>,
     selection_changed: OutlineSelectionChangedSlot,
     expansion_changed: OutlineExpansionChangedSlot,
-    scroll_state: ScrollState,
-    virtual_list: FixedVirtualizer,
-    item_extent: f64,
+    scroll: FixedVirtualViewport,
     realized: Vec<RealizedOutlineItem>,
-    last_viewport: Size,
     visible_len: usize,
 }
 
@@ -620,7 +608,7 @@ impl core::fmt::Debug for OutlineViewWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("OutlineViewWidget")
             .field("visible_len", &self.visible_len())
-            .field("item_extent", &self.item_extent)
+            .field("item_extent", &self.scroll.item_extent())
             .field("selected_key", &self.selected_key())
             .field("realized", &self.realized)
             .finish_non_exhaustive()
@@ -647,7 +635,7 @@ impl Widget for OutlineViewWidget {
         node: &mut accesskit::Node,
     ) {
         node.set_size_of_set(self.outline.model().root_set_len());
-        configure_vertical_scroll_accessibility(element, ctx, node, &self.scroll_state);
+        configure_vertical_scroll_accessibility(element, ctx, node, self.scroll.state());
         if let Some(selected_key) = self.selected_key()
             && let Some(item) = self.realized.iter().find(|item| item.key == selected_key)
         {
@@ -660,7 +648,7 @@ impl Widget for OutlineViewWidget {
     }
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
-        -self.scroll_state.offset()
+        -self.scroll.state().offset()
     }
 
     fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
@@ -674,8 +662,10 @@ impl Widget for OutlineViewWidget {
             return;
         };
         if delta.y != 0.0 {
-            self.scroll_by(outline, ctx, delta.y);
-            event.mark_handled();
+            let change = self
+                .scroll
+                .scroll_by(outline, ctx, delta.y, ScrollInputSource::Wheel);
+            event.consume_logical_delta(delta, Vec2::new(0.0, change.consumed_delta.y));
         }
     }
 
@@ -694,25 +684,38 @@ impl Widget for OutlineViewWidget {
         }
 
         let handled = match &event.key.key {
-            Key::Named(NamedKey::ArrowDown) => self.move_selection_by(outline, ctx, 1),
-            Key::Named(NamedKey::ArrowUp) => self.move_selection_by(outline, ctx, -1),
+            Key::Named(NamedKey::ArrowDown) => {
+                self.move_selection_by(outline, ctx, 1, ScrollInputSource::Keyboard)
+            }
+            Key::Named(NamedKey::ArrowUp) => {
+                self.move_selection_by(outline, ctx, -1, ScrollInputSource::Keyboard)
+            }
             Key::Named(NamedKey::PageDown) => {
                 let count = self.visible_item_count();
-                self.move_selection_by(outline, ctx, count.try_into().unwrap_or(isize::MAX))
+                self.move_selection_by(
+                    outline,
+                    ctx,
+                    count.try_into().unwrap_or(isize::MAX),
+                    ScrollInputSource::Keyboard,
+                )
             }
             Key::Named(NamedKey::PageUp) => {
                 let count = self.visible_item_count();
                 let delta = count
                     .try_into()
                     .map_or(isize::MIN + 1, |value: isize| -value);
-                self.move_selection_by(outline, ctx, delta)
+                self.move_selection_by(outline, ctx, delta, ScrollInputSource::Keyboard)
             }
-            Key::Named(NamedKey::Home) => self.select_visible_index(outline, ctx, 0),
+            Key::Named(NamedKey::Home) => {
+                self.select_visible_index(outline, ctx, 0, ScrollInputSource::Keyboard)
+            }
             Key::Named(NamedKey::End) => {
                 let last = self.update_visible_len() - 1;
-                self.select_visible_index(outline, ctx, last)
+                self.select_visible_index(outline, ctx, last, ScrollInputSource::Keyboard)
             }
-            Key::Named(NamedKey::ArrowRight) => self.expand_or_advance(outline, ctx),
+            Key::Named(NamedKey::ArrowRight) => {
+                self.expand_or_advance(outline, ctx, ScrollInputSource::Keyboard)
+            }
             Key::Named(NamedKey::ArrowLeft) => self.collapse_selected(outline, ctx),
             Key::Named(NamedKey::Enter) => self.toggle_selected(outline, ctx),
             Key::Character(s) if s == " " => self.toggle_selected(outline, ctx),
@@ -733,23 +736,8 @@ impl Widget for OutlineViewWidget {
         if !ctx.is_enabled(outline) {
             return false;
         }
-        match request.action {
-            accesskit::Action::ScrollUp => {
-                self.scroll_by_accessibility_action(outline, ctx, -1.0, request)
-            }
-            accesskit::Action::ScrollDown => {
-                self.scroll_by_accessibility_action(outline, ctx, 1.0, request)
-            }
-            accesskit::Action::SetScrollOffset => {
-                let Some(accesskit::ActionData::SetScrollOffset(point)) = request.data.as_ref()
-                else {
-                    return false;
-                };
-                self.set_scroll_offset_y(outline, ctx, point.y);
-                true
-            }
-            _ => false,
-        }
+        self.scroll
+            .handle_accessibility_action(outline, ctx, request)
     }
 }
 
@@ -783,34 +771,18 @@ impl OutlineViewWidget {
         }
 
         let visible_len = self.update_visible_len();
-        self.virtual_list.set_len(visible_len);
-        clamp_fixed_virtual_scroll_target(outline, ui, &mut self.virtual_list, &self.scroll_state);
+        self.scroll.set_len(outline, ui, visible_len);
         let _ = self.sync_virtual_items(outline, ui);
     }
 
     fn sync_virtual_items(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
-        let sync = self.sync_virtual_metrics(outline, ui);
+        let visible_len = self.update_visible_len();
+        let sync = self.scroll.sync(outline, ui, visible_len);
         let mut changed = sync.changed;
         changed |= self.reconcile_realized_items(outline, ui, sync.range);
         changed |= self.layout_realized_items(ui, sync.viewport);
         self.sync_realized_selected_pseudos(ui);
         changed
-    }
-
-    fn sync_virtual_metrics(
-        &mut self,
-        outline: ElementId,
-        ui: &mut Ui,
-    ) -> crate::controls::support::FixedVirtualRowsSync {
-        let visible_len = self.update_visible_len();
-        sync_fixed_virtual_rows(
-            outline,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            visible_len,
-            &mut self.last_viewport,
-        )
     }
 
     fn reconcile_realized_items(
@@ -868,48 +840,11 @@ impl OutlineViewWidget {
     }
 
     fn layout_realized_items(&mut self, ui: &mut Ui, viewport: Size) -> bool {
-        layout_fixed_virtual_rows(
+        self.scroll.layout_rows(
             ui,
-            &mut self.virtual_list,
-            self.item_extent,
             self.realized.iter().map(|item| (item.index, item.element)),
             viewport,
         )
-    }
-
-    fn scroll_by(&mut self, outline: ElementId, ui: &mut Ui, delta_y: f64) {
-        let next = self.virtual_list.scroll_offset() + delta_y;
-        self.set_scroll_offset_y(outline, ui, next);
-    }
-
-    fn scroll_by_accessibility_action(
-        &mut self,
-        outline: ElementId,
-        ui: &mut Ui,
-        direction: f64,
-        request: &accesskit::ActionRequest,
-    ) -> bool {
-        let Some(delta) = fixed_virtual_accessibility_scroll_delta(
-            request,
-            direction,
-            self.item_extent,
-            self.virtual_list.viewport_extent(),
-        ) else {
-            return false;
-        };
-        self.scroll_by(outline, ui, delta);
-        true
-    }
-
-    fn set_scroll_offset_y(&mut self, outline: ElementId, ui: &mut Ui, offset: f64) {
-        set_fixed_virtual_scroll_offset_y(
-            outline,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            offset,
-        );
-        let _ = self.sync_virtual_items(outline, ui);
     }
 
     fn visible_len(&self) -> usize {
@@ -930,21 +865,31 @@ impl OutlineViewWidget {
             .and_then(|key| self.outline.index_of_key(&key))
     }
 
-    fn select_visible_index(&mut self, outline: ElementId, ui: &mut Ui, index: usize) -> bool {
+    fn select_visible_index(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        index: usize,
+        source: ScrollInputSource,
+    ) -> bool {
         let Some(row) = self.outline.visible_row(index).cloned() else {
             return false;
         };
-        let changed = self.select_key(outline, ui, row.key);
-        self.scroll_index_into_view(outline, ui, index);
-        changed
+        self.select_key(outline, ui, row.key, source)
     }
 
-    fn select_key(&mut self, outline: ElementId, ui: &mut Ui, key: OutlineNodeKey) -> bool {
+    fn select_key(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        key: OutlineNodeKey,
+        source: ScrollInputSource,
+    ) -> bool {
         if self.outline.model().contains_key(&key) {
             let changed =
                 self.mutate_selection(ui, outline, |selection| selection.select_only(key));
             if let Some(index) = self.outline.index_of_key(&key) {
-                self.scroll_index_into_view(outline, ui, index);
+                let _ = self.scroll.scroll_to_index(outline, ui, index, source);
             } else {
                 self.sync_realized_selected_pseudos(ui);
             }
@@ -953,28 +898,20 @@ impl OutlineViewWidget {
         false
     }
 
-    fn move_selection_by(&mut self, outline: ElementId, ui: &mut Ui, delta: isize) -> bool {
+    fn move_selection_by(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        delta: isize,
+        source: ScrollInputSource,
+    ) -> bool {
         let len = self.update_visible_len();
         if len == 0 {
             return false;
         }
         let current = self.selected_visible_index().unwrap_or(0);
         let next = current.saturating_add_signed(delta).min(len - 1);
-        self.select_visible_index(outline, ui, next)
-    }
-
-    fn scroll_index_into_view(&mut self, outline: ElementId, ui: &mut Ui, index: usize) {
-        let visible_len = self.visible_len();
-        if scroll_fixed_virtual_index_into_view(
-            outline,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            index,
-            visible_len,
-        ) {
-            let _ = self.sync_virtual_items(outline, ui);
-        }
+        self.select_visible_index(outline, ui, next, source)
     }
 
     fn toggle_selected(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
@@ -984,9 +921,14 @@ impl OutlineViewWidget {
         self.toggle_key_expanded(outline, ui, key)
     }
 
-    fn expand_or_advance(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
+    fn expand_or_advance(
+        &mut self,
+        outline: ElementId,
+        ui: &mut Ui,
+        source: ScrollInputSource,
+    ) -> bool {
         let Some(index) = self.selected_visible_index() else {
-            return self.select_visible_index(outline, ui, 0);
+            return self.select_visible_index(outline, ui, 0, source);
         };
         let Some(row) = self.outline.visible_row(index).cloned() else {
             return false;
@@ -995,7 +937,7 @@ impl OutlineViewWidget {
             return self.set_key_expanded(outline, ui, row.key, true);
         }
         let last = self.update_visible_len() - 1;
-        self.select_visible_index(outline, ui, (index + 1).min(last))
+        self.select_visible_index(outline, ui, (index + 1).min(last), source)
     }
 
     fn collapse_selected(&mut self, outline: ElementId, ui: &mut Ui) -> bool {
@@ -1042,8 +984,7 @@ impl OutlineViewWidget {
             let _ = self.mutate_selection(ui, outline, |selection| selection.select_only(key));
         }
         let visible_len = self.update_visible_len();
-        self.virtual_list.set_len(visible_len);
-        clamp_fixed_virtual_scroll_target(outline, ui, &mut self.virtual_list, &self.scroll_state);
+        self.scroll.set_len(outline, ui, visible_len);
         let _ = self.sync_virtual_items(outline, ui);
         self.expansion_changed.dispatch(
             ui,
@@ -1089,7 +1030,7 @@ impl OutlineViewWidget {
     }
 
     fn visible_item_count(&self) -> usize {
-        fixed_visible_item_count(self.item_extent, self.virtual_list.viewport_extent())
+        self.scroll.visible_item_count()
     }
 }
 
@@ -1292,7 +1233,7 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
 pub fn select_outline_key(ui: &mut Ui, outline: ElementId, key: impl Into<OutlineNodeKey>) -> bool {
     let key = key.into();
     with_outline_view_mut(ui, outline, |widget, ui| {
-        widget.select_key(outline, ui, key)
+        widget.select_key(outline, ui, key, ScrollInputSource::Programmatic)
     })
     .unwrap_or(false)
 }
@@ -1372,16 +1313,23 @@ pub fn toggle_outline_key(ui: &mut Ui, outline: ElementId, key: impl Into<Outlin
 /// Returns the outline's current vertical scroll offset in logical pixels.
 #[must_use]
 pub fn outline_scroll_offset_y(ui: &Ui, outline: ElementId) -> Option<f64> {
-    outline_view_widget(ui, outline).map(|widget| state_scroll_offset_y(&widget.scroll_state))
+    outline_view_widget(ui, outline).map(|widget| widget.scroll.offset_y())
 }
 
 /// Sets the outline's vertical scroll offset in logical pixels.
 ///
-/// Returns `false` if `outline` is stale or does not own outline state.
+/// Returns `false` if `outline` is stale, does not own outline state, or
+/// already has the constrained offset.
+///
+/// This now matches the generic scroll setter: callers that only need to test
+/// target identity should use [`outline_scroll_offset_y`] instead of this
+/// result.
 pub fn set_outline_scroll_offset_y(ui: &mut Ui, outline: ElementId, offset: f64) -> bool {
     with_outline_view_mut(ui, outline, |widget, ui| {
-        widget.set_scroll_offset_y(outline, ui, offset);
-        true
+        widget
+            .scroll
+            .scroll_to(outline, ui, offset, ScrollInputSource::Programmatic)
+            .changed()
     })
     .unwrap_or(false)
 }
@@ -1495,6 +1443,7 @@ mod tests {
 
     use accesskit::{Node, Role, TreeUpdate};
     use kurbo::Point;
+    use ui_events::ScrollDelta;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
     use understory_property::DependencyObjectExt;
 
@@ -1871,6 +1820,35 @@ mod tests {
         assert_eq!(child_node.position_in_set(), Some(1));
         assert_eq!(child_node.size_of_set(), Some(2));
         assert_eq!(child_node.is_selected(), Some(true));
+    }
+
+    #[test]
+    fn outline_wheel_uses_the_shared_consumption_model() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outline = ui.append(
+            root,
+            OutlineView::new()
+                .nodes(scrolling_nodes(100), Some(0))
+                .expanded(0)
+                .size(140.0, 56.0)
+                .item_extent(20.0)
+                .overscan(0.0),
+        );
+        compute_layout(&mut ui);
+
+        let result = ui.synthesize_scroll(outline, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
+
+        assert!(result.handled);
+        let snapshot = ui
+            .scroll_state_snapshot(outline)
+            .expect("outline should expose shared scroll state");
+        let change = snapshot
+            .last_command
+            .expect("outline should record its wheel command");
+        assert_eq!(change.source, ScrollInputSource::Wheel);
+        assert_eq!(change.consumed_delta.y, change.requested_delta.y);
+        assert_eq!(change.unconsumed_delta, Vec2::ZERO);
     }
 
     fn scrolling_nodes(len: usize) -> Vec<OutlineViewNode> {

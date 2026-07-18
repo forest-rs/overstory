@@ -5,15 +5,16 @@ use kurbo::{Axis, Size, Vec2};
 use understory_property::DependencyObjectExt;
 
 use crate::behavior::ArrangeContext;
-use crate::channels::ARRANGE;
 use crate::controls::support::{RectAxisExt, SizeAxisExt, Vec2AxisExt, action_scroll_unit};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::ScrollEvent;
 use crate::layouts::LayoutSize;
-use crate::scroll_runtime::{ScrollState, normalize_scroll_axis};
+use crate::scroll_runtime::{
+    ScrollCommandResult, ScrollInputSource, ScrollState, normalize_scroll_axis,
+};
 use crate::ui::Ui;
 
-use super::events::{ScrollOffsetChangeSource, ScrollOffsetChangedEvent};
+use super::events::ScrollOffsetChangedEvent;
 use super::ids::DEFAULT_SCROLL_LINE_Y;
 use super::view::ScrollViewWidget;
 /// Normalizes a vertical scroll offset for public builder and setter APIs.
@@ -67,6 +68,10 @@ pub(crate) fn wheel_scroll_delta(
     // Wheel deltas describe device movement; scroll offsets move content in
     // the opposite direction.
     let delta = -raw_delta;
+    let delta = Vec2::new(
+        if delta.x.is_finite() { delta.x } else { 0.0 },
+        if delta.y.is_finite() { delta.y } else { 0.0 },
+    );
     if delta == Vec2::ZERO {
         None
     } else {
@@ -81,7 +86,7 @@ pub(crate) fn scroll_by_accessibility_action(
     axis: Axis,
     direction: f64,
     request: &accesskit::ActionRequest,
-) -> Option<ScrollOffsetChange> {
+) -> Option<ScrollCommandResult> {
     let unit = action_scroll_unit(request)?;
     let amount = match unit {
         accesskit::ScrollUnit::Item => DEFAULT_SCROLL_LINE_Y,
@@ -91,7 +96,8 @@ pub(crate) fn scroll_by_accessibility_action(
         state_axis_scroll_offset(state, axis) + (amount * direction),
         state.offset().along(axis.cross()),
     );
-    set_scroll_offset_raw(ui, viewport, state, next)
+    let change = apply_scroll_offset(ui, viewport, state, next, ScrollInputSource::Accessibility);
+    change.changed().then_some(change)
 }
 
 pub(crate) fn set_scroll_state_offset_y(
@@ -105,17 +111,8 @@ pub(crate) fn set_scroll_state_offset_y(
         viewport,
         state,
         Vec2::new(state.offset().x, offset),
-        ScrollOffsetChangeSource::Programmatic,
+        ScrollInputSource::Programmatic,
     )
-}
-
-pub(crate) fn state_scroll_offset_y(state: &ScrollState) -> f64 {
-    state.offset_y()
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ScrollOffsetChange {
-    pub(super) previous: Vec2,
-    pub(super) offset: Vec2,
 }
 
 pub(crate) fn scroll_by(
@@ -123,8 +120,9 @@ pub(crate) fn scroll_by(
     viewport: ElementId,
     state: &ScrollState,
     delta: Vec2,
-) -> Option<ScrollOffsetChange> {
-    set_scroll_offset_raw(ui, viewport, state, state.offset() + delta)
+    source: ScrollInputSource,
+) -> ScrollCommandResult {
+    apply_scroll_offset(ui, viewport, state, state.offset() + delta, source)
 }
 
 pub(super) fn set_scroll_offset(
@@ -132,52 +130,38 @@ pub(super) fn set_scroll_offset(
     viewport: ElementId,
     state: &ScrollState,
     offset: Vec2,
-    source: ScrollOffsetChangeSource,
+    source: ScrollInputSource,
 ) -> bool {
-    let Some(change) = set_scroll_offset_raw(ui, viewport, state, offset) else {
+    let change = apply_scroll_offset(ui, viewport, state, offset, source);
+    if !change.changed() {
         return false;
-    };
-    dispatch_scroll_offset_changed(ui, viewport, change, source);
+    }
+    dispatch_scroll_offset_changed(ui, viewport, change);
     true
 }
 
-pub(crate) fn set_scroll_offset_raw(
+pub(crate) fn apply_scroll_offset(
     ui: &mut Ui,
     viewport: ElementId,
     state: &ScrollState,
     offset: Vec2,
-) -> Option<ScrollOffsetChange> {
-    let previous = state.offset();
-    let max = max_scroll_offset(ui, viewport, state);
-    let clamped = Vec2::new(
-        normalize_scroll_axis(offset.x).min(max.x),
-        normalize_scroll_axis(offset.y).min(max.y),
-    );
-    if !state.set_offset_raw(clamped) {
-        return None;
-    }
-    let channels = ui
-        .scroll_target(viewport)
-        .map(|target| target.offset_channels())
-        .unwrap_or_else(|| ARRANGE.into());
-    ui.mark_channels(viewport, channels);
-    Some(ScrollOffsetChange {
-        previous,
-        offset: clamped,
-    })
+    source: ScrollInputSource,
+) -> ScrollCommandResult {
+    refresh_scroll_metrics(ui, viewport, state);
+    ui.apply_scroll_command(viewport, offset, source)
+        .expect("scroll commands require a registered target")
 }
 
 fn dispatch_scroll_offset_changed(
     ui: &mut Ui,
     scroll_view: ElementId,
-    change: ScrollOffsetChange,
-    source: ScrollOffsetChangeSource,
+    change: ScrollCommandResult,
 ) {
     let event = ScrollOffsetChangedEvent {
         scroll_view,
-        previous_offset: change.previous,
+        previous_offset: change.previous_offset,
         offset: change.offset,
-        source,
+        source: change.source,
     };
     ui.with_widget_mut(scroll_view, |widget, ui| {
         let Some(widget) = widget.downcast_mut::<ScrollViewWidget>() else {
@@ -187,10 +171,10 @@ fn dispatch_scroll_offset_changed(
     });
 }
 
-fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 {
+fn refresh_scroll_metrics(ui: &Ui, viewport: ElementId, state: &ScrollState) {
     let viewport_bounds = ui.effective_bounds(viewport);
     if viewport_bounds.width() <= 0.0 || viewport_bounds.height() <= 0.0 {
-        return Vec2::ZERO;
+        return;
     }
     if let Some(element) = ui.get(viewport)
         && element
@@ -203,7 +187,6 @@ fn max_scroll_offset(ui: &Ui, viewport: ElementId, state: &ScrollState) -> Vec2 
         // clamped to only the currently realized children.
         update_scroll_view_metrics_from_ui_bounds(ui, state, viewport_bounds, element);
     }
-    state.max_offset()
 }
 
 pub(crate) fn update_scroll_metrics_from_layout(ctx: &ArrangeContext<'_>, state: &ScrollState) {

@@ -1492,7 +1492,67 @@ fn selected_element_property_grid(
     for section in property_grid_sections(row) {
         grid.push_section(section);
     }
-    grid.section(state).section(layout).section(composition)
+    grid.push_section(state);
+    if let Some(scroll) = scroll_property_section(row) {
+        grid.push_section(scroll);
+    }
+    grid.section(layout).section(composition)
+}
+
+fn scroll_property_section(row: &ElementInspectionRow) -> Option<PropertyGridSection> {
+    let scroll = row.scroll?;
+    let mut section = PropertyGridSection::new("Scroll")
+        .row(PropertyGridRow::new("Offset", vec2_summary(scroll.offset)))
+        .row(PropertyGridRow::new(
+            "Maximum",
+            vec2_summary(scroll.max_offset),
+        ))
+        .row(PropertyGridRow::new(
+            "Viewport",
+            size_summary(scroll.viewport),
+        ))
+        .row(PropertyGridRow::new(
+            "Content",
+            size_summary(scroll.content),
+        ))
+        .row(PropertyGridRow::new(
+            "Horizontal boundary",
+            axis_boundary_summary(scroll.offset.x, scroll.max_offset.x),
+        ))
+        .row(PropertyGridRow::new(
+            "Vertical boundary",
+            axis_boundary_summary(scroll.offset.y, scroll.max_offset.y),
+        ))
+        .row(PropertyGridRow::new(
+            "Revision",
+            scroll.revision.to_string(),
+        ))
+        .row(PropertyGridRow::new(
+            "Commands",
+            scroll.command_count.to_string(),
+        ));
+    if let Some(command) = scroll.last_command {
+        section.push_row(
+            PropertyGridRow::new("Last command", format!("{:?}", command.source))
+                .child(PropertyGridRow::new(
+                    "Requested",
+                    vec2_summary(command.requested_delta),
+                ))
+                .child(PropertyGridRow::new(
+                    "Consumed",
+                    vec2_summary(command.consumed_delta),
+                ))
+                .child(PropertyGridRow::new(
+                    "Unconsumed",
+                    vec2_summary(command.unconsumed_delta),
+                ))
+                .child(PropertyGridRow::new(
+                    "Request normalized",
+                    command.request_normalized,
+                )),
+        );
+    }
+    Some(section)
 }
 
 fn element_relation_row(
@@ -1953,6 +2013,22 @@ fn rect_summary(rect: overstory::Rect) -> String {
 
 fn size_summary(size: overstory::Size) -> String {
     format!("{:.1}x{:.1}", size.width, size.height)
+}
+
+fn vec2_summary(vector: overstory::Vec2) -> String {
+    format!("{:.1},{:.1}", vector.x, vector.y)
+}
+
+fn axis_boundary_summary(offset: f64, max: f64) -> &'static str {
+    if max <= f64::EPSILON {
+        "both"
+    } else if offset <= f64::EPSILON {
+        "start"
+    } else if (max - offset).abs() <= f64::EPSILON {
+        "end"
+    } else {
+        "interior"
+    }
 }
 
 #[cfg(test)]
@@ -2483,6 +2559,49 @@ mod tests {
                 grandchild,
                 format!("Panel {}", element_id_summary(grandchild))
             )
+        );
+    }
+
+    #[test]
+    fn selected_element_property_grid_exposes_scroll_consumption() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let scroll = ui.append(root, overstory::ScrollView::new().size(120.0, 48.0));
+        for _ in 0..4 {
+            ui.append(
+                scroll,
+                Panel::new().layout(Layout::new().logical_size(120.0, 24.0).flex_shrink(0.0)),
+            );
+        }
+        ui.compute_layout(overstory::Size::new(180.0, 120.0));
+        assert!(overstory::set_scroll_offset_y(&mut ui, scroll, 12.0));
+        let snapshot = DevtoolsSnapshot::capture(&ui);
+        let row = snapshot
+            .element(scroll)
+            .expect("scroll viewport should be inspectable");
+
+        let grid = selected_element_property_grid(&snapshot, row);
+        let scroll = grid
+            .sections()
+            .iter()
+            .find(|section| section.title() == "Scroll")
+            .expect("grid should contain scroll diagnostics");
+        let last_command = scroll
+            .rows()
+            .iter()
+            .find(|row| row.label() == "Last command")
+            .expect("scroll section should expose the last command");
+
+        assert_eq!(
+            last_command.value(),
+            &PropertyGridValue::text("Programmatic")
+        );
+        assert!(
+            last_command
+                .children()
+                .iter()
+                .any(|row| row.label() == "Consumed"
+                    && row.value() == &PropertyGridValue::text("0.0,12.0"))
         );
     }
 

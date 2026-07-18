@@ -22,6 +22,7 @@ use crate::composition::{CompositionPolicy, SurfaceId};
 use crate::diagnostics::{LayoutOutcome, LayoutStabilizationCause, UiFrameStats};
 use crate::element::ElementId;
 use crate::motion::{PresentationTarget, PresentationValueKind};
+use crate::scroll_runtime::ScrollStateSnapshot;
 use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
 use crate::timeline_runtime::{AnimationId, AnimationTimelineId};
 
@@ -199,7 +200,13 @@ pub struct ElementInspectionRemoval {
 }
 
 /// One retained element row in a [`UiInspectionSnapshot`].
+///
+/// Inspection rows can gain new diagnostic fields as subsystems become
+/// inspectable. This type is now non-exhaustive; downstream destructuring
+/// should include `..`, and downstream code should consume rows from snapshots
+/// rather than constructing them.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ElementInspectionRow {
     /// Stable generational element id.
     pub id: ElementId,
@@ -226,6 +233,8 @@ pub struct ElementInspectionRow {
     pub pseudos: Vec<PseudoClassId>,
     /// Interaction state captured for this element.
     pub state: ElementStateInspection,
+    /// Shared scroll metrics and the most recent command, for scroll targets.
+    pub scroll: Option<ScrollStateSnapshot>,
     /// Whether this element was inserted with widget identity.
     pub has_widget_identity: bool,
     /// Current layout bounds in logical pixels.

@@ -408,6 +408,39 @@ impl RoutedEventState {
     }
 }
 
+/// Scroll-specific state shared by one routed scroll dispatch.
+#[derive(Debug)]
+pub(crate) struct ScrollRouteState {
+    remaining: core::cell::Cell<Vec2>,
+}
+
+impl ScrollRouteState {
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self {
+            remaining: core::cell::Cell::new(Vec2::new(1.0, 1.0)),
+        }
+    }
+
+    fn remaining(&self) -> Vec2 {
+        self.remaining.get()
+    }
+
+    fn consume(&self, requested: Vec2, consumed: Vec2) {
+        let mut remaining = self.remaining.get();
+        remaining.x *= remaining_fraction(requested.x, consumed.x);
+        remaining.y *= remaining_fraction(requested.y, consumed.y);
+        self.remaining.set(remaining);
+    }
+}
+
+fn remaining_fraction(requested: f64, consumed: f64) -> f64 {
+    if requested.abs() <= f64::EPSILON {
+        return 1.0;
+    }
+    (1.0 - (consumed / requested).clamp(0.0, 1.0)).clamp(0.0, 1.0)
+}
+
 /// Common route metadata attached to every routed event payload.
 ///
 /// A context is a thin Overstory view over one responder dispatch step plus
@@ -854,10 +887,17 @@ impl ClickEvent<'_> {
 }
 
 /// Payload delivered to a scroll handler.
+///
+/// This framework-created payload is non-exhaustive because routed scroll
+/// consumption carries dispatch-private state. Callers migrating from direct
+/// struct construction should synthesize or dispatch scroll input through
+/// [`Ui`](crate::Ui) instead.
 #[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
 pub struct ScrollEvent<'a> {
     /// Shared routed-event metadata.
     pub route: RoutedEventContext<'a>,
+    pub(crate) scroll: &'a ScrollRouteState,
     /// Pointer position at scroll time, in physical pixels.
     pub position: Point,
     /// Raw scroll delta from `ui_events`.
@@ -875,10 +915,14 @@ impl<'a> core::ops::Deref for ScrollEvent<'a> {
 }
 
 impl ScrollEvent<'_> {
-    /// Converts the event's raw delta into logical pixels.
+    /// Converts the event's unconsumed delta into logical pixels.
+    ///
+    /// A scrollable descendant can consume part of a routed delta. Ancestors
+    /// then observe only the remaining fraction, converted with their own line
+    /// and page extents.
     #[must_use]
     pub fn logical_delta(&self, line_size: Vec2, page_size: Vec2) -> Vec2 {
-        match self.delta {
+        let delta = match self.delta {
             ScrollDelta::PixelDelta(delta) => Vec2::new(delta.x, delta.y),
             ScrollDelta::LineDelta(x, y) => {
                 Vec2::new(f64::from(x) * line_size.x, f64::from(y) * line_size.y)
@@ -886,6 +930,16 @@ impl ScrollEvent<'_> {
             ScrollDelta::PageDelta(x, y) => {
                 Vec2::new(f64::from(x) * page_size.x, f64::from(y) * page_size.y)
             }
+        };
+        let remaining = self.scroll.remaining();
+        Vec2::new(delta.x * remaining.x, delta.y * remaining.y)
+    }
+
+    pub(crate) fn consume_logical_delta(&self, requested: Vec2, consumed: Vec2) {
+        self.scroll.consume(requested, consumed);
+        let unconsumed = requested - consumed;
+        if unconsumed.x.abs() <= f64::EPSILON && unconsumed.y.abs() <= f64::EPSILON {
+            self.mark_handled();
         }
     }
 

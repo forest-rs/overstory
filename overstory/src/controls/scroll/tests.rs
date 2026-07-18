@@ -15,6 +15,7 @@ use crate::accessibility::accesskit_node_id;
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
 use crate::layouts::Layout;
+use crate::scroll_runtime::ScrollInputSource;
 use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
 use crate::ui::Ui;
 
@@ -85,6 +86,92 @@ fn scroll_view_handles_routed_wheel_delta() {
 }
 
 #[test]
+fn nested_scroll_views_translate_unconsumed_page_fraction() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(0.0).logical_size(180.0, 140.0));
+    let outer = ui.append(root, ScrollView::new().size(120.0, 48.0));
+    let inner = ui.append(outer, ScrollView::new().size(120.0, 24.0));
+    for _ in 0..4 {
+        append_scroll_test_child(&mut ui, inner);
+        append_scroll_test_child(&mut ui, outer);
+    }
+
+    ui.compute_layout(Size::new(180.0, 140.0));
+    let inner_snapshot = ui
+        .scroll_state_snapshot(inner)
+        .expect("inner viewport should expose scroll state");
+    let outer_snapshot = ui
+        .scroll_state_snapshot(outer)
+        .expect("outer viewport should expose scroll state");
+    let inner_max = inner_snapshot.max_offset.y;
+    assert!(inner_max > 8.0);
+    assert!(set_scroll_view_offset_y(&mut ui, inner, inner_max - 8.0));
+    assert_eq!(scroll_view_offset_y(&ui, outer), Some(0.0));
+
+    let result = ui.synthesize_scroll(inner, Point::ZERO, ScrollDelta::PageDelta(0.0, -1.0));
+
+    let inner_remainder = inner_snapshot.viewport.height - 8.0;
+    let outer_request =
+        outer_snapshot.viewport.height * (inner_remainder / inner_snapshot.viewport.height);
+    assert!(result.handled);
+    assert_eq!(scroll_view_offset_y(&ui, inner), Some(inner_max));
+    assert_eq!(scroll_view_offset_y(&ui, outer), Some(outer_request));
+    let inner_change = ui
+        .scroll_state_snapshot(inner)
+        .and_then(|snapshot| snapshot.last_command)
+        .expect("inner viewport should record its boundary hit");
+    let outer_change = ui
+        .scroll_state_snapshot(outer)
+        .and_then(|snapshot| snapshot.last_command)
+        .expect("outer viewport should receive the remainder");
+    assert_eq!(inner_change.consumed_delta.y, 8.0);
+    assert_eq!(inner_change.unconsumed_delta.y, inner_remainder);
+    assert_eq!(outer_change.requested_delta.y, outer_request);
+    assert_eq!(outer_change.consumed_delta.y, outer_request);
+}
+
+#[test]
+fn root_scroll_boundary_leaves_the_unconsumed_delta_unhandled() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+    for _ in 0..4 {
+        append_scroll_test_child(&mut ui, scroll);
+    }
+    ui.compute_layout(Size::new(180.0, 120.0));
+    let max = ui
+        .scroll_state_snapshot(scroll)
+        .expect("viewport should expose scroll state")
+        .max_offset
+        .y;
+    assert!(set_scroll_view_offset_y(&mut ui, scroll, max));
+    ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes();
+
+    let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
+
+    assert!(!result.handled);
+    let change = ui
+        .scroll_state_snapshot(scroll)
+        .and_then(|snapshot| snapshot.last_command)
+        .expect("boundary command should remain inspectable");
+    assert_eq!(change.consumed_delta, Vec2::ZERO);
+    assert!(change.unconsumed_delta.y > 0.0);
+    assert!(
+        ui.drain_inspection_changes()
+            .tree
+            .updated
+            .iter()
+            .any(|row| row.id == scroll
+                && row
+                    .scroll
+                    .and_then(|scroll| scroll.last_command)
+                    .is_some_and(|change| change.unconsumed_delta.y > 0.0))
+    );
+}
+
+#[test]
 fn pointer_wheel_scroll_uses_content_direction() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -117,6 +204,30 @@ fn pointer_wheel_scroll_uses_content_direction() {
 }
 
 #[test]
+fn non_finite_wheel_delta_is_ignored() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let scroll = ui.append(root, ScrollView::new().size(120.0, 48.0));
+    for _ in 0..4 {
+        append_scroll_test_child(&mut ui, scroll);
+    }
+    ui.compute_layout(Size::new(180.0, 120.0));
+    assert!(set_scroll_view_offset_y(&mut ui, scroll, 12.0));
+    let before = ui
+        .scroll_state_snapshot(scroll)
+        .expect("scroll view should expose state");
+
+    let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, f32::NAN));
+    let after = ui
+        .scroll_state_snapshot(scroll)
+        .expect("scroll view should retain state");
+
+    assert!(!result.handled);
+    assert_eq!(after.offset, before.offset);
+    assert_eq!(after.command_count, before.command_count);
+}
+
+#[test]
 fn scroll_state_tracks_viewport_and_content_metrics() {
     let mut ui = Ui::new();
     let root = ui.root();
@@ -133,8 +244,9 @@ fn scroll_state_tracks_viewport_and_content_metrics() {
         .expect("scroll view should own scroll state");
 
     assert_eq!(state.viewport_size(), Size::new(120.0, 48.0));
-    assert!(state.content_size().height > state.viewport_size().height);
-    assert!(state.max_offset_y() > 0.0);
+    let snapshot = state.snapshot();
+    assert!(snapshot.content.height > snapshot.viewport.height);
+    assert!(snapshot.max_offset.y > 0.0);
 }
 
 #[test]
@@ -371,10 +483,7 @@ fn scroll_bar_track_click_pages_viewport() {
     assert!(result.handled);
     assert!(scroll_view_offset_y(&ui, scroll).is_some_and(|offset| offset > 0.0));
     assert_eq!(events.borrow().len(), 1);
-    assert_eq!(
-        events.borrow()[0].source,
-        ScrollOffsetChangeSource::ScrollBar
-    );
+    assert_eq!(events.borrow()[0].source, ScrollInputSource::ScrollBar);
 }
 
 #[test]
@@ -467,7 +576,7 @@ fn scroll_view_offset_changed_reports_programmatic_source() {
             scroll_view: scroll,
             previous_offset: Vec2::ZERO,
             offset: Vec2::new(0.0, 12.0),
-            source: ScrollOffsetChangeSource::Programmatic,
+            source: ScrollInputSource::Programmatic,
         }]
     );
 }
@@ -501,7 +610,7 @@ fn scroll_view_offset_changed_reports_wheel_source() {
     assert_eq!(event.scroll_view, scroll);
     assert_eq!(event.previous_offset, Vec2::ZERO);
     assert!(event.offset.y > 0.0);
-    assert_eq!(event.source, ScrollOffsetChangeSource::Wheel);
+    assert_eq!(event.source, ScrollInputSource::Wheel);
 }
 
 #[test]

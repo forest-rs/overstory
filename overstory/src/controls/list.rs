@@ -13,8 +13,6 @@
 //!   anchor, primary selection, and realized containers must not drift apart.
 //! - Add mature keyboard behavior: typeahead, Home / End / Page movement,
 //!   platform multi-select conventions, and clear focus-vs-selection semantics.
-//! - Integrate reusable scrolling, scrollbars, accessibility, and eventually
-//!   composition-backed virtualization without making apps assemble that by hand.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -33,21 +31,18 @@ use crate::controls::choice::{
     previous_enabled_index, selected_enabled_index,
 };
 use crate::controls::scroll::{
-    normalize_scroll_offset_y, state_scroll_offset_y, wheel_scroll_delta,
+    FixedVirtualViewport, normalize_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::control_size;
 use crate::controls::support::{
-    CallbackSlot, EventHandler, FixedVirtualizer, ReservedVerticalScrollArea,
-    append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
-    fixed_virtual_accessibility_scroll_delta, fixed_virtualizer, fixed_visible_item_count,
-    layout_fixed_virtual_rows, reserved_scroll_frame_widget, scroll_fixed_virtual_index_into_view,
-    set_fixed_virtual_scroll_offset_y, sync_fixed_virtual_rows,
+    CallbackSlot, EventHandler, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
+    configure_vertical_scroll_accessibility, reserved_scroll_frame_widget,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
 use crate::pseudos::PSEUDO_SELECTED;
-use crate::scroll_runtime::ScrollState;
+use crate::scroll_runtime::ScrollInputSource;
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -401,13 +396,13 @@ impl AppendSpec for ListBox {
             let _ = selection.select_only(index);
         }
 
-        let scroll_state = ScrollState::with_offset_y(self.scroll_offset_y);
-        let virtual_list = fixed_virtualizer(
+        let scroll = FixedVirtualViewport::new(
             self.options.len(),
             self.item_extent,
             self.scroll_offset_y,
             self.overscan,
         );
+        let scroll_state = scroll.state().clone();
 
         let id = ui.append_widget(
             parent,
@@ -415,13 +410,10 @@ impl AppendSpec for ListBox {
                 options: self.options,
                 item_template: self.item_template,
                 selection,
-                scroll_state: scroll_state.clone(),
+                scroll,
                 selection_mode: self.selection_mode,
                 selection_changed: ListSelectionChangedSlot::new(self.on_selection_changed),
-                virtual_list,
-                item_extent: self.item_extent,
                 realized: Vec::new(),
-                last_viewport: Size::ZERO,
             }),
         );
 
@@ -552,13 +544,10 @@ pub(crate) struct ListBoxWidget {
     options: Vec<ChoiceOption>,
     item_template: Option<SharedListItemTemplate>,
     selection: Selection<usize>,
-    scroll_state: ScrollState,
+    scroll: FixedVirtualViewport,
     selection_mode: ListSelectionMode,
     selection_changed: ListSelectionChangedSlot,
-    virtual_list: FixedVirtualizer,
-    item_extent: f64,
     realized: Vec<RealizedListItem>,
-    last_viewport: Size,
 }
 
 impl core::fmt::Debug for ListBoxWidget {
@@ -567,7 +556,7 @@ impl core::fmt::Debug for ListBoxWidget {
             .field("options_len", &self.options.len())
             .field("has_item_template", &self.item_template.is_some())
             .field("selection_mode", &self.selection_mode)
-            .field("item_extent", &self.item_extent)
+            .field("item_extent", &self.scroll.item_extent())
             .field("realized", &self.realized)
             .finish_non_exhaustive()
     }
@@ -596,7 +585,7 @@ impl Widget for ListBoxWidget {
             node.set_multiselectable();
         }
         node.set_size_of_set(self.options.len());
-        configure_vertical_scroll_accessibility(element, ctx, node, &self.scroll_state);
+        configure_vertical_scroll_accessibility(element, ctx, node, self.scroll.state());
         if let Some(primary) = self.selected_index()
             && let Some(item) = self.realized.iter().find(|item| item.index == primary)
         {
@@ -609,7 +598,7 @@ impl Widget for ListBoxWidget {
     }
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
-        -self.scroll_state.offset()
+        -self.scroll.state().offset()
     }
 
     fn realize_elements(&mut self, ctx: &mut ElementRealizeContext<'_>) -> ElementRealizeResult {
@@ -623,8 +612,10 @@ impl Widget for ListBoxWidget {
             return;
         };
         if delta.y != 0.0 {
-            self.scroll_by(listbox, ctx, delta.y);
-            event.mark_handled();
+            let change = self
+                .scroll
+                .scroll_by(listbox, ctx, delta.y, ScrollInputSource::Wheel);
+            event.consume_logical_delta(delta, Vec2::new(0.0, change.consumed_delta.y));
         }
     }
 
@@ -686,7 +677,9 @@ impl Widget for ListBoxWidget {
         } else {
             self.select_index(ctx, listbox, next);
         }
-        self.scroll_index_into_view(listbox, ctx, next);
+        let _ = self
+            .scroll
+            .scroll_to_index(listbox, ctx, next, ScrollInputSource::Keyboard);
         event.mark_handled();
     }
 
@@ -699,49 +692,19 @@ impl Widget for ListBoxWidget {
         if !ctx.is_enabled(listbox) {
             return false;
         }
-        match request.action {
-            accesskit::Action::ScrollUp => {
-                self.scroll_by_accessibility_action(listbox, ctx, -1.0, request)
-            }
-            accesskit::Action::ScrollDown => {
-                self.scroll_by_accessibility_action(listbox, ctx, 1.0, request)
-            }
-            accesskit::Action::SetScrollOffset => {
-                let Some(accesskit::ActionData::SetScrollOffset(point)) = request.data.as_ref()
-                else {
-                    return false;
-                };
-                self.set_scroll_offset_y(listbox, ctx, point.y);
-                true
-            }
-            _ => false,
-        }
+        self.scroll
+            .handle_accessibility_action(listbox, ctx, request)
     }
 }
 
 impl ListBoxWidget {
     fn sync_virtual_items(&mut self, listbox: ElementId, ui: &mut Ui) -> bool {
-        let sync = self.sync_virtual_metrics(listbox, ui);
+        let sync = self.scroll.sync(listbox, ui, self.options.len());
         let mut changed = sync.changed;
         changed |= self.reconcile_realized_items(listbox, ui, sync.range);
         changed |= self.layout_realized_items(ui, sync.viewport);
         self.sync_realized_selected_pseudos(ui);
         changed
-    }
-
-    fn sync_virtual_metrics(
-        &mut self,
-        listbox: ElementId,
-        ui: &mut Ui,
-    ) -> crate::controls::support::FixedVirtualRowsSync {
-        sync_fixed_virtual_rows(
-            listbox,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            self.options.len(),
-            &mut self.last_viewport,
-        )
     }
 
     fn reconcile_realized_items(
@@ -779,63 +742,11 @@ impl ListBoxWidget {
     }
 
     fn layout_realized_items(&mut self, ui: &mut Ui, viewport: Size) -> bool {
-        layout_fixed_virtual_rows(
+        self.scroll.layout_rows(
             ui,
-            &mut self.virtual_list,
-            self.item_extent,
             self.realized.iter().map(|item| (item.index, item.element)),
             viewport,
         )
-    }
-
-    fn scroll_by(&mut self, listbox: ElementId, ui: &mut Ui, delta_y: f64) {
-        let next = self.virtual_list.scroll_offset() + delta_y;
-        self.set_scroll_offset_y(listbox, ui, next);
-    }
-
-    fn scroll_by_accessibility_action(
-        &mut self,
-        listbox: ElementId,
-        ui: &mut Ui,
-        direction: f64,
-        request: &accesskit::ActionRequest,
-    ) -> bool {
-        let Some(delta) = fixed_virtual_accessibility_scroll_delta(
-            request,
-            direction,
-            self.item_extent,
-            self.virtual_list.viewport_extent(),
-        ) else {
-            return false;
-        };
-        self.scroll_by(listbox, ui, delta);
-        true
-    }
-
-    fn set_scroll_offset_y(&mut self, listbox: ElementId, ui: &mut Ui, offset: f64) {
-        set_fixed_virtual_scroll_offset_y(
-            listbox,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            offset,
-        );
-        let _ = self.sync_virtual_items(listbox, ui);
-    }
-
-    fn scroll_index_into_view(&mut self, listbox: ElementId, ui: &mut Ui, index: usize) -> bool {
-        if !scroll_fixed_virtual_index_into_view(
-            listbox,
-            ui,
-            &mut self.virtual_list,
-            &self.scroll_state,
-            index,
-            self.options.len(),
-        ) {
-            return false;
-        }
-        let _ = self.sync_virtual_items(listbox, ui);
-        true
     }
 
     fn selected_index(&self) -> Option<usize> {
@@ -878,7 +789,9 @@ impl ListBoxWidget {
         };
         self.sync_realized_selected_pseudos(ui);
         if let Some(index) = index {
-            self.scroll_index_into_view(listbox, ui, index);
+            let _ =
+                self.scroll
+                    .scroll_to_index(listbox, ui, index, ScrollInputSource::Programmatic);
         }
     }
 
@@ -987,7 +900,7 @@ impl ListBoxWidget {
     }
 
     fn visible_item_count(&self) -> usize {
-        fixed_visible_item_count(self.item_extent, self.virtual_list.viewport_extent())
+        self.scroll.visible_item_count()
     }
 
     fn page_down_index(&self, current: Option<usize>, page: usize) -> Option<usize> {
@@ -1141,16 +1054,22 @@ pub fn selected_list_indices(ui: &Ui, listbox: ElementId) -> Vec<usize> {
 /// Returns the list's current vertical scroll offset in logical pixels.
 #[must_use]
 pub fn list_scroll_offset_y(ui: &Ui, listbox: ElementId) -> Option<f64> {
-    list_box_widget(ui, listbox).map(|widget| state_scroll_offset_y(&widget.scroll_state))
+    list_box_widget(ui, listbox).map(|widget| widget.scroll.offset_y())
 }
 
 /// Sets the list's vertical scroll offset in logical pixels.
 ///
-/// Returns `false` if `listbox` is stale or does not own list state.
+/// Returns `false` if `listbox` is stale, does not own list state, or already
+/// has the constrained offset.
+///
+/// This now matches the generic scroll setter: callers that only need to test
+/// target identity should use [`list_scroll_offset_y`] instead of this result.
 pub fn set_list_scroll_offset_y(ui: &mut Ui, listbox: ElementId, offset: f64) -> bool {
     with_list_box_mut(ui, listbox, |widget, ui| {
-        widget.set_scroll_offset_y(listbox, ui, offset);
-        true
+        widget
+            .scroll
+            .scroll_to(listbox, ui, offset, ScrollInputSource::Programmatic)
+            .changed()
     })
     .unwrap_or(false)
 }
@@ -1158,7 +1077,10 @@ pub fn set_list_scroll_offset_y(ui: &mut Ui, listbox: ElementId, offset: f64) ->
 /// Scrolls `listbox` just enough to bring `index` into its current viewport.
 pub fn scroll_list_index_into_view(ui: &mut Ui, listbox: ElementId, index: usize) -> bool {
     with_list_box_mut(ui, listbox, |widget, ui| {
-        widget.scroll_index_into_view(listbox, ui, index)
+        widget
+            .scroll
+            .scroll_to_index(listbox, ui, index, ScrollInputSource::Programmatic)
+            .is_some()
     })
     .unwrap_or(false)
 }
@@ -1267,16 +1189,17 @@ fn normalize_item_extent(extent: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ElementSpecExt;
     use crate::accessibility::accesskit_node_id;
     use crate::controls::scroll::{SLOT_SCROLL_BAR_THUMB, ScrollBar};
     use crate::pseudos::PSEUDO_SELECTED;
     use crate::test_support::{pointer_down, pointer_move, pointer_up};
+    use crate::{ElementSpecExt, ScrollView};
     use accesskit::{Action, ActionData, ActionRequest, Node, Role, TreeId, TreeUpdate};
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use kurbo::Point;
     use peniko::{Brush, Color};
+    use ui_events::ScrollDelta;
     use ui_events::keyboard::{Code, Key, KeyboardEvent, Modifiers, NamedKey};
 
     const TEST_ITEMS: [&str; 7] = [
@@ -1587,6 +1510,51 @@ mod tests {
     }
 
     #[test]
+    fn virtual_list_passes_its_unconsumed_wheel_remainder_to_a_parent_viewport() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let outer = ui.append(root, ScrollView::new().size(160.0, 80.0));
+        let listbox = ui.append(outer, scrolling_test_list_box());
+        for _ in 0..8 {
+            let filler = ui.insert_child(outer);
+            ui.set_layout(
+                filler,
+                Layout::new().logical_size(140.0, 24.0).flex_shrink(0.0),
+            );
+        }
+        compute_layout(&mut ui);
+        let max = ui
+            .scroll_state_snapshot(listbox)
+            .expect("virtual list should expose shared scroll state")
+            .max_offset
+            .y;
+        assert!(set_list_scroll_offset_y(&mut ui, listbox, max - 8.0));
+
+        let result = ui.synthesize_scroll(listbox, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
+
+        assert!(
+            result.handled,
+            "list={:?} outer={:?}",
+            ui.scroll_state_snapshot(listbox),
+            ui.scroll_state_snapshot(outer)
+        );
+        assert_eq!(list_scroll_offset_y(&ui, listbox), Some(max));
+        let list_change = ui
+            .scroll_state_snapshot(listbox)
+            .and_then(|snapshot| snapshot.last_command)
+            .expect("virtual list should record the boundary");
+        let remainder = list_change.unconsumed_delta.y;
+        assert!(remainder > 0.0);
+        assert_eq!(crate::scroll_offset_y(&ui, outer), Some(remainder));
+        let outer_change = ui
+            .scroll_state_snapshot(outer)
+            .and_then(|snapshot| snapshot.last_command)
+            .expect("parent should record the remainder");
+        assert_eq!(list_change.unconsumed_delta.y, remainder);
+        assert_eq!(outer_change.requested_delta.y, remainder);
+    }
+
+    #[test]
     fn listbox_accessibility_scroll_actions_use_virtual_list_units() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -1789,6 +1757,12 @@ mod tests {
         assert_eq!(selected_list_index(&ui, listbox), Some(19));
         assert!(list_scroll_offset_y(&ui, listbox).is_some_and(|offset| offset > 0.0));
         assert!(realized_list_item(&ui, listbox, 19).is_some());
+        assert_eq!(
+            ui.scroll_state_snapshot(listbox)
+                .and_then(|snapshot| snapshot.last_command)
+                .map(|change| change.source),
+            Some(ScrollInputSource::Keyboard)
+        );
     }
 
     #[test]

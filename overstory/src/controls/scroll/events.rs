@@ -5,25 +5,17 @@ use kurbo::Vec2;
 
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::element::ElementId;
+use crate::scroll_runtime::ScrollInputSource;
 
 pub(super) type ScrollOffsetChangedHandler = EventHandler<ScrollOffsetChangedEvent>;
 pub(super) type ScrollOffsetChangedSlot = CallbackSlot<ScrollOffsetChangedEvent>;
 
-/// Source of a scroll offset change.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScrollOffsetChangeSource {
-    /// Offset changed through pointer wheel or touchpad scrolling.
-    Wheel,
-    /// Offset changed through a scrollbar click or drag.
-    ScrollBar,
-    /// Offset changed through an accessibility action.
-    Accessibility,
-    /// Offset changed through [`set_scroll_view_offset_y`] or [`set_scroll_offset_y`].
-    Programmatic,
-}
-
 /// Event delivered after a scrollable viewport offset changes.
+///
+/// This framework-created payload is non-exhaustive. Callers migrating
+/// exhaustive patterns should include `..`.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ScrollOffsetChangedEvent {
     /// The scroll viewport whose offset changed.
     pub scroll_view: ElementId,
@@ -32,5 +24,5 @@ pub struct ScrollOffsetChangedEvent {
     /// Offset after the change.
     pub offset: Vec2,
     /// Where the change came from.
-    pub source: ScrollOffsetChangeSource,
+    pub source: ScrollInputSource,
 }

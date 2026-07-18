@@ -10,17 +10,16 @@ use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::ScrollEvent;
 use crate::layouts::Layout;
-use crate::scroll_runtime::ScrollState;
+use crate::scroll_runtime::{ScrollCommandResult, ScrollInputSource, ScrollState};
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 use super::events::{
-    ScrollOffsetChangeSource, ScrollOffsetChangedEvent, ScrollOffsetChangedHandler,
-    ScrollOffsetChangedSlot,
+    ScrollOffsetChangedEvent, ScrollOffsetChangedHandler, ScrollOffsetChangedSlot,
 };
 use super::ids::TYPE_SCROLL_VIEW;
 use super::runtime::{
-    ScrollOffsetChange, scroll_by, scroll_by_accessibility_action, set_scroll_offset_raw,
+    apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
     update_scroll_metrics_from_layout, wheel_scroll_delta,
 };
 /// Builder + spec for a clipped viewport with reusable scroll state.
@@ -223,10 +222,11 @@ impl Widget for ScrollViewWidget {
         let Some(delta) = wheel_scroll_delta(ctx, viewport, event) else {
             return;
         };
-        if let Some(change) = scroll_by(ctx, viewport, &self.state, delta) {
-            self.dispatch_offset_changed(ctx, viewport, change, ScrollOffsetChangeSource::Wheel);
+        let change = scroll_by(ctx, viewport, &self.state, delta, ScrollInputSource::Wheel);
+        event.consume_logical_delta(delta, change.consumed_delta);
+        if change.changed() {
+            self.dispatch_offset_changed(ctx, viewport, change);
         }
-        event.mark_handled();
     }
 
     fn handle_accessibility_action(
@@ -276,17 +276,19 @@ impl Widget for ScrollViewWidget {
                 else {
                     return false;
                 };
-                set_scroll_offset_raw(ctx, viewport, &self.state, Vec2::new(point.x, point.y))
+                let change = apply_scroll_offset(
+                    ctx,
+                    viewport,
+                    &self.state,
+                    Vec2::new(point.x, point.y),
+                    ScrollInputSource::Accessibility,
+                );
+                change.changed().then_some(change)
             }
             _ => return false,
         };
         if let Some(change) = change {
-            self.dispatch_offset_changed(
-                ctx,
-                viewport,
-                change,
-                ScrollOffsetChangeSource::Accessibility,
-            );
+            self.dispatch_offset_changed(ctx, viewport, change);
             true
         } else {
             false
@@ -299,17 +301,16 @@ impl ScrollViewWidget {
         &self,
         ui: &mut Ui,
         scroll_view: ElementId,
-        change: ScrollOffsetChange,
-        source: ScrollOffsetChangeSource,
+        change: ScrollCommandResult,
     ) {
         self.offset_changed.dispatch(
             ui,
             scroll_view,
             ScrollOffsetChangedEvent {
                 scroll_view,
-                previous_offset: change.previous,
+                previous_offset: change.previous_offset,
                 offset: change.offset,
-                source,
+                source: change.source,
             },
         );
     }
