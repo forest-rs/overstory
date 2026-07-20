@@ -41,11 +41,14 @@ impl App {
     ) {
         let mut needs_redraw = false;
         let mut cursor = None;
+        let now = self.now().ticks();
         if let Some(host) = self.host.as_mut() {
             for translation in translations {
                 let result = match translation {
-                    SeatEventTranslation::Pointer(event) => host.dispatch_pointer_event(&event),
-                    SeatEventTranslation::Keyboard(event) => host.dispatch_key(&event),
+                    SeatEventTranslation::Pointer(event) => {
+                        host.dispatch_pointer_event_at(&event, now)
+                    }
+                    SeatEventTranslation::Keyboard(event) => host.dispatch_key_at(&event, now),
                 };
                 if result.needs_redraw {
                     host.request_frame(result.frame_demand);

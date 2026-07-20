@@ -124,12 +124,14 @@ pub(crate) struct ViewState {
 
 impl ViewState {
     pub(crate) fn dispatch_keyboard_event(&mut self, event: &KeyboardEvent) {
-        let result = self.host.dispatch_key(event);
+        let now = self.current_time().ticks();
+        let result = self.host.dispatch_key_at(event, now);
         self.finish_input_dispatch(result);
     }
 
     pub(crate) fn dispatch_pointer_event(&mut self, event: &PointerEvent) {
-        let result = self.host.dispatch_pointer_event(event);
+        let now = self.current_time().ticks();
+        let result = self.host.dispatch_pointer_event_at(event, now);
         self.finish_input_dispatch(result);
     }
 

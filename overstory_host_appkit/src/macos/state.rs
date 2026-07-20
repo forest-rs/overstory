@@ -158,13 +158,15 @@ pub(crate) struct WindowState {
 
 impl WindowState {
     pub(crate) fn dispatch_keyboard_event(&mut self, event: &KeyboardEvent) {
-        let result = self.host.dispatch_key(event);
+        let now = self.current_time().ticks();
+        let result = self.host.dispatch_key_at(event, now);
         self.finish_input_dispatch(result);
         self.sync_cursor();
     }
 
     pub(crate) fn dispatch_pointer_event(&mut self, event: &PointerEvent) {
-        let result = self.host.dispatch_pointer_event(event);
+        let now = self.current_time().ticks();
+        let result = self.host.dispatch_pointer_event_at(event, now);
         self.finish_input_dispatch(result);
         self.sync_cursor();
     }
@@ -189,7 +191,8 @@ impl WindowState {
     }
 
     pub(crate) fn dispatch_accesskit_action(&mut self, request: &accesskit::ActionRequest) {
-        let result = self.host.handle_accesskit_action(request);
+        let now = self.current_time().ticks();
+        let result = self.host.handle_accesskit_action_at(request, now);
         if result.needs_redraw {
             self.request_frame(result.frame_demand);
         }

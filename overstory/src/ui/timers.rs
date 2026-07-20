@@ -13,23 +13,34 @@ use crate::timer_runtime::TimerEvent;
 use super::Ui;
 
 impl Ui {
-    /// Returns the host-supplied monotonic instant currently cached
-    /// on the `Ui`. Updated whenever an event is dispatched or
-    /// timers are pumped. Templates and handlers can use this to
-    /// schedule follow-on timers without threading `now` through
-    /// every call.
+    /// Returns the host-supplied monotonic instant currently cached on the
+    /// `Ui`.
+    ///
+    /// A host or direct embedding must advance this clock before untimestamped
+    /// input or application mutation. Pointer dispatch also contributes its
+    /// normalized event timestamp, and pumping timers advances it to the pump
+    /// time. Templates and handlers can then schedule follow-on timers without
+    /// threading `now` through every call.
     #[must_use]
     #[inline]
     pub fn now(&self) -> TimerInstant {
         self.timers.now()
     }
 
-    /// Sets the cached monotonic "now" used by relative timer APIs.
-    /// Hosts can call this explicitly, but it's also updated by
-    /// [`Self::pump_timers`], [`Self::dispatch_pointer_event`] (via
-    /// the pointer state's timestamp), and [`Self::dispatch_key`].
+    /// Advances the cached monotonic time used by timers and motion.
+    ///
+    /// The clock never regresses: a value earlier than [`Self::now`] is
+    /// ignored. This replaces the earlier rewindable behavior; deterministic
+    /// callers that need a new origin should create a fresh `Ui` rather than
+    /// rewinding a live one.
+    ///
+    /// Direct embeddings must call this before untimestamped external work. The
+    /// companion `UiHost` does so at its dispatch and mutable-access
+    /// boundaries. Pointer dispatch additionally advances from timestamps
+    /// carried by normalized pointer state, and [`Self::pump_timers`] advances
+    /// from its explicit argument.
     pub fn set_now(&mut self, now: TimerInstant) {
-        self.timers.set_now(now);
+        let now = self.timers.set_now(now);
         self.advance_timeline(now);
     }
 
@@ -80,13 +91,16 @@ impl Ui {
         self.timers.remove_handler(id);
     }
 
-    /// Drains every timer due at or before `now`, dispatching each
-    /// to its target's registered handler. Repeating timers re-arm
-    /// only when the target is still alive and still has a timer
-    /// handler after dispatch. Updates the cached [`Self::now`] to
-    /// `now`.
+    /// Drains every timer due at or before the effective UI time, dispatching
+    /// each to its target's registered handler. Repeating timers re-arm only
+    /// when the target is still alive and still has a timer handler after
+    /// dispatch.
+    ///
+    /// This first advances the cached clock to at least `now`; an older
+    /// argument cannot rewind dispatch time.
     pub fn pump_timers(&mut self, now: TimerInstant) {
         self.set_now(now);
+        let now = self.now();
         let mut rearm = Vec::new();
         while let Some(timer) = self.timers.pop_expired(now) {
             let target = *timer.target();

@@ -55,7 +55,7 @@ impl WindowState {
             self.event_reducer
                 .reduce(self.window.scale_factor(), &event, event_time)
         {
-            self.dispatch_translated_event(translation);
+            self.dispatch_translated_event(translation, event_time);
         }
 
         match event {
@@ -87,7 +87,8 @@ impl WindowState {
                 self.sync_accessibility();
             }
             AccessKitWindowEvent::ActionRequested(request) => {
-                let result = self.host.handle_accesskit_action(&request);
+                let now = self.host.frame_now().ticks();
+                let result = self.host.handle_accesskit_action_at(&request, now);
                 self.finish_dispatch(result);
                 self.sync_accessibility();
                 self.sync_cursor();
@@ -124,15 +125,19 @@ impl WindowState {
         }
     }
 
-    fn dispatch_translated_event(&mut self, translation: WindowEventTranslation) {
+    fn dispatch_translated_event(
+        &mut self,
+        translation: WindowEventTranslation,
+        now: overstory::TimerInstant,
+    ) {
         match translation {
             WindowEventTranslation::Pointer(pointer) => {
-                let result = self.host.dispatch_pointer_event(&pointer);
+                let result = self.host.dispatch_pointer_event_at(&pointer, now);
                 self.finish_dispatch(result);
                 self.sync_cursor();
             }
             WindowEventTranslation::Keyboard(key) => {
-                let result = self.host.dispatch_key(&key);
+                let result = self.host.dispatch_key_at(&key, now);
                 self.finish_dispatch(result);
             }
             WindowEventTranslation::Text(_) => {

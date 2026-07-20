@@ -69,10 +69,11 @@ impl TimerRuntime {
         self.now
     }
 
-    /// Updates the cached host monotonic instant used for future schedules.
+    /// Advances the cached host monotonic instant used for future schedules.
     #[inline]
-    pub(crate) fn set_now(&mut self, now: TimerInstant) {
-        self.now = now;
+    pub(crate) fn set_now(&mut self, now: TimerInstant) -> TimerInstant {
+        self.now = self.now.max(now);
+        self.now
     }
 
     /// Schedules a one-shot timer relative to the cached `now`.

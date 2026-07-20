@@ -973,6 +973,7 @@ impl Ui {
     /// sampling observe the same host time.
     pub fn drain_timeline_cues(&mut self, now: TimerInstant) -> Vec<TimelineCue> {
         self.set_now(now);
+        let now = self.now();
         self.timeline.drain_cues(now)
     }
 

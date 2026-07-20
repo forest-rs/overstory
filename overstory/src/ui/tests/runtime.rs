@@ -154,6 +154,42 @@ fn repeating_timer_stops_when_target_is_removed() {
 }
 
 #[test]
+fn ui_clock_and_timer_pumps_never_regress() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    let mut ui = Ui::new();
+    let target = ui.root();
+    let timer_fired = Rc::new(Cell::new(false));
+    let timer_fired_for_handler = Rc::clone(&timer_fired);
+    ui.on_timer(target, move |_ui, _event| {
+        timer_fired_for_handler.set(true);
+    });
+    ui.schedule_timer_once(target, 90);
+    let cue = ui.schedule_timeline_cue(90, 7);
+
+    ui.set_now(100);
+    ui.set_now(50);
+    assert_eq!(ui.now(), 100);
+
+    ui.pump_timers(90);
+    assert!(timer_fired.get());
+    assert_eq!(
+        ui.drain_timeline_cues(90),
+        alloc::vec![crate::TimelineCue {
+            id: cue,
+            target: None,
+            payload: 7,
+            due_at: 90,
+        }]
+    );
+    assert_eq!(ui.now(), 100);
+
+    ui.schedule_timer_once(target, 10);
+    assert_eq!(ui.next_timer_deadline(), Some(110));
+}
+
+#[test]
 fn timeline_cues_drain_by_time_and_drop_removed_targets() {
     let mut ui = Ui::new();
     let root = ui.root();

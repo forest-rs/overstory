@@ -117,8 +117,25 @@ impl UiHost {
         &self.ui
     }
 
-    /// Returns the hosted UI mutably.
+    /// Returns the hosted UI mutably after advancing it to the current host
+    /// time.
+    ///
+    /// This now establishes a clocked application-mutation boundary. Code that
+    /// supplies an external clock domain should use [`Self::ui_mut_at`]
+    /// instead; deterministic code that intentionally keeps the current time
+    /// can pass [`Ui::now`] to that method.
     pub fn ui_mut(&mut self) -> &mut Ui {
+        let now = self.now();
+        self.ui_mut_at(now)
+    }
+
+    /// Returns the hosted UI mutably after advancing it to `now`.
+    ///
+    /// `now` must use the same normalized monotonic clock domain as pointer
+    /// timestamps, timer pumps, and frame opportunities supplied by the
+    /// embedding host.
+    pub fn ui_mut_at(&mut self, now: TimerInstant) -> &mut Ui {
+        self.advance_ui_time(now);
         &mut self.ui
     }
 
@@ -156,6 +173,7 @@ impl UiHost {
     ///
     /// Returns `true` when a UI timer or timeline cue was due.
     pub fn pump_timers(&mut self, now: TimerInstant) -> bool {
+        let now = now.max(self.ui.now());
         let due = self
             .ui
             .next_wakeup_deadline()
@@ -187,6 +205,7 @@ impl UiHost {
     /// timestamps should call this with that clock's normalized host time.
     #[must_use]
     pub fn duration_until_next_wakeup_at(&self, now: TimerInstant) -> Option<Duration> {
+        let now = now.max(self.ui.now());
         self.next_wakeup_deadline().map(|deadline| {
             let until = deadline.saturating_sub(now);
             Duration::from_nanos(until)
@@ -223,6 +242,21 @@ impl UiHost {
 
     /// Dispatches a normalized pointer event into the UI.
     pub fn dispatch_pointer_event(&mut self, event: &PointerEvent) -> HostDispatchResult {
+        let now = self.now();
+        self.dispatch_pointer_event_at(event, now)
+    }
+
+    /// Dispatches a normalized pointer event at host dispatch time `now`.
+    ///
+    /// `now` advances the untimestamped dispatch boundary. A timestamp carried
+    /// by the pointer state can advance the same non-regressing UI clock
+    /// further, but neither source can rewind it.
+    pub fn dispatch_pointer_event_at(
+        &mut self,
+        event: &PointerEvent,
+        now: TimerInstant,
+    ) -> HostDispatchResult {
+        self.advance_ui_time(now);
         let result = self.ui.dispatch_pointer_event(event);
         let mut result = HostDispatchResult::from_pointer_event(event, result);
         self.include_active_presentation_motion(&mut result);
@@ -231,6 +265,20 @@ impl UiHost {
 
     /// Dispatches a normalized keyboard event into the UI.
     pub fn dispatch_key(&mut self, event: &KeyboardEvent) -> HostDispatchResult {
+        let now = self.now();
+        self.dispatch_key_at(event, now)
+    }
+
+    /// Dispatches a normalized keyboard event at host dispatch time `now`.
+    ///
+    /// External-clock hosts use this method so callbacks schedule timers and
+    /// motion in the same domain as pointer input and frame opportunities.
+    pub fn dispatch_key_at(
+        &mut self,
+        event: &KeyboardEvent,
+        now: TimerInstant,
+    ) -> HostDispatchResult {
+        self.advance_ui_time(now);
         let mut result = self.ui.dispatch_key(event).into();
         self.include_active_presentation_motion(&mut result);
         result
@@ -259,6 +307,20 @@ impl UiHost {
 
     /// Dispatches an AccessKit action request into the hosted UI.
     pub fn handle_accesskit_action(&mut self, request: &ActionRequest) -> HostDispatchResult {
+        let now = self.now();
+        self.handle_accesskit_action_at(request, now)
+    }
+
+    /// Dispatches an AccessKit action at host dispatch time `now`.
+    ///
+    /// External-clock hosts use this method so semantic accessibility
+    /// callbacks share the pointer, timer, and frame clock domain.
+    pub fn handle_accesskit_action_at(
+        &mut self,
+        request: &ActionRequest,
+        now: TimerInstant,
+    ) -> HostDispatchResult {
+        self.advance_ui_time(now);
         let focused_before = self.ui.focused();
         let handled = self.ui.handle_accesskit_action(request);
         let focus_changed = focused_before != self.ui.focused();
@@ -337,7 +399,7 @@ impl UiHost {
         let total_start = Instant::now();
 
         let phase_start = Instant::now();
-        self.ui.set_now(sample_time);
+        self.advance_ui_time(sample_time);
         let set_now = phase_start.elapsed();
 
         let phase_start = Instant::now();
@@ -458,6 +520,10 @@ impl UiHost {
         }
     }
 
+    fn advance_ui_time(&mut self, now: TimerInstant) {
+        self.ui.set_now(now);
+    }
+
     fn instant_for_deadline(&self, deadline: TimerInstant) -> Instant {
         self.start_instant + Duration::from_nanos(deadline)
     }
@@ -527,7 +593,7 @@ mod tests {
     use super::*;
     use accesskit::{Action, ActionRequest, Affine, NodeId, TreeId};
     use alloc::rc::Rc;
-    use core::cell::Cell;
+    use core::cell::{Cell, RefCell};
     use frameclock::diagnostics::{FrameDropReason, FrameTimingBasis};
     use frameclock::{DisplayTiming, Duration as FrameDuration, OutputId};
     use kurbo::{Point, Size, Vec2};
@@ -539,6 +605,7 @@ mod tests {
         Button, ChoiceOption, ElementId, Layout, SegmentedControl, segmented_item,
         selected_segmented_index,
     };
+    use ui_events::keyboard::{Code, Key, NamedKey};
     use ui_events::pointer::{
         PointerButton, PointerButtonEvent, PointerButtons, PointerEvent, PointerId, PointerInfo,
         PointerState, PointerType,
@@ -633,7 +700,7 @@ mod tests {
     fn duration_until_next_wakeup_can_use_external_clock_domain() {
         let mut host = UiHost::new(Ui::new());
 
-        host.ui_mut().schedule_timeline_cue(10, 1);
+        host.ui_mut_at(0).schedule_timeline_cue(10, 1);
 
         assert_eq!(
             host.duration_until_next_wakeup_at(4),
@@ -917,6 +984,145 @@ mod tests {
         let click = host.handle_accesskit_action(&action(Action::Click, button));
         assert!(click.handled);
         assert_eq!(clicks.get(), 1);
+    }
+
+    #[test]
+    fn keyboard_dispatch_schedules_relative_timers_from_current_host_time() {
+        const DELAY: TimerInstant = 100_000_000;
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let button = ui.append(
+            root,
+            Button::new("Schedule").on_activate(move |ui, _event| {
+                ui.schedule_timer_once(root, DELAY);
+            }),
+        );
+        ui.set_focus(Some(button));
+
+        let mut host = UiHost::new(ui);
+        host.start_instant = Instant::now() - Duration::from_secs(1);
+        let dispatch_time = host.now();
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+
+        assert!(host.dispatch_key(&enter).handled);
+        assert!(
+            host.ui()
+                .next_timer_deadline()
+                .is_some_and(|deadline| deadline >= dispatch_time.saturating_add(DELAY)),
+            "relative timer should use current host time, not stale Ui time"
+        );
+    }
+
+    #[test]
+    fn explicit_dispatch_time_clocks_nested_and_host_accesskit_callbacks() {
+        const KEY_TIME: TimerInstant = 2_000_000_000;
+        const ACCESS_TIME: TimerInstant = 3_000_000_000;
+        const DELAY: TimerInstant = 100_000_000;
+
+        let observed_times = Rc::new(RefCell::new(Vec::new()));
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let observed_times_for_inner = Rc::clone(&observed_times);
+        let inner = ui.append(
+            root,
+            Button::new("Inner").on_activate(move |ui, _event| {
+                observed_times_for_inner.borrow_mut().push(ui.now());
+                ui.schedule_timer_once(root, DELAY);
+            }),
+        );
+        let observed_times_for_outer = Rc::clone(&observed_times);
+        let outer = ui.append(
+            root,
+            Button::new("Outer").on_activate(move |ui, _event| {
+                observed_times_for_outer.borrow_mut().push(ui.now());
+                let _ = ui.handle_accesskit_action(&action(Action::Click, inner));
+            }),
+        );
+        ui.set_focus(Some(outer));
+        ui.compute_layout(Size::new(160.0, 80.0));
+        let mut host = UiHost::new(ui);
+        let enter = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+
+        assert!(host.dispatch_key_at(&enter, KEY_TIME).handled);
+        assert_eq!(
+            host.ui().next_timer_deadline(),
+            Some(KEY_TIME.saturating_add(DELAY))
+        );
+
+        assert!(
+            host.handle_accesskit_action_at(&action(Action::Click, inner), ACCESS_TIME)
+                .handled
+        );
+        assert_eq!(
+            host.ui().next_timer_deadline(),
+            Some(KEY_TIME.saturating_add(DELAY)),
+            "the first timer remains the next deadline"
+        );
+        assert_eq!(host.ui().now(), ACCESS_TIME);
+        assert_eq!(
+            &*observed_times.borrow(),
+            &[KEY_TIME, KEY_TIME, ACCESS_TIME],
+            "nested dispatch must preserve its outer boundary time"
+        );
+    }
+
+    #[test]
+    fn mutation_boundaries_clock_relative_app_work() {
+        const MUTATION_TIME: TimerInstant = 4_000_000_000;
+        const DELAY: TimerInstant = 100_000_000;
+
+        let mut host = UiHost::new(Ui::new());
+        host.start_instant = Instant::now() - Duration::from_secs(1);
+        let root = host.ui().root();
+        let before_mutation = host.now();
+        host.ui_mut().schedule_timer_once(root, DELAY);
+        assert!(
+            host.ui()
+                .next_timer_deadline()
+                .is_some_and(|deadline| deadline >= before_mutation.saturating_add(DELAY)),
+            "default mutable access must sample current host time"
+        );
+
+        let mut host = UiHost::new(Ui::new());
+        let root = host.ui().root();
+
+        host.ui_mut_at(MUTATION_TIME)
+            .schedule_timer_once(root, DELAY);
+
+        assert_eq!(host.ui().now(), MUTATION_TIME);
+        assert_eq!(
+            host.ui().next_timer_deadline(),
+            Some(MUTATION_TIME.saturating_add(DELAY))
+        );
+    }
+
+    #[test]
+    fn pointer_and_untimestamped_dispatch_share_a_non_regressing_clock() {
+        let mut host = UiHost::new(Ui::new());
+        let key = KeyboardEvent::key_down(Key::Named(NamedKey::Enter), Code::Enter);
+
+        let _ = host.dispatch_key_at(&key, 1_000);
+        let _ = host.dispatch_pointer_event_at(&pointer_down(Point::ZERO, 900), 950);
+        assert_eq!(
+            host.ui().now(),
+            1_000,
+            "an older queued pointer event must not rewind Ui time"
+        );
+
+        let _ = host.dispatch_pointer_event_at(&pointer_down(Point::ZERO, 1_200), 1_100);
+        assert_eq!(
+            host.ui().now(),
+            1_200,
+            "a newer normalized pointer timestamp may advance Ui time"
+        );
+
+        let _ = host.dispatch_pointer_event_at(&PointerEvent::Leave(pointer_info()), 1_300);
+        assert_eq!(
+            host.ui().now(),
+            1_300,
+            "pointer variants without state timestamps use host dispatch time"
+        );
     }
 
     #[test]
