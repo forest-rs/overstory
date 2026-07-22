@@ -390,7 +390,7 @@ mod tests {
 
         assert!(result.handled);
         assert_eq!(order.borrow().as_slice(), ["bubble", "semantic"]);
-        let activated = ui.style_vocabulary_mut().class_id(".activated");
+        let activated = ui.class_id(".activated");
         assert!(ui.get(button).unwrap().classes().contains(&activated));
         assert_eq!(ui.effective_bounds(button).width(), 120.0);
     }

@@ -183,7 +183,6 @@ impl<'a> TemplateContext<'a> {
 
     /// Adds a class to a generated element.
     pub fn add_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
-        let class = class.into().resolve(self.ui.style_vocabulary_mut());
         self.ui.add_class(id, class);
     }
 

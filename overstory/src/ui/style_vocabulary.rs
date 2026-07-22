@@ -1,6 +1,8 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use alloc::string::String;
+
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_EXPANDED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED,
     PSEUDO_HOVER, PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_PRESSED, PSEUDO_READ_ONLY, PSEUDO_SELECTED,
@@ -19,7 +21,7 @@ use crate::{
     PART_SEGMENTED_ITEM_LABEL, PART_SEGMENTED_SELECTION_INDICATOR, PART_SELECT_INDICATOR,
     PART_SELECT_LABEL, PART_SLIDER_AXIS, PART_SLIDER_THUMB, PART_SLIDER_TICK,
     PART_SLIDER_TICK_LABEL, PART_SLIDER_TRACK, PART_TEXT_INPUT_CARET, PART_TEXT_INPUT_SELECTION,
-    PART_TEXT_INPUT_TEXT, PART_TOGGLE_THUMB, PART_TOOLTIP_LABEL, TYPE_ACCORDION,
+    PART_TEXT_INPUT_TEXT, PART_TOGGLE_THUMB, PART_TOOLTIP_LABEL, StyleClass, TYPE_ACCORDION,
     TYPE_ACCORDION_SECTION, TYPE_BUTTON, TYPE_CHECK_BOX, TYPE_DIVIDER, TYPE_EXPANDER, TYPE_GENERIC,
     TYPE_LIST_BOX, TYPE_LIST_ITEM, TYPE_MENU, TYPE_MENU_BUTTON, TYPE_MENU_ITEM, TYPE_OUTLINE_ITEM,
     TYPE_OUTLINE_VIEW, TYPE_POPUP, TYPE_PROGRESS_BAR, TYPE_RADIO_BUTTON, TYPE_RADIO_GROUP,
@@ -27,7 +29,9 @@ use crate::{
     TYPE_SEGMENTED_ITEM, TYPE_SELECT, TYPE_SLIDER, TYPE_SPINNER, TYPE_SPLITTER, TYPE_TEXT,
     TYPE_TEXT_INPUT, TYPE_TOGGLE, TYPE_TOOLTIP, TYPE_VECTOR_PATH, TYPE_VIEWPORT, Ui,
 };
-use understory_style::{StyleTokenSet, StyleVocabulary};
+use understory_style::{
+    ClassId, PartTag, PseudoClassId, ResourceKey, StyleTokenSet, StyleVocabulary, TypeTag,
+};
 
 pub(crate) struct BuiltInStyleTokens;
 
@@ -241,13 +245,29 @@ impl Ui {
         &self.style_vocabulary
     }
 
-    /// Mutably borrows the human-readable style vocabulary for this UI.
-    ///
-    /// Use this to resolve application-defined classes, pseudoclasses, type
-    /// tags, and owner-local part tags from names. The returned ids are the
-    /// handles to store on elements and selectors.
-    pub fn style_vocabulary_mut(&mut self) -> &mut StyleVocabulary {
-        &mut self.style_vocabulary
+    /// Returns the class id for `name`, registering it when first encountered.
+    pub fn class_id(&mut self, name: impl Into<String>) -> ClassId {
+        self.style_vocabulary.class_id(name)
+    }
+
+    /// Returns the pseudoclass id for `name`, registering it when first encountered.
+    pub fn pseudo_class_id(&mut self, name: impl Into<String>) -> PseudoClassId {
+        self.style_vocabulary.pseudo_class_id(name)
+    }
+
+    /// Returns the type tag for `name`, registering it when first encountered.
+    pub fn type_tag(&mut self, name: impl Into<String>) -> TypeTag {
+        self.style_vocabulary.type_tag(name)
+    }
+
+    /// Returns the resource key for `name`, registering it when first encountered.
+    pub fn resource_key(&mut self, name: impl Into<String>) -> ResourceKey {
+        self.style_vocabulary.resource_key(name)
+    }
+
+    /// Returns the owner-local part tag for `name`, registering it when first encountered.
+    pub fn part_tag(&mut self, owner: TypeTag, name: impl Into<String>) -> PartTag {
+        self.style_vocabulary.part_tag(owner, name)
     }
 
     /// Resolves a reusable style token set against this UI's vocabulary.
@@ -260,6 +280,13 @@ impl Ui {
         T: StyleTokenSet,
     {
         self.style_vocabulary.style_tokens::<T>()
+    }
+
+    pub(crate) fn resolve_style_class(&mut self, class: impl Into<StyleClass>) -> ClassId {
+        match class.into() {
+            StyleClass::Id(id) => id,
+            StyleClass::Name(name) => self.class_id(name),
+        }
     }
 
     pub(in crate::ui) fn style_vocabulary_snapshot(&self) -> StyleVocabulary {

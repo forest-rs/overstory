@@ -2610,7 +2610,7 @@ mod tests {
         let mut ui = Ui::new();
         let root = ui.root();
         let child = ui.append(root, Panel::new());
-        let custom_class = ui.style_vocabulary_mut().class_id(".custom-row");
+        let custom_class = ui.class_id(".custom-row");
         ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
         ui.add_class(child, custom_class);
         ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);

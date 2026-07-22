@@ -30,7 +30,7 @@ impl Ui {
     ///
     /// Passing a class name interns it through this UI's style vocabulary.
     pub fn add_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
-        let class = class.into().resolve(self.style_vocabulary_mut());
+        let class = self.resolve_style_class(class);
         let changed = self
             .get_mut(id)
             .map(|el| el.add_class(class))

@@ -33,13 +33,6 @@ impl StyleClass {
         Self::Name(name.into())
     }
 
-    pub(crate) fn resolve(self, vocabulary: &mut StyleVocabulary) -> ClassId {
-        match self {
-            Self::Id(id) => id,
-            Self::Name(name) => vocabulary.class_id(name),
-        }
-    }
-
     /// Returns this class's id if it is already present in `vocabulary`.
     ///
     /// This does not intern missing names. It is useful for read-only queries

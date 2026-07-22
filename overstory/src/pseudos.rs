@@ -8,7 +8,7 @@
 //! rules can require them via `SelectorStep::with_pseudo`.
 //!
 //! Application code should resolve its own pseudoclasses through
-//! `Ui::style_vocabulary_mut().pseudo_class_id(...)` instead of picking raw
+//! `Ui::pseudo_class_id(...)` instead of picking raw
 //! numeric ids.
 //!
 //! Roadmap:

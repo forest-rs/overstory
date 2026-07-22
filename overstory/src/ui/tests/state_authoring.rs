@@ -455,12 +455,11 @@ fn inspection_snapshot_reports_style_vocabulary_names() {
         ui.style_vocabulary().resource_name(crate::theme::ACCENT_BG),
         Some("accent.bg")
     );
-    let vocabulary = ui.style_vocabulary_mut();
-    let class = vocabulary.class_id(".named-class");
-    let pseudo = vocabulary.pseudo_class_id(":named-pseudo");
-    let type_tag = vocabulary.type_tag("NamedWidget");
-    let resource = vocabulary.resource_key("named.resource");
-    let part_tag = vocabulary.part_tag(type_tag, "NamedWidget.Part");
+    let class = ui.class_id(".named-class");
+    let pseudo = ui.pseudo_class_id(":named-pseudo");
+    let type_tag = ui.type_tag("NamedWidget");
+    let resource = ui.resource_key("named.resource");
+    let part_tag = ui.part_tag(type_tag, "NamedWidget.Part");
 
     let snapshot = ui.inspection_snapshot();
 

@@ -540,7 +540,7 @@ impl ElementConfig {
             ui.set_initial_local_erased(id, property, write.value);
         }
         for class in self.classes {
-            let class = class.resolve(ui.style_vocabulary_mut());
+            let class = ui.resolve_style_class(class);
             ui.add_initial_class(id, class);
         }
         if let Some(state) = self.control_state {
