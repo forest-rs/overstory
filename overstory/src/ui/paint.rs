@@ -462,6 +462,7 @@ impl Ui {
         }
         self.frame_stats.rebuilt_surfaces += rebuilt_surfaces;
         self.invalidation.clear(COMPOSE);
+        self.inspection_changes.record_change();
     }
 
     /// Composes the current layer tree into `output` using caller-owned

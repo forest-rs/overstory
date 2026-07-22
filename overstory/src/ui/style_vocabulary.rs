@@ -247,27 +247,27 @@ impl Ui {
 
     /// Returns the class id for `name`, registering it when first encountered.
     pub fn class_id(&mut self, name: impl Into<String>) -> ClassId {
-        self.style_vocabulary.class_id(name)
+        self.update_style_vocabulary(|vocabulary| vocabulary.class_id(name))
     }
 
     /// Returns the pseudoclass id for `name`, registering it when first encountered.
     pub fn pseudo_class_id(&mut self, name: impl Into<String>) -> PseudoClassId {
-        self.style_vocabulary.pseudo_class_id(name)
+        self.update_style_vocabulary(|vocabulary| vocabulary.pseudo_class_id(name))
     }
 
     /// Returns the type tag for `name`, registering it when first encountered.
     pub fn type_tag(&mut self, name: impl Into<String>) -> TypeTag {
-        self.style_vocabulary.type_tag(name)
+        self.update_style_vocabulary(|vocabulary| vocabulary.type_tag(name))
     }
 
     /// Returns the resource key for `name`, registering it when first encountered.
     pub fn resource_key(&mut self, name: impl Into<String>) -> ResourceKey {
-        self.style_vocabulary.resource_key(name)
+        self.update_style_vocabulary(|vocabulary| vocabulary.resource_key(name))
     }
 
     /// Returns the owner-local part tag for `name`, registering it when first encountered.
     pub fn part_tag(&mut self, owner: TypeTag, name: impl Into<String>) -> PartTag {
-        self.style_vocabulary.part_tag(owner, name)
+        self.update_style_vocabulary(|vocabulary| vocabulary.part_tag(owner, name))
     }
 
     /// Resolves a reusable style token set against this UI's vocabulary.
@@ -279,7 +279,7 @@ impl Ui {
     where
         T: StyleTokenSet,
     {
-        self.style_vocabulary.style_tokens::<T>()
+        self.update_style_vocabulary(StyleVocabulary::style_tokens::<T>)
     }
 
     pub(crate) fn resolve_style_class(&mut self, class: impl Into<StyleClass>) -> ClassId {
@@ -296,4 +296,21 @@ impl Ui {
     pub(in crate::ui) fn register_builtin_style_vocabulary(&mut self) {
         self.style_tokens::<BuiltInStyleTokens>();
     }
+
+    fn update_style_vocabulary<R>(&mut self, update: impl FnOnce(&mut StyleVocabulary) -> R) -> R {
+        let before = style_vocabulary_len(&self.style_vocabulary);
+        let result = update(&mut self.style_vocabulary);
+        if style_vocabulary_len(&self.style_vocabulary) != before {
+            self.inspection_changes.record_change();
+        }
+        result
+    }
+}
+
+fn style_vocabulary_len(vocabulary: &StyleVocabulary) -> usize {
+    vocabulary.classes().len()
+        + vocabulary.pseudos().len()
+        + vocabulary.type_tags().len()
+        + vocabulary.resources().len()
+        + vocabulary.parts().len()
 }

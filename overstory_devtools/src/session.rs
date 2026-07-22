@@ -20,7 +20,7 @@ use spoor_session::{
     SessionError, SessionErrorCode, SessionResponse, SessionStreamId, SessionStreamItem,
 };
 
-use crate::{DevtoolsSnapshot, DevtoolsTarget};
+use crate::{DevtoolsSnapshot, DevtoolsTarget, InspectionRevisionMismatch};
 #[cfg(feature = "spoor-session")]
 use crate::{
     InspectionDelta, InspectionDispatch, InspectionElementDetails, InspectionRequest,
@@ -150,19 +150,22 @@ impl DevtoolsSession {
     pub fn apply_inspection_changes(
         &mut self,
         changes: UiInspectionChanges,
-    ) -> Option<DevtoolsEvent> {
+    ) -> Result<Option<DevtoolsEvent>, InspectionRevisionMismatch> {
         if changes.is_empty() {
-            return None;
+            return Ok(None);
         }
 
         let tree_topology_changed =
             !changes.tree.removed.is_empty() || !changes.tree.upserted.is_empty();
-        let overlays_changed = changes.overlays.is_some();
+        let overlays_changed = changes
+            .overlays
+            .as_ref()
+            .is_some_and(|overlays| overlays != &self.snapshot.inspection().overlays);
         let previous_tree = tree_topology_changed.then(|| self.snapshot.inspection_element_tree());
-        self.snapshot.apply_inspection_changes(changes);
+        self.snapshot.apply_inspection_changes(changes)?;
         self.normalize_selected_element();
         let Some(previous_tree) = previous_tree else {
-            return Some(if overlays_changed {
+            return Ok(Some(if overlays_changed {
                 DevtoolsEvent::OverlaysChanged {
                     selected: self.selected_element,
                 }
@@ -170,21 +173,21 @@ impl DevtoolsSession {
                 DevtoolsEvent::TargetChanged {
                     selected: self.selected_element,
                 }
-            });
+            }));
         };
 
         let current_tree = self.snapshot.inspection_element_tree();
         let tree_patch = previous_tree.patch_to(&current_tree);
         if tree_patch.removed.is_empty() && tree_patch.upserted.is_empty() {
-            return Some(DevtoolsEvent::TargetChanged {
+            return Ok(Some(DevtoolsEvent::TargetChanged {
                 selected: self.selected_element,
-            });
+            }));
         }
 
-        Some(DevtoolsEvent::ElementTreePatched {
+        Ok(Some(DevtoolsEvent::ElementTreePatched {
             selected: self.selected_element,
             tree_patch,
-        })
+        }))
     }
 
     /// Handles one typed live inspection request.

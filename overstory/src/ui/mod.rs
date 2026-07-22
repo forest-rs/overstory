@@ -259,6 +259,7 @@ impl Ui {
     /// Clears cached shaped text layouts.
     pub fn clear_text_layout_cache(&mut self) {
         self.text.borrow_mut().clear_layout_cache();
+        self.inspection_changes.record_change();
     }
 
     /// Returns the number of cached shaped text layouts.
@@ -404,6 +405,9 @@ impl Ui {
     /// Returns a mutable reference to the element with the given id.
     #[must_use]
     pub fn get_mut(&mut self, id: ElementId) -> Option<&mut Element> {
+        if self.elements.get(id).is_some() {
+            self.inspection_changes.record_tree_update(id);
+        }
         self.elements.get_mut(id)
     }
 
@@ -461,6 +465,7 @@ impl Ui {
             frame_timing,
             ..UiFrameStats::default()
         };
+        self.inspection_changes.record_change();
     }
 
     /// Records host-measured timings for the most recently prepared frame.
@@ -470,7 +475,7 @@ impl Ui {
     /// snapshots can report the same timing data as host diagnostics.
     pub fn set_frame_timings(&mut self, timings: UiFrameTimings) {
         self.frame_stats.timings = timings;
-        self.inspection_changes.record_frame();
+        self.inspection_changes.record_change();
     }
 
     /// Records host-measured backend renderer timings for the most recently
@@ -481,7 +486,7 @@ impl Ui {
     /// `prepare_frame` has returned the scene to render.
     pub fn set_renderer_timings(&mut self, timings: UiRendererTimings) {
         self.frame_stats.renderer_timings = timings;
-        self.inspection_changes.record_frame();
+        self.inspection_changes.record_change();
     }
 
     /// Records host-supplied frame scheduling and presentation facts for the
@@ -492,7 +497,7 @@ impl Ui {
     /// state, and how the scheduler adapted afterward.
     pub fn set_frame_timing_summary(&mut self, timing: Option<frameclock::FrameTimingSummary>) {
         self.frame_stats.frame_timing = timing;
-        self.inspection_changes.record_frame();
+        self.inspection_changes.record_change();
     }
 
     /// Records the demand that selected the currently prepared frame.
@@ -502,7 +507,7 @@ impl Ui {
     /// background work for the frame whose UI counters are being reported.
     pub fn set_prepared_frame_demand(&mut self, demand: frameclock::FrameDemand) {
         self.frame_stats.prepared_demand = demand;
-        self.inspection_changes.record_frame();
+        self.inspection_changes.record_change();
     }
 
     /// Returns a snapshot of the current frame-pipeline counters.
@@ -567,6 +572,7 @@ impl Ui {
     pub fn flush_composition(&mut self) {
         self.sync_composition_values();
         self.composition.evaluate();
+        self.inspection_changes.record_change();
     }
 }
 

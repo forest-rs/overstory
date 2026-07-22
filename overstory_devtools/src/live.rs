@@ -9,12 +9,14 @@
 
 use alloc::vec::Vec;
 
+use overstory::inspection::LiveInspectionRecording;
 use overstory::{ElementId, OutlineNodeKey};
-use spoor_session::SessionError;
+use spoor_session::{SessionError, SessionErrorCode};
 
 use crate::{
     DevtoolsEvent, DevtoolsSession, DevtoolsSessionHandle, DevtoolsSnapshot, DevtoolsTarget,
-    InspectionClient, InspectionMirror, InspectionSubscription, LiveDevtoolsTarget,
+    InspectionClient, InspectionMirror, InspectionRevisionMismatch, InspectionSubscription,
+    LiveDevtoolsTarget,
 };
 
 /// Summary of one same-process devtools refresh.
@@ -28,6 +30,8 @@ pub struct DevtoolsRefresh {
     pub selected: Option<ElementId>,
     /// Source-side changes that produced this refresh.
     pub changes: DevtoolsRefreshChanges,
+    /// Revision mismatch that caused this refresh to recapture the target.
+    pub resynced_from: Option<InspectionRevisionMismatch>,
 }
 
 impl DevtoolsRefresh {
@@ -76,16 +80,20 @@ pub struct DevtoolsTreePatchCounts {
 
 /// Same-process controller for an Overstory devtools session.
 ///
-/// The controller is the intended bridge for host integrations that can
-/// periodically capture a target snapshot and want the inspector to keep a
-/// retained client-side mirror. Current refreshes compute keyed element-tree
-/// patches from those captures; target-side mutation hooks can produce the
-/// same patch payloads later without a full recapture step.
-#[derive(Clone, Debug)]
+/// The controller is the intended bridge for host integrations that want an
+/// inspector to keep a retained client-side mirror. Snapshot refreshes remain
+/// available as a fallback and resynchronization path; live refreshes drain
+/// target-authored changes without recapturing the complete element tree.
+///
+/// `LiveDevtools` is no longer cloneable because one controller owns one target
+/// recording handle. Share it through an owner such as `Rc<RefCell<_>>` when
+/// several same-process views need the same controller.
+#[derive(Debug)]
 pub struct LiveDevtools {
     session: DevtoolsSessionHandle,
     client: InspectionClient,
     mirror: InspectionMirror,
+    recording: Option<LiveInspectionRecording>,
 }
 
 impl LiveDevtools {
@@ -105,26 +113,40 @@ impl LiveDevtools {
             session,
             client,
             mirror,
+            recording: None,
         })
     }
 
-    /// Captures `target`, clears pre-baseline changes, and starts a live session.
+    /// Starts recording, captures `target` as the baseline, and opens a live session.
     pub fn capture_from_live(
         target: &mut impl LiveDevtoolsTarget,
         selected: Option<ElementId>,
     ) -> Result<Self, SessionError> {
-        let devtools = Self::capture(target, selected)?;
-        target.begin_live_inspection_recording();
-        target.clear_inspection_changes();
+        let recording = target.begin_live_inspection_recording();
+        let mut devtools = match Self::capture(target, selected) {
+            Ok(devtools) => devtools,
+            Err(error) => {
+                target.end_live_inspection_recording(recording);
+                return Err(error);
+            }
+        };
+        if !target.clear_inspection_changes(recording) {
+            target.end_live_inspection_recording(recording);
+            return Err(inactive_recording_error());
+        }
+        devtools.recording = Some(recording);
         Ok(devtools)
     }
 
     /// Stops target-side recording for this live session.
     ///
     /// The controller does not own the target `Ui`, so hosts call this when
-    /// their inspector surface is closed.
-    pub fn detach_from_live(&mut self, target: &mut impl LiveDevtoolsTarget) {
-        target.end_live_inspection_recording();
+    /// their inspector surface is closed. Returns whether this controller held
+    /// a recording that was still active on `target`.
+    pub fn detach_from_live(&mut self, target: &mut impl LiveDevtoolsTarget) -> bool {
+        self.recording
+            .take()
+            .is_some_and(|recording| target.end_live_inspection_recording(recording))
     }
 
     /// Returns the same-process session handle.
@@ -183,6 +205,7 @@ impl LiveDevtools {
                 overlays: true,
                 frame: true,
             },
+            resynced_from: None,
         })
     }
 
@@ -191,9 +214,28 @@ impl LiveDevtools {
         &mut self,
         target: &mut impl LiveDevtoolsTarget,
     ) -> Result<DevtoolsRefresh, SessionError> {
-        let changes = target.drain_inspection_changes();
-        let frame_changed = changes.frame.is_some();
-        let overlays_changed = changes.overlays.is_some();
+        let recording = self.recording.ok_or_else(|| {
+            SessionError::new(
+                SessionErrorCode::InvalidRequest,
+                "live devtools controller is not attached to a recording",
+            )
+        })?;
+        let changes = target
+            .drain_inspection_changes(recording)
+            .ok_or_else(inactive_recording_error)?;
+        let (frame_changed, overlays_changed) = self.session.with(|session| {
+            let inspection = session.snapshot().inspection();
+            (
+                changes
+                    .frame
+                    .as_ref()
+                    .is_some_and(|frame| frame != &inspection.frame),
+                changes
+                    .overlays
+                    .as_ref()
+                    .is_some_and(|overlays| overlays != &inspection.overlays),
+            )
+        });
         let inspected_element = self
             .session
             .with(DevtoolsSession::selected_element)
@@ -207,9 +249,20 @@ impl LiveDevtools {
                 || changes.tree.upserted.iter().any(|row| row.id == element)
                 || changes.tree.updated.iter().any(|row| row.id == element)
         });
-        let event = self
+        let event = match self
             .session
-            .with_mut(|session| session.apply_inspection_changes(changes));
+            .with_mut(|session| session.apply_inspection_changes(changes))
+        {
+            Ok(event) => event,
+            Err(mismatch) => {
+                let mut refresh = self.refresh_from(target)?;
+                if !target.clear_inspection_changes(recording) {
+                    return Err(inactive_recording_error());
+                }
+                refresh.resynced_from = Some(mismatch);
+                return Ok(refresh);
+            }
+        };
         let tree_changed = matches!(event, Some(DevtoolsEvent::ElementTreePatched { .. }));
         let refresh_changes = DevtoolsRefreshChanges {
             tree: tree_changed,
@@ -238,6 +291,7 @@ impl LiveDevtools {
             stream_item_count,
             selected,
             changes: refresh_changes,
+            resynced_from: None,
         })
     }
 
@@ -270,15 +324,63 @@ impl LiveDevtools {
     }
 }
 
+fn inactive_recording_error() -> SessionError {
+    SessionError::new(
+        SessionErrorCode::Failed,
+        "live inspection recording is no longer active on the target",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::vec;
     use core::time::Duration;
 
+    use overstory::inspection::{UiInspectionChanges, UiInspectionSnapshot};
     use overstory::pseudos::PSEUDO_HOVER;
-    use overstory::{Button, Layout, Panel, Popup, Size, Text, Ui};
+    use overstory::{
+        BindingSpecExt, Button, EffectClip, EffectKeyframe, Layout, Panel, Popup, Size, Text, Ui,
+    };
 
     use super::*;
+
+    #[derive(Debug)]
+    struct CorruptingTarget {
+        ui: Ui,
+        corrupt_next_batch: bool,
+    }
+
+    impl DevtoolsTarget for CorruptingTarget {
+        fn capture_inspection_snapshot(&self) -> UiInspectionSnapshot {
+            self.ui.inspection_snapshot()
+        }
+    }
+
+    impl LiveDevtoolsTarget for CorruptingTarget {
+        fn begin_live_inspection_recording(&mut self) -> LiveInspectionRecording {
+            self.ui.begin_live_inspection_recording()
+        }
+
+        fn end_live_inspection_recording(&mut self, recording: LiveInspectionRecording) -> bool {
+            self.ui.end_live_inspection_recording(recording)
+        }
+
+        fn drain_inspection_changes(
+            &mut self,
+            recording: LiveInspectionRecording,
+        ) -> Option<UiInspectionChanges> {
+            let mut changes = self.ui.drain_inspection_changes(recording)?;
+            if self.corrupt_next_batch && !changes.is_empty() {
+                changes.baseline_revision = changes.revision;
+                self.corrupt_next_batch = false;
+            }
+            Some(changes)
+        }
+
+        fn clear_inspection_changes(&mut self, recording: LiveInspectionRecording) -> bool {
+            self.ui.clear_inspection_changes(recording)
+        }
+    }
 
     #[test]
     fn live_devtools_selects_through_protocol() {
@@ -371,6 +473,12 @@ mod tests {
         assert_eq!(refresh.stream_item_count, 1);
         assert_eq!(devtools.mirror().tree().nodes.len(), 2);
         assert!(devtools.mirror().outline_key_for_element(child).is_some());
+        assert_eq!(
+            devtools
+                .session()
+                .with(|session| session.snapshot().inspection().clone()),
+            ui.inspection_snapshot()
+        );
     }
 
     #[test]
@@ -416,9 +524,171 @@ mod tests {
         );
         assert_eq!(devtools.mirror().tree().nodes.len(), 1);
         assert!(devtools.mirror().outline_key_for_element(child).is_none());
+        assert_eq!(
+            devtools
+                .session()
+                .with(|session| session.snapshot().inspection().clone()),
+            ui.inspection_snapshot()
+        );
 
         devtools.detach_from_live(&mut ui);
         assert!(!ui.is_live_inspection_recording());
+    }
+
+    #[test]
+    fn live_devtools_attachments_receive_changes_independently() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let mut first =
+            LiveDevtools::capture_from_live(&mut ui, None).expect("first devtools should attach");
+        let mut second =
+            LiveDevtools::capture_from_live(&mut ui, None).expect("second devtools should attach");
+
+        let child = ui.append(root, Panel::new());
+        first
+            .refresh_from_live(&mut ui)
+            .expect("first devtools should receive the insertion");
+        second
+            .refresh_from_live(&mut ui)
+            .expect("second devtools should receive the same insertion");
+
+        assert!(first.mirror().outline_key_for_element(child).is_some());
+        assert!(second.mirror().outline_key_for_element(child).is_some());
+
+        assert!(first.detach_from_live(&mut ui));
+        assert!(ui.is_live_inspection_recording());
+        ui.add_pseudo(child, PSEUDO_HOVER);
+        second
+            .refresh_from_live(&mut ui)
+            .expect("the remaining devtools should continue receiving changes");
+        assert!(second.session().with(|session| {
+            session
+                .snapshot()
+                .element(child)
+                .is_some_and(|row| row.state.hovered)
+        }));
+        assert!(second.detach_from_live(&mut ui));
+        assert!(!ui.is_live_inspection_recording());
+    }
+
+    #[test]
+    fn live_devtools_resyncs_instead_of_applying_a_revision_gap() {
+        let mut target = CorruptingTarget {
+            ui: Ui::new(),
+            corrupt_next_batch: false,
+        };
+        let root = target.ui.root();
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut target, None).expect("devtools should attach");
+
+        let child = target.ui.append(root, Panel::new());
+        target.ui.set_frame_timings(overstory::UiFrameTimings {
+            total: Duration::from_millis(12),
+            ..overstory::UiFrameTimings::default()
+        });
+        target.corrupt_next_batch = true;
+        let refresh = devtools
+            .refresh_from_live(&mut target)
+            .expect("a revision gap should trigger a full resync");
+
+        assert!(refresh.resynced_from.is_some());
+        assert!(devtools.mirror().outline_key_for_element(child).is_some());
+        assert_eq!(
+            devtools.mirror().summaries().frame.timings.total,
+            Duration::from_millis(12)
+        );
+        assert_eq!(
+            devtools
+                .session()
+                .with(|session| session.snapshot().inspection().clone()),
+            target.ui.inspection_snapshot()
+        );
+    }
+
+    #[test]
+    fn live_devtools_converges_across_all_inspection_domains() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::new().logical_size(320.0, 180.0));
+        let panel = ui.append(root, Panel::new());
+        let count = ui.local_state(0_u32);
+        let bound_label = ui.append(
+            panel,
+            Text::new("").bind_text(count.map(|count| alloc::format!("Count: {count}"))),
+        );
+        ui.flush_bindings();
+        ui.compute_layout(Size::new(320.0, 180.0));
+        let mut devtools =
+            LiveDevtools::capture_from_live(&mut ui, Some(panel)).expect("devtools should attach");
+
+        let opacity = ui.properties().opacity;
+        let animation = ui
+            .animate_property(
+                panel,
+                opacity,
+                EffectClip::from_keyframes([
+                    EffectKeyframe::new(0, 1.0_f32),
+                    EffectKeyframe::new(100, 0.25_f32),
+                ]),
+            )
+            .expect("the active effect should start");
+        let custom_class = ui.class_id(".live-inspection");
+        ui.add_class(panel, custom_class);
+        assert!(count.set(&mut ui, 42));
+        ui.flush_bindings();
+        ui.set_theme(overstory::theme::light_theme());
+        let cascade = overstory::theme::default_cascade(ui.properties());
+        ui.set_cascade(cascade);
+        ui.schedule_timeline_cue(50, 7);
+        let child = ui.append(panel, Text::new("Revision-consistent"));
+        ui.compute_layout(Size::new(320.0, 180.0));
+
+        let refresh = devtools
+            .refresh_from_live(&mut ui)
+            .expect("all live domains should refresh together");
+        let retained = devtools
+            .session()
+            .with(|session| session.snapshot().inspection().clone());
+
+        assert!(refresh.resynced_from.is_none());
+        assert!(retained.elements.iter().any(|row| row.id == child));
+        assert!(retained.elements.iter().any(|row| {
+            row.id == bound_label
+                && row.properties.iter().any(|property| {
+                    property.name == "Text"
+                        && property.value
+                            == overstory::inspection::ElementPropertyInspectionValue::Text(
+                                alloc::string::String::from("Count: 42"),
+                            )
+                })
+        }));
+        assert!(retained.timeline.active_effects > 0);
+        assert!(
+            retained
+                .timeline
+                .animations
+                .iter()
+                .any(|row| row.id == animation)
+        );
+        assert_eq!(
+            retained
+                .style_vocabulary
+                .class_id_by_name(".live-inspection"),
+            Some(custom_class)
+        );
+        assert_eq!(retained, ui.inspection_snapshot());
+
+        ui.set_now(200);
+        let completed = devtools
+            .refresh_from_live(&mut ui)
+            .expect("animation completion should update every live domain");
+        let retained = devtools
+            .session()
+            .with(|session| session.snapshot().inspection().clone());
+
+        assert!(completed.resynced_from.is_none());
+        assert_eq!(retained.timeline.active_effects, 0);
+        assert_eq!(retained, ui.inspection_snapshot());
     }
 
     #[test]
@@ -453,6 +723,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![popup]
         );
+        assert_eq!(
+            devtools
+                .session()
+                .with(|session| session.snapshot().inspection().clone()),
+            ui.inspection_snapshot()
+        );
 
         assert!(ui.close_popup(popup));
         let closed = devtools
@@ -460,6 +736,12 @@ mod tests {
             .expect("closing should refresh live overlay state");
         assert!(closed.changes.overlays);
         assert!(devtools.mirror().summaries().overlays.entries.is_empty());
+        assert_eq!(
+            devtools
+                .session()
+                .with(|session| session.snapshot().inspection().clone()),
+            ui.inspection_snapshot()
+        );
     }
 
     #[test]
@@ -542,7 +824,7 @@ mod tests {
                 tree: false,
                 details: true,
                 overlays: false,
-                frame: false,
+                frame: true,
             }
         );
         assert_eq!(
@@ -585,7 +867,7 @@ mod tests {
                 tree: false,
                 details: false,
                 overlays: false,
-                frame: false,
+                frame: true,
             }
         );
         assert!(

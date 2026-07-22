@@ -26,9 +26,69 @@ use crate::scroll_runtime::ScrollStateSnapshot;
 use crate::template::{TemplateDiagnostic, TemplateExpansionReport, TemplateSlotStatus};
 use crate::timeline_runtime::{AnimationId, AnimationTimelineId};
 
+/// Monotonic version of one UI's live inspection state.
+///
+/// A full snapshot establishes a revision. Incremental changes name both the
+/// revision they build on and the revision they produce, allowing retained
+/// mirrors to reject gaps, duplicates, and reordered batches.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct InspectionRevision(u64);
+
+impl InspectionRevision {
+    /// Creates a target-local revision from its monotonic counter.
+    ///
+    /// Custom target adapters can use this to version snapshots they produce
+    /// without exposing an Overstory [`crate::Ui`].
+    #[must_use]
+    pub const fn new(revision: u64) -> Self {
+        Self(revision)
+    }
+
+    /// Returns the underlying monotonic counter.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    pub(crate) fn next(self) -> Self {
+        Self(
+            self.0
+                .checked_add(1)
+                .expect("live inspection revisions exhausted"),
+        )
+    }
+}
+
+/// Target-local identity for one independent live inspection attachment.
+///
+/// Recording handles belong to the [`crate::Ui`] that created them and must
+/// only be passed back to that UI while the recording remains active.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[must_use = "the recording handle is required to drain or end the attachment"]
+pub struct LiveInspectionRecording(u64);
+
+impl LiveInspectionRecording {
+    /// Creates a target-local recording identity.
+    ///
+    /// Custom live targets allocate these monotonically and reject identities
+    /// they did not issue. Ordinary [`crate::Ui`] callers receive a handle from
+    /// [`crate::Ui::begin_live_inspection_recording`] instead.
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    /// Returns this recording's target-local counter.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 /// Owned snapshot of the inspectable state of one [`crate::Ui`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UiInspectionSnapshot {
+    /// Revision against which subsequent live changes must be applied.
+    pub revision: InspectionRevision,
     /// Root element id for the retained element tree.
     pub root: ElementId,
     /// Elements in root-first document order.
@@ -137,17 +197,32 @@ pub struct OverlayGraceInspectionRow {
 ///
 /// Snapshots are still the baseline and resync format. Change batches are the
 /// steady-state feed for live devtools and inspectors that want to update a
-/// retained mirror without recapturing the full tree every frame.
+/// retained mirror without recapturing the full tree every frame. A non-empty
+/// batch carries a keyed element-tree patch plus revision-consistent snapshots
+/// of the other inspection domains. This deliberately favors a truthful mirror
+/// over fine-grained bookkeeping while live inspection is attached.
 #[derive(Clone, Debug, Default)]
 pub struct UiInspectionChanges {
+    /// Revision of the snapshot or batch this change builds on.
+    pub baseline_revision: InspectionRevision,
+    /// Revision produced after this change is applied.
+    pub revision: InspectionRevision,
     /// Retained-element tree changes.
     pub tree: ElementTreeInspectionPatch,
-    /// Latest layout stabilization facts when a layout attempt ran.
+    /// Revision-consistent layout stabilization facts for a non-empty batch.
     pub layout: Option<LayoutInspectionSnapshot>,
-    /// Latest overlay state when lifecycle or derived geometry changed.
+    /// Revision-consistent overlay state for a non-empty batch.
     pub overlays: Option<OverlayInspectionSnapshot>,
-    /// Frame counters and host-supplied timings, when the most recent frame
-    /// summary changed since the previous drain.
+    /// Revision-consistent composition state for a non-empty batch.
+    pub composition: Option<CompositionInspectionSnapshot>,
+    /// Revision-consistent storage and cache counters for a non-empty batch.
+    pub storage: Option<UiStorageInspectionSnapshot>,
+    /// Revision-consistent timeline state for a non-empty batch.
+    pub timeline: Option<TimelineInspectionSnapshot>,
+    /// Revision-consistent style vocabulary for a non-empty batch.
+    pub style_vocabulary: Option<StyleVocabulary>,
+    /// Revision-consistent frame counters and host-supplied timings for a
+    /// non-empty batch.
     pub frame: Option<UiFrameStats>,
 }
 
@@ -158,6 +233,10 @@ impl UiInspectionChanges {
         self.tree.is_empty()
             && self.layout.is_none()
             && self.overlays.is_none()
+            && self.composition.is_none()
+            && self.storage.is_none()
+            && self.timeline.is_none()
+            && self.style_vocabulary.is_none()
             && self.frame.is_none()
     }
 }

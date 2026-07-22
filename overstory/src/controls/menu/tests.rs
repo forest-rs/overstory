@@ -217,12 +217,14 @@ fn accesskit_actions_open_and_close_root_and_child_menus() {
 #[test]
 fn live_inspection_changes_coalesce_current_overlay_state() {
     let (mut ui, button, _outside) = test_ui(test_menu());
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     open_root_with_keyboard(&mut ui, button);
     let root = open_menu(&ui, button, OverlayBehavior::Menu);
-    let opened = ui.drain_inspection_changes();
+    let opened = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert_eq!(
         opened
             .overlays
@@ -236,7 +238,8 @@ fn live_inspection_changes_coalesce_current_overlay_state() {
 
     key(&mut ui, NamedKey::Escape, Code::Escape);
     assert!(
-        ui.drain_inspection_changes()
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
             .overlays
             .expect("closing should publish overlay state")
             .entries

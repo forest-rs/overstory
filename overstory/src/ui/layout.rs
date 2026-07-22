@@ -293,7 +293,7 @@ impl Ui {
             self.refresh_overlay_frame();
         }
         self.flush_composition();
-        self.inspection_changes.record_frame();
+        self.inspection_changes.record_change();
         outcome
     }
 

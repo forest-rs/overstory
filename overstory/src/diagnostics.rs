@@ -119,7 +119,7 @@ impl ChannelMarkStats {
 }
 
 /// Counters collected while driving one UI frame.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct UiFrameStats {
     /// Host-supplied wall-clock timings for the most recently prepared frame.
     ///

@@ -57,6 +57,7 @@ impl Ui {
         for id in ids {
             self.style_one(id);
             self.invalidation.mark(id, LAYOUT);
+            self.record_element_tree_update(id);
         }
     }
 
@@ -78,6 +79,7 @@ impl Ui {
         for id in ids {
             self.invalidation.mark(id, LAYOUT);
             self.retemplate_if_needed(id);
+            self.record_element_tree_update(id);
         }
     }
 

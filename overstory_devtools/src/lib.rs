@@ -26,9 +26,9 @@ use alloc::vec::Vec;
 use overstory::inspection::{
     CompositionInspectionSnapshot, CompositionLayerInspectionRow, ElementInspectionRow,
     ElementPropertyInspectionGroup, ElementPropertyInspectionValue, ElementTreeInspectionPatch,
-    LayerInspectionId, OverlayInspectionSnapshot, SurfaceInspectionId, TemplateContractInspection,
-    TemplateSlotInspectionRow, UiInspectionChanges, UiInspectionSnapshot,
-    UiStorageInspectionSnapshot,
+    InspectionRevision, LayerInspectionId, LiveInspectionRecording, OverlayInspectionSnapshot,
+    SurfaceInspectionId, TemplateContractInspection, TemplateSlotInspectionRow,
+    UiInspectionChanges, UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use overstory::{
     ElementId, ElementSpecExt, Layout, OutlineNodeKey, OutlineView, OutlineViewNode, Panel,
@@ -82,20 +82,35 @@ pub trait DevtoolsTarget {
 
 /// A live target that can report inspection changes since a baseline capture.
 ///
-/// A live devtools session should capture a snapshot once, clear changes
-/// created before that baseline, then drain changes for steady-state updates.
+/// A live devtools session should start recording, capture its baseline, clear
+/// changes already represented by that baseline, then drain changes for
+/// steady-state updates. Recording handles make attachments independent:
+/// draining or ending one attachment must not consume another attachment's
+/// pending state.
+///
+/// # API transition
+///
+/// Live recording methods now exchange a [`LiveInspectionRecording`] handle.
+/// Implementations should return `None` from `drain_inspection_changes` and
+/// `false` from clear/end when the supplied handle is not active.
 pub trait LiveDevtoolsTarget: DevtoolsTarget {
     /// Starts target-side live inspection recording.
-    fn begin_live_inspection_recording(&mut self);
+    fn begin_live_inspection_recording(&mut self) -> LiveInspectionRecording;
 
-    /// Stops one target-side live inspection recording attachment.
-    fn end_live_inspection_recording(&mut self);
+    /// Stops one target-side live inspection recording attachment and reports
+    /// whether the handle was active.
+    fn end_live_inspection_recording(&mut self, recording: LiveInspectionRecording) -> bool;
 
-    /// Drains inspectable state changes recorded since the previous drain.
-    fn drain_inspection_changes(&mut self) -> UiInspectionChanges;
+    /// Drains inspectable state changes recorded since this handle's previous
+    /// drain, or returns `None` if the handle is not active.
+    fn drain_inspection_changes(
+        &mut self,
+        recording: LiveInspectionRecording,
+    ) -> Option<UiInspectionChanges>;
 
-    /// Clears pending inspection changes without returning them.
-    fn clear_inspection_changes(&mut self);
+    /// Clears pending inspection changes without returning them and reports
+    /// whether the handle was active.
+    fn clear_inspection_changes(&mut self, recording: LiveInspectionRecording) -> bool;
 }
 
 impl DevtoolsTarget for Ui {
@@ -105,20 +120,23 @@ impl DevtoolsTarget for Ui {
 }
 
 impl LiveDevtoolsTarget for Ui {
-    fn begin_live_inspection_recording(&mut self) {
-        Self::begin_live_inspection_recording(self);
+    fn begin_live_inspection_recording(&mut self) -> LiveInspectionRecording {
+        Self::begin_live_inspection_recording(self)
     }
 
-    fn end_live_inspection_recording(&mut self) {
-        Self::end_live_inspection_recording(self);
+    fn end_live_inspection_recording(&mut self, recording: LiveInspectionRecording) -> bool {
+        Self::end_live_inspection_recording(self, recording)
     }
 
-    fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
-        Self::drain_inspection_changes(self)
+    fn drain_inspection_changes(
+        &mut self,
+        recording: LiveInspectionRecording,
+    ) -> Option<UiInspectionChanges> {
+        Self::drain_inspection_changes(self, recording)
     }
 
-    fn clear_inspection_changes(&mut self) {
-        Self::clear_inspection_changes(self);
+    fn clear_inspection_changes(&mut self, recording: LiveInspectionRecording) -> bool {
+        Self::clear_inspection_changes(self, recording)
     }
 }
 
@@ -227,21 +245,24 @@ impl DevtoolsTarget for UiLiveInspectionTarget<'_> {
 }
 
 impl LiveDevtoolsTarget for UiLiveInspectionTarget<'_> {
-    fn begin_live_inspection_recording(&mut self) {
-        self.ui.begin_live_inspection_recording();
+    fn begin_live_inspection_recording(&mut self) -> LiveInspectionRecording {
+        self.ui.begin_live_inspection_recording()
     }
 
-    fn end_live_inspection_recording(&mut self) {
-        self.ui.end_live_inspection_recording();
+    fn end_live_inspection_recording(&mut self, recording: LiveInspectionRecording) -> bool {
+        self.ui.end_live_inspection_recording(recording)
     }
 
-    fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
-        let changes = self.ui.drain_inspection_changes();
-        filter_inspection_changes(changes, self)
+    fn drain_inspection_changes(
+        &mut self,
+        recording: LiveInspectionRecording,
+    ) -> Option<UiInspectionChanges> {
+        let changes = self.ui.drain_inspection_changes(recording)?;
+        Some(filter_inspection_changes(changes, self))
     }
 
-    fn clear_inspection_changes(&mut self) {
-        self.ui.clear_inspection_changes();
+    fn clear_inspection_changes(&mut self, recording: LiveInspectionRecording) -> bool {
+        self.ui.clear_inspection_changes(recording)
     }
 }
 
@@ -249,6 +270,8 @@ fn filter_inspection_changes(
     mut changes: UiInspectionChanges,
     target: &UiLiveInspectionTarget<'_>,
 ) -> UiInspectionChanges {
+    let mut included = Vec::new();
+    push_included_ui_elements(target.ui, target.root, target.excluded_roots, &mut included);
     if let Some(layout) = &mut changes.layout {
         layout
             .causes
@@ -303,6 +326,18 @@ fn filter_inspection_changes(
     changes.overlays = changes.overlays.map(|overlays| {
         filter_overlay_snapshot(overlays, |element| target.element_is_included(element))
     });
+    changes.composition = changes
+        .composition
+        .map(|composition| filtered_composition_snapshot(composition, &included));
+    if let Some(storage) = &mut changes.storage {
+        storage.live_elements = included.len();
+        storage.free_element_slots = 0;
+        storage.allocated_element_slots = included.len();
+        if let Some(composition) = &changes.composition {
+            storage.composition_layers = composition.layers.len();
+            storage.composition_surfaces = composition.surfaces.len();
+        }
+    }
     changes
 }
 
@@ -330,6 +365,22 @@ pub struct DevtoolsSnapshot {
     element_index: Vec<(ElementId, usize)>,
     layer_index: Vec<(LayerInspectionId, usize)>,
     surface_index: Vec<(SurfaceInspectionId, usize)>,
+}
+
+/// A live change batch that does not build on and advance the retained mirror's
+/// revision.
+///
+/// Callers should discard the batch and replace the mirror with a fresh target
+/// snapshot. Applying it would silently combine facts captured at different
+/// points in the target's history.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InspectionRevisionMismatch {
+    /// Revision currently retained by the mirror.
+    pub expected: InspectionRevision,
+    /// Baseline named by the rejected change batch.
+    pub received: InspectionRevision,
+    /// Revision the rejected change batch would produce.
+    pub revision: InspectionRevision,
 }
 
 impl DevtoolsSnapshot {
@@ -363,7 +414,27 @@ impl DevtoolsSnapshot {
     /// This is the session-side half of live devtools. Full captures remain
     /// the resync path; this method keeps the retained baseline current between
     /// captures when the target can provide explicit change records.
-    pub fn apply_inspection_changes(&mut self, changes: UiInspectionChanges) {
+    pub fn apply_inspection_changes(
+        &mut self,
+        changes: UiInspectionChanges,
+    ) -> Result<(), InspectionRevisionMismatch> {
+        let is_empty = changes.is_empty();
+        let valid_revision = self.inspection.revision == changes.baseline_revision
+            && if is_empty {
+                changes.revision == changes.baseline_revision
+            } else {
+                changes.revision > changes.baseline_revision
+            };
+        if !valid_revision {
+            return Err(InspectionRevisionMismatch {
+                expected: self.inspection.revision,
+                received: changes.baseline_revision,
+                revision: changes.revision,
+            });
+        }
+        if is_empty {
+            return Ok(());
+        }
         if let Some(frame) = changes.frame {
             self.inspection.frame = frame;
         }
@@ -373,7 +444,21 @@ impl DevtoolsSnapshot {
         if let Some(overlays) = changes.overlays {
             self.inspection.overlays = overlays;
         }
+        if let Some(composition) = changes.composition {
+            self.inspection.composition = composition;
+        }
+        if let Some(storage) = changes.storage {
+            self.inspection.storage = storage;
+        }
+        if let Some(timeline) = changes.timeline {
+            self.inspection.timeline = timeline;
+        }
+        if let Some(style_vocabulary) = changes.style_vocabulary {
+            self.inspection.style_vocabulary = style_vocabulary;
+        }
         self.apply_element_tree_patch(changes.tree);
+        self.inspection.revision = changes.revision;
+        Ok(())
     }
 
     fn apply_element_tree_patch(&mut self, patch: ElementTreeInspectionPatch) {
@@ -422,9 +507,6 @@ impl DevtoolsSnapshot {
             self.inspection.root,
             core::mem::take(&mut self.inspection.elements),
         );
-        self.inspection.storage.live_elements = self.inspection.elements.len();
-        self.inspection.storage.free_element_slots = 0;
-        self.inspection.storage.allocated_element_slots = self.inspection.elements.len();
         self.rebuild_indexes();
     }
 
@@ -769,6 +851,24 @@ fn push_included_elements(
     included.push(element);
     for child in &row.children {
         push_included_elements(*child, excluded_roots, rows, included);
+    }
+}
+
+fn push_included_ui_elements(
+    ui: &Ui,
+    element: ElementId,
+    excluded_roots: &[ElementId],
+    included: &mut Vec<ElementId>,
+) {
+    if contains_element(excluded_roots, element) || contains_element(included, element) {
+        return;
+    }
+    let Some(row) = ui.get(element) else {
+        return;
+    };
+    included.push(element);
+    for child in row.children() {
+        push_included_ui_elements(ui, *child, excluded_roots, included);
     }
 }
 
@@ -2034,6 +2134,7 @@ fn axis_boundary_summary(offset: f64, max: f64) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use overstory::pseudos::PSEUDO_HOVER;
     use overstory::{ControlTemplateSpecExt, SurfaceSpecExt, TextSpecExt};
     use understory_property::DependencyObjectExt;
 
@@ -2065,6 +2166,78 @@ mod tests {
                 .element,
             Some(child)
         );
+    }
+
+    #[test]
+    fn inspection_mirror_rejects_gaps_duplicates_and_reordering() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let recording = ui.begin_live_inspection_recording();
+        let mut mirror = DevtoolsSnapshot::capture(&ui);
+        ui.clear_inspection_changes(recording);
+
+        let child = ui.append(root, Panel::new());
+        let first = ui
+            .drain_inspection_changes(recording)
+            .expect("recording should be active");
+        ui.add_pseudo(child, PSEUDO_HOVER);
+        let second = ui
+            .drain_inspection_changes(recording)
+            .expect("recording should be active");
+
+        let mut nonadvancing = first.clone();
+        nonadvancing.revision = nonadvancing.baseline_revision;
+        assert_eq!(
+            mirror.apply_inspection_changes(nonadvancing),
+            Err(InspectionRevisionMismatch {
+                expected: first.baseline_revision,
+                received: first.baseline_revision,
+                revision: first.baseline_revision,
+            }),
+            "a non-empty batch must advance its baseline"
+        );
+
+        assert_eq!(
+            mirror.apply_inspection_changes(second.clone()),
+            Err(InspectionRevisionMismatch {
+                expected: first.baseline_revision,
+                received: second.baseline_revision,
+                revision: second.revision,
+            }),
+            "a later batch must not be applied across a gap"
+        );
+
+        mirror
+            .apply_inspection_changes(first.clone())
+            .expect("the next batch should apply");
+        let empty_advancing = UiInspectionChanges {
+            baseline_revision: first.revision,
+            revision: second.revision,
+            ..UiInspectionChanges::default()
+        };
+        assert_eq!(
+            mirror.apply_inspection_changes(empty_advancing),
+            Err(InspectionRevisionMismatch {
+                expected: first.revision,
+                received: first.revision,
+                revision: second.revision,
+            }),
+            "an empty batch must not advance the retained revision"
+        );
+        assert_eq!(
+            mirror.apply_inspection_changes(first.clone()),
+            Err(InspectionRevisionMismatch {
+                expected: first.revision,
+                received: first.baseline_revision,
+                revision: first.revision,
+            }),
+            "a duplicate batch must not be applied twice"
+        );
+        mirror
+            .apply_inspection_changes(second)
+            .expect("the reordered batch should apply after its predecessor");
+
+        assert_eq!(mirror.inspection(), &ui.inspection_snapshot());
     }
 
     #[test]
@@ -2196,17 +2369,20 @@ mod tests {
         let app = ui.append(root, Panel::new());
         let devtools = ui.append(root, Panel::new());
         let excluded = [devtools];
-        {
+        let recording = {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
-            target.begin_live_inspection_recording();
-            target.clear_inspection_changes();
-        }
+            let recording = target.begin_live_inspection_recording();
+            target.clear_inspection_changes(recording);
+            recording
+        };
 
         let app_child = ui.append(app, Panel::new());
         let devtools_child = ui.append(devtools, Panel::new());
         let changes = {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
-            target.drain_inspection_changes()
+            target
+                .drain_inspection_changes(recording)
+                .expect("recording should be active")
         };
 
         assert!(changes.tree.removed.is_empty());
@@ -2230,7 +2406,9 @@ mod tests {
         ui.set_local(devtools_child, ui.properties().opacity, 0.5);
         let changes = {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
-            target.drain_inspection_changes()
+            target
+                .drain_inspection_changes(recording)
+                .expect("recording should be active")
         };
 
         assert!(changes.tree.removed.is_empty());
@@ -2245,8 +2423,44 @@ mod tests {
         );
         {
             let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded);
-            target.end_live_inspection_recording();
+            target.end_live_inspection_recording(recording);
         }
+    }
+
+    #[cfg(feature = "spoor-session")]
+    #[test]
+    fn filtered_live_inspection_converges_with_a_fresh_filtered_snapshot() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let app = ui.append(root, Panel::new());
+        let excluded = ui.append(root, Panel::new());
+        let excluded_roots = [excluded];
+        let mut devtools = {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded_roots);
+            LiveDevtools::capture_from_live(&mut target, Some(app))
+                .expect("filtered devtools should attach")
+        };
+
+        let app_child = ui.append(app, overstory::Button::new("Included"));
+        ui.append(excluded, overstory::Button::new("Excluded"));
+        ui.set_local(app_child, ui.properties().opacity, 0.5);
+        {
+            let mut target = UiLiveInspectionTarget::new(&mut ui).excluding(&excluded_roots);
+            devtools
+                .refresh_from_live(&mut target)
+                .expect("filtered live changes should apply");
+        }
+
+        let fresh = UiInspectionTarget::new(&ui)
+            .excluding(&excluded_roots)
+            .capture_inspection_snapshot();
+        let retained = devtools
+            .session()
+            .with(|session| session.snapshot().inspection().clone());
+
+        assert_eq!(retained, fresh);
+        assert!(retained.elements.iter().any(|row| row.id == app_child));
+        assert!(!retained.elements.iter().any(|row| row.id == excluded));
     }
 
     #[test]
@@ -2613,7 +2827,7 @@ mod tests {
         let custom_class = ui.class_id(".custom-row");
         ui.add_class(child, overstory::CLASS_SLIDER_MAJOR_TICK);
         ui.add_class(child, custom_class);
-        ui.add_pseudo(child, overstory::pseudos::PSEUDO_HOVER);
+        ui.add_pseudo(child, PSEUDO_HOVER);
         let snapshot = DevtoolsSnapshot::capture(&ui);
         let row = snapshot
             .element(child)

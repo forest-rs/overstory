@@ -3,103 +3,188 @@
 
 //! Runtime accumulator for live inspection changes.
 //!
-//! This runtime owns only the short-lived change batch between drains. It does
-//! not own snapshot capture, devtools protocol encoding, rendering, or host
-//! transport.
+//! This runtime owns only recording identities, revisions, and the short-lived
+//! change batches between drains. It does not own snapshot capture, devtools
+//! protocol encoding, rendering, or host transport.
 
 use alloc::vec::Vec;
 
 use hashbrown::HashSet;
 
-use crate::diagnostics::UiFrameStats;
 use crate::element::ElementId;
-use crate::inspection::ElementInspectionRemoval;
+use crate::inspection::{ElementInspectionRemoval, InspectionRevision, LiveInspectionRecording};
 
 #[derive(Debug, Default)]
 pub(crate) struct InspectionChangeRuntime {
-    recording_depth: u32,
-    tree: ElementTreeChangeRuntime,
-    overlays_dirty: bool,
-    frame_dirty: bool,
+    revision: InspectionRevision,
+    timeline_revision: u64,
+    next_recording: u64,
+    recordings: Vec<InspectionRecordingRuntime>,
 }
 
 impl InspectionChangeRuntime {
-    pub(crate) fn begin_recording(&mut self) {
-        self.recording_depth = self.recording_depth.saturating_add(1);
+    pub(crate) fn begin_recording(&mut self) -> LiveInspectionRecording {
+        let id = self.next_recording;
+        self.next_recording = self
+            .next_recording
+            .checked_add(1)
+            .expect("live inspection recording ids exhausted");
+        let recording = LiveInspectionRecording::new(id);
+        self.recordings.push(InspectionRecordingRuntime {
+            recording,
+            baseline_revision: self.revision,
+            changes: PendingInspectionState::default(),
+        });
+        recording
     }
 
-    pub(crate) fn end_recording(&mut self) {
-        self.recording_depth = self.recording_depth.saturating_sub(1);
-        if !self.is_recording() {
-            self.clear();
+    pub(crate) fn end_recording(&mut self, recording: LiveInspectionRecording) -> bool {
+        let Some(index) = self.recording_index(recording) else {
+            return false;
+        };
+        self.recordings.remove(index);
+        true
+    }
+
+    pub(crate) fn is_recording(&self) -> bool {
+        !self.recordings.is_empty()
+    }
+
+    pub(crate) fn projected_revision(&self, timeline_revision: u64) -> InspectionRevision {
+        if !self.recordings.is_empty() && self.timeline_revision != timeline_revision {
+            self.revision.next()
+        } else {
+            self.revision
         }
     }
 
-    pub(crate) const fn is_recording(&self) -> bool {
-        self.recording_depth > 0
+    pub(crate) fn observe_timeline_revision(&mut self, timeline_revision: u64) {
+        if self.timeline_revision == timeline_revision {
+            return;
+        }
+        self.timeline_revision = timeline_revision;
+        self.record_change();
     }
 
     pub(crate) fn record_tree_upsert(&mut self, id: ElementId) {
-        if !self.is_recording() {
+        if !self.advance_revision() {
             return;
         }
-        self.tree.record_upsert(id);
+        for recording in &mut self.recordings {
+            recording.changes.tree.record_upsert(id);
+        }
     }
 
     pub(crate) fn record_tree_update(&mut self, id: ElementId) {
-        if !self.is_recording() {
+        if !self.advance_revision() {
             return;
         }
-        self.tree.record_update(id);
+        for recording in &mut self.recordings {
+            recording.changes.tree.record_update(id);
+        }
     }
 
     pub(crate) fn record_tree_removal(&mut self, removal: ElementInspectionRemoval) {
-        if !self.is_recording() {
+        if !self.advance_revision() {
             return;
         }
-        self.tree.record_removal(removal);
+        for recording in &mut self.recordings {
+            recording.changes.tree.record_removal(removal);
+        }
     }
 
-    pub(crate) fn record_frame(&mut self) {
-        if !self.is_recording() {
+    pub(crate) fn record_change(&mut self) {
+        if !self.advance_revision() {
             return;
         }
-        self.frame_dirty = true;
-    }
-
-    pub(crate) fn record_overlays(&mut self) {
-        if self.is_recording() {
-            self.overlays_dirty = true;
+        for recording in &mut self.recordings {
+            recording.changes.dirty = true;
         }
     }
 
-    pub(crate) fn drain(&mut self, frame: UiFrameStats) -> PendingInspectionChanges {
-        let changes = PendingInspectionChanges {
-            removed: core::mem::take(&mut self.tree.removed),
-            upserted: self.tree.drain_upserts(),
-            updated: self.tree.drain_updates(),
-            overlays_dirty: self.overlays_dirty,
-            frame: self.frame_dirty.then_some(frame),
+    pub(crate) fn drain(
+        &mut self,
+        recording: LiveInspectionRecording,
+    ) -> Option<PendingInspectionChanges> {
+        let revision = self.revision;
+        let index = self.recording_index(recording)?;
+        let recording = &mut self.recordings[index];
+        let changes = core::mem::take(&mut recording.changes);
+        let pending = PendingInspectionChanges {
+            baseline_revision: recording.baseline_revision,
+            revision,
+            removed: changes.tree.removed,
+            upserted: changes.tree.upserted,
+            updated: changes.tree.updated,
+            dirty: changes.dirty,
         };
-        self.overlays_dirty = false;
-        self.frame_dirty = false;
-        changes
+        recording.baseline_revision = revision;
+        Some(pending)
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self, recording: LiveInspectionRecording) -> bool {
+        let revision = self.revision;
+        let Some(index) = self.recording_index(recording) else {
+            return false;
+        };
+        let recording = &mut self.recordings[index];
+        recording.changes.clear();
+        recording.baseline_revision = revision;
+        true
+    }
+
+    fn advance_revision(&mut self) -> bool {
+        if self.recordings.is_empty() {
+            return false;
+        }
+        self.revision = self.revision.next();
+        true
+    }
+
+    fn recording_index(&self, recording: LiveInspectionRecording) -> Option<usize> {
+        self.recordings
+            .iter()
+            .position(|candidate| candidate.recording == recording)
+    }
+}
+
+#[derive(Debug)]
+struct InspectionRecordingRuntime {
+    recording: LiveInspectionRecording,
+    baseline_revision: InspectionRevision,
+    changes: PendingInspectionState,
+}
+
+#[derive(Debug, Default)]
+struct PendingInspectionState {
+    tree: ElementTreeChangeRuntime,
+    dirty: bool,
+}
+
+impl PendingInspectionState {
+    fn clear(&mut self) {
         self.tree.clear();
-        self.overlays_dirty = false;
-        self.frame_dirty = false;
+        self.dirty = false;
     }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct PendingInspectionChanges {
+    pub(crate) baseline_revision: InspectionRevision,
+    pub(crate) revision: InspectionRevision,
     pub(crate) removed: Vec<ElementInspectionRemoval>,
     pub(crate) upserted: Vec<ElementId>,
     pub(crate) updated: Vec<ElementId>,
-    pub(crate) overlays_dirty: bool,
-    pub(crate) frame: Option<UiFrameStats>,
+    pub(crate) dirty: bool,
+}
+
+impl PendingInspectionChanges {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.removed.is_empty()
+            && self.upserted.is_empty()
+            && self.updated.is_empty()
+            && !self.dirty
+    }
 }
 
 #[derive(Debug, Default)]
@@ -147,16 +232,6 @@ impl ElementTreeChangeRuntime {
         {
             self.removed.push(removal);
         }
-    }
-
-    fn drain_upserts(&mut self) -> Vec<ElementId> {
-        self.upserted_set.clear();
-        core::mem::take(&mut self.upserted)
-    }
-
-    fn drain_updates(&mut self) -> Vec<ElementId> {
-        self.updated_set.clear();
-        core::mem::take(&mut self.updated)
     }
 
     fn clear(&mut self) {

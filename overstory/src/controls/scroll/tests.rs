@@ -146,8 +146,8 @@ fn root_scroll_boundary_leaves_the_unconsumed_delta_unhandled() {
         .max_offset
         .y;
     assert!(set_scroll_view_offset_y(&mut ui, scroll, max));
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     let result = ui.synthesize_scroll(scroll, Point::ZERO, ScrollDelta::LineDelta(0.0, -1.0));
 
@@ -159,7 +159,8 @@ fn root_scroll_boundary_leaves_the_unconsumed_delta_unhandled() {
     assert_eq!(change.consumed_delta, Vec2::ZERO);
     assert!(change.unconsumed_delta.y > 0.0);
     assert!(
-        ui.drain_inspection_changes()
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
             .tree
             .updated
             .iter()

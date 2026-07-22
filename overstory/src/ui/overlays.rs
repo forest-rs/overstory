@@ -77,7 +77,7 @@ impl Ui {
             &geometries,
         );
         self.overlays.rebuild_frame(input);
-        self.inspection_changes.record_overlays();
+        self.inspection_changes.record_change();
     }
 
     fn sync_overlay_hit_order(&mut self, active: &[OverlayHost]) {

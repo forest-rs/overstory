@@ -35,6 +35,7 @@ impl Ui {
         );
         self.scrolling
             .register_target(target, ScrollTarget::new(state, ARRANGE.into()));
+        self.record_element_tree_update(target);
     }
 
     pub(crate) fn register_virtual_scroll_target(&mut self, target: ElementId, state: ScrollState) {
@@ -44,6 +45,7 @@ impl Ui {
         );
         self.scrolling
             .register_target(target, ScrollTarget::new(state, LAYOUT.into()));
+        self.record_element_tree_update(target);
     }
 
     pub(crate) fn scroll_target(&self, target: ElementId) -> Option<ScrollTarget> {

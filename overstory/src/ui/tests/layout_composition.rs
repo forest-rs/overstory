@@ -154,8 +154,8 @@ fn layout_stabilization_exhaustion_preserves_layout_work() {
     let root = ui.root();
     let child = ui.append_widget(root, Box::new(OscillatingLayout));
     ui.set_layout(child, Layout::new().logical_size(10.0, 10.0));
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     let outcome = ui.compute_layout(Size::new(100.0, 50.0));
 
@@ -169,7 +169,11 @@ fn layout_stabilization_exhaustion_preserves_layout_work() {
     assert!(ui.invalidation().has_invalidated(LAYOUT));
     assert_eq!(ui.inspection_snapshot().layout.causes, expected);
     assert_eq!(
-        ui.drain_inspection_changes().layout.unwrap().causes,
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .layout
+            .unwrap()
+            .causes,
         expected
     );
 }
@@ -479,17 +483,22 @@ fn inspection_changes_track_tree_insertions_and_removals() {
     let root = ui.root();
 
     let silent = ui.append(root, crate::Panel::new());
-    assert!(ui.drain_inspection_changes().is_empty());
     ui.remove(silent);
-    assert!(ui.drain_inspection_changes().is_empty());
 
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    assert!(
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty()
+    );
+    ui.clear_inspection_changes(recording);
     assert!(ui.is_live_inspection_recording());
 
     let parent = ui.append(root, crate::Panel::new());
     let child = ui.append(parent, crate::Panel::new());
-    let inserted = ui.drain_inspection_changes();
+    let inserted = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
 
     assert!(inserted.tree.removed.is_empty());
     assert!(inserted.tree.updated.is_empty());
@@ -514,10 +523,16 @@ fn inspection_changes_track_tree_insertions_and_removals() {
             .iter()
             .any(|row| row.id == child && row.parent == Some(parent))
     );
-    assert!(ui.drain_inspection_changes().is_empty());
+    assert!(
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty()
+    );
 
     ui.remove(parent);
-    let removed = ui.drain_inspection_changes();
+    let removed = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
 
     assert!(
         removed
@@ -543,13 +558,61 @@ fn inspection_changes_track_tree_insertions_and_removals() {
     assert!(!removed.tree.upserted.iter().any(|row| row.id == parent));
     assert!(!removed.tree.updated.iter().any(|row| row.id == parent));
 
-    ui.end_live_inspection_recording();
+    ui.end_live_inspection_recording(recording);
     assert!(!ui.is_live_inspection_recording());
 
     let quiet = ui.append(root, crate::Panel::new());
-    assert!(ui.drain_inspection_changes().is_empty());
     ui.remove(quiet);
-    assert!(ui.drain_inspection_changes().is_empty());
+}
+
+#[test]
+fn live_inspection_recordings_drain_independently() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let first = ui.begin_live_inspection_recording();
+    let second = ui.begin_live_inspection_recording();
+
+    let child = ui.append(root, crate::Panel::new());
+    let first_batch = ui
+        .drain_inspection_changes(first)
+        .expect("first recording should be active");
+
+    assert!(first_batch.tree.upserted.iter().any(|row| row.id == child));
+    assert!(
+        ui.drain_inspection_changes(first)
+            .expect("first recording should be active")
+            .is_empty(),
+        "a recording should consume only its own pending batch"
+    );
+
+    ui.set_local(child, ui.properties().opacity, 0.5);
+    let second_batch = ui
+        .drain_inspection_changes(second)
+        .expect("second recording should be active");
+    let first_followup = ui
+        .drain_inspection_changes(first)
+        .expect("first recording should be active");
+
+    assert!(
+        second_batch.tree.upserted.iter().any(|row| row.id == child),
+        "the second recording should retain insertion history after the first drains"
+    );
+    assert!(
+        first_followup
+            .tree
+            .updated
+            .iter()
+            .any(|row| row.id == child),
+        "the first recording should continue from its own baseline"
+    );
+    assert_eq!(first_batch.revision, first_followup.baseline_revision);
+    assert_eq!(second_batch.revision, first_followup.revision);
+
+    assert!(ui.end_live_inspection_recording(first));
+    assert!(ui.drain_inspection_changes(first).is_none());
+    assert!(ui.is_live_inspection_recording());
+    assert!(ui.end_live_inspection_recording(second));
+    assert!(!ui.is_live_inspection_recording());
 }
 
 #[test]
@@ -560,26 +623,33 @@ fn inspection_changes_track_frame_summary_updates() {
         total: Duration::from_millis(5),
         ..UiFrameTimings::default()
     });
+    let recording = ui.begin_live_inspection_recording();
     assert!(
-        ui.drain_inspection_changes().is_empty(),
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty(),
         "frame timings should not accumulate before live recording starts"
     );
-
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    ui.clear_inspection_changes(recording);
     ui.set_frame_timings(UiFrameTimings {
         surface_refresh: Duration::from_millis(3),
         total: Duration::from_millis(8),
         ..UiFrameTimings::default()
     });
 
-    let changes = ui.drain_inspection_changes();
+    let changes = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
 
     assert!(changes.tree.is_empty());
     let frame = changes.frame.expect("frame summary should be drained once");
     assert_eq!(frame.timings.surface_refresh, Duration::from_millis(3));
     assert_eq!(frame.timings.total, Duration::from_millis(8));
-    assert!(ui.drain_inspection_changes().is_empty());
+    assert!(
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty()
+    );
 }
 
 #[test]
@@ -619,11 +689,13 @@ fn inspection_changes_track_existing_element_state_updates() {
     let mut ui = Ui::new();
     let root = ui.root();
     let button = ui.append(root, crate::Button::new("Inspect"));
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     ui.add_pseudo(button, PSEUDO_HOVER);
-    let hovered = ui.drain_inspection_changes();
+    let hovered = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(hovered.tree.upserted.is_empty());
     let hovered_row = hovered
         .tree
@@ -635,7 +707,9 @@ fn inspection_changes_track_existing_element_state_updates() {
     assert!(hovered_row.pseudos.contains(&PSEUDO_HOVER));
 
     ui.set_focusable(button, false);
-    let unfocusable = ui.drain_inspection_changes();
+    let unfocusable = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(
         unfocusable
             .tree
@@ -646,7 +720,9 @@ fn inspection_changes_track_existing_element_state_updates() {
 
     ui.set_focusable(button, true);
     assert!(ui.set_focus(Some(button)));
-    let focused = ui.drain_inspection_changes();
+    let focused = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(
         focused
             .tree
@@ -656,7 +732,9 @@ fn inspection_changes_track_existing_element_state_updates() {
     );
 
     assert!(ui.capture_pointer(button));
-    let captured = ui.drain_inspection_changes();
+    let captured = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(
         captured
             .tree
@@ -666,7 +744,9 @@ fn inspection_changes_track_existing_element_state_updates() {
     );
 
     ui.set_local(button, ui.properties().opacity, 0.25);
-    let property_update = ui.drain_inspection_changes();
+    let property_update = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(
         property_update.tree.updated.iter().any(|row| {
             row.id == button
@@ -686,14 +766,16 @@ fn inspection_changes_coalesce_existing_element_updates_until_drain() {
     let mut ui = Ui::new();
     let root = ui.root();
     let button = ui.append(root, crate::Button::new("Inspect"));
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     ui.set_local(button, ui.properties().opacity, 0.25);
     ui.set_local(button, ui.properties().opacity, 0.5);
     ui.add_pseudo(button, PSEUDO_HOVER);
 
-    let changes = ui.drain_inspection_changes();
+    let changes = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(changes.tree.upserted.is_empty());
     let button_rows: Vec<_> = changes
         .tree
@@ -724,13 +806,15 @@ fn inspection_changes_keep_inserted_elements_in_upsert_lane() {
 
     let mut ui = Ui::new();
     let root = ui.root();
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     let child = ui.append(root, crate::Panel::new());
     ui.set_local(child, ui.properties().opacity, 0.5);
 
-    let changes = ui.drain_inspection_changes();
+    let changes = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
     assert!(
         changes.tree.updated.is_empty(),
         "new elements should not be duplicated as detail-only updates"
@@ -753,13 +837,15 @@ fn inspection_changes_do_not_materialize_removed_dirty_elements() {
     let root = ui.root();
     let parent = ui.append(root, crate::Panel::new());
     let child = ui.append(parent, crate::Panel::new());
-    ui.begin_live_inspection_recording();
-    ui.clear_inspection_changes();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
 
     ui.set_local(child, ui.properties().opacity, 0.25);
     ui.remove(child);
 
-    let changes = ui.drain_inspection_changes();
+    let changes = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
 
     assert!(
         changes
@@ -775,6 +861,74 @@ fn inspection_changes_do_not_materialize_removed_dirty_elements() {
     assert!(
         !changes.tree.updated.iter().any(|row| row.id == child),
         "removed dirty elements should not be materialized as updates during drain"
+    );
+}
+
+#[test]
+fn timeline_runtime_drives_live_inspection_changes() {
+    let mut ui = Ui::new();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
+
+    let cue = ui.schedule_timeline_cue(10, 1);
+    let scheduled_revision = ui.inspection_snapshot().revision;
+    let scheduled = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
+    assert_eq!(scheduled.revision, scheduled_revision);
+    assert_eq!(
+        scheduled
+            .timeline
+            .expect("timeline mutation should produce live inspection state")
+            .pending_cues,
+        1
+    );
+
+    assert!(ui.cancel_timeline_cue(cue));
+    let canceled = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
+    assert_eq!(
+        canceled
+            .timeline
+            .expect("successful cancellation should update live inspection")
+            .pending_cues,
+        0
+    );
+
+    assert!(!ui.cancel_timeline_cue(cue));
+    assert!(
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty(),
+        "a rejected timeline mutation should not invalidate inspection"
+    );
+}
+
+#[test]
+fn style_vocabulary_records_only_real_registrations() {
+    let mut ui = Ui::new();
+    let recording = ui.begin_live_inspection_recording();
+    ui.clear_inspection_changes(recording);
+
+    let class = ui.class_id(".inspectable");
+    let registered = ui
+        .drain_inspection_changes(recording)
+        .expect("recording should be active");
+    assert_eq!(
+        registered
+            .style_vocabulary
+            .expect("a new style name should update live inspection")
+            .class_name(class),
+        Some(".inspectable")
+    );
+
+    assert_eq!(ui.class_id(".inspectable"), class);
+    assert!(
+        ui.drain_inspection_changes(recording)
+            .expect("recording should be active")
+            .is_empty(),
+        "resolving an existing style name should not create a revision"
     );
 }
 

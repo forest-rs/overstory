@@ -35,6 +35,7 @@ use super::value::{
 /// previous target value.
 #[derive(Default)]
 pub(crate) struct TimelineRuntime {
+    inspection_revision: u64,
     document_timeline: DocumentTimeline,
     manual_timelines: HashMap<AnimationTimelineId, ManualTimeline>,
     next_timeline_id: u64,
@@ -51,6 +52,12 @@ impl TimelineRuntime {
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns an opaque revision of the state exposed by timeline inspection.
+    #[must_use]
+    pub(crate) const fn inspection_revision(&self) -> u64 {
+        self.inspection_revision
     }
 
     /// Creates a seekable manual animation timeline starting at zero.
@@ -108,6 +115,7 @@ impl TimelineRuntime {
             payload,
             due_at,
         });
+        self.record_inspection_change();
         id
     }
 
@@ -115,7 +123,11 @@ impl TimelineRuntime {
     pub(crate) fn cancel_cue(&mut self, id: TimelineCueId) -> bool {
         let before = self.cues.len();
         self.cues.retain(|cue| cue.id != id);
-        self.cues.len() != before
+        let canceled = self.cues.len() != before;
+        if canceled {
+            self.record_inspection_change();
+        }
+        canceled
     }
 
     /// Drains all app-visible cues due at or before `now`.
@@ -131,6 +143,9 @@ impl TimelineRuntime {
         }
         self.cues = pending;
         due.sort_by_key(|cue| (cue.due_at, cue.id.get()));
+        if !due.is_empty() {
+            self.record_inspection_change();
+        }
         due
     }
 
@@ -138,6 +153,7 @@ impl TimelineRuntime {
     /// by interaction.
     pub(crate) fn request_transition(&mut self, key: TimelineTrackKey, spec: ResolvedTransition) {
         self.pending.insert(key, spec);
+        self.record_inspection_change();
     }
 
     /// Applies a finite visual effect clip at `now`, appending it above the
@@ -194,6 +210,7 @@ impl TimelineRuntime {
             .downcast_mut::<TimelineTargetState>()
             .expect("presentation timeline target must keep presentation state");
         state.set_effect(key, instance, now, &mut self.animation_events);
+        self.record_inspection_change();
         id
     }
 
@@ -230,6 +247,7 @@ impl TimelineRuntime {
             .downcast_mut::<NativeTargetState<T>>()?;
         state.set_value_kind(value_kind);
         state.set_effect(key, instance, now, &mut self.animation_events);
+        self.record_inspection_change();
         Some(id)
     }
 
@@ -254,7 +272,11 @@ impl TimelineRuntime {
             true
         });
         let had_pending = self.pending.remove(&key).is_some();
-        had_state || had_pending
+        let cleared = had_state || had_pending;
+        if cleared {
+            self.record_inspection_change();
+        }
+        cleared
     }
 
     /// Records the resolved target value for `key`, planning or retargeting
@@ -310,6 +332,7 @@ impl TimelineRuntime {
         if remove_state {
             self.targets.remove(&key);
         }
+        self.record_inspection_change();
         result
     }
 
@@ -350,6 +373,7 @@ impl TimelineRuntime {
         if remove_state {
             self.targets.remove(&key);
         }
+        self.record_inspection_change();
         Some(result)
     }
 
@@ -425,6 +449,9 @@ impl TimelineRuntime {
         }
         for key in empty {
             self.targets.remove(&key);
+        }
+        if !samples.is_empty() {
+            self.record_inspection_change();
         }
         samples
     }
@@ -615,6 +642,9 @@ impl TimelineRuntime {
 
     /// Removes all runtime state for `element`.
     pub(crate) fn remove_element(&mut self, element: ElementId, now: TimerInstant) {
+        let targets_before = self.targets.len();
+        let pending_before = self.pending.len();
+        let cues_before = self.cues.len();
         let removed_keys: Vec<_> = self
             .targets
             .keys()
@@ -628,6 +658,12 @@ impl TimelineRuntime {
         }
         self.pending.retain(|key, _| key.element() != element);
         self.cues.retain(|cue| cue.target != Some(element));
+        if self.targets.len() != targets_before
+            || self.pending.len() != pending_before
+            || self.cues.len() != cues_before
+        {
+            self.record_inspection_change();
+        }
     }
 
     /// Returns whether `key` currently has an active timeline track.
@@ -665,9 +701,17 @@ impl TimelineRuntime {
             if remove_state {
                 self.targets.remove(&key);
             }
+            self.record_inspection_change();
             return Some(result);
         }
         None
+    }
+
+    fn record_inspection_change(&mut self) {
+        self.inspection_revision = self
+            .inspection_revision
+            .checked_add(1)
+            .expect("timeline inspection revisions exhausted");
     }
 
     fn clock(&self, now: TimerInstant) -> TimelineClock<'_> {

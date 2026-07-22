@@ -21,7 +21,9 @@ const DEVTOOLS_EVENT_LOG_HEIGHT: f64 = 112.0;
 
 pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
     let open_dock = Rc::new(Cell::new(None));
+    let open_shell = Rc::new(RefCell::new(None::<InProcessDevtoolsShell>));
     let open_dock_for_click = Rc::clone(&open_dock);
+    let open_shell_for_click = Rc::clone(&open_shell);
     ui.events(button).click(move |ui, event| {
         if !matches!(
             event.phase(),
@@ -29,21 +31,20 @@ pub(super) fn wire_devtools_button(ui: &mut Ui, button: ElementId) {
         ) {
             return;
         }
-        if let Some(dock) = open_dock_for_click.get() {
-            ui.end_live_inspection_recording();
-            if ui.get(dock).is_some() {
-                ui.remove(dock);
+        if open_dock_for_click.get().is_some() {
+            if let Some(shell) = open_shell_for_click.borrow_mut().take() {
+                shell.close(ui);
             }
-            open_dock_for_click.set(None);
-            ui.remove_pseudo(button, PSEUDO_SELECTED);
             event.mark_handled();
             return;
         }
+        open_shell_for_click.borrow_mut().take();
 
-        if let Some(dock) =
+        if let Some((dock, shell)) =
             open_in_process_devtools(ui, event.current(), Rc::clone(&open_dock_for_click))
         {
             open_dock_for_click.set(Some(dock));
+            *open_shell_for_click.borrow_mut() = Some(shell);
         }
         event.mark_handled();
     });
@@ -219,7 +220,7 @@ fn open_in_process_devtools(
     ui: &mut Ui,
     anchor: ElementId,
     open_dock: Rc<Cell<Option<ElementId>>>,
-) -> Option<ElementId> {
+) -> Option<(ElementId, InProcessDevtoolsShell)> {
     let selected = ui.focused().or(Some(ui.root()));
     let mut target = UiLiveInspectionTarget::new(ui);
     let devtools = Rc::new(RefCell::new(
@@ -304,7 +305,7 @@ fn open_in_process_devtools(
             .schedule_timer_repeating(dock_id, millis(DEVTOOLS_REFRESH_INTERVAL_MS));
         wire_live_stream_timer(dock.ui_mut(), dock_id, shell.clone());
     });
-    Some(dock)
+    Some((dock, shell))
 }
 
 fn wire_refresh_button(ui: &mut Ui, button: ElementId, shell: InProcessDevtoolsShell) {

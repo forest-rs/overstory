@@ -10,7 +10,7 @@ use crate::inspection::{
     ElementInspectionRemoval, ElementInspectionRow, ElementPropertyInspectionField,
     ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin, ElementPropertyInspectionRow,
     ElementPropertyInspectionValue, ElementStateInspection, ElementTreeInspectionPatch,
-    LayerInspectionId, LayoutInspectionSnapshot, OverlayAnchorInspection,
+    LayerInspectionId, LayoutInspectionSnapshot, LiveInspectionRecording, OverlayAnchorInspection,
     OverlayFocusScopeInspectionRow, OverlayGraceInspectionRow, OverlayInspectionRow,
     OverlayInspectionSnapshot, SurfaceInspectionId, TemplateContractInspection,
     TimelineAnimationInspectionRow, TimelineInspectionSnapshot, UiInspectionChanges,
@@ -50,6 +50,9 @@ impl Ui {
     #[must_use]
     pub fn inspection_snapshot(&self) -> UiInspectionSnapshot {
         UiInspectionSnapshot {
+            revision: self
+                .inspection_changes
+                .projected_revision(self.timeline.inspection_revision()),
             root: self.root(),
             elements: self.element_inspection_rows(),
             layout: self.layout_inspection_snapshot(),
@@ -136,10 +139,18 @@ impl Ui {
     /// This is the live-update counterpart to [`Self::inspection_snapshot`].
     /// Hosts and devtools should use snapshots for initial attachment or
     /// resync, then consume drained changes for steady-state updates.
-    pub fn drain_inspection_changes(&mut self) -> UiInspectionChanges {
+    ///
+    /// Returns `None` when `recording` is not an active handle from this UI.
+    /// An active recording with no pending work returns an empty batch.
+    pub fn drain_inspection_changes(
+        &mut self,
+        recording: LiveInspectionRecording,
+    ) -> Option<UiInspectionChanges> {
+        self.synchronize_inspection_sources();
         let root = self.root();
         let frame = self.frame_stats();
-        let pending = self.inspection_changes.drain(frame);
+        let pending = self.inspection_changes.drain(recording)?;
+        let has_changes = !pending.is_empty();
         let upserted = pending
             .upserted
             .into_iter()
@@ -150,43 +161,50 @@ impl Ui {
             .into_iter()
             .filter_map(|id| self.element_inspection_row(id))
             .collect();
-        let overlays = pending
-            .overlays_dirty
-            .then(|| self.overlay_inspection_snapshot());
-        let layout = pending
-            .frame
-            .is_some()
-            .then(|| self.layout_inspection_snapshot());
-        UiInspectionChanges {
+        Some(UiInspectionChanges {
+            baseline_revision: pending.baseline_revision,
+            revision: pending.revision,
             tree: ElementTreeInspectionPatch {
                 root: Some(root),
                 removed: pending.removed,
                 upserted,
                 updated,
             },
-            layout,
-            overlays,
-            frame: pending.frame,
-        }
+            layout: has_changes.then(|| self.layout_inspection_snapshot()),
+            overlays: has_changes.then(|| self.overlay_inspection_snapshot()),
+            composition: has_changes.then(|| self.composition_inspection_snapshot()),
+            storage: has_changes.then(|| self.storage_inspection_snapshot()),
+            timeline: has_changes.then(|| self.timeline_inspection_snapshot()),
+            style_vocabulary: has_changes.then(|| self.style_vocabulary_snapshot()),
+            frame: has_changes.then_some(frame),
+        })
     }
 
     /// Starts recording live inspection changes.
     ///
     /// Snapshot capture does not require live recording. Call this when a live
     /// inspector attaches and intends to drain incremental changes through
-    /// [`Self::drain_inspection_changes`]. Calls are counted so multiple
-    /// inspectors can attach independently.
-    pub fn begin_live_inspection_recording(&mut self) {
-        self.inspection_changes.begin_recording();
+    /// [`Self::drain_inspection_changes`]. Each call returns an independent
+    /// handle, so draining one inspector never consumes another inspector's
+    /// changes.
+    ///
+    /// # API transition
+    ///
+    /// Live recording is handle-based. Keep the returned handle and pass it to
+    /// `drain_inspection_changes`, `clear_inspection_changes`, and
+    /// `end_live_inspection_recording`.
+    pub fn begin_live_inspection_recording(&mut self) -> LiveInspectionRecording {
+        self.synchronize_inspection_sources();
+        self.inspection_changes.begin_recording()
     }
 
     /// Stops one live inspection recording attachment.
     ///
     /// When the final attachment ends, pending changes are discarded so a later
     /// inspector starts from a fresh baseline capture instead of replaying
-    /// stale closed-inspector changes.
-    pub fn end_live_inspection_recording(&mut self) {
-        self.inspection_changes.end_recording();
+    /// stale closed-inspector changes. Returns whether `recording` was active.
+    pub fn end_live_inspection_recording(&mut self, recording: LiveInspectionRecording) -> bool {
+        self.inspection_changes.end_recording(recording)
     }
 
     /// Returns whether live inspection changes are currently recorded.
@@ -199,9 +217,17 @@ impl Ui {
     ///
     /// Use this immediately after taking a baseline snapshot for an attached
     /// inspector; otherwise earlier construction changes would be replayed
-    /// after the mirror already has the baseline state.
-    pub fn clear_inspection_changes(&mut self) {
-        self.inspection_changes.clear();
+    /// after the mirror already has the baseline state. Returns whether
+    /// `recording` was active.
+    pub fn clear_inspection_changes(&mut self, recording: LiveInspectionRecording) -> bool {
+        self.synchronize_inspection_sources();
+        self.inspection_changes.clear(recording)
+    }
+
+    fn synchronize_inspection_sources(&mut self) {
+        let timeline_revision = self.timeline.inspection_revision();
+        self.inspection_changes
+            .observe_timeline_revision(timeline_revision);
     }
 
     fn element_inspection_rows(&self) -> Vec<ElementInspectionRow> {
