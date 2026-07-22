@@ -289,7 +289,10 @@ pub use template::{
     TemplateNode, TemplatePart, TemplateSlot, TemplateSlotContract, TemplateSlotImportance,
     TemplateSlotStatus, TemplateSpec, TemplateSpecRecipe, TemplateWidgetFactory,
 };
-pub use text::{TextEngine, TextLayout, TextLayoutCacheStats, TextResources};
+pub use text::{
+    FontRegistrationError, TextEngine, TextLayout, TextLayoutCacheStats, TextResources,
+    TextResourcesBuilder,
+};
 pub use timeline_runtime::{
     AnimationEvent, AnimationEventKind, AnimationId, AnimationTimelineId, TimelineCue,
     TimelineCueId,

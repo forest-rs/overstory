@@ -19,20 +19,38 @@
 //! - Keep font discovery host-explicit where possible so no-std and browser
 //!   targets can choose their own font story.
 
-use alloc::collections::VecDeque;
-use alloc::rc::Rc;
+use alloc::{collections::VecDeque, rc::Rc, string::String, vec::Vec};
 use hashbrown::{Equivalent, HashMap};
 use imaging::{PaintSink, Painter, record::Glyph};
 use kurbo::Affine;
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontFeatures, FontVariations, Layout, LayoutContext,
     LineHeight, PlainEditor, PlainEditorDriver, PositionedLayoutItem, StyleProperty,
+    fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
 use peniko::{Brush, Fill, Style};
 use understory_presentation::{TextLineHeight, TextStyle as PresentationTextStyle};
 
 const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
 const MAX_ADVANCE_COMPATIBILITY_EPSILON: f32 = 0.01;
+
+/// Failure to register application-provided font data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum FontRegistrationError {
+    /// The data contains no usable font faces with discoverable family names.
+    InvalidData,
+}
+
+impl core::fmt::Display for FontRegistrationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidData => f.write_str("font data contains no usable font faces"),
+        }
+    }
+}
+
+impl core::error::Error for FontRegistrationError {}
 
 /// Lowers an Overstory logical scalar to Parley's `f32` coordinate space.
 ///
@@ -55,9 +73,32 @@ pub(crate) fn parley_scalar(value: f64) -> f32 {
 /// source data are shared by cloning Parley's shared font context internals.
 pub struct TextResources {
     font_context: FontContext,
+    registered_font_families: Vec<String>,
 }
 
 impl TextResources {
+    /// Starts configuring reusable text resources without system fonts.
+    ///
+    /// System discovery is opt-in through [`TextResourcesBuilder::system_fonts`]
+    /// so applications can construct deterministic embedded-font sets on every
+    /// target. Each [`TextResourcesBuilder::register_font`] call validates and
+    /// copies the supplied data before returning.
+    ///
+    /// ```no_run
+    /// # use overstory::{FontRegistrationError, TextResources};
+    /// # fn resources(font: &[u8]) -> Result<TextResources, FontRegistrationError> {
+    /// let resources = TextResources::builder()
+    ///     .system_fonts()
+    ///     .register_font(font)?
+    ///     .build();
+    /// # Ok(resources)
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn builder() -> TextResourcesBuilder {
+        TextResourcesBuilder::default()
+    }
+
     /// Constructs reusable text resources from an existing Parley font context.
     ///
     /// The context is converted to Parley's shared backing stores before being
@@ -65,9 +106,7 @@ impl TextResources {
     /// font collection and source-cache data.
     #[must_use]
     pub fn from_font_context(font_context: FontContext) -> Self {
-        Self {
-            font_context: make_shared_font_context(font_context),
-        }
+        Self::from_parts(font_context, Vec::new())
     }
 
     /// Constructs text resources with an initially empty font context.
@@ -78,14 +117,115 @@ impl TextResources {
     /// [`Self::from_font_context`].
     #[must_use]
     pub fn empty() -> Self {
-        Self::from_font_context(FontContext::default())
+        Self::builder().build()
     }
 
     /// Constructs text resources backed by Parley's platform font discovery.
     #[cfg(feature = "system-fonts")]
     #[must_use]
     pub fn system_fonts() -> Self {
-        Self::from_font_context(FontContext::default())
+        Self::builder().system_fonts().build()
+    }
+
+    /// Returns family names discovered from fonts registered through the builder.
+    ///
+    /// Names are sorted and deduplicated. Fonts supplied through
+    /// [`Self::from_font_context`] are not included because their registration
+    /// history is not available to Overstory.
+    #[must_use]
+    pub fn registered_font_families(&self) -> &[String] {
+        &self.registered_font_families
+    }
+
+    fn from_parts(font_context: FontContext, registered_font_families: Vec<String>) -> Self {
+        Self {
+            font_context: make_shared_font_context(font_context),
+            registered_font_families,
+        }
+    }
+}
+
+/// Builder for application font sources used by [`TextResources`].
+///
+/// The builder owns backend-specific registration state so applications only
+/// exchange font bytes, discovered family names, and Overstory error types.
+pub struct TextResourcesBuilder {
+    font_context: FontContext,
+    registered_font_families: Vec<String>,
+}
+
+impl TextResourcesBuilder {
+    /// Enables platform font discovery in addition to registered fonts.
+    #[cfg(feature = "system-fonts")]
+    #[must_use]
+    pub fn system_fonts(mut self) -> Self {
+        self.font_context.collection.load_system_fonts();
+        self
+    }
+
+    /// Registers every usable face in one font file or collection.
+    ///
+    /// The data is copied into shared text resources. The returned builder can
+    /// be chained to register additional fonts. Malformed, unsupported, or
+    /// metadata-free data returns [`FontRegistrationError::InvalidData`].
+    pub fn register_font(mut self, data: impl AsRef<[u8]>) -> Result<Self, FontRegistrationError> {
+        let registered = self
+            .font_context
+            .collection
+            .register_fonts(Blob::from(data.as_ref().to_vec()), None);
+        let mut discovered = registered
+            .into_iter()
+            .filter(|(_, fonts)| !fonts.is_empty())
+            .filter_map(|(family, _)| {
+                self.font_context
+                    .collection
+                    .family_name(family)
+                    .map(String::from)
+            })
+            .collect::<Vec<_>>();
+        if discovered.is_empty() {
+            return Err(FontRegistrationError::InvalidData);
+        }
+
+        self.registered_font_families.append(&mut discovered);
+        self.registered_font_families.sort_unstable();
+        self.registered_font_families.dedup();
+        Ok(self)
+    }
+
+    /// Returns family names discovered from fonts registered so far.
+    #[must_use]
+    pub fn registered_font_families(&self) -> &[String] {
+        &self.registered_font_families
+    }
+
+    /// Finishes the configuration and shares its font collection and caches.
+    #[must_use]
+    pub fn build(self) -> TextResources {
+        TextResources::from_parts(self.font_context, self.registered_font_families)
+    }
+}
+
+impl Default for TextResourcesBuilder {
+    fn default() -> Self {
+        Self {
+            font_context: FontContext {
+                collection: Collection::new(CollectionOptions {
+                    shared: false,
+                    system_fonts: false,
+                }),
+                source_cache: SourceCache::default(),
+            },
+            registered_font_families: Vec::new(),
+        }
+    }
+}
+
+impl core::fmt::Debug for TextResourcesBuilder {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextResourcesBuilder")
+            .field("registered_font_families", &self.registered_font_families)
+            .finish_non_exhaustive()
     }
 }
 
@@ -103,7 +243,9 @@ fn make_shared_font_context(font_context: FontContext) -> FontContext {
 
 impl core::fmt::Debug for TextResources {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("TextResources").finish_non_exhaustive()
+        f.debug_struct("TextResources")
+            .field("registered_font_families", &self.registered_font_families)
+            .finish_non_exhaustive()
     }
 }
 
@@ -497,8 +639,15 @@ pub(crate) fn render_text<S>(
 
 #[cfg(test)]
 mod tests {
-    use super::{TextEngine, TextResources};
+    use super::{FontRegistrationError, TextEngine, TextResources};
     use understory_presentation::{FontWeight, TextStyle};
+
+    #[test]
+    fn text_resources_reject_invalid_font_data() {
+        let error = TextResources::builder().register_font(b"not a font").err();
+
+        assert_eq!(error, Some(FontRegistrationError::InvalidData));
+    }
 
     #[test]
     fn shape_reuses_cached_layout_for_same_geometry_inputs() {
