@@ -4,8 +4,9 @@
 /// Inherited inline direction for application layout.
 ///
 /// Direction resolves logical start/end behavior throughout a retained
-/// subtree. It affects layout, text alignment, overlay policy, scrolling, and
-/// accessibility without changing retained or accessibility-tree order.
+/// subtree. It affects layout, the default paragraph direction, overlay
+/// policy, scrolling, directional controls, and accessibility without
+/// changing retained or accessibility-tree order.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum LayoutDirection {
     /// Inline content starts at the left and advances rightward.

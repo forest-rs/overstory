@@ -19,11 +19,12 @@ use accesskit::{
 };
 use alloc::{string::String, vec::Vec};
 use understory_overlay::OverlayBehavior;
+use understory_presentation::BaseDirection;
 use understory_property::Property;
 
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
-use crate::layouts::LayoutDirection;
+use crate::paragraph_direction::paragraph_base_direction;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::TemplateSlot;
@@ -355,8 +356,9 @@ impl Ui {
         let id = element.id();
         let role = accesskit_role(element, ctx, id == self.root());
         let mut node = Node::new(role);
-        let direction = ctx.get_value(element, ctx.properties().layout_direction);
-        node.set_text_direction(accesskit_text_direction(direction));
+        if let Some(direction) = accesskit_text_direction(paragraph_base_direction(element, ctx)) {
+            node.set_text_direction(direction);
+        }
         if id == self.root() && ctx.scale_factor() != 1.0 {
             node.set_transform(Affine::scale(ctx.scale_factor()));
         }
@@ -481,11 +483,13 @@ pub(crate) fn accesskit_node_id(id: ElementId) -> NodeId {
     NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
 }
 
-pub(crate) const fn accesskit_text_direction(direction: LayoutDirection) -> AccessTextDirection {
-    if direction.is_rtl() {
-        AccessTextDirection::RightToLeft
-    } else {
-        AccessTextDirection::LeftToRight
+pub(crate) const fn accesskit_text_direction(
+    direction: BaseDirection,
+) -> Option<AccessTextDirection> {
+    match direction {
+        BaseDirection::Auto => None,
+        BaseDirection::Ltr => Some(AccessTextDirection::LeftToRight),
+        BaseDirection::Rtl => Some(AccessTextDirection::RightToLeft),
     }
 }
 

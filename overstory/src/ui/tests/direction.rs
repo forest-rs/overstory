@@ -8,9 +8,20 @@ use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 use understory_presentation::{BaseDirection, TextAlign};
 
 use crate::{
-    Expander, LayoutDirection, Panel, Popup, SLOT_EXPANDER_DISCLOSURE, SLOT_SLIDER_THUMB,
-    SegmentedControl, Slider, Text, TextSpecExt, accessibility::accesskit_node_id,
+    Button, Expander, LayoutDirection, Panel, ParagraphDirection, Popup, SLOT_BUTTON_CONTENT,
+    SLOT_EXPANDER_DISCLOSURE, SLOT_SLIDER_THUMB, SegmentedControl, Slider, Text, TextSpecExt,
+    accessibility::accesskit_node_id,
 };
+
+fn presented_base_direction(ui: &Ui, text: ElementId) -> BaseDirection {
+    let node = ui.box_for(text).expect("text should own a layout node");
+    ui.presentation
+        .presentation(node)
+        .and_then(|presentation| presentation.plain_text())
+        .expect("text should have plain-text presentation")
+        .layout
+        .base_direction
+}
 
 #[test]
 fn runtime_direction_change_reflows_retained_row_without_losing_focus() {
@@ -109,6 +120,150 @@ fn inherited_direction_reaches_text_presentation_and_accessibility() {
     assert_eq!(
         text_node.text_direction(),
         Some(AccessTextDirection::RightToLeft)
+    );
+}
+
+#[test]
+fn paragraph_policy_is_independent_from_application_flow() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout_direction(root, LayoutDirection::Rtl);
+    let (row, (matching, automatic, identifier)) = ui.children(
+        root,
+        Panel::row(8.0).layout(Layout::new().logical_size(420.0, 40.0)),
+        |children| {
+            let matching = children.add(
+                Text::new("الواجهة العربية")
+                    .layout(Layout::new().logical_size(120.0, 30.0))
+                    .paragraph_direction(ParagraphDirection::MatchLayout),
+            );
+            let automatic = children.add(
+                Text::new("123 / 456")
+                    .layout(Layout::new().logical_size(120.0, 30.0))
+                    .paragraph_direction(ParagraphDirection::Auto),
+            );
+            let identifier = children.add(
+                Text::new("AR-1082-B")
+                    .layout(Layout::new().logical_size(120.0, 30.0))
+                    .paragraph_direction(ParagraphDirection::Ltr),
+            );
+            (matching, automatic, identifier)
+        },
+    );
+
+    ui.compute_layout(Size::new(420.0, 80.0));
+    ui.paint(&mut Scene::new());
+    assert_eq!(presented_base_direction(&ui, matching), BaseDirection::Rtl);
+    assert_eq!(
+        presented_base_direction(&ui, automatic),
+        BaseDirection::Auto
+    );
+    assert_eq!(
+        presented_base_direction(&ui, identifier),
+        BaseDirection::Ltr
+    );
+    assert!(ui.effective_bounds(matching).x0 > ui.effective_bounds(automatic).x0);
+    assert!(ui.effective_bounds(automatic).x0 > ui.effective_bounds(identifier).x0);
+
+    let update = ui.accesskit_tree_update();
+    let direction_for = |element| {
+        update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == accesskit_node_id(element))
+            .and_then(|(_, node)| node.text_direction())
+    };
+    assert_eq!(
+        direction_for(matching),
+        Some(AccessTextDirection::RightToLeft)
+    );
+    assert_eq!(direction_for(automatic), None);
+    assert_eq!(
+        direction_for(identifier),
+        Some(AccessTextDirection::LeftToRight)
+    );
+
+    let before = [
+        ui.effective_bounds(matching),
+        ui.effective_bounds(automatic),
+        ui.effective_bounds(identifier),
+    ];
+    let property = ui.properties().paragraph_direction;
+    ui.set_local(identifier, property, ParagraphDirection::Rtl);
+    ui.compute_layout(Size::new(420.0, 80.0));
+    ui.paint(&mut Scene::new());
+
+    assert_eq!(
+        [
+            ui.effective_bounds(matching),
+            ui.effective_bounds(automatic),
+            ui.effective_bounds(identifier),
+        ],
+        before,
+        "paragraph policy must not change surrounding retained layout"
+    );
+    assert_eq!(
+        presented_base_direction(&ui, identifier),
+        BaseDirection::Rtl
+    );
+    assert_eq!(ui.layout_direction(row), Some(LayoutDirection::Rtl));
+    assert!(ui.get(identifier).is_some());
+}
+
+#[test]
+fn content_presenter_inherits_owner_paragraph_policy() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout_direction(root, LayoutDirection::Rtl);
+    let button = ui.append(
+        root,
+        Button::new("AR-1082-B").paragraph_direction(ParagraphDirection::Ltr),
+    );
+    let label = ui
+        .slot(button, SLOT_BUTTON_CONTENT)
+        .expect("button should realize its content presenter");
+
+    ui.compute_layout(Size::new(240.0, 80.0));
+    ui.paint(&mut Scene::new());
+
+    assert_eq!(presented_base_direction(&ui, label), BaseDirection::Ltr);
+    assert_eq!(ui.layout_direction(button), Some(LayoutDirection::Rtl));
+    assert_eq!(ui.layout_direction(label), Some(LayoutDirection::Rtl));
+}
+
+#[test]
+fn paragraph_policy_participates_in_styles_and_bindings() {
+    let mut ui = Ui::new();
+    let property = ui.properties().paragraph_direction;
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Sheet,
+            SelectorBuilder::new(SelectorStep::type_tag(crate::TYPE_TEXT)).build(),
+            StyleBuilder::new()
+                .set(property, ParagraphDirection::Rtl)
+                .build(),
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    let source = ui.append(ui.root(), Panel::new());
+    let text = ui.append(ui.root(), Text::new("123 / 456"));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(text).unwrap(), property),
+        ParagraphDirection::Rtl
+    );
+
+    ui.bind(
+        Ui::element_endpoint(source, property),
+        Ui::element_endpoint(text, property),
+    )
+    .expect("paragraph policy binding should register");
+    ui.set_local(source, property, ParagraphDirection::Auto);
+    ui.flush_bindings();
+
+    assert_eq!(
+        ui.resolve_value_for(ui.get(text).unwrap(), property),
+        ParagraphDirection::Auto
     );
 }
 

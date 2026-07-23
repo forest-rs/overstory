@@ -383,6 +383,18 @@ fn inspection_snapshot_reports_effective_property_summaries() {
     );
     assert!(
         row.properties.iter().any(|property| {
+            property.name == "ParagraphDirection"
+                && property.group == ElementPropertyInspectionGroup::Text
+                && matches!(
+                    &property.value,
+                    ElementPropertyInspectionValue::Record { summary, .. }
+                        if summary == "match-layout → rtl"
+                )
+        }),
+        "snapshot should expose both paragraph policy and its resolved direction"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
             property.name == "Background"
                 && property.group == ElementPropertyInspectionGroup::Appearance
                 && property.value == ElementPropertyInspectionValue::Color(background)

@@ -3,6 +3,7 @@
 
 use alloc::format;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::inspection::{
@@ -17,9 +18,10 @@ use crate::inspection::{
     UiInspectionSnapshot, UiStorageInspectionSnapshot,
 };
 use crate::overlay::OverlayAnchor;
+use crate::paragraph_direction::paragraph_base_direction;
 use crate::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_HOVER, PSEUDO_PRESSED};
 use peniko::Brush;
-use understory_presentation::{BorderStyle, CornerShape};
+use understory_presentation::{BaseDirection, BorderStyle, CornerShape};
 use understory_presentation_properties::CornerRadius;
 use understory_property::{DependencyObject, Property};
 use understory_style::ResolvedSource;
@@ -400,6 +402,7 @@ impl Ui {
             ElementPropertyInspectionGroup::Text,
             properties.text_language,
         );
+        self.push_paragraph_direction_row(&mut rows, element);
         self.push_debug_property_row(
             &mut rows,
             element,
@@ -630,6 +633,35 @@ impl Ui {
     {
         self.push_property_row(rows, element, name, group, property, |value| {
             ElementPropertyInspectionValue::Token(format!("{value:?}"))
+        });
+    }
+
+    fn push_paragraph_direction_row(
+        &self,
+        rows: &mut Vec<ElementPropertyInspectionRow>,
+        element: &crate::Element,
+    ) {
+        let property = self.properties.paragraph_direction;
+        let resolved = self.explain_value_for(element, property);
+        let base_direction = paragraph_base_direction(element, self);
+        if base_direction == BaseDirection::Ltr
+            && !self.should_include_property_row(element, property, &resolved.value)
+        {
+            return;
+        }
+        let policy = resolved.value.inspection_summary();
+        let base = base_direction_summary(base_direction);
+        rows.push(ElementPropertyInspectionRow {
+            name: "ParagraphDirection",
+            group: ElementPropertyInspectionGroup::Text,
+            value: layout_record(
+                format!("{policy} → {base}"),
+                vec![
+                    ("policy", String::from(policy)),
+                    ("resolved", String::from(base)),
+                ],
+            ),
+            origin: property_inspection_origin(&resolved.source),
         });
     }
 
@@ -941,6 +973,14 @@ fn corner_shape_value(value: CornerShape) -> ElementPropertyInspectionValue {
 
 fn border_style_value(value: BorderStyle) -> ElementPropertyInspectionValue {
     ElementPropertyInspectionValue::Token(format!("{value:?}"))
+}
+
+const fn base_direction_summary(direction: BaseDirection) -> &'static str {
+    match direction {
+        BaseDirection::Auto => "auto",
+        BaseDirection::Ltr => "ltr",
+        BaseDirection::Rtl => "rtl",
+    }
 }
 
 fn count_value(value: usize) -> ElementPropertyInspectionValue {

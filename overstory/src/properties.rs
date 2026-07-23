@@ -34,6 +34,7 @@ use crate::layouts::{
     LayoutSize, LayoutSpacing,
 };
 use crate::motion::{EffectRules, PresentationTarget, TransitionDeclarations};
+use crate::paragraph_direction::ParagraphDirection;
 use crate::template::ControlTemplate;
 
 /// Whether an element participates in presentation and layout.
@@ -91,8 +92,9 @@ pub struct BuiltInProperties {
     /// [`LayoutDirection::Ltr`].
     ///
     /// Writes invalidate layout for the complete inheriting subtree so flex,
-    /// grid, text, overlays, scrolling, and accessibility can resolve logical
-    /// start/end behavior together without reconstructing retained elements.
+    /// grid, default paragraph flow, overlays, scrolling, and accessibility
+    /// can resolve logical start/end behavior together without reconstructing
+    /// retained elements.
     pub layout_direction: Property<LayoutDirection>,
 
     /// Shorthand layout contribution for this element. Prefer the
@@ -185,6 +187,14 @@ pub struct BuiltInProperties {
     /// Optional content language used for text shaping. Default `None`.
     pub text_language: Property<Option<Language>>,
 
+    /// Inherited paragraph base-direction policy. Default
+    /// [`ParagraphDirection::MatchLayout`].
+    ///
+    /// This is independent of [`Self::layout_direction`]. Writes invalidate
+    /// text layout for the inheriting subtree without changing application
+    /// geometry, control direction, overlays, or scrolling.
+    pub paragraph_direction: Property<ParagraphDirection>,
+
     /// Line height policy. Default [`TextLineHeight::FontSizeRelative`] at `1.2`.
     pub line_height: Property<TextLineHeight>,
 
@@ -206,7 +216,7 @@ pub struct BuiltInProperties {
     /// placement.
     pub text_wrap_mode: Property<TextWrapMode>,
 
-    /// Horizontal alignment relative to the inherited inline direction.
+    /// Horizontal alignment relative to the resolved paragraph direction.
     /// Default [`TextAlign::Start`].
     pub text_align: Property<TextAlign>,
 
@@ -467,6 +477,13 @@ impl BuiltInProperties {
             text_language: registry.register(
                 "TextLanguage",
                 PropertyMetadataBuilder::new(text_defaults.language)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            paragraph_direction: registry.register(
+                "ParagraphDirection",
+                PropertyMetadataBuilder::new(ParagraphDirection::MatchLayout)
                     .affects_channels(LAYOUT.into_set())
                     .inherits(true)
                     .build(),

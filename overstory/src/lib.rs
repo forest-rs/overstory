@@ -94,9 +94,11 @@ pub mod layouts;
 mod lookup;
 pub mod motion;
 mod overlay;
+mod paragraph_direction;
 mod presentation_runtime;
 mod properties;
 pub mod pseudos;
+mod resolved_properties;
 mod scroll_runtime;
 pub mod selectors;
 mod semantic_callback_runtime;
@@ -278,6 +280,7 @@ pub use motion::{
     PresentationTarget, PresentationValue, PresentationValueKind, TimingFunction,
 };
 pub use overlay::Placement;
+pub use paragraph_direction::ParagraphDirection;
 pub use properties::{BuiltInProperties, Visibility};
 pub use scroll_runtime::{
     ScrollCommandResult, ScrollInputSource, ScrollState, ScrollStateSnapshot,
@@ -328,15 +331,15 @@ pub mod prelude {
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
         IndexedStack, Layout, LayoutDirection, ListBox, ListItemContext, LocalState, Menu,
-        MenuButton, MenuItem, MenuItemActivatedEvent, OutlineView, Panel, PartTag,
-        PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot, PresentationTarget,
-        PresentationValue, PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId,
-        RadioButton, RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
-        ScrollInputSource, ScrollOffsetChangedEvent, ScrollState, ScrollView, SegmentedControl,
-        Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter,
-        StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
-        SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow, TabPage, TabView,
-        TabViewChildUiExt, Text, TextAlign, TextInput, TextInputEditCommitReason,
+        MenuButton, MenuItem, MenuItemActivatedEvent, OutlineView, Panel, ParagraphDirection,
+        PartTag, PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot,
+        PresentationTarget, PresentationValue, PresentationValueKind, ProgressBar,
+        PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
+        RoutedEvents, ScrollArea, ScrollBar, ScrollInputSource, ScrollOffsetChangedEvent,
+        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
+        SliderValueChangedEvent, Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet,
+        StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow,
+        TabPage, TabView, TabViewChildUiExt, Text, TextAlign, TextInput, TextInputEditCommitReason,
         TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
         TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
         TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,

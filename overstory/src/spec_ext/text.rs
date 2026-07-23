@@ -18,6 +18,7 @@ use understory_presentation::{
     TextLineHeight, TextWrapMode, WordBreak,
 };
 
+use crate::ParagraphDirection;
 use crate::spec_ext::ElementSpec;
 use crate::widget::BuiltInPropertyKey;
 
@@ -117,6 +118,17 @@ pub trait TextSpecExt: ElementSpec + Sized {
         self
     }
 
+    /// Sets the initial paragraph base-direction policy.
+    ///
+    /// This affects text preparation and alignment without changing the
+    /// surrounding application layout direction.
+    #[must_use]
+    fn paragraph_direction(mut self, direction: ParagraphDirection) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::ParagraphDirection, direction);
+        self
+    }
+
     /// Sets the initial text line-height policy.
     #[must_use]
     fn line_height(mut self, line_height: TextLineHeight) -> Self {
@@ -165,7 +177,7 @@ pub trait TextSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets horizontal alignment relative to the inherited inline direction.
+    /// Sets horizontal alignment relative to the resolved paragraph direction.
     #[must_use]
     fn text_align(mut self, align: TextAlign) -> Self {
         self.element_config_mut()

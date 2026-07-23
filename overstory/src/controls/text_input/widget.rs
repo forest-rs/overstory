@@ -7,6 +7,7 @@ use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, FocusEvent, KeyEvent};
+use crate::paragraph_direction::paragraph_base_direction;
 use crate::template::TemplateContract;
 use crate::ui::Ui;
 use crate::widget::Widget;
@@ -343,8 +344,11 @@ fn text_input_text_run_node(
     ctx: &crate::AccessibilityContext<'_>,
 ) -> accesskit::Node {
     let mut node = accesskit::Node::new(accesskit::Role::TextRun);
-    let direction = ctx.get_value(element, ctx.properties().layout_direction);
-    node.set_text_direction(crate::accessibility::accesskit_text_direction(direction));
+    if let Some(direction) =
+        crate::accessibility::accesskit_text_direction(paragraph_base_direction(element, ctx))
+    {
+        node.set_text_direction(direction);
+    }
     let style = text_style(element, ctx);
     let bounds = ctx.bounds(element.id());
     let y0 = bounds.y0 + text_top(style.font_size);

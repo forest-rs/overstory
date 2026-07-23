@@ -809,11 +809,17 @@ mod tests {
             base_direction: BaseDirection::Rtl,
             ..TextLayout::default()
         };
+        let auto = TextLayout {
+            align: TextAlign::Start,
+            base_direction: BaseDirection::Auto,
+            ..TextLayout::default()
+        };
 
         engine.shape("mixed العربية", &style, ltr, Some(180.0));
         engine.shape("mixed العربية", &style, rtl, Some(180.0));
+        engine.shape("mixed العربية", &style, auto, Some(180.0));
 
-        assert_eq!(engine.layout_cache_len(), 2);
-        assert_eq!(engine.layout_cache_stats().misses, 2);
+        assert_eq!(engine.layout_cache_len(), 3);
+        assert_eq!(engine.layout_cache_stats().misses, 3);
     }
 }

@@ -9,6 +9,7 @@ use crate::layouts::{Layout, LayoutDirection};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::test_support::{pointer_down, pointer_move, pointer_up};
 use crate::ui::Ui;
+use crate::{ParagraphDirection, TextSpecExt};
 use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Role, TextPosition, TextSelection, TreeId,
     TreeUpdate,
@@ -410,6 +411,66 @@ fn runtime_direction_change_realigns_editor_without_losing_selection_or_focus() 
         text_run.text_direction(),
         Some(accesskit::TextDirection::RightToLeft)
     );
+}
+
+#[test]
+fn runtime_paragraph_override_realigns_editor_without_changing_application_flow() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(360.0, 80.0));
+    let input = ui.append(
+        root,
+        TextInput::new()
+            .text("AR-1082-B")
+            .paragraph_direction(ParagraphDirection::Ltr),
+    );
+    let caret = ui.slot(input, SLOT_TEXT_INPUT_CARET).unwrap();
+    assert!(ui.set_focus(Some(input)));
+
+    ui.compute_layout(Size::new(360.0, 80.0));
+    let ltr_caret = ui.effective_bounds(caret);
+    let ltr_update = ui.accesskit_tree_update();
+    let selection = accesskit_node_for(&ltr_update, input)
+        .text_selection()
+        .cloned();
+    assert_eq!(
+        accesskit_node_for(&ltr_update, input).text_direction(),
+        Some(accesskit::TextDirection::LeftToRight)
+    );
+
+    let property = ui.properties().paragraph_direction;
+    ui.set_local(input, property, ParagraphDirection::Rtl);
+    ui.compute_layout(Size::new(360.0, 80.0));
+    let rtl_caret = ui.effective_bounds(caret);
+    let rtl_update = ui.accesskit_tree_update();
+    let input_node = accesskit_node_for(&rtl_update, input);
+    let text_run = accesskit_node_for_id(&rtl_update, text_input_text_run_node_id(input));
+
+    assert!(rtl_caret.x0 > ltr_caret.x0);
+    assert_eq!(ui.layout_direction(input), Some(LayoutDirection::Ltr));
+    assert_eq!(ui.focused(), Some(input));
+    assert_eq!(input_node.text_selection(), selection.as_ref());
+    assert_eq!(
+        input_node.text_direction(),
+        Some(accesskit::TextDirection::RightToLeft)
+    );
+    assert_eq!(
+        text_run.text_direction(),
+        Some(accesskit::TextDirection::RightToLeft)
+    );
+
+    ui.set_local(input, property, ParagraphDirection::Auto);
+    ui.compute_layout(Size::new(360.0, 80.0));
+    let auto_update = ui.accesskit_tree_update();
+    assert_eq!(
+        accesskit_node_for(&auto_update, input).text_direction(),
+        None
+    );
+    assert_eq!(
+        accesskit_node_for_id(&auto_update, text_input_text_run_node_id(input)).text_direction(),
+        None
+    );
+    assert_eq!(ui.focused(), Some(input));
 }
 
 #[test]
