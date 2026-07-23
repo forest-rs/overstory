@@ -112,12 +112,12 @@ imaging_wgpu = { default-features = false, features = ["wgpu-29"], version = "0.
 
 # Input event normalization.
 cursor-icon = { default-features = false, features = ["alloc"], version = "1.2.0" }
-ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
-ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
-ui-events-uikit = { git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
-ui-events-wayland = { features = ["xkb"], git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
-ui-events-windows = { git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
-ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458" }
+ui-events = { default-features = false, features = ["kurbo"], git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
+ui-events-appkit = { git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
+ui-events-uikit = { git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
+ui-events-wayland = { features = ["xkb"], git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
+ui-events-windows = { git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
+ui-events-winit = { git = "https://github.com/forest-rs/ui-events.git", rev = "4a993e74196079c2305a9b784fa250b23efa2527" }
 usvg = { default-features = false, version = "0.47.0" }
 web-time = { version = "1.1.0" }
 

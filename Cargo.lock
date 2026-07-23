@@ -3635,7 +3635,7 @@ dependencies = [
 [[package]]
 name = "ui-events"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "keyboard-types",
@@ -3645,7 +3645,7 @@ dependencies = [
 [[package]]
 name = "ui-events-appkit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3657,7 +3657,7 @@ dependencies = [
 [[package]]
 name = "ui-events-apple-common"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "ui-events",
@@ -3666,7 +3666,7 @@ dependencies = [
 [[package]]
 name = "ui-events-uikit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "objc2 0.6.4",
@@ -3680,7 +3680,7 @@ dependencies = [
 [[package]]
 name = "ui-events-wayland"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "ui-events",
@@ -3692,7 +3692,7 @@ dependencies = [
 [[package]]
 name = "ui-events-windows"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "dpi",
  "ui-events",
@@ -3702,7 +3702,7 @@ dependencies = [
 [[package]]
 name = "ui-events-winit"
 version = "0.3.0"
-source = "git+https://github.com/forest-rs/ui-events.git?rev=9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458#9fd8cc2f6c2ad0a31f2e776c4bb8d2643d691458"
+source = "git+https://github.com/forest-rs/ui-events.git?rev=4a993e74196079c2305a9b784fa250b23efa2527#4a993e74196079c2305a9b784fa250b23efa2527"
 dependencies = [
  "ui-events",
  "winit",

@@ -14,6 +14,7 @@
 
 #![expect(unsafe_code, reason = "Win32 FFI")]
 
+use ui_events_windows::MessageResponse;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::UI::HiDpi;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -204,14 +205,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         // SAFETY: always valid to call from a window procedure.
         unsafe { PostQuitMessage(0) };
-        Some(0)
+        MessageResponse::Consume(0)
     } else {
-        None
+        MessageResponse::Forward
     };
 
-    result.map_or_else(
-        // SAFETY: always valid to call from a window procedure.
-        || unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-        LRESULT,
-    )
+    match result {
+        // SAFETY: always valid to call `DefWindowProcW` from a window procedure.
+        MessageResponse::Forward => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        MessageResponse::ForwardWithParameters { wparam, lparam } => unsafe {
+            DefWindowProcW(hwnd, msg, WPARAM(wparam), LPARAM(lparam))
+        },
+        MessageResponse::Consume(lresult) => LRESULT(lresult),
+        MessageResponse::ConsumeIfHandled(lresult) => LRESULT(lresult),
+    }
 }

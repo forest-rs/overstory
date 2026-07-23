@@ -19,7 +19,7 @@ use frameclock::{
 use overstory::{CursorIcon, Ui};
 use overstory_host::{FrameViewport, HostDispatchResult, UiHost};
 use overstory_presenter_wgpu::{WgpuPresentResult, WgpuPresenter, WgpuPresenterDescriptor};
-use ui_events_windows::{Event, EventReducer};
+use ui_events_windows::{InputEvent, MessageResponse, WindowMessageReducer};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -41,7 +41,7 @@ pub(crate) struct WindowState {
     accesskit: Adapter,
     presenter: WgpuPresenter,
     host: UiHost,
-    event_reducer: EventReducer,
+    message_reducer: WindowMessageReducer,
     scale_factor: f64,
     cursor: CursorIcon,
     time_map: TimeMap,
@@ -54,6 +54,7 @@ impl WindowState {
     {
         // SAFETY: `hwnd` was just created by `create_window`.
         let scale_factor = unsafe { super::window::dpi_scale_factor(hwnd) };
+        let event_reducer = unsafe { WindowMessageReducer::new(hwnd.0, scale_factor) };
 
         let instance = wgpu::Instance::default();
         let target = wgpu::SurfaceTargetUnsafe::RawHandle {
@@ -92,7 +93,7 @@ impl WindowState {
             accesskit,
             presenter,
             host,
-            event_reducer: EventReducer::default(),
+            message_reducer: event_reducer,
             scale_factor,
             cursor: CursorIcon::Default,
             time_map: TimeMap::new(),
@@ -108,7 +109,7 @@ impl WindowState {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-    ) -> Option<isize> {
+    ) -> MessageResponse {
         if msg == WM_GETOBJECT {
             return self
                 .accesskit
@@ -117,7 +118,8 @@ impl WindowState {
                     lparam,
                     &mut super::accessibility::AccessKitActivation(self.accesskit_tree_update()),
                 )
-                .map(|r| r.into().0);
+                .map(|r| r.into().0)
+                .map_or(MessageResponse::Forward, MessageResponse::Consume);
         }
 
         let result = self.handle_overstory_message(msg, wparam, lparam);
@@ -131,9 +133,9 @@ impl WindowState {
                 // TODO: handle close button/Alt+F4 behavior here, in the future.
                 // SAFETY: `hwnd` is valid.
                 let _ = unsafe { DestroyWindow(self.hwnd) };
-                Some(0)
+                MessageResponse::Consume(0)
             }
-            WM_TIMER => Some(0),
+            WM_TIMER => MessageResponse::Consume(0),
             _ => result,
         }
     }
@@ -143,20 +145,13 @@ impl WindowState {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-    ) -> Option<isize> {
+    ) -> MessageResponse {
         let event_time = self.host.frame_now().ticks();
-        let translations = unsafe {
-            self.event_reducer.reduce(
-                self.hwnd.0,
-                msg,
-                wparam.0,
-                lparam.0,
-                self.scale_factor,
-                event_time,
-            )
+        let reduction = unsafe {
+            self.message_reducer
+                .reduce(msg, wparam.0, lparam.0, event_time)
         };
-        let reducer_handled = !translations.is_empty();
-        for translation in translations {
+        for translation in reduction.events {
             self.dispatch_translated_event(translation);
         }
 
@@ -164,35 +159,43 @@ impl WindowState {
             WM_SIZE => {
                 self.resize();
                 self.request_frame(FrameDemand::CONTINUOUS_INPUT);
-                Some(0)
+                MessageResponse::Consume(0)
             }
             WM_DPICHANGED => {
                 self.update_scale_factor();
                 self.resize();
                 self.request_frame(FrameDemand::CONTINUOUS_INPUT);
-                Some(0)
+                MessageResponse::Consume(0)
             }
             WM_SETFOCUS => {
                 self.accesskit.update_window_focus_state(true);
-                Some(0)
+                MessageResponse::Consume(0)
             }
             WM_KILLFOCUS => {
                 self.accesskit.update_window_focus_state(false);
-                Some(0)
+                MessageResponse::Consume(0)
             }
-            WM_ACTIVATE => Some(0),
+            WM_ACTIVATE => MessageResponse::Consume(0),
             WM_SETCURSOR => {
                 if (lparam.0.cast_unsigned() & 0xFFFF) as u32 == HTCLIENT {
                     self.sync_cursor();
                     // SAFETY: called on this window's owning thread,
                     //          in response to a message this window received.
                     unsafe { super::cursor::set_cursor(self.cursor) };
-                    Some(0)
+                    MessageResponse::Consume(0)
                 } else {
-                    None
+                    MessageResponse::Forward
                 }
             }
-            _ => (is_input_message(msg) && reducer_handled).then_some(0),
+            _ => {
+                if let MessageResponse::ConsumeIfHandled(lresult) = reduction.response
+                    && is_input_message(msg)
+                {
+                    MessageResponse::Consume(lresult)
+                } else {
+                    MessageResponse::Forward
+                }
+            }
         }
     }
 
@@ -234,17 +237,17 @@ impl WindowState {
         self.host.duration_until_next_wakeup()
     }
 
-    fn dispatch_translated_event(&mut self, translation: Event) {
+    fn dispatch_translated_event(&mut self, translation: InputEvent) {
         match translation {
-            Event::Pointer(pointer) => {
+            InputEvent::Pointer(pointer) => {
                 let result = self.host.dispatch_pointer_event(&pointer);
                 self.finish_dispatch(result);
             }
-            Event::Keyboard(key) => {
+            InputEvent::Keyboard(key) => {
                 let result = self.host.dispatch_key(&key);
                 self.finish_dispatch(result);
             }
-            Event::Text(_) => {
+            InputEvent::Text(_) => {
                 // Overstory does not yet expose a host-level text input dispatch path.
             }
         }
@@ -277,6 +280,7 @@ impl WindowState {
     fn update_scale_factor(&mut self) {
         // SAFETY: `self.hwnd` is this window's own valid handle.
         self.scale_factor = unsafe { super::window::dpi_scale_factor(self.hwnd) };
+        self.message_reducer.set_scale_factor(self.scale_factor);
     }
 
     fn resize(&mut self) {
