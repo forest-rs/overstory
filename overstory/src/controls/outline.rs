@@ -22,13 +22,16 @@ use understory_outline::{Outline, OutlineModel, VisibleRow};
 use understory_selection::Selection;
 use understory_style::{PartTag, TypeTag};
 
-use crate::behavior::{ElementRealizeContext, ElementRealizeResult, WidgetEventContext};
+use crate::behavior::{
+    ArrangeContext, ArrangeResult, ElementRealizeContext, ElementRealizeResult, WidgetEventContext,
+};
 use crate::controls::scroll::{
     FixedVirtualViewport, normalize_scroll_offset_y, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    CallbackSlot, EventHandler, ReservedVerticalScrollArea, append_reserved_vertical_scroll_area,
-    configure_vertical_scroll_accessibility, is_descendant_or_self, reserved_scroll_frame_widget,
+    CallbackSlot, EventHandler, InlineArrowDirection, ReservedVerticalScrollArea,
+    append_reserved_vertical_scroll_area, configure_vertical_scroll_accessibility,
+    inline_arrow_direction, is_descendant_or_self, reserved_scroll_frame_widget,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
@@ -683,6 +686,7 @@ impl Widget for OutlineViewWidget {
             return;
         }
 
+        let inline_direction = inline_arrow_direction(ctx, outline, &event.key.key);
         let handled = match &event.key.key {
             Key::Named(NamedKey::ArrowDown) => {
                 self.move_selection_by(outline, ctx, 1, ScrollInputSource::Keyboard)
@@ -713,10 +717,12 @@ impl Widget for OutlineViewWidget {
                 let last = self.update_visible_len() - 1;
                 self.select_visible_index(outline, ctx, last, ScrollInputSource::Keyboard)
             }
-            Key::Named(NamedKey::ArrowRight) => {
+            _ if inline_direction == Some(InlineArrowDirection::End) => {
                 self.expand_or_advance(outline, ctx, ScrollInputSource::Keyboard)
             }
-            Key::Named(NamedKey::ArrowLeft) => self.collapse_selected(outline, ctx),
+            _ if inline_direction == Some(InlineArrowDirection::Start) => {
+                self.collapse_selected(outline, ctx)
+            }
             Key::Named(NamedKey::Enter) => self.toggle_selected(outline, ctx),
             Key::Character(s) if s == " " => self.toggle_selected(outline, ctx),
             _ => false,
@@ -1080,6 +1086,11 @@ impl Widget for OutlineItemWidget {
             .with_recommended_slot(SLOT_OUTLINE_ITEM_DISCLOSURE)
     }
 
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let item = ctx.id();
+        ArrangeResult::from_layout_changed(sync_outline_disclosure(ctx.ui_mut(), item, self.info))
+    }
+
     fn handle_click(&mut self, ctx: &mut WidgetEventContext<'_>, event: ClickEvent<'_>) {
         let item = ctx.id();
         if !event.is_semantic_target() || !ctx.is_enabled(item) {
@@ -1206,16 +1217,8 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
         }
     });
     ui.set_local(id, ui.properties().content, item.label.clone());
+    sync_outline_disclosure(ui, id, item.info);
     if let Some(disclosure) = ui.slot(id, SLOT_OUTLINE_ITEM_DISCLOSURE) {
-        ui.set_local(
-            disclosure,
-            ui.properties().content,
-            disclosure_text(
-                item.info.depth,
-                item.info.has_children,
-                item.info.is_expanded,
-            ),
-        );
         ui.set_local(
             disclosure,
             ui.properties().layout_size,
@@ -1224,6 +1227,24 @@ fn update_realized_outline_item(ui: &mut Ui, id: ElementId, item: &OutlineRowSna
                 .height(LayoutDimension::Percent(1.0)),
         );
     }
+}
+
+fn sync_outline_disclosure(ui: &mut Ui, item: ElementId, info: OutlineItemInfo) -> bool {
+    let Some(disclosure) = ui.slot(item, SLOT_OUTLINE_ITEM_DISCLOSURE) else {
+        return false;
+    };
+    let text = disclosure_text(
+        info.depth,
+        info.has_children,
+        info.is_expanded,
+        ui.layout_direction(item)
+            .is_some_and(|direction| direction.is_rtl()),
+    );
+    if ui.resolve_value_for(ui.get(disclosure).unwrap(), ui.properties().content) == text {
+        return false;
+    }
+    ui.set_local(disclosure, ui.properties().content, text);
+    true
 }
 
 /// Selects `key` in `outline`.
@@ -1403,15 +1424,16 @@ fn with_outline_view_mut<R>(
     output
 }
 
-fn disclosure_text(depth: usize, has_children: bool, is_expanded: bool) -> String {
+fn disclosure_text(depth: usize, has_children: bool, is_expanded: bool, rtl: bool) -> String {
     let mut text = String::new();
     for _ in 0..depth {
         text.push_str("  ");
     }
-    text.push_str(match (has_children, is_expanded) {
-        (true, true) => "▾",
-        (true, false) => "▸",
-        (false, _) => " ",
+    text.push_str(match (has_children, is_expanded, rtl) {
+        (true, true, _) => "▾",
+        (true, false, false) => "▸",
+        (true, false, true) => "◂",
+        (false, _, _) => " ",
     });
     text
 }

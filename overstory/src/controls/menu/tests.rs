@@ -12,10 +12,10 @@ use understory_overlay::{GraceShape, OverlayBehavior, point_in_grace_shape};
 use super::{Menu, MenuButton, MenuItem};
 use crate::accessibility::accesskit_node_id;
 use crate::element::ElementId;
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutDirection};
 use crate::pseudos::PSEUDO_EXPANDED;
 use crate::test_support::{pointer_down, pointer_move};
-use crate::{Button, Ui, Visibility};
+use crate::{Button, SLOT_MENU_ITEM_INDICATOR, Ui, Visibility};
 
 const VIEWPORT: Size = Size::new(640.0, 420.0);
 
@@ -108,6 +108,61 @@ fn nested_keyboard_menus_share_overlay_focus_accessibility_and_inspection_state(
     assert!(ui.get(root.popup).is_none());
     assert_eq!(ui.focused(), Some(button));
     assert!(ui.inspection_snapshot().overlays.entries.is_empty());
+}
+
+#[test]
+fn runtime_rtl_switch_mirrors_open_menu_geometry_chrome_and_keys() {
+    let (mut ui, button, _outside) = test_ui(test_menu());
+    ui.set_layout(
+        button,
+        Layout::new()
+            .absolute_at(280.0, 20.0)
+            .logical_size(110.0, 34.0),
+    );
+    compute_layout(&mut ui);
+    open_root_with_keyboard(&mut ui, button);
+    let root = open_menu(&ui, button, OverlayBehavior::Menu);
+    let submenu_item = menu_items(&ui, root.content)[2];
+    assert!(ui.set_focus(Some(submenu_item)));
+    key(&mut ui, NamedKey::ArrowRight, Code::ArrowRight);
+    compute_layout(&mut ui);
+    let child = open_menu(&ui, submenu_item, OverlayBehavior::Submenu);
+    let ltr_item = ui.effective_bounds(submenu_item);
+    let ltr_child = ui.effective_bounds(child.popup);
+    assert!(
+        ltr_child.center().x > ltr_item.center().x,
+        "ltr item={ltr_item:?}, child={ltr_child:?}"
+    );
+
+    ui.set_layout_direction(ui.root(), LayoutDirection::Rtl);
+    compute_layout(&mut ui);
+
+    let rtl_item = ui.effective_bounds(submenu_item);
+    let rtl_child = ui.effective_bounds(child.popup);
+    assert!(
+        rtl_child.center().x < rtl_item.center().x,
+        "rtl item={rtl_item:?}, child={rtl_child:?}"
+    );
+    assert_eq!(ui.focused(), Some(menu_items(&ui, child.content)[0]));
+    let indicator = ui
+        .slot(submenu_item, SLOT_MENU_ITEM_INDICATOR)
+        .expect("submenu item should expose its direction indicator");
+    assert_eq!(
+        ui.resolve_value_for(ui.get(indicator).unwrap(), ui.properties().text),
+        "‹"
+    );
+
+    key(&mut ui, NamedKey::ArrowRight, Code::ArrowRight);
+    assert!(ui.get(child.popup).is_none());
+    assert_eq!(ui.focused(), Some(submenu_item));
+
+    key(&mut ui, NamedKey::ArrowLeft, Code::ArrowLeft);
+    compute_layout(&mut ui);
+    let reopened = open_menu(&ui, submenu_item, OverlayBehavior::Submenu);
+    assert!(
+        ui.effective_bounds(reopened.popup).center().x
+            < ui.effective_bounds(submenu_item).center().x
+    );
 }
 
 #[test]

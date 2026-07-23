@@ -24,7 +24,9 @@ use crate::controls::choice::{
     last_enabled_index, normalized_selection_target, option_label, selected_enabled_index,
     wrapping_next_enabled_index, wrapping_previous_enabled_index,
 };
-use crate::controls::support::{CallbackSlot, EventHandler};
+use crate::controls::support::{
+    CallbackSlot, EventHandler, InlineArrowDirection, inline_arrow_direction,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutContainer, LayoutPlacement, LayoutSize, LayoutSpacing};
@@ -301,11 +303,16 @@ impl Widget for SegmentedControlWidget {
         }
 
         let current = self.selected_index;
+        let inline_direction = inline_arrow_direction(ctx, segmented, &event.key.key);
         let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => {
+            Key::Named(NamedKey::ArrowDown) => wrapping_next_enabled_index(&self.options, current),
+            Key::Named(NamedKey::ArrowUp) => {
+                wrapping_previous_enabled_index(&self.options, current)
+            }
+            _ if inline_direction == Some(InlineArrowDirection::End) => {
                 wrapping_next_enabled_index(&self.options, current)
             }
-            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => {
+            _ if inline_direction == Some(InlineArrowDirection::Start) => {
                 wrapping_previous_enabled_index(&self.options, current)
             }
             Key::Named(NamedKey::Home) => first_enabled_index(&self.options),

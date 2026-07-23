@@ -36,6 +36,7 @@
 //!   viewport controls so axis-specific code stays small.
 
 mod dimension;
+mod direction;
 mod inspection;
 mod longhands;
 mod placement;
@@ -50,8 +51,9 @@ pub(crate) fn taffy_scalar(value: f64) -> f32 {
 }
 
 pub use dimension::LayoutDimension;
+pub use direction::LayoutDirection;
 pub use longhands::{
-    LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutDisplay, LayoutEdges,
+    FlexDirection, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDisplay, LayoutEdges,
     LayoutGap, LayoutJustify, LayoutOverflow, LayoutOverflowMode, LayoutSize, LayoutSpacing,
     LayoutWrap,
 };

@@ -268,9 +268,9 @@ pub use event_runtime::{
 };
 pub use generic::present_surface;
 pub use layouts::{
-    Layout, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension, LayoutDirection,
-    LayoutDisplay, LayoutEdges, LayoutGap, LayoutJustify, LayoutOverflow, LayoutOverflowMode,
-    LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
+    FlexDirection, Layout, LayoutAlign, LayoutAlignment, LayoutContainer, LayoutDimension,
+    LayoutDirection, LayoutDisplay, LayoutEdges, LayoutGap, LayoutJustify, LayoutOverflow,
+    LayoutOverflowMode, LayoutPlacement, LayoutSize, LayoutSpacing, LayoutWrap,
 };
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use motion::{
@@ -327,20 +327,21 @@ pub mod prelude {
         ControlTemplateSpec, ControlTemplateSpecExt, CursorIcon, Divider,
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
-        IndexedStack, Layout, ListBox, ListItemContext, LocalState, Menu, MenuButton, MenuItem,
-        MenuItemActivatedEvent, OutlineView, Panel, PartTag, PlaybackDirection, Popup,
-        PresentationAnimationValue, PresentationSlot, PresentationTarget, PresentationValue,
-        PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton,
-        RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
+        IndexedStack, Layout, LayoutDirection, ListBox, ListItemContext, LocalState, Menu,
+        MenuButton, MenuItem, MenuItemActivatedEvent, OutlineView, Panel, PartTag,
+        PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot, PresentationTarget,
+        PresentationValue, PresentationValueKind, ProgressBar, PropertyEndpoint, PseudoClassId,
+        RadioButton, RadioGroup, RangeSpecExt, ResourceKey, RoutedEvents, ScrollArea, ScrollBar,
         ScrollInputSource, ScrollOffsetChangedEvent, ScrollState, ScrollView, SegmentedControl,
         Select, Size, Slider, SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter,
         StackAlignment, StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt,
         SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow, TabPage, TabView,
-        TabViewChildUiExt, Text, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
-        TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
-        TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,
-        TimerDuration, TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip,
-        TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport, Visibility, ZStack,
+        TabViewChildUiExt, Text, TextAlign, TextInput, TextInputEditCommitReason,
+        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
+        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
+        TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,
+        TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath,
+        View, Viewport, Visibility, ZStack,
     };
 }
 
@@ -355,7 +356,7 @@ pub use understory_focus::Navigation;
 pub use understory_presentation::{
     BorderStyle, CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle,
     FontWeight, FontWidth, GenericFamily, Language, OverflowWrap, PathFill, PathPaintOrder,
-    PathPrimitive, PathStroke, TextLineHeight, TextWrapMode, WordBreak,
+    PathPrimitive, PathStroke, TextAlign, TextLineHeight, TextWrapMode, WordBreak,
 };
 pub use understory_presentation_properties::CornerRadius;
 pub use understory_responder::types::Phase;

@@ -3,13 +3,13 @@ use alloc::{borrow::Cow, string::String};
 use kurbo::Rect;
 use parley::{FontFeatures, FontVariations, PlainEditor, StyleProperty};
 use peniko::{Brush, Color};
-use understory_presentation::{TextLineHeight, TextStyle};
+use understory_presentation::{TextLayout, TextLineHeight, TextStyle};
 
-use crate::controls::text::text_style;
+use crate::controls::text::{text_layout, text_style};
 use crate::element::ElementId;
-use crate::layouts::{LayoutPlacement, LayoutSize};
+use crate::layouts::{LayoutDimension, LayoutPlacement, LayoutSize};
 use crate::pseudos::PSEUDO_PLACEHOLDER_SHOWN;
-use crate::text::parley_scalar;
+use crate::text::{parley_alignment, parley_scalar};
 use crate::ui::Ui;
 
 use super::ids::{TEXT_INPUT_HEIGHT, TEXT_INPUT_PADDING_X};
@@ -32,6 +32,8 @@ impl TextInputPointerState {
 pub(super) struct TextInputEditState {
     pub(super) editor: PlainEditor<Brush>,
     style: TextStyle,
+    layout: TextLayout,
+    width: f32,
 }
 
 impl TextInputEditState {
@@ -39,18 +41,37 @@ impl TextInputEditState {
         let mut editor = PlainEditor::new(style.font_size);
         apply_editor_style(&mut editor, &style);
         editor.set_text(&text);
-        Self { editor, style }
+        Self {
+            editor,
+            style,
+            layout: TextLayout::default(),
+            width: 0.0,
+        }
     }
 
     pub(super) fn text(&self) -> &str {
         self.editor.raw_text()
     }
 
-    pub(super) fn sync_style(&mut self, style: &TextStyle) {
+    fn sync(&mut self, style: &TextStyle, layout: TextLayout, width: f32) -> bool {
+        let mut changed = false;
         if self.style != *style {
             self.style = style.clone();
             apply_editor_style(&mut self.editor, style);
+            changed = true;
         }
+        if self.layout != layout {
+            self.layout = layout;
+            self.editor
+                .set_alignment(parley_alignment(layout.align, layout.base_direction));
+            changed = true;
+        }
+        if self.width != width {
+            self.width = width;
+            self.editor.set_width(Some(width));
+            changed = true;
+        }
+        changed
     }
 
     pub(super) fn edit_from_key(
@@ -221,7 +242,8 @@ pub(super) fn refresh_text_input_parts(
         return;
     };
     let style = text_style(element, &*ui);
-    state.sync_style(&style);
+    sync_text_input_editor(ui, input, state, &style);
+    let text_width = text_input_text_width(ui, input);
     let text = state.text();
     let display = if text.is_empty() {
         placeholder.unwrap_or("")
@@ -232,6 +254,10 @@ pub(super) fn refresh_text_input_parts(
     ui.set_layout_placement(
         text_part,
         LayoutPlacement::absolute_at(TEXT_INPUT_PADDING_X, text_top(style.font_size)),
+    );
+    ui.set_layout_size(
+        text_part,
+        LayoutSize::new().width(LayoutDimension::Logical(text_width)),
     );
     if text.is_empty() && !display.is_empty() {
         ui.add_pseudo(input, PSEUDO_PLACEHOLDER_SHOWN);
@@ -244,6 +270,27 @@ pub(super) fn refresh_text_input_parts(
     let (caret_placement, caret_size) = caret_layout(ui, &mut state.editor, &style);
     ui.set_layout_placement(caret_part, caret_placement);
     ui.set_layout_size(caret_part, caret_size);
+}
+
+pub(super) fn sync_text_input_editor(
+    ui: &Ui,
+    input: ElementId,
+    state: &mut TextInputEditState,
+    style: &TextStyle,
+) -> bool {
+    let Some(element) = ui.get(input) else {
+        return false;
+    };
+    let layout = text_layout(element, ui);
+    state.sync(
+        style,
+        layout,
+        parley_scalar(text_input_text_width(ui, input)),
+    )
+}
+
+fn text_input_text_width(ui: &Ui, input: ElementId) -> f64 {
+    (ui.effective_bounds(input).width() - TEXT_INPUT_PADDING_X * 2.0).max(0.0)
 }
 
 fn editable_character(s: &str) -> bool {

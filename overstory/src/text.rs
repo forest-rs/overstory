@@ -29,7 +29,10 @@ use parley::{
     fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
 use peniko::{Brush, Fill, Style};
-use understory_presentation::{TextLineHeight, TextStyle as PresentationTextStyle};
+use understory_presentation::{
+    BaseDirection, TextAlign, TextLayout as PresentationTextLayout, TextLineHeight,
+    TextStyle as PresentationTextStyle,
+};
 
 const DEFAULT_LAYOUT_CACHE_CAPACITY: usize = 512;
 const MAX_ADVANCE_COMPATIBILITY_EPSILON: f32 = 0.01;
@@ -283,7 +286,7 @@ impl TextEngine {
         }
     }
 
-    /// Shapes `text` with the given single-run text style.
+    /// Shapes `text` with the given single-run style and layout policy.
     ///
     /// If `wrap_width` is `Some`, it is treated as a logical-pixel line width.
     /// The conversion to Parley's `f32` max advance stays inside the text
@@ -297,15 +300,17 @@ impl TextEngine {
         &mut self,
         text: &str,
         style: &PresentationTextStyle,
+        text_layout: PresentationTextLayout,
         wrap_width: Option<f64>,
     ) -> TextLayout {
         let max_advance = parley_max_advance(wrap_width);
-        let lookup = TextLayoutLookupKey::new(text, style, max_advance);
+        let policy = TextLayoutPolicyKey::new(text_layout);
+        let lookup = TextLayoutLookupKey::new(text, style, policy, max_advance);
         if let Some(layout) = self.layout_cache.get(&lookup) {
             return layout;
         }
-        let layout = self.shape_uncached(text, style, max_advance);
-        let key = TextLayoutKey::new(text, style, max_advance);
+        let layout = self.build_layout(text, style, text_layout, max_advance);
+        let key = TextLayoutKey::new(text, style, policy, max_advance);
         self.layout_cache.insert(key, layout)
     }
 
@@ -326,10 +331,11 @@ impl TextEngine {
         self.layout_cache.stats()
     }
 
-    fn shape_uncached(
+    fn build_layout(
         &mut self,
         text: &str,
         style: &PresentationTextStyle,
+        text_layout: PresentationTextLayout,
         max_advance: Option<f32>,
     ) -> Layout<Brush> {
         let mut builder =
@@ -358,7 +364,15 @@ impl TextEngine {
         builder.push_default(StyleProperty::Brush(Brush::default()));
         let mut layout = builder.build(text);
         layout.break_all_lines(max_advance);
-        layout.align(Alignment::Start, AlignmentOptions::default());
+        // Parley 0.9 infers paragraph bidi level from content. Keep the
+        // explicit presentation direction in the cache policy and resolve
+        // logical alignment here; a future text backend can consume the same
+        // intent to force the paragraph base direction without changing UI
+        // authoring.
+        layout.align(
+            parley_alignment(text_layout.align, text_layout.base_direction),
+            AlignmentOptions::default(),
+        );
         layout
     }
 
@@ -369,6 +383,20 @@ impl TextEngine {
     ) -> R {
         let mut driver = editor.driver(&mut self.font_context, &mut self.layout_context);
         f(&mut driver)
+    }
+}
+
+pub(crate) const fn parley_alignment(align: TextAlign, base_direction: BaseDirection) -> Alignment {
+    match (align, base_direction) {
+        (TextAlign::Center, _) => Alignment::Center,
+        (TextAlign::Start, BaseDirection::Auto) => Alignment::Start,
+        (TextAlign::End, BaseDirection::Auto) => Alignment::End,
+        (TextAlign::Start, BaseDirection::Ltr) | (TextAlign::End, BaseDirection::Rtl) => {
+            Alignment::Left
+        }
+        (TextAlign::End, BaseDirection::Ltr) | (TextAlign::Start, BaseDirection::Rtl) => {
+            Alignment::Right
+        }
     }
 }
 
@@ -507,14 +535,21 @@ impl TextLayoutCache {
 struct TextLayoutKey {
     text: Rc<str>,
     style: PresentationTextStyle,
+    policy: TextLayoutPolicyKey,
     max_advance: Option<ScalarKey>,
 }
 
 impl TextLayoutKey {
-    fn new(text: &str, style: &PresentationTextStyle, max_advance: Option<f32>) -> Self {
+    fn new(
+        text: &str,
+        style: &PresentationTextStyle,
+        policy: TextLayoutPolicyKey,
+        max_advance: Option<f32>,
+    ) -> Self {
         Self {
             text: Rc::from(text),
             style: style.clone(),
+            policy,
             max_advance: max_advance.map(ScalarKey::new),
         }
     }
@@ -524,14 +559,21 @@ impl TextLayoutKey {
 struct TextLayoutLookupKey<'a> {
     text: &'a str,
     style: PresentationTextStyle,
+    policy: TextLayoutPolicyKey,
     max_advance: Option<ScalarKey>,
 }
 
 impl<'a> TextLayoutLookupKey<'a> {
-    fn new(text: &'a str, style: &PresentationTextStyle, max_advance: Option<f32>) -> Self {
+    fn new(
+        text: &'a str,
+        style: &PresentationTextStyle,
+        policy: TextLayoutPolicyKey,
+        max_advance: Option<f32>,
+    ) -> Self {
         Self {
             text,
             style: style.clone(),
+            policy,
             max_advance: max_advance.map(ScalarKey::new),
         }
     }
@@ -541,6 +583,7 @@ impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
     fn equivalent(&self, key: &TextLayoutKey) -> bool {
         self.text == key.text.as_ref()
             && self.style == key.style
+            && self.policy == key.policy
             && self.max_advance == key.max_advance
     }
 }
@@ -549,7 +592,33 @@ impl TextLayoutLookupKey<'_> {
     fn is_satisfied_by(&self, key: &TextLayoutKey, layout: &Layout<Brush>) -> bool {
         self.text == key.text.as_ref()
             && self.style == key.style
+            && self.policy == key.policy
             && max_advance_satisfies(self.max_advance, key.max_advance, layout.width())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct TextLayoutPolicyKey {
+    align: u8,
+    base_direction: u8,
+}
+
+impl TextLayoutPolicyKey {
+    const fn new(layout: PresentationTextLayout) -> Self {
+        let align = match layout.align {
+            TextAlign::Start => 0,
+            TextAlign::Center => 1,
+            TextAlign::End => 2,
+        };
+        let base_direction = match layout.base_direction {
+            BaseDirection::Auto => 0,
+            BaseDirection::Ltr => 1,
+            BaseDirection::Rtl => 2,
+        };
+        Self {
+            align,
+            base_direction,
+        }
     }
 }
 
@@ -640,7 +709,7 @@ pub(crate) fn render_text<S>(
 #[cfg(test)]
 mod tests {
     use super::{FontRegistrationError, TextEngine, TextResources};
-    use understory_presentation::{FontWeight, TextStyle};
+    use understory_presentation::{BaseDirection, FontWeight, TextAlign, TextLayout, TextStyle};
 
     #[test]
     fn text_resources_reject_invalid_font_data() {
@@ -655,8 +724,8 @@ mod tests {
         let mut engine = TextEngine::from_resources(&resources);
         let style = TextStyle::default();
 
-        let first = engine.shape("Shared label", &style, None);
-        let second = engine.shape("Shared label", &style, None);
+        let first = engine.shape("Shared label", &style, TextLayout::default(), None);
+        let second = engine.shape("Shared label", &style, TextLayout::default(), None);
 
         assert_eq!(first.width(), second.width());
         assert_eq!(engine.layout_cache_len(), 1);
@@ -670,8 +739,8 @@ mod tests {
         let mut engine = TextEngine::from_resources(&resources);
         let style = TextStyle::default();
 
-        let _ = engine.shape("Shared label", &style, Some(80.0));
-        let _ = engine.shape("Shared label", &style, Some(120.0));
+        let _ = engine.shape("Shared label", &style, TextLayout::default(), Some(80.0));
+        let _ = engine.shape("Shared label", &style, TextLayout::default(), Some(120.0));
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
@@ -684,8 +753,8 @@ mod tests {
         let mut engine = TextEngine::from_resources(&resources);
         let style = TextStyle::default();
 
-        let wide = engine.shape("Label", &style, Some(120.0));
-        let narrower = engine.shape("Label", &style, Some(80.0));
+        let wide = engine.shape("Label", &style, TextLayout::default(), Some(120.0));
+        let narrower = engine.shape("Label", &style, TextLayout::default(), Some(80.0));
 
         assert_eq!(wide.width(), narrower.width());
         assert_eq!(engine.layout_cache_len(), 1);
@@ -699,8 +768,8 @@ mod tests {
         let mut engine = TextEngine::from_resources(&resources);
         let style = TextStyle::default();
 
-        let _ = engine.shape("Shared label", &style, Some(120.0));
-        let _ = engine.shape("Shared label", &style, None);
+        let _ = engine.shape("Shared label", &style, TextLayout::default(), Some(120.0));
+        let _ = engine.shape("Shared label", &style, TextLayout::default(), None);
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
@@ -717,11 +786,34 @@ mod tests {
             ..TextStyle::default()
         };
 
-        let _ = engine.shape("Shared label", &normal, None);
-        let _ = engine.shape("Shared label", &bold, None);
+        let _ = engine.shape("Shared label", &normal, TextLayout::default(), None);
+        let _ = engine.shape("Shared label", &bold, TextLayout::default(), None);
 
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
         assert_eq!(engine.layout_cache_stats().hits, 0);
+    }
+
+    #[test]
+    fn logical_text_layout_participates_in_cache_key() {
+        let resources = TextResources::empty();
+        let mut engine = TextEngine::from_resources(&resources);
+        let style = TextStyle::default();
+        let ltr = TextLayout {
+            align: TextAlign::Start,
+            base_direction: BaseDirection::Ltr,
+            ..TextLayout::default()
+        };
+        let rtl = TextLayout {
+            align: TextAlign::Start,
+            base_direction: BaseDirection::Rtl,
+            ..TextLayout::default()
+        };
+
+        engine.shape("mixed العربية", &style, ltr, Some(180.0));
+        engine.shape("mixed العربية", &style, rtl, Some(180.0));
+
+        assert_eq!(engine.layout_cache_len(), 2);
+        assert_eq!(engine.layout_cache_stats().misses, 2);
     }
 }

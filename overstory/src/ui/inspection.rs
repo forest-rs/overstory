@@ -444,7 +444,22 @@ impl Ui {
             ElementPropertyInspectionGroup::Text,
             properties.text_wrap_mode,
         );
+        self.push_debug_property_row(
+            &mut rows,
+            element,
+            "TextAlign",
+            ElementPropertyInspectionGroup::Text,
+            properties.text_align,
+        );
 
+        self.push_property_row(
+            &mut rows,
+            element,
+            "LayoutDirection",
+            ElementPropertyInspectionGroup::Layout,
+            properties.layout_direction,
+            |value| ElementPropertyInspectionValue::Token(String::from(value.inspection_summary())),
+        );
         self.push_property_row(
             &mut rows,
             element,

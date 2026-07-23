@@ -9,7 +9,9 @@ use ui_events::keyboard::{Key, KeyState, NamedKey};
 
 use crate::AccessibilityContext;
 use crate::behavior::WidgetEventContext;
-use crate::controls::support::is_descendant_or_self;
+use crate::controls::support::{
+    InlineArrowDirection, inline_arrow_direction, is_descendant_or_self,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::KeyEvent;
 use crate::layouts::{LayoutContainer, LayoutDisplay};
@@ -51,15 +53,21 @@ pub(crate) fn append_expanded_slot_accessibility(
     }
 }
 
-pub(crate) fn key_target(event: &KeyEvent<'_>, expanded: bool) -> Option<bool> {
+pub(crate) fn key_target(
+    ui: &Ui,
+    element: ElementId,
+    event: &KeyEvent<'_>,
+    expanded: bool,
+) -> Option<bool> {
     if event.key.state != KeyState::Down {
         return None;
     }
+    let inline_direction = inline_arrow_direction(ui, element, &event.key.key);
     match &event.key.key {
         Key::Named(NamedKey::Enter) => Some(!expanded),
         Key::Character(s) if s == " " => Some(!expanded),
-        Key::Named(NamedKey::ArrowRight) => Some(true),
-        Key::Named(NamedKey::ArrowLeft) => Some(false),
+        _ if inline_direction == Some(InlineArrowDirection::End) => Some(true),
+        _ if inline_direction == Some(InlineArrowDirection::Start) => Some(false),
         _ => None,
     }
 }
@@ -86,13 +94,7 @@ pub(crate) fn sync_state(
     } else {
         ui.remove_pseudo(owner, PSEUDO_EXPANDED);
     }
-    if let Some(disclosure) = ui.slot(owner, disclosure_slot) {
-        ui.set_local(
-            disclosure,
-            ui.properties().text,
-            String::from(glyph(expanded)),
-        );
-    }
+    sync_glyph(ui, owner, disclosure_slot, expanded);
     if let Some(content) = ui.slot(owner, content_slot) {
         let display = if expanded {
             LayoutContainer::column()
@@ -101,6 +103,27 @@ pub(crate) fn sync_state(
         };
         ui.set_layout_container(content, display);
     }
+}
+
+pub(crate) fn sync_glyph(
+    ui: &mut Ui,
+    owner: ElementId,
+    disclosure_slot: TemplateSlot,
+    expanded: bool,
+) -> bool {
+    let Some(disclosure) = ui.slot(owner, disclosure_slot) else {
+        return false;
+    };
+    let desired = String::from(glyph(
+        expanded,
+        ui.layout_direction(owner)
+            .is_some_and(|direction| direction.is_rtl()),
+    ));
+    if ui.resolve_value_for(ui.get(disclosure).unwrap(), ui.properties().text) == desired {
+        return false;
+    }
+    ui.set_local(disclosure, ui.properties().text, desired);
+    true
 }
 
 pub(crate) fn source_is_header(
@@ -115,6 +138,10 @@ pub(crate) fn source_is_header(
     is_descendant_or_self(ctx, source, header)
 }
 
-fn glyph(expanded: bool) -> &'static str {
-    if expanded { "▾" } else { "▸" }
+fn glyph(expanded: bool, rtl: bool) -> &'static str {
+    match (expanded, rtl) {
+        (true, _) => "▾",
+        (false, false) => "▸",
+        (false, true) => "◂",
+    }
 }

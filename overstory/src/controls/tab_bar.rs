@@ -12,10 +12,12 @@ use understory_style::TypeTag;
 use crate::Text;
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::scroll::runtime::{
-    apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
+    ScrollLayoutState, apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
     update_scroll_metrics_from_layout, wheel_scroll_delta,
 };
-use crate::controls::support::{CallbackSlot, EventHandler};
+use crate::controls::support::{
+    CallbackSlot, EventHandler, InlineArrowDirection, inline_arrow_direction,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
 use crate::layouts::Layout;
@@ -315,6 +317,7 @@ impl AppendSpec for TabBar {
                 close_requested: CallbackSlot::new(self.on_close_requested),
                 overflow: self.overflow,
                 scroll: ScrollState::new(),
+                scroll_layout: ScrollLayoutState::default(),
                 reveal_selection: true,
             }),
         );
@@ -341,6 +344,7 @@ struct TabBarWidget {
     close_requested: CallbackSlot<TabCloseRequestedEvent>,
     overflow: TabOverflow,
     scroll: ScrollState,
+    scroll_layout: ScrollLayoutState,
     reveal_selection: bool,
 }
 
@@ -392,17 +396,24 @@ impl Widget for TabBarWidget {
         if !event.is_target() || event.key.state != KeyState::Down {
             return;
         }
+        let tab_bar = ctx.id();
         let current = self.selected_index().unwrap_or(0);
-        let target = match event.key.key {
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown) => self.next_enabled(current, 1),
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp) => {
+        let inline_direction = inline_arrow_direction(ctx, tab_bar, &event.key.key);
+        let target = match &event.key.key {
+            Key::Named(NamedKey::ArrowDown) => self.next_enabled(current, 1),
+            Key::Named(NamedKey::ArrowUp) => {
+                self.next_enabled(current, self.options.len().saturating_sub(1))
+            }
+            _ if inline_direction == Some(InlineArrowDirection::End) => {
+                self.next_enabled(current, 1)
+            }
+            _ if inline_direction == Some(InlineArrowDirection::Start) => {
                 self.next_enabled(current, self.options.len().saturating_sub(1))
             }
             Key::Named(NamedKey::Home) => self.options.iter().position(|tab| tab.enabled),
             Key::Named(NamedKey::End) => self.options.iter().rposition(|tab| tab.enabled),
             _ => None,
         };
-        let tab_bar = ctx.id();
         if let Some(index) = target
             && self.select(ctx, tab_bar, self.options[index].key)
         {
@@ -413,7 +424,8 @@ impl Widget for TabBarWidget {
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let mut changed = false;
         if self.overflow == TabOverflow::Scroll {
-            update_scroll_metrics_from_layout(ctx, &self.scroll);
+            changed |=
+                update_scroll_metrics_from_layout(ctx, &self.scroll, &mut self.scroll_layout);
             if self.reveal_selection {
                 changed |= self.reveal_selected(ctx);
                 self.reveal_selection = false;
@@ -439,7 +451,8 @@ impl Widget for TabBarWidget {
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         if self.overflow == TabOverflow::Scroll {
-            Vec2::new(-self.scroll.offset().x, 0.0)
+            let offset = self.scroll_layout.child_offset(&self.scroll);
+            Vec2::new(offset.x, 0.0)
         } else {
             Vec2::ZERO
         }
@@ -880,8 +893,9 @@ pub fn replace_tab_options(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ElementSpecExt, Size, scroll_offset_y};
+    use crate::{ElementSpecExt, LayoutDirection, Size, scroll_offset_y};
     use core::cell::Cell;
+    use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
     #[test]
     fn keys_survive_reordering() {
         let mut ui = Ui::new();
@@ -931,6 +945,35 @@ mod tests {
         );
         ui.compute_layout(Size::new(160.0, 80.0));
         assert_eq!(state.offset().x, 0.0);
+    }
+
+    #[test]
+    fn runtime_rtl_switch_preserves_tab_identity_and_mirrors_scroll_and_keys() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let bar = ui.append(
+            root,
+            TabBar::new()
+                .tabs((0_u64..6).map(|key| TabOption::new(key, "A naturally wide tab")))
+                .layout(Layout::new().logical_size(180.0, 40.0)),
+        );
+        ui.compute_layout(Size::new(180.0, 80.0));
+        let items = tab_bar_widget(&ui, bar).unwrap().items.clone();
+        let state = ui.scroll_target(bar).unwrap().state();
+        assert!(state.max_offset().x > 0.0);
+        assert_eq!(state.offset().x, 0.0);
+
+        ui.set_layout_direction(root, LayoutDirection::Rtl);
+        ui.compute_layout(Size::new(180.0, 80.0));
+
+        assert_eq!(tab_bar_widget(&ui, bar).unwrap().items, items);
+        assert_eq!(state.offset().x, state.max_offset().x);
+        assert!(ui.effective_bounds(items[0]).x0 > ui.effective_bounds(items[1]).x0);
+
+        assert!(ui.set_focus(Some(bar)));
+        let left = KeyboardEvent::key_down(Key::Named(NamedKey::ArrowLeft), Code::ArrowLeft);
+        assert!(ui.dispatch_key(&left).handled);
+        assert_eq!(selected_tab_key(&ui, bar), Some(TabKey::new(1)));
     }
 
     #[test]

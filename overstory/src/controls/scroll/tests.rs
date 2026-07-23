@@ -14,7 +14,7 @@ use super::*;
 use crate::accessibility::accesskit_node_id;
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutDirection};
 use crate::scroll_runtime::ScrollInputSource;
 use crate::test_support::{pointer_down, pointer_move, pointer_scroll, pointer_up};
 use crate::ui::Ui;
@@ -36,6 +36,62 @@ fn scroll_view_offsets_and_clips_children() {
     let after = ui.effective_bounds(first);
     assert!((after.y0 - (before.y0 - 12.0)).abs() <= 0.01);
     assert_eq!(scroll_view_offset_y(&ui, scroll), Some(12.0));
+}
+
+#[test]
+fn horizontal_scroll_preserves_logical_position_across_direction_changes() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::column(0.0).logical_size(320.0, 100.0));
+    let scroll = ui.append(root, ScrollView::new().size(100.0, 40.0));
+    let content = ui.insert_child(scroll);
+    ui.set_layout(content, Layout::new().logical_size(300.0, 24.0));
+
+    ui.compute_layout(Size::new(320.0, 100.0));
+    let ltr = ui
+        .scroll_state_snapshot(scroll)
+        .expect("scroll view should expose horizontal metrics");
+    assert_eq!(ltr.max_offset.x, 200.0);
+    assert_eq!(ltr.offset.x, 0.0);
+
+    ui.set_layout_direction(scroll, LayoutDirection::Rtl);
+    ui.compute_layout(Size::new(320.0, 100.0));
+    let rtl = ui
+        .scroll_state_snapshot(scroll)
+        .expect("scroll state should survive the direction change");
+    assert_eq!(rtl.max_offset.x, 200.0);
+    assert_eq!(rtl.offset.x, 200.0);
+
+    ui.set_layout(content, Layout::new().logical_size(400.0, 24.0));
+    ui.compute_layout(Size::new(320.0, 100.0));
+    let resized = ui.scroll_state_snapshot(scroll).unwrap();
+    assert_eq!(resized.max_offset.x, 300.0);
+    assert_eq!(
+        resized.offset.x, 300.0,
+        "content growth should preserve the RTL inline-start position"
+    );
+    let update = ui.accesskit_tree_update();
+    let node = accesskit_node_for(&update, scroll);
+    assert_eq!(
+        node.text_direction(),
+        Some(accesskit::TextDirection::RightToLeft)
+    );
+    assert_eq!(node.scroll_x(), Some(300.0));
+    assert!(node.supports_action(Action::ScrollLeft));
+    assert!(ui.handle_accesskit_action(&scroll_action(
+        scroll,
+        Action::ScrollLeft,
+        accesskit::ScrollUnit::Item,
+    )));
+    let scrolled_rtl = ui.scroll_state_snapshot(scroll).unwrap();
+    let logical_offset = scrolled_rtl.max_offset.x - scrolled_rtl.offset.x;
+    assert!(logical_offset > 0.0);
+
+    ui.set_layout_direction(scroll, LayoutDirection::Ltr);
+    ui.compute_layout(Size::new(320.0, 100.0));
+    let restored = ui.scroll_state_snapshot(scroll).unwrap();
+    assert_eq!(restored.offset.x, logical_offset);
+    assert!(ui.get(content).is_some());
 }
 
 #[test]

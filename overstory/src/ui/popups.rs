@@ -91,6 +91,7 @@ impl Ui {
             None
         };
         let popup_element = append_overlay_popup(self, &popup, Point::ZERO);
+        self.sync_overlay_direction(target, popup_element);
         let content = build(self, popup_element);
         if self.get(content).is_none() || !self.is_descendant_or_self(content, popup_element) {
             if self.get(popup_element).is_some() {

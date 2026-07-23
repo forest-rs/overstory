@@ -14,8 +14,8 @@ use crate::channels::{ARRANGE, LAYOUT};
 use crate::diagnostics::{LayoutOutcome, LayoutStabilizationCause, LayoutStabilizationPhase};
 use crate::element::{Element, ElementId};
 use crate::layouts::{
-    Layout, LayoutAlignment, LayoutContainer, LayoutEdges, LayoutOverflow, LayoutPlacement,
-    LayoutSize, LayoutSpacing, taffy_scalar,
+    Layout, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutEdges, LayoutOverflow,
+    LayoutPlacement, LayoutSize, LayoutSpacing, taffy_scalar,
 };
 use crate::motion::{PresentationSlot, PresentationTarget};
 use crate::properties::Visibility;
@@ -40,6 +40,22 @@ fn finite_non_negative(value: f64) -> f64 {
 }
 
 impl Ui {
+    /// Sets the inherited inline direction for a retained subtree.
+    ///
+    /// The ordinary property-change pipeline preserves element identity and
+    /// interaction state while invalidating every inheriting descendant for
+    /// direction-aware layout, presentation, and accessibility updates.
+    pub fn set_layout_direction(&mut self, id: ElementId, direction: LayoutDirection) {
+        self.set_local(id, self.properties.layout_direction, direction);
+    }
+
+    /// Returns the resolved inline direction for an element.
+    #[must_use]
+    pub fn layout_direction(&self, id: ElementId) -> Option<LayoutDirection> {
+        let element = self.get(id)?;
+        Some(self.resolve_value_for(element, self.properties.layout_direction))
+    }
+
     /// Sets an element's layout contribution.
     ///
     /// This is the app-facing shortcut for writing layout longhands. Only
@@ -264,6 +280,7 @@ impl Ui {
     /// current frame as terminal.
     pub fn compute_layout(&mut self, viewport: Size) -> LayoutOutcome {
         self.flush_bindings();
+        self.sync_overlay_directions();
         if self.last_viewport != viewport {
             self.last_viewport = viewport;
             self.mark_channels(self.root(), LAYOUT.into());
@@ -326,7 +343,10 @@ impl Ui {
             .into_iter()
             .filter_map(|id| {
                 let taffy_node = self.layout.node_for(id)?;
-                let style = self.effective_layout_for_taffy(id)?.to_taffy();
+                let element = self.get(id)?;
+                let direction = self.resolve_value_for(element, self.properties.layout_direction);
+                let mut style = self.effective_layout_for_taffy(id)?.to_taffy();
+                style.direction = direction.to_taffy();
                 Some((taffy_node, style))
             })
             .collect();

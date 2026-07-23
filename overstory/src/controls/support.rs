@@ -19,6 +19,33 @@ use crate::scroll_runtime::ScrollState;
 use crate::ui::{ControlState, Ui};
 use crate::widget::{AppendSpec, Widget};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InlineArrowDirection {
+    Start,
+    End,
+}
+
+pub(crate) fn inline_arrow_direction(
+    ui: &Ui,
+    element: ElementId,
+    key: &ui_events::keyboard::Key,
+) -> Option<InlineArrowDirection> {
+    use ui_events::keyboard::{Key, NamedKey};
+
+    let rtl = ui
+        .layout_direction(element)
+        .is_some_and(|direction| direction.is_rtl());
+    match (rtl, key) {
+        (false, Key::Named(NamedKey::ArrowLeft)) | (true, Key::Named(NamedKey::ArrowRight)) => {
+            Some(InlineArrowDirection::Start)
+        }
+        (false, Key::Named(NamedKey::ArrowRight)) | (true, Key::Named(NamedKey::ArrowLeft)) => {
+            Some(InlineArrowDirection::End)
+        }
+        _ => None,
+    }
+}
+
 /// Resolves a control's outer size: either a fixed logical size, or a
 /// fill-width size with a fixed logical height. Controls swap only the width
 /// dimension so they keep their own layout flavor (relative positioning,

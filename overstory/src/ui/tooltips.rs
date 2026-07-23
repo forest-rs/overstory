@@ -93,6 +93,7 @@ impl Ui {
         let placement = tooltip.placement_value();
         let offset = tooltip.offset_value();
         let tooltip_element = append_overlay_tooltip(self, &tooltip, kurbo::Point::ZERO);
+        self.sync_overlay_direction(target, tooltip_element);
         self.overlays.open_tooltip(OverlayHost {
             behavior: understory_overlay::OverlayBehavior::Tooltip,
             target,

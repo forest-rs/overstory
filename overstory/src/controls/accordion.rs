@@ -391,7 +391,7 @@ impl Widget for AccordionSectionWidget {
         if !ctx.is_enabled(section) {
             return;
         }
-        let next = disclosure::key_target(&event, self.expanded);
+        let next = disclosure::key_target(ctx, section, &event, self.expanded);
         if let Some(expanded) = next
             && self.set_expanded(ctx, section, expanded)
         {
@@ -415,7 +415,14 @@ impl Widget for AccordionSectionWidget {
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let section = ctx.id();
         let expanded = disclosure::resolved_expanded(ctx.ui(), section);
-        ArrangeResult::from_layout_changed(self.set_expanded(ctx.ui_mut(), section, expanded))
+        let mut changed = self.set_expanded(ctx.ui_mut(), section, expanded);
+        changed |= disclosure::sync_glyph(
+            ctx.ui_mut(),
+            section,
+            SLOT_ACCORDION_SECTION_DISCLOSURE,
+            expanded,
+        );
+        ArrangeResult::from_layout_changed(changed)
     }
 }
 

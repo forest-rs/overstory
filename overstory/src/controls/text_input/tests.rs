@@ -5,7 +5,7 @@ use super::widget::text_input_text_run_node_id;
 use super::*;
 use crate::accessibility::accesskit_node_id;
 use crate::element::ElementId;
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutDirection};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::test_support::{pointer_down, pointer_move, pointer_up};
 use crate::ui::Ui;
@@ -371,8 +371,44 @@ fn text_input_caret_tracks_shaped_text_width() {
     let text_bounds = ui.effective_bounds(text);
     let caret_bounds = ui.effective_bounds(caret);
     assert!(
-        (caret_bounds.x0 - text_bounds.x1).abs() <= 1.0,
-        "caret should land at shaped text end; text={text_bounds:?}, caret={caret_bounds:?}"
+        caret_bounds.x0 > text_bounds.x0 && caret_bounds.x1 <= text_bounds.x1,
+        "caret should land at the shaped position inside the text line; text={text_bounds:?}, caret={caret_bounds:?}"
+    );
+}
+
+#[test]
+fn runtime_direction_change_realigns_editor_without_losing_selection_or_focus() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(360.0, 80.0));
+    let input = ui.append(root, TextInput::new().text("George"));
+    let caret = ui.slot(input, SLOT_TEXT_INPUT_CARET).unwrap();
+    assert!(ui.set_focus(Some(input)));
+
+    ui.compute_layout(Size::new(360.0, 80.0));
+    let ltr_caret = ui.effective_bounds(caret);
+    let ltr_update = ui.accesskit_tree_update();
+    let selection = accesskit_node_for(&ltr_update, input)
+        .text_selection()
+        .cloned();
+
+    ui.set_layout_direction(root, LayoutDirection::Rtl);
+    ui.compute_layout(Size::new(360.0, 80.0));
+    let rtl_caret = ui.effective_bounds(caret);
+    let rtl_update = ui.accesskit_tree_update();
+    let input_node = accesskit_node_for(&rtl_update, input);
+    let text_run = accesskit_node_for_id(&rtl_update, text_input_text_run_node_id(input));
+
+    assert!(rtl_caret.x0 > ltr_caret.x0);
+    assert_eq!(ui.focused(), Some(input));
+    assert_eq!(input_node.text_selection(), selection.as_ref());
+    assert_eq!(
+        input_node.text_direction(),
+        Some(accesskit::TextDirection::RightToLeft)
+    );
+    assert_eq!(
+        text_run.text_direction(),
+        Some(accesskit::TextDirection::RightToLeft)
     );
 }
 

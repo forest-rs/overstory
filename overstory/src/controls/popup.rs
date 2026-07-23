@@ -34,7 +34,7 @@ use crate::composition::CompositionPolicy;
 use crate::controls::support::box_padding_xy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
-use crate::overlay::Placement;
+use crate::overlay::{OverlayPlacement, Placement};
 use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
@@ -44,7 +44,7 @@ pub const TYPE_POPUP: TypeTag = TypeTag(16);
 /// Builder + retained configuration for an anchored popup.
 #[derive(Clone, Debug)]
 pub struct Popup {
-    placement: Placement,
+    placement: OverlayPlacement,
     offset: Vec2,
     padding: Edges<f64>,
     dismiss_on_outside_pointer: bool,
@@ -58,7 +58,7 @@ impl Popup {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            placement: Placement::BOTTOM_START,
+            placement: OverlayPlacement::logical(Placement::BOTTOM_START),
             offset: Vec2::new(0.0, 6.0),
             padding: box_padding_xy(10.0, 8.0),
             dismiss_on_outside_pointer: true,
@@ -68,10 +68,15 @@ impl Popup {
         }
     }
 
-    /// Sets the popup's preferred placement around its target.
+    /// Sets the popup's preferred physical placement around its target.
     #[must_use]
     pub fn placement(mut self, placement: Placement) -> Self {
-        self.placement = placement;
+        self.placement = OverlayPlacement::physical(placement);
+        self
+    }
+
+    pub(crate) fn logical_placement(mut self, placement: Placement) -> Self {
+        self.placement = OverlayPlacement::logical(placement);
         self
     }
 
@@ -110,7 +115,7 @@ impl Popup {
         self
     }
 
-    pub(crate) fn placement_value(&self) -> Placement {
+    pub(crate) fn placement_value(&self) -> OverlayPlacement {
         self.placement
     }
 

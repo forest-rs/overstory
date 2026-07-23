@@ -25,6 +25,45 @@ use understory_overlay::{
 
 use crate::controls::tooltip::Tooltip;
 use crate::element::ElementId;
+use crate::layouts::LayoutDirection;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OverlayPlacement {
+    Physical(Placement),
+    Logical(Placement),
+}
+
+impl OverlayPlacement {
+    pub(crate) const fn physical(placement: Placement) -> Self {
+        Self::Physical(placement)
+    }
+
+    pub(crate) const fn logical(placement: Placement) -> Self {
+        Self::Logical(placement)
+    }
+
+    const fn resolve(self, direction: LayoutDirection) -> Placement {
+        let placement = match self {
+            Self::Physical(placement) => return placement,
+            Self::Logical(placement) => placement,
+        };
+        if !direction.is_rtl() {
+            return placement;
+        }
+        use understory_anchor::{Align, Side};
+        let side = match placement.side {
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+            side => side,
+        };
+        let align = match (placement.side, placement.align) {
+            (Side::Top | Side::Bottom, Align::Start) => Align::End,
+            (Side::Top | Side::Bottom, Align::End) => Align::Start,
+            (_, align) => align,
+        };
+        Placement::new(side, align)
+    }
+}
 
 fn resolve_anchor_frame(
     placement: Placement,
@@ -108,7 +147,7 @@ pub(crate) struct OverlayHost {
     /// Geometry source used by the shared anchor resolver.
     pub(crate) anchor: OverlayAnchor,
     /// Preferred placement relative to `target`.
-    pub(crate) placement: Placement,
+    pub(crate) placement: OverlayPlacement,
     /// Placement offset in logical pixels.
     pub(crate) offset: Vec2,
     /// Focus target captured when the overlay opened.
@@ -125,6 +164,7 @@ impl OverlayHost {
 struct OverlayInstance {
     host: OverlayHost,
     anchor_frame: Option<AnchorFrame>,
+    resolved_placement: Option<Placement>,
 }
 
 #[derive(Debug, Default)]
@@ -341,6 +381,7 @@ impl OverlayRuntime {
     pub(crate) fn resolve_anchor_rect(
         &mut self,
         overlay: OverlayId,
+        direction: LayoutDirection,
         target: Rect,
         size: Size,
         viewport: Size,
@@ -349,12 +390,17 @@ impl OverlayRuntime {
             .instances
             .get_mut(&overlay)
             .expect("anchor resolution requires an active overlay");
-        let previous = instance
-            .anchor_frame
-            .as_ref()
-            .map(PreviousAnchorFrame::from);
+        let placement = instance.host.placement.resolve(direction);
+        let previous = (instance.resolved_placement == Some(placement))
+            .then(|| {
+                instance
+                    .anchor_frame
+                    .as_ref()
+                    .map(PreviousAnchorFrame::from)
+            })
+            .flatten();
         let frame = resolve_anchor_frame(
-            instance.host.placement,
+            placement,
             instance.host.anchor.understory(target),
             size,
             viewport,
@@ -363,6 +409,7 @@ impl OverlayRuntime {
         );
         let rect = frame.rect;
         instance.anchor_frame = Some(frame);
+        instance.resolved_placement = Some(placement);
         self.frame_dirty = true;
         rect
     }
@@ -456,6 +503,7 @@ impl OverlayRuntime {
             OverlayInstance {
                 host,
                 anchor_frame: None,
+                resolved_placement: None,
             },
         );
         self.frame_dirty = true;
@@ -606,7 +654,7 @@ mod tests {
             element: ElementId::new(element, 0),
             content: ElementId::new(element, 0),
             anchor: OverlayAnchor::TargetBounds,
-            placement: Placement::BOTTOM,
+            placement: OverlayPlacement::physical(Placement::BOTTOM),
             offset: Vec2::ZERO,
             restore_focus: None,
         }
@@ -636,6 +684,7 @@ mod tests {
 
         let overlay_rect = runtime.resolve_anchor_rect(
             popup.overlay_id(),
+            LayoutDirection::Ltr,
             Rect::new(20.0, 20.0, 80.0, 40.0),
             Size::new(80.0, 30.0),
             Size::new(240.0, 120.0),

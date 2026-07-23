@@ -66,11 +66,27 @@ impl Layout {
             .spacing(LayoutSpacing::gap(gap))
     }
 
+    /// Creates a reversed horizontal flex row with a uniform child gap.
+    #[must_use]
+    pub fn row_reverse(gap: f64) -> Self {
+        Self::new()
+            .container(LayoutContainer::row_reverse())
+            .spacing(LayoutSpacing::gap(gap))
+    }
+
     /// Creates a vertical flex column with a uniform child gap.
     #[must_use]
     pub fn column(gap: f64) -> Self {
         Self::new()
             .container(LayoutContainer::column())
+            .spacing(LayoutSpacing::gap(gap))
+    }
+
+    /// Creates a bottom-to-top flex column with a uniform child gap.
+    #[must_use]
+    pub fn column_reverse(gap: f64) -> Self {
+        Self::new()
+            .container(LayoutContainer::column_reverse())
             .spacing(LayoutSpacing::gap(gap))
     }
 

@@ -29,7 +29,7 @@ use crate::composition::CompositionPolicy;
 use crate::controls::support::box_padding_xy;
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
-use crate::overlay::Placement;
+use crate::overlay::{OverlayPlacement, Placement};
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
@@ -49,7 +49,7 @@ pub const SLOT_TOOLTIP_CONTENT: TemplateSlot =
 pub struct Tooltip {
     content: String,
     font_size: Option<f64>,
-    placement: Placement,
+    placement: OverlayPlacement,
     offset: Vec2,
     padding: Edges<f64>,
     element: ElementConfig,
@@ -62,7 +62,7 @@ impl Tooltip {
         Self {
             content: content.into(),
             font_size: None,
-            placement: Placement::BOTTOM_START,
+            placement: OverlayPlacement::logical(Placement::BOTTOM_START),
             offset: Vec2::new(0.0, 8.0),
             padding: box_padding_xy(10.0, 6.0),
             element: ElementConfig::default(),
@@ -78,10 +78,10 @@ impl Tooltip {
         self
     }
 
-    /// Sets the tooltip's preferred placement around its target.
+    /// Sets the tooltip's preferred physical placement around its target.
     #[must_use]
     pub fn placement(mut self, placement: Placement) -> Self {
-        self.placement = placement;
+        self.placement = OverlayPlacement::physical(placement);
         self
     }
 
@@ -105,7 +105,7 @@ impl Tooltip {
         target
     }
 
-    pub(crate) fn placement_value(&self) -> Placement {
+    pub(crate) fn placement_value(&self) -> OverlayPlacement {
         self.placement
     }
 

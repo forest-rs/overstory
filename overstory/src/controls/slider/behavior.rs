@@ -5,7 +5,10 @@
 
 use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::range::ScalarRange;
-use crate::controls::support::{action_numeric_value, is_initial_drag_move, read_local_or};
+use crate::controls::support::{
+    InlineArrowDirection, action_numeric_value, inline_arrow_direction, is_initial_drag_move,
+    read_local_or,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent, PointerRoutedEvent, RoutedEventKind};
 use crate::layouts::LayoutPlacement;
@@ -215,9 +218,12 @@ impl Widget for SliderWidget {
         } else {
             small
         };
+        let inline_direction = inline_arrow_direction(ctx, slider, &event.key.key);
         let next = match &event.key.key {
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => current - key_step,
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => current + key_step,
+            Key::Named(NamedKey::ArrowDown) => current - key_step,
+            Key::Named(NamedKey::ArrowUp) => current + key_step,
+            _ if inline_direction == Some(InlineArrowDirection::Start) => current - key_step,
+            _ if inline_direction == Some(InlineArrowDirection::End) => current + key_step,
             Key::Named(NamedKey::PageDown) => current - large,
             Key::Named(NamedKey::PageUp) => current + large,
             Key::Named(NamedKey::Home) => min,
@@ -389,7 +395,7 @@ pub(super) fn set_value(
         .map_or(min, |element| ui.resolve_value_for(element, value_prop));
     ui.set_local(slider, value_prop, value);
     let settled = slider_value(ui, slider);
-    let left = thumb_left_for_value(settled, min, max);
+    let left = thumb_left_for_slider(ui, slider, settled, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
     let placement = LayoutPlacement::absolute_at(left, top);
     match motion {
@@ -425,7 +431,11 @@ fn set_value_from_center_position(
     }
     let track_width = SLIDER_WIDTH - THUMB_DIAMETER;
     let usable_origin = bounds.origin().x + THUMB_DIAMETER / 2.0;
-    let t = ((center_x - usable_origin) / track_width).clamp(0.0, 1.0);
+    let t = mirror_slider_fraction(
+        ui,
+        slider,
+        ((center_x - usable_origin) / track_width).clamp(0.0, 1.0),
+    );
     let min = read_local_or(ui, slider, ui.properties().minimum, 0.0);
     let max = read_local_or(ui, slider, ui.properties().maximum, 1.0);
     let value = ScalarRange::new(min, max).value_at_fraction(t);
@@ -446,7 +456,7 @@ fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
             ui.resolve_value_for(element, ui.properties().maximum),
         )
     };
-    let left = thumb_left_for_value(value, min, max);
+    let left = thumb_left_for_slider(ui, slider, value, min, max);
     let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
     let placement = LayoutPlacement::absolute_at(left, top);
     if ui.effective_layout_placement(thumb) == placement {
@@ -454,6 +464,22 @@ fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
     }
     ui.set_layout_placement_without_motion(thumb, placement);
     true
+}
+
+fn thumb_left_for_slider(ui: &Ui, slider: ElementId, value: f64, min: f64, max: f64) -> f64 {
+    let fraction = ScalarRange::new(min, max).fraction(value);
+    mirror_slider_fraction(ui, slider, fraction) * (SLIDER_WIDTH - THUMB_DIAMETER)
+}
+
+fn mirror_slider_fraction(ui: &Ui, slider: ElementId, fraction: f64) -> f64 {
+    if ui
+        .layout_direction(slider)
+        .is_some_and(|direction| direction.is_rtl())
+    {
+        1.0 - fraction
+    } else {
+        fraction
+    }
 }
 
 /// Programmatically set a slider's value (and move its thumb).

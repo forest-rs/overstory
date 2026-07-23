@@ -237,7 +237,7 @@ impl Widget for ExpanderWidget {
         if !ctx.is_enabled(expander) {
             return;
         }
-        let next = disclosure::key_target(&event, self.expanded);
+        let next = disclosure::key_target(ctx, expander, &event, self.expanded);
         if let Some(expanded) = next
             && self.set_expanded(ctx, expander, expanded)
         {
@@ -261,7 +261,10 @@ impl Widget for ExpanderWidget {
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
         let expander = ctx.id();
         let expanded = disclosure::resolved_expanded(ctx.ui(), expander);
-        ArrangeResult::from_layout_changed(self.set_expanded(ctx.ui_mut(), expander, expanded))
+        let mut changed = self.set_expanded(ctx.ui_mut(), expander, expanded);
+        changed |=
+            disclosure::sync_glyph(ctx.ui_mut(), expander, SLOT_EXPANDER_DISCLOSURE, expanded);
+        ArrangeResult::from_layout_changed(changed)
     }
 }
 

@@ -14,8 +14,8 @@ use alloc::string::String;
 
 use parley::{FontFeature, FontVariation};
 use understory_presentation::{
-    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
-    TextWrapMode, WordBreak,
+    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextAlign,
+    TextLineHeight, TextWrapMode, WordBreak,
 };
 
 use crate::spec_ext::ElementSpec;
@@ -162,6 +162,14 @@ pub trait TextSpecExt: ElementSpec + Sized {
     fn text_wrap_mode(mut self, wrap_mode: TextWrapMode) -> Self {
         self.element_config_mut()
             .set_built_in_local(BuiltInPropertyKey::TextWrapMode, wrap_mode);
+        self
+    }
+
+    /// Sets horizontal alignment relative to the inherited inline direction.
+    #[must_use]
+    fn text_align(mut self, align: TextAlign) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::TextAlign, align);
         self
     }
 }

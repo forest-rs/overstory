@@ -360,6 +360,7 @@ fn lower_presentation(
                     let layout = text.borrow_mut().shape(
                         plain.content.as_str(),
                         &plain.style,
+                        plain.layout,
                         if plain_text_wraps(plain) {
                             Some(bounds.width())
                         } else {

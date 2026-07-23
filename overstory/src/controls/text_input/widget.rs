@@ -3,7 +3,7 @@ use alloc::{string::String, vec::Vec};
 use cursor_icon::CursorIcon;
 use understory_style::TypeTag;
 
-use crate::behavior::WidgetEventContext;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
 use crate::controls::text::text_style;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, FocusEvent, KeyEvent};
@@ -13,7 +13,7 @@ use crate::widget::Widget;
 
 use super::editor::{
     TextInputEditState, TextInputPointerState, editor_local_point, move_editor_to_point,
-    refresh_text_input_parts, text_top,
+    refresh_text_input_parts, sync_text_input_editor, text_top,
 };
 use super::events::{
     TextInputEditCommitReason, TextInputEditCommittedEvent, TextInputEditCommittedSlot,
@@ -133,6 +133,19 @@ impl Widget for TextInputWidget {
         self.refresh_parts(ui, input);
     }
 
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let input = ctx.id();
+        let Some(element) = ctx.ui().get(input) else {
+            return ArrangeResult::UNCHANGED;
+        };
+        let style = text_style(element, ctx.ui());
+        if !sync_text_input_editor(ctx.ui(), input, &mut self.edit, &style) {
+            return ArrangeResult::UNCHANGED;
+        }
+        self.refresh_parts(ctx.ui_mut(), input);
+        ArrangeResult::LAYOUT_CHANGED
+    }
+
     fn handle_focus(&mut self, ctx: &mut WidgetEventContext<'_>, event: FocusEvent<'_>) {
         let input = ctx.id();
         if event.focused == Some(input) {
@@ -159,7 +172,7 @@ impl Widget for TextInputWidget {
             return;
         };
         let style = text_style(element, ctx);
-        self.edit.sync_style(&style);
+        sync_text_input_editor(ctx, input, &mut self.edit, &style);
         move_editor_to_point(ctx, input, event.position, &style, &mut self.edit.editor);
         self.refresh_parts(ctx, input);
         event.mark_handled();
@@ -177,7 +190,7 @@ impl Widget for TextInputWidget {
             return;
         };
         let style = text_style(element, ctx);
-        self.edit.sync_style(&style);
+        sync_text_input_editor(ctx, input, &mut self.edit, &style);
         if !self.pointer.dragging {
             let (x, y) = editor_local_point(ctx, input, event.press_position, &style);
             ctx.with_plain_editor(&mut self.edit.editor, |driver| {
@@ -222,7 +235,7 @@ impl Widget for TextInputWidget {
         };
         let style = text_style(element, ctx);
         let read_only = read_only_from_ctx(ctx);
-        self.edit.sync_style(&style);
+        sync_text_input_editor(ctx, input, &mut self.edit, &style);
         let previous_text = String::from(self.edit.text());
         let edit = self.edit.edit_from_key(ctx, event.key, read_only);
         if edit.handled {
@@ -330,6 +343,8 @@ fn text_input_text_run_node(
     ctx: &crate::AccessibilityContext<'_>,
 ) -> accesskit::Node {
     let mut node = accesskit::Node::new(accesskit::Role::TextRun);
+    let direction = ctx.get_value(element, ctx.properties().layout_direction);
+    node.set_text_direction(crate::accessibility::accesskit_text_direction(direction));
     let style = text_style(element, ctx);
     let bounds = ctx.bounds(element.id());
     let y0 = bounds.y0 + text_top(style.font_size);

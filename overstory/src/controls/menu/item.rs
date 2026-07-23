@@ -6,6 +6,7 @@ use alloc::string::String;
 use accesskit::{Action, HasPopup, Role};
 use understory_focus::Navigation;
 use understory_overlay::OverlayBehavior;
+use understory_property::DependencyObjectExt;
 use understory_style::TypeTag;
 use understory_timing::{TimerDuration, TimerId};
 
@@ -15,15 +16,18 @@ use super::runtime::{
 };
 use super::{SLOT_MENU_ITEM_INDICATOR, SLOT_MENU_ITEM_LABEL, TYPE_MENU, TYPE_MENU_ITEM};
 use crate::activation::ActivationSource;
-use crate::behavior::WidgetEventContext;
-use crate::controls::support::is_descendant_or_self;
+use crate::behavior::{ArrangeContext, ArrangeResult, WidgetEventContext};
+use crate::controls::support::{
+    InlineArrowDirection, inline_arrow_direction, is_descendant_or_self,
+};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, PointerRoutedEvent, RoutedEventKind};
 use crate::template::TemplateContract;
 use crate::ui::Ui;
 use crate::widget::Widget;
 
-const SUBMENU_INDICATOR: &str = "›";
+const SUBMENU_INDICATOR_LTR: &str = "›";
+const SUBMENU_INDICATOR_RTL: &str = "‹";
 const SUBMENU_CLOSE_DELAY: TimerDuration = 180_000_000;
 const SUBMENU_GRACE_POLL: TimerDuration = 75_000_000;
 
@@ -69,7 +73,9 @@ impl Widget for MenuWidget {
             Key::Named(NamedKey::ArrowUp) => ctx.focus_navigate(Navigation::Up).is_some(),
             Key::Named(NamedKey::Home) => ctx.focus_scope_edge(popup, Navigation::Down).is_some(),
             Key::Named(NamedKey::End) => ctx.focus_scope_edge(popup, Navigation::Up).is_some(),
-            Key::Named(NamedKey::ArrowLeft) if self.level == MenuLevel::Submenu => {
+            key if self.level == MenuLevel::Submenu
+                && inline_arrow_direction(ctx, menu, key) == Some(InlineArrowDirection::Start) =>
+            {
                 ctx.close_popup(popup)
             }
             _ => false,
@@ -158,17 +164,12 @@ impl Widget for MenuItemWidget {
     }
 
     fn template_expanded(&mut self, item: ElementId, ui: &mut Ui) {
-        if let Some(indicator) = ui.slot(item, SLOT_MENU_ITEM_INDICATOR) {
-            ui.set_local(
-                indicator,
-                ui.properties().text,
-                if self.submenu.is_some() {
-                    String::from(SUBMENU_INDICATOR)
-                } else {
-                    String::new()
-                },
-            );
-        }
+        self.sync_indicator(ui, item);
+    }
+
+    fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
+        let item = ctx.id();
+        ArrangeResult::from_layout_changed(self.sync_indicator(ctx.ui_mut(), item))
     }
 
     fn handle_key(&mut self, ctx: &mut WidgetEventContext<'_>, event: KeyEvent<'_>) {
@@ -186,8 +187,8 @@ impl Widget for MenuItemWidget {
         if let Some(source) = source {
             self.activate(ctx, item, source, true);
             event.mark_handled();
-        } else if matches!(&event.key.key, Key::Named(NamedKey::ArrowRight))
-            && self.submenu.is_some()
+        } else if self.submenu.is_some()
+            && inline_arrow_direction(ctx, item, &event.key.key) == Some(InlineArrowDirection::End)
         {
             self.open_submenu(ctx, item, true);
             event.mark_handled();
@@ -251,6 +252,31 @@ impl Widget for MenuItemWidget {
 }
 
 impl MenuItemWidget {
+    fn sync_indicator(&self, ui: &mut Ui, item: ElementId) -> bool {
+        let Some(indicator) = ui.slot(item, SLOT_MENU_ITEM_INDICATOR) else {
+            return false;
+        };
+        let text = if self.submenu.is_none() {
+            String::new()
+        } else if ui
+            .layout_direction(item)
+            .is_some_and(|direction| direction.is_rtl())
+        {
+            String::from(SUBMENU_INDICATOR_RTL)
+        } else {
+            String::from(SUBMENU_INDICATOR_LTR)
+        };
+        if ui
+            .get(indicator)
+            .and_then(|element| element.get_local_value(ui.properties().text))
+            == Some(&text)
+        {
+            return false;
+        }
+        ui.set_local(indicator, ui.properties().text, text);
+        true
+    }
+
     fn activate(&self, ui: &mut Ui, item: ElementId, source: ActivationSource, focus_child: bool) {
         if self.submenu.is_some() {
             self.open_submenu(ui, item, focus_child);

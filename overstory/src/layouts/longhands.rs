@@ -40,27 +40,39 @@ impl LayoutDisplay {
     }
 }
 
-/// Main-axis direction for flex layout.
+/// Main-axis flow for flex layout.
+///
+/// Horizontal flow is relative to the element's inherited
+/// [`LayoutDirection`](crate::LayoutDirection): `Row` advances from inline
+/// start to inline end, while `RowReverse` advances in the opposite direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LayoutDirection {
-    /// Children flow horizontally.
+pub enum FlexDirection {
+    /// Children flow horizontally from inline start to inline end.
     Row,
-    /// Children flow vertically.
+    /// Children flow horizontally from inline end to inline start.
+    RowReverse,
+    /// Children flow vertically from top to bottom.
     Column,
+    /// Children flow vertically from bottom to top.
+    ColumnReverse,
 }
 
-impl LayoutDirection {
+impl FlexDirection {
     fn inspection_summary(self) -> &'static str {
         match self {
             Self::Row => "row",
+            Self::RowReverse => "row-reverse",
             Self::Column => "column",
+            Self::ColumnReverse => "column-reverse",
         }
     }
 
     fn to_taffy(self) -> taffy::FlexDirection {
         match self {
             Self::Row => taffy::FlexDirection::Row,
+            Self::RowReverse => taffy::FlexDirection::RowReverse,
             Self::Column => taffy::FlexDirection::Column,
+            Self::ColumnReverse => taffy::FlexDirection::ColumnReverse,
         }
     }
 }
@@ -197,7 +209,7 @@ impl LayoutOverflowMode {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LayoutContainer {
     display: Option<LayoutDisplay>,
-    direction: Option<LayoutDirection>,
+    direction: Option<FlexDirection>,
     wrap: Option<LayoutWrap>,
 }
 
@@ -227,13 +239,25 @@ impl LayoutContainer {
     /// Creates a horizontal flex-row contribution.
     #[must_use]
     pub const fn row() -> Self {
-        Self::flex().direction(LayoutDirection::Row)
+        Self::flex().direction(FlexDirection::Row)
+    }
+
+    /// Creates a horizontal flex row flowing from inline end to inline start.
+    #[must_use]
+    pub const fn row_reverse() -> Self {
+        Self::flex().direction(FlexDirection::RowReverse)
     }
 
     /// Creates a vertical flex-column contribution.
     #[must_use]
     pub const fn column() -> Self {
-        Self::flex().direction(LayoutDirection::Column)
+        Self::flex().direction(FlexDirection::Column)
+    }
+
+    /// Creates a vertical flex column flowing from bottom to top.
+    #[must_use]
+    pub const fn column_reverse() -> Self {
+        Self::flex().direction(FlexDirection::ColumnReverse)
     }
 
     /// Sets the child layout strategy.
@@ -245,7 +269,7 @@ impl LayoutContainer {
 
     /// Sets the flex main-axis direction.
     #[must_use]
-    pub const fn direction(mut self, direction: LayoutDirection) -> Self {
+    pub const fn direction(mut self, direction: FlexDirection) -> Self {
         self.direction = Some(direction);
         self
     }

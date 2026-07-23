@@ -19,7 +19,7 @@ use super::events::{
 };
 use super::ids::TYPE_SCROLL_VIEW;
 use super::runtime::{
-    apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
+    ScrollLayoutState, apply_scroll_offset, scroll_by, scroll_by_accessibility_action,
     update_scroll_metrics_from_layout, wheel_scroll_delta,
 };
 /// Builder + spec for a clipped viewport with reusable scroll state.
@@ -121,6 +121,7 @@ impl AppendSpec for ScrollView {
             parent,
             Box::new(ScrollViewWidget {
                 state: state.clone(),
+                layout_state: ScrollLayoutState::default(),
                 offset_changed: ScrollOffsetChangedSlot::new(self.on_offset_changed),
             }),
         );
@@ -145,6 +146,7 @@ impl ElementSpec for ScrollView {
 /// Per-element widget for `ScrollView`.
 pub(crate) struct ScrollViewWidget {
     state: ScrollState,
+    pub(super) layout_state: ScrollLayoutState,
     pub(super) offset_changed: ScrollOffsetChangedSlot,
 }
 
@@ -152,6 +154,7 @@ impl core::fmt::Debug for ScrollViewWidget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ScrollViewWidget")
             .field("state", &self.state)
+            .field("layout_state", &self.layout_state)
             .field(
                 "has_offset_changed_handler",
                 &self.offset_changed.has_handler(),
@@ -205,8 +208,11 @@ impl Widget for ScrollViewWidget {
     }
 
     fn arrange(&mut self, ctx: &mut ArrangeContext<'_>) -> ArrangeResult {
-        update_scroll_metrics_from_layout(ctx, &self.state);
-        ArrangeResult::UNCHANGED
+        ArrangeResult::from_layout_changed(update_scroll_metrics_from_layout(
+            ctx,
+            &self.state,
+            &mut self.layout_state,
+        ))
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {
@@ -214,7 +220,7 @@ impl Widget for ScrollViewWidget {
     }
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
-        -self.state.offset()
+        self.layout_state.child_offset(&self.state)
     }
 
     fn handle_scroll(&mut self, ctx: &mut WidgetEventContext<'_>, event: ScrollEvent<'_>) {

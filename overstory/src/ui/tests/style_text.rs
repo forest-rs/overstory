@@ -545,13 +545,23 @@ fn control_row_labels_keep_single_line_widths() {
     let toggle_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Live rendering", &toggle_style, None)
+            .shape(
+                "Live rendering",
+                &toggle_style,
+                understory_presentation::TextLayout::default(),
+                None,
+            )
             .width(),
     );
     let spinner_natural_width = f64::from(
         ui.text
             .borrow_mut()
-            .shape("Streaming updates", &spinner_style, None)
+            .shape(
+                "Streaming updates",
+                &spinner_style,
+                understory_presentation::TextLayout::default(),
+                None,
+            )
             .width(),
     );
 

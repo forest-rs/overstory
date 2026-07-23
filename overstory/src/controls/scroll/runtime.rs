@@ -8,7 +8,7 @@ use crate::behavior::ArrangeContext;
 use crate::controls::support::{RectAxisExt, SizeAxisExt, Vec2AxisExt, action_scroll_unit};
 use crate::element::{Element, ElementId};
 use crate::event_runtime::ScrollEvent;
-use crate::layouts::LayoutSize;
+use crate::layouts::{LayoutDirection, LayoutSize};
 use crate::scroll_runtime::{
     ScrollCommandResult, ScrollInputSource, ScrollState, normalize_scroll_axis,
 };
@@ -17,6 +17,18 @@ use crate::ui::Ui;
 use super::events::ScrollOffsetChangedEvent;
 use super::ids::DEFAULT_SCROLL_LINE_Y;
 use super::view::ScrollViewWidget;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct ScrollLayoutState {
+    normalization: Vec2,
+    direction: LayoutDirection,
+}
+
+impl ScrollLayoutState {
+    pub(crate) fn child_offset(self, state: &ScrollState) -> Vec2 {
+        self.normalization - state.offset()
+    }
+}
 /// Normalizes a vertical scroll offset for public builder and setter APIs.
 pub(crate) fn normalize_scroll_offset_y(offset_y: f64) -> f64 {
     normalize_scroll_axis(offset_y)
@@ -189,18 +201,48 @@ fn refresh_scroll_metrics(ui: &Ui, viewport: ElementId, state: &ScrollState) {
     }
 }
 
-pub(crate) fn update_scroll_metrics_from_layout(ctx: &ArrangeContext<'_>, state: &ScrollState) {
+pub(crate) fn update_scroll_metrics_from_layout(
+    ctx: &ArrangeContext<'_>,
+    state: &ScrollState,
+    layout_state: &mut ScrollLayoutState,
+) -> bool {
     let Some(viewport_bounds) = ctx.effective_bounds(ctx.id()) else {
-        return;
+        return false;
     };
     let Some(element) = ctx.ui().get(ctx.id()) else {
-        return;
+        return false;
     };
     let child_bounds = element
         .children()
         .iter()
         .filter_map(|child| ctx.effective_bounds(*child));
-    update_scroll_metrics_from_bounds(viewport_bounds, state, child_bounds);
+    let previous_offset = state.offset();
+    let previous_max_offset = state.max_offset();
+    let previous_layout = *layout_state;
+    let normalization = update_scroll_metrics_from_bounds(
+        viewport_bounds,
+        state,
+        layout_state.normalization,
+        child_bounds,
+    );
+    let direction = ctx.ui().layout_direction(ctx.id()).unwrap_or_default();
+    let logical_x = if layout_state.direction.is_rtl() {
+        previous_max_offset.x - previous_offset.x
+    } else {
+        previous_offset.x
+    };
+    let physical_x = if direction.is_rtl() {
+        state.max_offset().x - logical_x
+    } else {
+        logical_x
+    };
+    state.set_offset_raw(Vec2::new(physical_x, state.offset().y));
+    *layout_state = ScrollLayoutState {
+        normalization,
+        direction,
+    };
+    previous_layout.child_offset(state) != layout_state.child_offset(state)
+        || previous_offset != state.offset()
 }
 
 fn update_scroll_view_metrics_from_ui_bounds(
@@ -213,35 +255,61 @@ fn update_scroll_view_metrics_from_ui_bounds(
         .children()
         .iter()
         .map(|child| ui.effective_bounds(*child));
-    update_scroll_metrics_from_bounds(viewport_bounds, state, child_bounds);
+    let layout_state = element
+        .widget()
+        .and_then(|widget| widget.downcast_ref::<ScrollViewWidget>())
+        .map_or_else(ScrollLayoutState::default, |widget| widget.layout_state);
+    update_scroll_metrics_from_bounds(
+        viewport_bounds,
+        state,
+        layout_state.normalization,
+        child_bounds,
+    );
 }
 
 fn update_scroll_metrics_from_bounds(
     viewport_bounds: kurbo::Rect,
     state: &ScrollState,
+    normalization: Vec2,
     child_bounds: impl IntoIterator<Item = kurbo::Rect>,
-) {
+) -> Vec2 {
     if viewport_bounds.width() <= 0.0 || viewport_bounds.height() <= 0.0 {
         state.set_metrics(Size::ZERO, Size::ZERO);
-        return;
+        return Vec2::ZERO;
     }
     let offset = state.offset();
-    let mut content_right = 0.0_f64;
-    let mut content_bottom = 0.0_f64;
+    let translation = normalization - offset;
+    let mut content_left = 0.0_f64;
+    let mut content_top = 0.0_f64;
+    let mut content_right = viewport_bounds.width();
+    let mut content_bottom = viewport_bounds.height();
     for child_bounds in child_bounds {
+        content_left = content_left.min(
+            child_bounds.min_along(Axis::Horizontal)
+                - viewport_bounds.min_along(Axis::Horizontal)
+                - translation.x,
+        );
+        content_top = content_top.min(
+            child_bounds.min_along(Axis::Vertical)
+                - viewport_bounds.min_along(Axis::Vertical)
+                - translation.y,
+        );
         content_right = content_right.max(
-            child_bounds.max_along(Axis::Horizontal) + offset.x
-                - viewport_bounds.min_along(Axis::Horizontal),
+            child_bounds.max_along(Axis::Horizontal)
+                - viewport_bounds.min_along(Axis::Horizontal)
+                - translation.x,
         );
         content_bottom = content_bottom.max(
-            child_bounds.max_along(Axis::Vertical) + offset.y
-                - viewport_bounds.min_along(Axis::Vertical),
+            child_bounds.max_along(Axis::Vertical)
+                - viewport_bounds.min_along(Axis::Vertical)
+                - translation.y,
         );
     }
     state.set_metrics(
         Size::new(viewport_bounds.width(), viewport_bounds.height()),
-        Size::new(content_right, content_bottom),
+        Size::new(content_right - content_left, content_bottom - content_top),
     );
+    Vec2::new(-content_left, -content_top)
 }
 
 pub(super) fn set_layout_size_if_changed(

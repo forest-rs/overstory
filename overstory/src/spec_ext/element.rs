@@ -5,10 +5,10 @@
 
 use understory_property::Property;
 
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutDirection};
 use crate::style_class::StyleClass;
 use crate::ui::ControlState;
-use crate::widget::{AppendSpec, ElementConfig};
+use crate::widget::{AppendSpec, BuiltInPropertyKey, ElementConfig};
 
 /// Append specs that expose the shared element authoring surface.
 ///
@@ -75,6 +75,18 @@ pub trait ElementSpecExt: ElementSpec + Sized {
     #[must_use]
     fn layout(mut self, layout: impl Into<Layout>) -> Self {
         self.element_config_mut().set_layout(layout);
+        self
+    }
+
+    /// Sets the initial inherited inline direction for this retained subtree.
+    ///
+    /// Descendant rows, logical alignment, text, overlays, scrolling, and
+    /// accessibility resolve start/end from this value unless a nearer
+    /// element overrides it.
+    #[must_use]
+    fn layout_direction(mut self, direction: LayoutDirection) -> Self {
+        self.element_config_mut()
+            .set_built_in_local(BuiltInPropertyKey::LayoutDirection, direction);
         self
     }
 

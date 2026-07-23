@@ -52,9 +52,7 @@ pub(crate) fn open_context_menu_surface(
         ui,
         target,
         OverlayAnchor::Point(position),
-        menu_popup_host()
-            .placement(Placement::BOTTOM_START)
-            .offset(0.0, 0.0),
+        menu_popup_host().offset(0.0, 0.0),
         OverlayBehavior::ContextMenu,
         menu,
         Navigation::Down,
@@ -107,7 +105,7 @@ pub(super) fn open_submenu(ui: &mut Ui, item: ElementId, submenu: Menu, focus_ch
         item,
         Some(parent),
         menu_popup_host()
-            .placement(Placement::RIGHT_START)
+            .logical_placement(Placement::RIGHT_START)
             .offset(10.0, 0.0),
         OverlayBehavior::Submenu,
         move |ui, popup| append_menu_surface(ui, popup, submenu, MenuLevel::Submenu),

@@ -24,7 +24,9 @@ use alloc::string::String;
 use kurbo::Size;
 use peniko::Brush;
 use understory_box_tree::NodeId;
-use understory_presentation::{PresentationStore, TextContent, TextStyle, TextWrapMode};
+use understory_presentation::{
+    BaseDirection, PresentationStore, TextContent, TextLayout, TextStyle, TextWrapMode,
+};
 use understory_property::Property;
 use understory_style::TypeTag;
 
@@ -174,15 +176,7 @@ impl Widget for TextWidget {
         node: NodeId,
     ) {
         let rendered_text: String = ctx.get_value(element, ctx.properties.text);
-        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        let style = text_style(element, ctx);
-
-        let Some(text) = store.plain_text_mut(node) else {
-            return;
-        };
-        text.content = TextContent::plain(rendered_text);
-        text.foreground = Some(foreground);
-        text.style = style;
+        present_plain_text(element, ctx, store, node, rendered_text);
     }
 
     fn measure(
@@ -192,18 +186,7 @@ impl Widget for TextWidget {
         constraints: MeasureConstraints,
     ) -> Option<Size> {
         let text: String = ctx.get_value(element, ctx.properties.text);
-        if text.is_empty() {
-            return Some(Size::ZERO);
-        }
-        let style = text_style(element, ctx);
-        let wrap_width = match style.text_wrap_mode {
-            TextWrapMode::NoWrap => None,
-            TextWrapMode::Wrap => constraints.known.width,
-        };
-        let layout = ctx.text.borrow_mut().shape(&text, &style, wrap_width);
-        let width = f64::from(layout.width());
-        let height = f64::from(layout.height());
-        Some(Size::new(width, height))
+        Some(measure_plain_text(element, ctx, constraints, &text))
     }
 }
 
@@ -238,15 +221,7 @@ impl Widget for ContentPresenterWidget {
         }
 
         let content = content_presenter_text(element, ctx);
-        let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
-        let style = text_style(element, ctx);
-
-        let Some(text) = store.plain_text_mut(node) else {
-            return;
-        };
-        text.content = TextContent::plain(content);
-        text.foreground = Some(foreground);
-        text.style = style;
+        present_plain_text(element, ctx, store, node, content);
     }
 
     fn measure(
@@ -260,18 +235,7 @@ impl Widget for ContentPresenterWidget {
         }
 
         let content = content_presenter_text(element, ctx);
-        if content.is_empty() {
-            return Some(Size::ZERO);
-        }
-        let style = text_style(element, ctx);
-        let wrap_width = match style.text_wrap_mode {
-            TextWrapMode::NoWrap => None,
-            TextWrapMode::Wrap => constraints.known.width,
-        };
-        let layout = ctx.text.borrow_mut().shape(&content, &style, wrap_width);
-        let width = f64::from(layout.width());
-        let height = f64::from(layout.height());
-        Some(Size::new(width, height))
+        Some(measure_plain_text(element, ctx, constraints, &content))
     }
 
     fn presentation_depends_on_children(&self, _element: &Element) -> bool {
@@ -281,6 +245,48 @@ impl Widget for ContentPresenterWidget {
     fn routes_descendants_to_template_owner(&self, _element: &Element) -> bool {
         true
     }
+}
+
+fn present_plain_text(
+    element: &Element,
+    ctx: &PresentContext<'_>,
+    store: &mut PresentationStore<NodeId, ElementId>,
+    node: NodeId,
+    content: String,
+) {
+    let foreground: Brush = ctx.get_value(element, ctx.properties.foreground);
+    let style = text_style(element, ctx);
+    let layout = text_layout(element, ctx);
+
+    let Some(text) = store.plain_text_mut(node) else {
+        return;
+    };
+    text.content = TextContent::plain(content);
+    text.foreground = Some(foreground);
+    text.style = style;
+    text.layout = layout;
+}
+
+fn measure_plain_text(
+    element: &Element,
+    ctx: &MeasureContext<'_>,
+    constraints: MeasureConstraints,
+    content: &str,
+) -> Size {
+    if content.is_empty() {
+        return Size::ZERO;
+    }
+    let style = text_style(element, ctx);
+    let text_layout = text_layout(element, ctx);
+    let wrap_width = match style.text_wrap_mode {
+        TextWrapMode::NoWrap => None,
+        TextWrapMode::Wrap => constraints.known.width,
+    };
+    let layout = ctx
+        .text
+        .borrow_mut()
+        .shape(content, &style, text_layout, wrap_width);
+    Size::new(f64::from(layout.width()), f64::from(layout.height()))
 }
 
 fn content_presenter_text(element: &Element, source: &impl ResolvedPropertySource) -> String {
@@ -296,6 +302,20 @@ fn content_presenter_text(element: &Element, source: &impl ResolvedPropertySourc
 
 pub(crate) fn text_style(element: &Element, source: &impl ResolvedPropertySource) -> TextStyle {
     text_style_from_source(element, source)
+}
+
+pub(crate) fn text_layout(element: &Element, source: &impl ResolvedPropertySource) -> TextLayout {
+    let properties = source.properties();
+    let direction = source.resolve_value(element, properties.layout_direction);
+    TextLayout {
+        align: source.resolve_value(element, properties.text_align),
+        base_direction: if direction.is_rtl() {
+            BaseDirection::Rtl
+        } else {
+            BaseDirection::Ltr
+        },
+        ..TextLayout::default()
+    }
 }
 
 // TODO(style): Move this out of text once another subsystem needs the same

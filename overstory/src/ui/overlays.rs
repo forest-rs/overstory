@@ -38,8 +38,10 @@ impl Ui {
             }
             let target_bounds = self.effective_bounds(entry.target);
             let overlay_bounds = self.effective_bounds(entry.element);
+            let direction = self.layout_direction(entry.target).unwrap_or_default();
             let rect = self.overlays.resolve_anchor_rect(
                 entry.overlay_id(),
+                direction,
                 target_bounds,
                 overlay_bounds.size(),
                 viewport,
@@ -49,6 +51,22 @@ impl Ui {
                 continue;
             }
             self.arrange_overlay_at(entry.element, origin);
+        }
+    }
+
+    pub(in crate::ui) fn sync_overlay_directions(&mut self) {
+        let active = self.overlays.active_entries().collect::<Vec<_>>();
+        for entry in active {
+            self.sync_overlay_direction(entry.target, entry.element);
+        }
+    }
+
+    pub(in crate::ui) fn sync_overlay_direction(&mut self, target: ElementId, overlay: ElementId) {
+        let Some(direction) = self.layout_direction(target) else {
+            return;
+        };
+        if self.layout_direction(overlay) != Some(direction) {
+            self.set_layout_direction(overlay, direction);
         }
     }
 

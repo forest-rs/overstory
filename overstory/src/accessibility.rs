@@ -14,8 +14,8 @@
 //! - Support focus, click, and coarse range actions for built-in controls.
 
 use accesskit::{
-    Action, ActionRequest, Affine, Node, NodeId, Rect as AccessRect, Role, Toggled, Tree, TreeId,
-    TreeUpdate,
+    Action, ActionRequest, Affine, Node, NodeId, Rect as AccessRect, Role,
+    TextDirection as AccessTextDirection, Toggled, Tree, TreeId, TreeUpdate,
 };
 use alloc::{string::String, vec::Vec};
 use understory_overlay::OverlayBehavior;
@@ -23,6 +23,7 @@ use understory_property::Property;
 
 use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
+use crate::layouts::LayoutDirection;
 use crate::properties::BuiltInProperties;
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::template::TemplateSlot;
@@ -354,6 +355,8 @@ impl Ui {
         let id = element.id();
         let role = accesskit_role(element, ctx, id == self.root());
         let mut node = Node::new(role);
+        let direction = ctx.get_value(element, ctx.properties().layout_direction);
+        node.set_text_direction(accesskit_text_direction(direction));
         if id == self.root() && ctx.scale_factor() != 1.0 {
             node.set_transform(Affine::scale(ctx.scale_factor()));
         }
@@ -476,6 +479,14 @@ fn is_clickable_role(role: Role) -> bool {
 
 pub(crate) fn accesskit_node_id(id: ElementId) -> NodeId {
     NodeId((u64::from(id.generation()) << 32) | u64::from(id.slot()))
+}
+
+pub(crate) const fn accesskit_text_direction(direction: LayoutDirection) -> AccessTextDirection {
+    if direction.is_rtl() {
+        AccessTextDirection::RightToLeft
+    } else {
+        AccessTextDirection::LeftToRight
+    }
 }
 
 fn sane_scale_factor(scale_factor: f64) -> f64 {

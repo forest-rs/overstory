@@ -345,11 +345,15 @@ fn element_spec_ext_applies_shared_settings() {
 
 #[test]
 fn inspection_snapshot_reports_effective_property_summaries() {
-    use crate::inspection::{ElementPropertyInspectionGroup, ElementPropertyInspectionValue};
+    use crate::inspection::{
+        ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin,
+        ElementPropertyInspectionValue,
+    };
     use crate::{SurfaceSpecExt, TextSpecExt};
 
     let mut ui = Ui::new();
     let root = ui.root();
+    ui.set_layout_direction(root, crate::LayoutDirection::Rtl);
     let background = Color::from_rgba8(0x20, 0x40, 0x80, 0xff);
     let panel = ui.append(
         root,
@@ -368,6 +372,15 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         .find(|row| row.id == panel)
         .expect("configured panel should be inspectable");
 
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "LayoutDirection"
+                && property.group == ElementPropertyInspectionGroup::Layout
+                && property.origin == ElementPropertyInspectionOrigin::Inherited
+                && property.value == ElementPropertyInspectionValue::Token(String::from("rtl"))
+        }),
+        "snapshot should expose inherited application direction and provenance"
+    );
     assert!(
         row.properties.iter().any(|property| {
             property.name == "Background"

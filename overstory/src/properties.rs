@@ -22,16 +22,16 @@ use kurbo::{Affine, Rect};
 use parley::{FontFeature, FontVariation};
 use peniko::{Brush, Color};
 use understory_presentation::{
-    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextLineHeight,
-    TextStyle, TextWrapMode, WordBreak,
+    FontFamily, FontStyle, FontWeight, FontWidth, Language, OverflowWrap, TextAlign,
+    TextLineHeight, TextStyle, TextWrapMode, WordBreak,
 };
 use understory_presentation_properties::{SurfaceProperties, SurfacePropertyChannels};
 use understory_property::{Property, PropertyMetadataBuilder, PropertyRegistry};
 
 use crate::channels::{COMPOSE, GEOMETRY, LAYOUT, PAINT};
 use crate::layouts::{
-    Layout, LayoutAlignment, LayoutContainer, LayoutOverflow, LayoutPlacement, LayoutSize,
-    LayoutSpacing,
+    Layout, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutOverflow, LayoutPlacement,
+    LayoutSize, LayoutSpacing,
 };
 use crate::motion::{EffectRules, PresentationTarget, TransitionDeclarations};
 use crate::template::ControlTemplate;
@@ -86,6 +86,14 @@ pub struct BuiltInProperties {
     /// this after computing the frame. Default [`Rect::ZERO`] — a zero-area
     /// element paints nothing.
     pub bounds: Property<Rect>,
+
+    /// Inherited inline direction for application layout. Default
+    /// [`LayoutDirection::Ltr`].
+    ///
+    /// Writes invalidate layout for the complete inheriting subtree so flex,
+    /// grid, text, overlays, scrolling, and accessibility can resolve logical
+    /// start/end behavior together without reconstructing retained elements.
+    pub layout_direction: Property<LayoutDirection>,
 
     /// Shorthand layout contribution for this element. Prefer the
     /// [`Self::layout_container`], [`Self::layout_size`],
@@ -198,6 +206,10 @@ pub struct BuiltInProperties {
     /// placement.
     pub text_wrap_mode: Property<TextWrapMode>,
 
+    /// Horizontal alignment relative to the inherited inline direction.
+    /// Default [`TextAlign::Start`].
+    pub text_align: Property<TextAlign>,
+
     /// Layer opacity sampled by composition. Default `1.0`.
     pub opacity: Property<f32>,
 
@@ -308,6 +320,13 @@ impl BuiltInProperties {
                 "Bounds",
                 PropertyMetadataBuilder::new(Rect::ZERO)
                     .affects_channels(GEOMETRY.into_set())
+                    .build(),
+            ),
+            layout_direction: registry.register(
+                "LayoutDirection",
+                PropertyMetadataBuilder::new(LayoutDirection::Ltr)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
                     .build(),
             ),
             layout: registry.register(
@@ -490,6 +509,13 @@ impl BuiltInProperties {
             text_wrap_mode: registry.register(
                 "TextWrapMode",
                 PropertyMetadataBuilder::new(text_defaults.text_wrap_mode)
+                    .affects_channels(LAYOUT.into_set())
+                    .inherits(true)
+                    .build(),
+            ),
+            text_align: registry.register(
+                "TextAlign",
+                PropertyMetadataBuilder::new(TextAlign::Start)
                     .affects_channels(LAYOUT.into_set())
                     .inherits(true)
                     .build(),
