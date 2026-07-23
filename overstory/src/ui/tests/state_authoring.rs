@@ -349,18 +349,20 @@ fn inspection_snapshot_reports_effective_property_summaries() {
         ElementPropertyInspectionGroup, ElementPropertyInspectionOrigin,
         ElementPropertyInspectionValue,
     };
-    use crate::{SurfaceSpecExt, TextSpecExt};
+    use crate::{Language, SurfaceSpecExt, TextSpecExt};
 
     let mut ui = Ui::new();
     let root = ui.root();
     ui.set_layout_direction(root, crate::LayoutDirection::Rtl);
     let background = Color::from_rgba8(0x20, 0x40, 0x80, 0xff);
+    let language = Language::parse("AR-arab-sa").unwrap();
     let panel = ui.append(
         root,
         crate::Panel::new()
             .background(Some(background.into()))
             .padding_xy(12.0, 6.0)
             .font_size(18.0)
+            .text_language(language)
             .layout(Layout::row(8.0).logical_size(120.0, 64.0))
             .opacity(0.75),
     );
@@ -416,6 +418,15 @@ fn inspection_snapshot_reports_effective_property_summaries() {
                 && property.value == ElementPropertyInspectionValue::Number(18.0)
         }),
         "snapshot should expose effective text properties"
+    );
+    assert!(
+        row.properties.iter().any(|property| {
+            property.name == "TextLanguage"
+                && property.group == ElementPropertyInspectionGroup::Text
+                && property.value
+                    == ElementPropertyInspectionValue::Token(String::from("ar-Arab-SA"))
+        }),
+        "snapshot should expose the canonical content-language tag"
     );
     assert!(
         row.properties.iter().any(|property| {

@@ -110,7 +110,7 @@ pub trait TextSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets the initial text language hint.
+    /// Sets the initial content language for shaping and accessibility.
     #[must_use]
     fn text_language(mut self, language: impl Into<Option<Language>>) -> Self {
         self.element_config_mut()

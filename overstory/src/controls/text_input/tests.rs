@@ -9,7 +9,7 @@ use crate::layouts::{Layout, LayoutDirection};
 use crate::pseudos::{PSEUDO_PLACEHOLDER_SHOWN, PSEUDO_READ_ONLY};
 use crate::test_support::{pointer_down, pointer_move, pointer_up};
 use crate::ui::Ui;
-use crate::{ParagraphDirection, TextSpecExt};
+use crate::{Language, ParagraphDirection, TextSpecExt};
 use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Role, TextPosition, TextSelection, TreeId,
     TreeUpdate,
@@ -608,6 +608,38 @@ fn text_input_accessibility_exposes_editable_value_and_placeholder() {
     assert_eq!(text_run.role(), Role::TextRun);
     assert_eq!(text_run.value(), Some("George"));
     assert_eq!(text_run.character_lengths(), &[1, 1, 1, 1, 1, 1]);
+}
+
+#[test]
+fn text_input_accessibility_uses_one_runtime_language_for_owner_and_text_run() {
+    let arabic = Language::parse("ar-SA").unwrap();
+    let english = Language::parse("EN-gb").unwrap();
+    let french = Language::parse("fr-FR").unwrap();
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let property = ui.properties().text_language;
+    ui.set_local(root, property, Some(arabic));
+    let input = ui.append(
+        root,
+        TextInput::new().text("AR-1082-B").text_language(english),
+    );
+    ui.compute_layout(Size::new(360.0, 80.0));
+
+    let update = ui.accesskit_tree_update();
+    assert_eq!(accesskit_node_for(&update, input).language(), Some("en-GB"));
+    assert_eq!(
+        accesskit_node_for_id(&update, text_input_text_run_node_id(input)).language(),
+        Some("en-GB")
+    );
+
+    ui.set_local(input, property, Some(french));
+    let update = ui.accesskit_tree_update();
+    assert_eq!(accesskit_node_for(&update, input).language(), Some("fr-FR"));
+    assert_eq!(
+        accesskit_node_for_id(&update, text_input_text_run_node_id(input)).language(),
+        Some("fr-FR")
+    );
+    assert!(ui.get(input).is_some());
 }
 
 #[test]

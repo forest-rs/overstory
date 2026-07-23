@@ -184,7 +184,11 @@ pub struct BuiltInProperties {
     /// OpenType font feature settings. Default empty.
     pub font_features: Property<Box<[FontFeature]>>,
 
-    /// Optional content language used for text shaping. Default `None`.
+    /// Optional inherited content language used for text shaping and
+    /// accessibility semantics. Default `None`.
+    ///
+    /// This is not a formatting locale and is never inferred from script,
+    /// fonts, or layout direction.
     pub text_language: Property<Option<Language>>,
 
     /// Inherited paragraph base-direction policy. Default

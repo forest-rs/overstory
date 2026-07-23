@@ -395,12 +395,17 @@ impl Ui {
             properties.font_features,
             |value| count_value(value.len()),
         );
-        self.push_debug_property_row(
+        self.push_property_row(
             &mut rows,
             element,
             "TextLanguage",
             ElementPropertyInspectionGroup::Text,
             properties.text_language,
+            |value| {
+                value.map_or(ElementPropertyInspectionValue::Empty, |language| {
+                    ElementPropertyInspectionValue::Token(String::from(language.as_str()))
+                })
+            },
         );
         self.push_paragraph_direction_row(&mut rows, element);
         self.push_debug_property_row(

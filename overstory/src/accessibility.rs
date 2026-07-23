@@ -356,9 +356,7 @@ impl Ui {
         let id = element.id();
         let role = accesskit_role(element, ctx, id == self.root());
         let mut node = Node::new(role);
-        if let Some(direction) = accesskit_text_direction(paragraph_base_direction(element, ctx)) {
-            node.set_text_direction(direction);
-        }
+        apply_accesskit_text_attributes(&mut node, element, ctx);
         if id == self.root() && ctx.scale_factor() != 1.0 {
             node.set_transform(Affine::scale(ctx.scale_factor()));
         }
@@ -493,6 +491,19 @@ pub(crate) const fn accesskit_text_direction(
     }
 }
 
+pub(crate) fn apply_accesskit_text_attributes(
+    node: &mut Node,
+    element: &Element,
+    ctx: &AccessibilityContext<'_>,
+) {
+    if let Some(direction) = accesskit_text_direction(paragraph_base_direction(element, ctx)) {
+        node.set_text_direction(direction);
+    }
+    if let Some(language) = ctx.get_value(element, ctx.properties().text_language) {
+        node.set_language(language.as_str());
+    }
+}
+
 fn sane_scale_factor(scale_factor: f64) -> f64 {
     if scale_factor.is_finite() && scale_factor > 0.0 {
         scale_factor
@@ -520,7 +531,10 @@ fn accesskit_bounds(bounds: kurbo::Rect) -> AccessRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Button, CheckBox, Layout, Slider, Text, ToggleSwitch, Widget};
+    use crate::controls::text::text_style;
+    use crate::{
+        Button, CheckBox, Language, Layout, Slider, Text, TextSpecExt, ToggleSwitch, Widget,
+    };
     use accesskit::{ActionData, Orientation};
     use alloc::boxed::Box;
     use kurbo::Size;
@@ -575,6 +589,50 @@ mod tests {
                 .all(|(id, _node)| *id != accesskit_node_id(label)),
             "content presenter should remain presentational in the AccessKit tree"
         );
+    }
+
+    #[test]
+    fn accesskit_language_follows_inheritance_templates_and_runtime_overrides() {
+        let arabic = Language::parse("ar-SA").unwrap();
+        let english = Language::parse("EN-latn-us").unwrap();
+        let french = Language::parse("fr-FR").unwrap();
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let property = ui.properties().text_language;
+        ui.set_local(root, property, Some(arabic));
+        let inherited = ui.append(root, Text::new("الواجهة العربية"));
+        let english_text = ui.append(root, Text::new("AR-1082-B").text_language(english));
+        let button = ui.append(root, Button::new("Open").text_language(english));
+        let button_label = ui
+            .slot(button, crate::SLOT_BUTTON_CONTENT)
+            .expect("button should realize its content presenter");
+        ui.compute_layout(Size::new(320.0, 120.0));
+
+        let update = ui.accesskit_tree_update();
+        assert_eq!(node_for(&update, inherited).language(), Some("ar-SA"));
+        assert_eq!(
+            node_for(&update, english_text).language(),
+            Some("en-Latn-US")
+        );
+        assert_eq!(node_for(&update, button).language(), Some("en-Latn-US"));
+        assert_eq!(
+            text_style(ui.get(button_label).unwrap(), &ui).language,
+            Some(english)
+        );
+
+        ui.set_local(english_text, property, Some(french));
+        let update = ui.accesskit_tree_update();
+        assert_eq!(node_for(&update, english_text).language(), Some("fr-FR"));
+        assert!(ui.get(english_text).is_some());
+
+        ui.clear_local(english_text, property);
+        let update = ui.accesskit_tree_update();
+        assert_eq!(node_for(&update, english_text).language(), Some("ar-SA"));
+
+        ui.set_local(root, property, None);
+        let update = ui.accesskit_tree_update();
+        assert_eq!(node_for(&update, root).language(), None);
+        assert_eq!(node_for(&update, inherited).language(), None);
     }
 
     #[test]
