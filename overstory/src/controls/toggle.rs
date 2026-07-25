@@ -62,7 +62,7 @@ impl ToggleSwitch {
     #[must_use]
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             initial_checked: false,
             element,
@@ -91,8 +91,7 @@ impl ToggleSwitch {
     /// Default `true`.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 
@@ -101,8 +100,7 @@ impl ToggleSwitch {
     /// styling.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

@@ -95,7 +95,7 @@ impl SegmentedControl {
     #[must_use]
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         element.set_layout(
             Layout::new()
                 .container(LayoutContainer::row())
@@ -162,8 +162,7 @@ impl SegmentedControl {
     /// Sets whether the control and its generated segment items start enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 
@@ -176,8 +175,7 @@ impl SegmentedControl {
     /// Sets whether the control participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 

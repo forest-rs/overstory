@@ -208,7 +208,7 @@ impl TabBar {
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
         element.set_layout(Layout::row(2.0));
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             options: Vec::new(),
             selected_key: None,

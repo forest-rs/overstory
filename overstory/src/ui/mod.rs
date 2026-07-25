@@ -169,15 +169,17 @@ pub struct Ui {
     last_viewport: kurbo::Size,
 }
 
-/// Shared construction-time state for interactive controls.
+/// Shared construction-time interaction state.
 ///
-/// `enabled` controls pointer/key activation and `:disabled` styling.
+/// `enabled` is the element's direct preference; effective enabled state also
+/// requires every retained ancestor to be enabled. Effective state controls
+/// pointer/key activation and `:disabled` styling for the complete subtree.
 /// `focusable` is the control's desired participation in focus traversal;
-/// disabled controls are temporarily removed from traversal but regain this
-/// preference when re-enabled.
+/// disabled elements are temporarily removed from traversal but regain this
+/// preference when their complete ancestor chain is re-enabled.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ControlState {
-    /// Whether the control can be activated by user input.
+    /// Whether the element directly permits user interaction.
     pub enabled: bool,
     /// Whether the control should participate in focus traversal while enabled.
     pub focusable: bool,

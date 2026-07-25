@@ -59,6 +59,7 @@ impl Ui {
             self.invalidation.mark(id, LAYOUT);
             self.record_element_tree_update(id);
         }
+        self.reconcile_enabled_subtree(self.root());
     }
 
     /// Swaps in a new theme. All elements are marked LAYOUT-dirty since theme
@@ -81,6 +82,7 @@ impl Ui {
             self.retemplate_if_needed(id);
             self.record_element_tree_update(id);
         }
+        self.reconcile_enabled_subtree(self.root());
     }
 
     /// Returns the match state for `id`, falling back to the cascade root

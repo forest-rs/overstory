@@ -457,13 +457,15 @@ pub trait ContentSlotSpec: AppendSpec {
 ///
 /// `ElementConfig` stores only settings that belong to the resulting element
 /// regardless of its concrete widget: layout contribution, style classes,
-/// initial local property values, and optional interactive control state.
+/// initial local property values, and optional enabled and focusability
+/// preferences.
 /// Control-specific values still live on the control builder.
 #[derive(Clone, Debug, Default)]
 pub struct ElementConfig {
     layout: Option<Layout>,
     classes: SmallVec<[StyleClass; 1]>,
-    control_state: Option<ControlState>,
+    enabled: Option<bool>,
+    focusable: Option<bool>,
     local_properties: SmallVec<[InitialPropertyWrite; 4]>,
 }
 
@@ -514,20 +516,40 @@ impl ElementConfig {
 
     /// Sets the shared interactive control state applied after insertion.
     pub fn set_control_state(&mut self, state: ControlState) {
-        self.control_state = Some(state);
+        self.enabled = Some(state.enabled);
+        self.focusable = Some(state.focusable);
     }
 
-    /// Returns the configured interactive control state, if any.
+    /// Returns the configured interaction state, if either capability was set.
+    ///
+    /// A separately configured enabled preference does not make an otherwise
+    /// passive element focusable. Conversely, setting focusability alone keeps
+    /// the default enabled preference.
     #[must_use]
     pub const fn control_state(&self) -> Option<ControlState> {
-        self.control_state
+        match (self.enabled, self.focusable) {
+            (None, None) => None,
+            (enabled, focusable) => Some(ControlState {
+                enabled: match enabled {
+                    Some(enabled) => enabled,
+                    None => true,
+                },
+                focusable: match focusable {
+                    Some(focusable) => focusable,
+                    None => false,
+                },
+            }),
+        }
     }
 
-    /// Mutates the configured control state, inserting the interactive default
-    /// when the spec did not explicitly carry control state yet.
-    pub fn update_control_state(&mut self, f: impl FnOnce(ControlState) -> ControlState) {
-        let state = self.control_state.unwrap_or_else(ControlState::interactive);
-        self.control_state = Some(f(state));
+    /// Sets only the resulting element's direct enabled preference.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = Some(enabled);
+    }
+
+    /// Sets only the resulting element's focusability preference.
+    pub fn set_focusable(&mut self, focusable: bool) {
+        self.focusable = Some(focusable);
     }
 
     /// Applies every configured setting to `id`.
@@ -543,8 +565,11 @@ impl ElementConfig {
             let class = ui.resolve_style_class(class);
             ui.add_initial_class(id, class);
         }
-        if let Some(state) = self.control_state {
-            ui.set_initial_control_state(id, state);
+        if let Some(enabled) = self.enabled {
+            ui.set_enabled(id, enabled);
+        }
+        if let Some(focusable) = self.focusable {
+            ui.set_focusable(id, focusable);
         }
     }
 

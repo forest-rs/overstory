@@ -27,7 +27,7 @@ use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::ui::{ControlState, Ui};
+use crate::ui::Ui;
 use crate::widget::{
     AppendSpec, ContentSlotSpec, ControlTemplateSpec, ElementConfig, ElementSpec, Widget,
 };
@@ -90,7 +90,7 @@ impl Expander {
     #[must_use]
     pub fn new(header: impl Into<String>) -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             header: header.into(),
             expanded: false,

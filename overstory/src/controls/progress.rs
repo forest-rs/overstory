@@ -74,7 +74,6 @@ impl ProgressBar {
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
         element.set_layout(progress_layout(DEFAULT_WIDTH, DEFAULT_HEIGHT));
-        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             value: 0.0,
             min: 0.0,
@@ -131,8 +130,7 @@ impl ProgressBar {
     /// are still visible, but style rules can use `:disabled` to dim them.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

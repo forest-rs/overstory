@@ -168,42 +168,20 @@ impl Ui {
         self.set_enabled(id, state.enabled);
     }
 
-    pub(crate) fn set_initial_control_state(&mut self, id: ElementId, state: ControlState) {
-        if self.get(id).is_none() {
-            return;
-        }
-        self.focus.set_focusable_preference(id, state.focusable);
-        self.apply_focusable_preference(id);
-        self.set_local(id, self.properties.is_enabled, state.enabled);
-        if state.enabled {
-            self.remove_initial_pseudo(id, PSEUDO_DISABLED);
-            self.apply_focusable_preference(id);
-        } else {
-            self.add_initial_pseudo(id, PSEUDO_DISABLED);
-            self.set_focusable_flag(id, false);
-        }
-    }
-
-    fn add_initial_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
-        let changed = self
-            .get_mut(id)
-            .map(|el| el.add_pseudo(pseudo))
-            .unwrap_or(false);
-        if changed {
-            self.style_one_for_insert(id);
-            self.record_element_tree_update(id);
-        }
-    }
-
-    fn remove_initial_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
-        let changed = self
-            .get_mut(id)
-            .map(|el| el.remove_pseudo(pseudo))
-            .unwrap_or(false);
-        if changed {
-            self.style_one_for_insert(id);
-            self.record_element_tree_update(id);
-        }
+    /// Applies effective disabled state during initial style matching.
+    ///
+    /// Returns whether the pseudo changed, allowing insertion to recompute its
+    /// initial match once with the final semantic state and without planning an
+    /// ordinary interaction transition.
+    pub(in crate::ui) fn initialize_enabled_projection(&mut self, id: ElementId) -> bool {
+        let enabled = self.is_enabled(id);
+        self.elements.get_mut(id).is_some_and(|element| {
+            if enabled {
+                element.remove_pseudo(PSEUDO_DISABLED)
+            } else {
+                element.add_pseudo(PSEUDO_DISABLED)
+            }
+        })
     }
 
     /// Toggles the desired `Focusable` flag for `id`.
@@ -259,18 +237,34 @@ impl Ui {
         }
     }
 
-    /// Returns whether `id` is currently enabled.
+    /// Returns whether `id` and every retained ancestor are enabled.
+    ///
+    /// An element's direct `IsEnabled` value is its own interaction
+    /// preference. Effective enabled state is the conjunction of that value
+    /// with every retained ancestor's direct value, so a descendant cannot
+    /// opt back into interaction beneath a disabled ancestor.
     #[must_use]
     pub fn is_enabled(&self, id: ElementId) -> bool {
-        self.get(id)
-            .map(|element| self.resolve_value_for(element, self.properties.is_enabled))
-            .unwrap_or(false)
+        let mut current = Some(id);
+        while let Some(candidate) = current {
+            let Some(element) = self.get(candidate) else {
+                return false;
+            };
+            if !self.resolve_value_for(element, self.properties.is_enabled) {
+                return false;
+            }
+            current = element.parent();
+        }
+        true
     }
 
-    /// Enables or disables a control element.
+    /// Sets an element's direct enabled preference.
     ///
-    /// Disabling dismisses popups anchored to `id`, repairs or clears focus,
-    /// clears pressed state and pointer capture, removes it from focus
+    /// Disabling an element effectively disables its complete retained
+    /// subtree. Descendants retain their own direct preferences but cannot
+    /// become interactive until every ancestor is enabled. The effective
+    /// transition dismisses ineligible overlays, repairs or clears focus,
+    /// clears hover, pressed state, and pointer capture, updates focus
     /// traversal, and applies `:disabled` for style matching.
     pub fn set_enabled(&mut self, id: ElementId, enabled: bool) {
         if self.get(id).is_none() {
@@ -297,8 +291,6 @@ impl Ui {
                 .map(|element| self.resolve_value_for(element, self.properties.is_read_only))
                 .unwrap_or(false);
             self.set_pseudo_state(id, PSEUDO_READ_ONLY, read_only);
-        } else if property == self.properties.is_enabled.id() {
-            self.sync_enabled_projection(id, self.is_enabled(id));
         }
     }
 
@@ -310,42 +302,118 @@ impl Ui {
         }
     }
 
-    fn sync_enabled_projection(&mut self, id: ElementId, enabled: bool) {
-        if self.get(id).is_none() {
+    /// Reconciles every projection of effective enabled state below `root`.
+    ///
+    /// Property storage owns each element's direct preference. This method
+    /// owns the retained-tree conjunction and its interaction, style, focus,
+    /// overlay, accessibility, and inspection consequences.
+    pub(in crate::ui) fn reconcile_enabled_subtree(&mut self, root: ElementId) {
+        if self.get(root).is_none() {
             return;
         }
-        if enabled {
-            self.remove_pseudo(id, PSEUDO_DISABLED);
-            self.apply_focusable_preference(id);
-        } else {
-            let _ = self.dismiss_overlay_anchor(id);
-            self.add_pseudo(id, PSEUDO_DISABLED);
-            self.set_focusable_flag(id, false);
-            if self.focus.focused() == Some(id) {
-                let contained = self
-                    .overlays
-                    .topmost_containing_focus_scope()
-                    .is_some_and(|scope| self.is_descendant_or_self(id, scope.element));
-                if contained {
-                    let _ = self.focus_navigate(Navigation::Next);
-                } else {
-                    self.set_focus(None);
-                }
+
+        let inherited_enabled = self
+            .get(root)
+            .and_then(|element| element.parent())
+            .is_none_or(|parent| self.is_enabled(parent));
+        let mut states = Vec::new();
+        let mut pending = Vec::new();
+        pending.push((root, inherited_enabled));
+        while let Some((id, ancestors_enabled)) = pending.pop() {
+            let Some(element) = self.get(id) else {
+                continue;
+            };
+            let enabled =
+                ancestors_enabled && self.resolve_value_for(element, self.properties.is_enabled);
+            states.push((id, enabled));
+            pending.extend(
+                element
+                    .children()
+                    .iter()
+                    .rev()
+                    .map(|child| (*child, enabled)),
+            );
+        }
+        let transition_plan = InteractionTransitionPlan::capture(self, root);
+        let mut pseudos_changed = false;
+        for &(id, enabled) in &states {
+            let Some(element) = self.elements.get_mut(id) else {
+                continue;
+            };
+            let pseudo_changed = if enabled {
+                element.remove_pseudo(PSEUDO_DISABLED)
+            } else {
+                element.add_pseudo(PSEUDO_DISABLED)
+            };
+            if pseudo_changed {
+                pseudos_changed = true;
+                self.record_element_tree_update(id);
             }
-            if self
-                .hovered()
-                .is_some_and(|hovered| self.press_visual_target(hovered) == id)
-            {
-                self.clear_hover();
+        }
+        if pseudos_changed {
+            self.restyle_subtree(root);
+            transition_plan.apply_after(self, root);
+        }
+
+        // Keep ineligible overlay anchors and the focused element in the focus
+        // space just long enough to serve as positional anchors for repair.
+        // Every other newly disabled target is retired first, so navigation
+        // cannot land elsewhere in the disabled subtree.
+        let retiring_focus = self.focused().filter(|focused| !self.is_enabled(*focused));
+        let mut repair_anchors = self
+            .overlays
+            .active_entries()
+            .map(|host| host.target)
+            .filter(|target| !self.is_enabled(*target))
+            .collect::<Vec<_>>();
+        if let Some(retiring_focus) = retiring_focus
+            && !repair_anchors.contains(&retiring_focus)
+        {
+            repair_anchors.push(retiring_focus);
+        }
+        for &(id, _) in &states {
+            if !repair_anchors.contains(&id) {
+                self.apply_focusable_preference(id);
             }
-            if self.events.press_target() == Some(id)
-                || self
-                    .events
-                    .pointer_capture()
-                    .is_some_and(|capture| capture == id || self.press_visual_target(capture) == id)
-            {
-                self.clear_pointer_session();
+        }
+
+        self.dismiss_ineligible_overlay_anchors();
+        self.reconcile_interaction_enabled();
+        for repair_anchor in repair_anchors {
+            self.apply_focusable_preference(repair_anchor);
+        }
+    }
+
+    fn reconcile_interaction_enabled(&mut self) {
+        if let Some(focused) = self.focused()
+            && !self.is_enabled(focused)
+        {
+            let contained = self
+                .overlays
+                .topmost_containing_focus_scope()
+                .is_some_and(|scope| self.is_descendant_or_self(focused, scope.element));
+            if contained {
+                let _ = self.focus_navigate(Navigation::Next);
+            } else {
+                self.set_focus(None);
             }
+        }
+        if self
+            .hovered()
+            .is_some_and(|hovered| !self.is_enabled(hovered))
+        {
+            self.clear_hover();
+        }
+        if self
+            .events
+            .press_target()
+            .is_some_and(|pressed| !self.is_enabled(pressed))
+            || self
+                .events
+                .pointer_capture()
+                .is_some_and(|capture| !self.is_enabled(capture))
+        {
+            self.clear_pointer_session();
         }
     }
 
@@ -356,9 +424,9 @@ impl Ui {
         self.focus.focused()
     }
 
-    /// Sets keyboard-visible focus. Passes `None` to clear focus. Disabled or
-    /// stale, disabled, or effectively hidden target ids are treated as
-    /// `None`. Applies / removes `:focused` and `:focus-visible` on the affected
+    /// Sets keyboard-visible focus. Passes `None` to clear focus. Stale,
+    /// disabled, or effectively hidden target ids are treated as `None`.
+    /// Applies / removes `:focused` and `:focus-visible` on the affected
     /// elements. Returns `true` if the focus state changed.
     pub fn set_focus(&mut self, new: Option<ElementId>) -> bool {
         self.set_focus_with_visibility(new, true, FocusChangeReason::Programmatic)

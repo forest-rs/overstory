@@ -134,6 +134,10 @@ impl Ui {
     }
 
     fn sync_element_lifecycle_projection(&mut self, element: ElementId, property: PropertyId) {
+        if property == self.properties.is_enabled.id() {
+            self.reconcile_enabled_subtree(element);
+            return;
+        }
         if property != self.properties.visibility.id() {
             return;
         }

@@ -533,7 +533,8 @@ mod tests {
     use super::*;
     use crate::controls::text::text_style;
     use crate::{
-        Button, CheckBox, Language, Layout, Slider, Text, TextSpecExt, ToggleSwitch, Widget,
+        Button, CheckBox, ElementSpecExt, Language, Layout, Panel, Slider, Text, TextSpecExt,
+        ToggleSwitch, Widget,
     };
     use accesskit::{ActionData, Orientation};
     use alloc::boxed::Box;
@@ -707,6 +708,29 @@ mod tests {
         assert!(!node_for(&update, button).supports_action(Action::Click));
         assert!(!node_for(&update, checkbox).supports_action(Action::Click));
         assert!(!node_for(&update, toggle).supports_action(Action::Click));
+        assert!(!ui.handle_accesskit_action(&ActionRequest {
+            action: Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: accesskit_node_id(button),
+            data: None,
+        }));
+    }
+
+    #[test]
+    fn disabled_container_projects_accessibility_state_to_descendants() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let container = ui.append(root, Panel::new().disabled());
+        let button = ui.append(container, Button::new("Inherited disabled"));
+
+        let update = ui.accesskit_tree_update();
+        let container_node = node_for(&update, container);
+        let button_node = node_for(&update, button);
+
+        assert!(container_node.is_disabled());
+        assert!(button_node.is_disabled());
+        assert!(!button_node.supports_action(Action::Focus));
+        assert!(!button_node.supports_action(Action::Click));
         assert!(!ui.handle_accesskit_action(&ActionRequest {
             action: Action::Click,
             target_tree: TreeId::ROOT,

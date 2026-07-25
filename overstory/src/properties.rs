@@ -252,9 +252,12 @@ pub struct BuiltInProperties {
     /// generated slot state during arrange.
     pub is_expanded: Property<bool>,
 
-    /// Whether an element can participate in control interaction. Default
-    /// `true`. Controls should keep this in sync with the `:disabled`
-    /// pseudoclass through [`crate::Ui::set_enabled`].
+    /// An element's direct enabled preference. Default `true`.
+    ///
+    /// [`crate::Ui::is_enabled`] combines this value with every retained
+    /// ancestor. A direct `true` therefore cannot make an element interactive
+    /// beneath a disabled ancestor. `Ui` projects the effective result into
+    /// focus, input, accessibility, inspection, and `:disabled` styling.
     pub is_enabled: Property<bool>,
 
     /// Whether a text-editing control allows content mutation. Default

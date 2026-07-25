@@ -44,7 +44,7 @@ use crate::layouts::{LayoutDimension, LayoutSize};
 use crate::template::{
     TemplateContract, TemplateNode, TemplateSlot, TemplateSpec, TemplateSpecRecipe,
 };
-use crate::ui::{ChildUi, ControlState, Ui};
+use crate::ui::{ChildUi, Ui};
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Select`.
@@ -111,7 +111,7 @@ impl Select {
     #[must_use]
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             options: Vec::new(),
             item_template: None,
@@ -216,16 +216,14 @@ impl Select {
     /// Sets whether the select participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 
     /// Sets whether the select starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

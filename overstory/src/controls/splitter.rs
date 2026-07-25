@@ -28,7 +28,7 @@ use crate::controls::support::{
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, DragEvent, KeyEvent};
 use crate::layouts::{Layout, LayoutSize};
-use crate::ui::{ControlState, Ui};
+use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 /// Selector identity for `Splitter`.
@@ -144,7 +144,7 @@ impl Splitter {
     #[must_use]
     pub fn new(orientation: SplitterOrientation) -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             orientation,
             thickness: DEFAULT_THICKNESS,
@@ -191,16 +191,14 @@ impl Splitter {
     /// Sets whether the splitter participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 
     /// Sets whether the splitter starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

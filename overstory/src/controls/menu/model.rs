@@ -6,7 +6,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use crate::activation::ActivationSource;
 use crate::controls::support::CallbackSlot;
 use crate::element::ElementId;
-use crate::ui::{ControlState, Ui};
+use crate::ui::Ui;
 use crate::widget::ElementConfig;
 
 pub(super) const DEFAULT_MENU_MIN_WIDTH: f64 = 220.0;
@@ -95,7 +95,7 @@ impl MenuItem {
     #[must_use]
     pub fn new(label: impl Into<String>) -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             label: label.into(),
             submenu: None,
@@ -116,8 +116,7 @@ impl MenuItem {
     /// Sets whether this item can receive focus or activation.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

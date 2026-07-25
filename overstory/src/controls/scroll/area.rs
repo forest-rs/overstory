@@ -60,8 +60,6 @@ impl ScrollArea {
     /// Starts a scroll area with a reserved vertical scrollbar.
     #[must_use]
     pub fn new() -> Self {
-        let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             size: None,
             vertical_scrollbar: true,
@@ -71,7 +69,7 @@ impl ScrollArea {
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
             scroll_offset_y: 0.0,
             on_offset_changed: None,
-            element,
+            element: ElementConfig::default(),
         }
     }
 
@@ -137,8 +135,7 @@ impl ScrollArea {
     /// Sets whether the area starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

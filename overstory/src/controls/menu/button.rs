@@ -15,7 +15,7 @@ use crate::behavior::WidgetEventContext;
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent};
 use crate::template::TemplateContract;
-use crate::ui::{ControlState, Ui};
+use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 const MENU_BUTTON_INDICATOR: &str = "▾";
@@ -41,7 +41,7 @@ impl MenuButton {
     #[must_use]
     pub fn new(label: impl Into<String>, menu: Menu) -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             label: label.into(),
             menu,
@@ -52,16 +52,14 @@ impl MenuButton {
     /// Sets whether the menu button participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 
     /// Sets whether the menu button can open its menu.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

@@ -104,7 +104,7 @@ impl RadioButton {
     #[must_use]
     pub fn new(content: impl Into<String>) -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive());
+        element.set_focusable(true);
         Self {
             content: content.into(),
             initial_checked: false,
@@ -141,16 +141,14 @@ impl RadioButton {
     /// Sets whether the radio button participates in focus traversal.
     #[must_use]
     pub fn focusable(mut self, focusable: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.focusable(focusable));
+        self.element.set_focusable(focusable);
         self
     }
 
     /// Sets whether the radio button starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 
@@ -225,7 +223,6 @@ impl RadioGroup {
     #[must_use]
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive().focusable(false));
         element.set_layout(Layout::column(DEFAULT_RADIO_GROUP_GAP));
         Self {
             options: Vec::new(),
@@ -305,8 +302,7 @@ impl RadioGroup {
     /// Sets whether the group and its generated radio buttons start enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

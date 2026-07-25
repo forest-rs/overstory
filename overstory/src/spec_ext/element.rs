@@ -90,18 +90,24 @@ pub trait ElementSpecExt: ElementSpec + Sized {
         self
     }
 
-    /// Sets the resulting element's shared interactive control state.
+    /// Sets the resulting element's shared interaction state.
+    ///
+    /// Disabling any element disables its complete retained subtree. This
+    /// makes the same capability meaningful for ordinary controls, composed
+    /// controls, and containers.
     #[must_use]
     fn control_state(mut self, state: ControlState) -> Self {
         self.element_config_mut().set_control_state(state);
         self
     }
 
-    /// Sets whether the resulting element starts enabled.
+    /// Sets whether the resulting element starts directly enabled.
+    ///
+    /// Effective enabled state also requires every retained ancestor to be
+    /// enabled. A descendant cannot override a disabled ancestor.
     #[must_use]
     fn enabled(mut self, enabled: bool) -> Self {
-        self.element_config_mut()
-            .update_control_state(|state| state.enabled(enabled));
+        self.element_config_mut().set_enabled(enabled);
         self
     }
 
@@ -111,11 +117,11 @@ pub trait ElementSpecExt: ElementSpec + Sized {
         self.enabled(false)
     }
 
-    /// Sets whether the resulting element participates in focus traversal.
+    /// Sets whether the resulting element participates in focus traversal
+    /// while effectively enabled and visible.
     #[must_use]
     fn focusable(mut self, focusable: bool) -> Self {
-        self.element_config_mut()
-            .update_control_state(|state| state.focusable(focusable));
+        self.element_config_mut().set_focusable(focusable);
         self
     }
 }

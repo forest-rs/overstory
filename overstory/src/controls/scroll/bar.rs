@@ -65,15 +65,13 @@ impl ScrollBar {
     /// Starts a scrollbar on `axis` bound to `viewport`.
     #[must_use]
     pub fn new(axis: Axis, viewport: ElementId) -> Self {
-        let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             axis,
             viewport,
             length: DEFAULT_SCROLL_BAR_LENGTH,
             thickness: DEFAULT_SCROLL_BAR_THICKNESS,
             thumb_extent: DEFAULT_SCROLL_BAR_THUMB_EXTENT,
-            element,
+            element: ElementConfig::default(),
         }
     }
 
@@ -102,8 +100,7 @@ impl ScrollBar {
     /// Sets whether the scrollbar starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 

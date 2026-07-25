@@ -128,6 +128,171 @@ fn set_enabled_false_clears_focus_and_pressed_state() {
 }
 
 #[test]
+fn disabled_container_owns_effective_enabled_state_for_its_subtree() {
+    use crate::{Button, Panel};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.append(root, Panel::new().disabled());
+    let inherited = ui.append(container, Button::new("Inherited"));
+    let direct = ui.append(container, Button::new("Direct").disabled());
+    let label = ui.part(inherited, crate::PART_BUTTON_LABEL).unwrap();
+
+    for id in [container, inherited, direct, label] {
+        assert!(!ui.is_enabled(id));
+        assert!(ui.get(id).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+    }
+
+    // A direct true is only the descendant's preference. It cannot override
+    // the disabled retained ancestor.
+    ui.set_enabled(inherited, true);
+    assert!(!ui.is_enabled(inherited));
+    assert!(!ui.is_enabled(label));
+
+    ui.set_enabled(container, true);
+
+    assert!(ui.is_enabled(container));
+    assert!(ui.is_enabled(inherited));
+    assert!(ui.is_enabled(label));
+    assert!(
+        !ui.get(inherited)
+            .unwrap()
+            .pseudos()
+            .contains(&PSEUDO_DISABLED)
+    );
+    assert!(!ui.get(label).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+    assert!(
+        !ui.is_enabled(direct),
+        "a directly disabled child must stay disabled when its ancestor is enabled"
+    );
+}
+
+#[test]
+fn styled_enabled_preference_uses_the_same_subtree_projection() {
+    use crate::{Button, Panel, TYPE_BUTTON};
+
+    const DISABLED_CONTAINER: ClassId = ClassId(91);
+    const DISABLED_CONTROL: ClassId = ClassId(92);
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.append(root, Panel::new().class(DISABLED_CONTAINER));
+    let button = ui.append(container, Button::new("Styled"));
+    let direct = ui.append(
+        root,
+        Button::new("Direct")
+            .focusable(false)
+            .class(DISABLED_CONTROL),
+    );
+    assert_eq!(
+        ui.get(direct)
+            .unwrap()
+            .get_local_value(ui.properties().is_enabled),
+        None,
+        "a control's default enabled state should not occupy local precedence"
+    );
+
+    let disabled = StyleBuilder::new()
+        .set(ui.properties().is_enabled, false)
+        .build();
+    let cascade = StyleCascadeBuilder::new()
+        .push_rule(
+            StyleOrigin::Sheet,
+            SelectorBuilder::new(
+                SelectorStep::type_tag(TYPE_GENERIC).with_class(DISABLED_CONTAINER),
+            )
+            .build(),
+            disabled.clone(),
+        )
+        .push_rule(
+            StyleOrigin::Sheet,
+            SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON).with_class(DISABLED_CONTROL))
+                .build(),
+            disabled,
+        )
+        .build();
+    ui.set_cascade(cascade);
+
+    assert!(!ui.is_enabled(container));
+    assert!(!ui.is_enabled(button));
+    assert!(!ui.is_enabled(direct));
+    assert!(
+        ui.get(container)
+            .unwrap()
+            .pseudos()
+            .contains(&PSEUDO_DISABLED)
+    );
+    assert!(ui.get(button).unwrap().pseudos().contains(&PSEUDO_DISABLED));
+    assert!(!ui.is_focusable(button));
+
+    ui.set_cascade(StyleCascadeBuilder::new().build());
+
+    assert!(ui.is_enabled(container));
+    assert!(ui.is_enabled(button));
+    assert!(ui.is_enabled(direct));
+    assert!(ui.is_focusable(button));
+    assert!(
+        !ui.is_focusable(direct),
+        "focusability should not author an enabled override"
+    );
+}
+
+#[test]
+fn disabling_ancestor_retires_descendant_interaction_state() {
+    use crate::{Button, Panel};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let container = ui.append(root, Panel::new());
+    let button = ui.append(container, Button::new("Run"));
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    assert!(
+        ui.dispatch_pointer_event(&pointer_down(center, 1))
+            .changed()
+    );
+    assert_eq!(ui.focused(), Some(button));
+    assert!(ui.hovered().is_some());
+    assert!(ui.pointer_capture().is_some());
+    assert_eq!(ui.events.press_target(), Some(button));
+
+    ui.set_enabled(container, false);
+
+    assert_eq!(ui.focused(), None);
+    assert_eq!(ui.hovered(), None);
+    assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(ui.events.press_target(), None);
+    assert!(!ui.is_focusable(button));
+    assert!(!ui.get(button).unwrap().pseudos().contains(&PSEUDO_PRESSED));
+
+    ui.set_enabled(container, true);
+    assert!(ui.is_focusable(button));
+}
+
+#[test]
+fn focus_navigation_skips_disabled_subtree_and_restores_it_in_place() {
+    use crate::{Button, Panel};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(300.0, 50.0));
+    let before = ui.append(root, Button::new("Before"));
+    let container = ui.append(root, Panel::new().disabled());
+    let nested = ui.append(container, Button::new("Nested"));
+    let after = ui.append(root, Button::new("After"));
+    ui.compute_layout(Size::new(300.0, 50.0));
+
+    assert!(ui.set_focus(Some(before)));
+    assert_eq!(ui.focus_navigate(Navigation::Next), Some(after));
+
+    ui.set_enabled(container, true);
+    assert!(ui.set_focus(Some(before)));
+    assert_eq!(ui.focus_navigate(Navigation::Next), Some(nested));
+}
+
+#[test]
 fn ancestor_visibility_controls_focus_eligibility_and_restores_preference() {
     let mut ui = Ui::new();
     let root = ui.root();

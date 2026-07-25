@@ -11,7 +11,7 @@ use crate::element::{Element, ElementId};
 use crate::event_runtime::ScrollEvent;
 use crate::layouts::Layout;
 use crate::scroll_runtime::{ScrollCommandResult, ScrollInputSource, ScrollState};
-use crate::ui::{ControlState, Ui};
+use crate::ui::Ui;
 use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 
 use super::events::{
@@ -48,13 +48,11 @@ impl ScrollView {
     /// Starts a new scroll view builder.
     #[must_use]
     pub fn new() -> Self {
-        let mut element = ElementConfig::default();
-        element.set_control_state(ControlState::interactive().focusable(false));
         Self {
             size: None,
             state: ScrollState::new(),
             on_offset_changed: None,
-            element,
+            element: ElementConfig::default(),
         }
     }
 
@@ -96,8 +94,7 @@ impl ScrollView {
     /// Sets whether the scroll view starts enabled.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
-        self.element
-            .update_control_state(|state| state.enabled(enabled));
+        self.element.set_enabled(enabled);
         self
     }
 
