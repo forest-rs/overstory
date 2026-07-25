@@ -602,7 +602,7 @@ mod tests {
         PresentationTarget, PresentationValue,
     };
     use overstory::{
-        Button, ChoiceOption, ElementId, Layout, SegmentedControl, segmented_item,
+        Button, ChoiceOption, ElementId, Layout, SegmentedControl, ToggleSwitch, segmented_item,
         selected_segmented_index,
     };
     use ui_events::keyboard::{Code, Key, NamedKey};
@@ -626,6 +626,25 @@ mod tests {
 
         assert!(!frame.scene().is_empty());
         assert!(!host.surface_scenes.is_empty());
+    }
+
+    #[test]
+    fn initial_control_state_does_not_request_animation_frame() {
+        let mut ui = Ui::new();
+        ui.set_theme(overstory::theme::default_theme());
+        ui.set_cascade(overstory::theme::default_cascade(ui.properties()));
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).logical_size(100.0, 50.0));
+        ui.append(root, ToggleSwitch::new().checked(true));
+        ui.set_now(0);
+
+        let mut host = UiHost::new(ui);
+        let _ = host.prepare_frame(test_viewport());
+        assert_eq!(host.pending_frame_demand(), FrameDemand::NONE);
+
+        host.ui_mut_at(2_000_000_000);
+        let _ = host.prepare_frame(test_viewport());
+        assert_eq!(host.pending_frame_demand(), FrameDemand::NONE);
     }
 
     #[test]

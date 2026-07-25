@@ -74,6 +74,8 @@ fn build_ui() -> Ui {
     let mut ui = Ui::new();
     // Shared selection, captured by both switchers.
     let state = Rc::new(Cell::new((LookId::Signature, SchemeId::Dark)));
+    let (look, scheme) = state.get();
+    apply(&mut ui, look, scheme);
 
     let root = ui.root();
     ui.add_class(root, class::ROOT);
@@ -161,13 +163,6 @@ fn build_ui() -> Ui {
             },
         );
     });
-
-    // Install the look *after* the tree is built so set_cascade marks every
-    // element LAYOUT-dirty (first-time styling on append doesn't). Installing
-    // before building left the controls unlaid-out until a later event, which
-    // showed as a blank background for ~2s before the controls appeared.
-    let (look, scheme) = state.get();
-    apply(&mut ui, look, scheme);
 
     ui
 }

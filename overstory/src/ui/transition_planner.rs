@@ -71,6 +71,11 @@ impl InteractionTransitionPlan {
         let mut layout_outputs = Vec::new();
         let target_adapters: Vec<_> = ui.timeline_properties.target_adapters().collect();
         for element in collect_preorder(ui, id) {
+            // Values that have never participated in a frame are initial state,
+            // not an observable before-state for an implicit transition.
+            if !ui.composition.has_established_presentation(element) {
+                continue;
+            }
             for &(property, adapter) in &target_adapters {
                 let target = PresentationTarget::Property(property);
                 tracked.push(TrackedValue {

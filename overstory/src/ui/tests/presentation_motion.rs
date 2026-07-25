@@ -4,6 +4,110 @@
 use super::*;
 
 #[test]
+fn initial_disabled_style_settles_without_transition_motion() {
+    use crate::{Button, TYPE_BUTTON};
+
+    let install = |ui: &mut Ui| {
+        let opacity = ui.properties().opacity;
+        ui.set_cascade(
+            StyleCascadeBuilder::new()
+                .push_rule(
+                    StyleOrigin::Base,
+                    SelectorBuilder::new(SelectorStep::type_tag(TYPE_BUTTON)).build(),
+                    StyleBuilder::new()
+                        .set(
+                            ui.properties().transitions,
+                            transition::<f32>(
+                                PresentationTarget::property(opacity.id()),
+                                millis(120),
+                            ),
+                        )
+                        .build(),
+                )
+                .push_rule(
+                    StyleOrigin::Base,
+                    SelectorBuilder::new(
+                        SelectorStep::type_tag(TYPE_BUTTON).with_pseudo(PSEUDO_DISABLED),
+                    )
+                    .build(),
+                    StyleBuilder::new().set(opacity, 0.5_f32).build(),
+                )
+                .build(),
+        );
+    };
+
+    for install_before_build in [true, false] {
+        let mut ui = Ui::new();
+        if install_before_build {
+            install(&mut ui);
+        }
+        let root = ui.root();
+        let button = ui.append(root, Button::new("Disabled").disabled());
+        if !install_before_build {
+            install(&mut ui);
+        }
+        let opacity = ui.properties().opacity;
+
+        assert_eq!(ui.resolved_value(button, opacity), Some(0.5));
+        assert_eq!(ui.presented_layer_opacity(button), 0.5);
+        assert!(!ui.has_active_presentation_motion());
+        let timeline = ui.inspection_snapshot().timeline;
+        assert_eq!(timeline.active_transitions, 0);
+        assert_eq!(timeline.pending_transitions, 0);
+
+        ui.compute_layout(Size::new(200.0, 80.0));
+        ui.set_now(millis(10_000));
+        assert!(!ui.has_active_presentation_motion());
+
+        ui.set_enabled(button, true);
+        assert!(ui.has_active_presentation_motion());
+        assert_eq!(ui.presented_layer_opacity(button), 0.5);
+        ui.set_now(millis(10_060));
+        assert_close(
+            f64::from(ui.presented_layer_opacity(button)),
+            f64::from(0.75_f32),
+        );
+        ui.set_now(millis(10_120));
+        assert_eq!(ui.presented_layer_opacity(button), 1.0);
+        assert!(!ui.has_active_presentation_motion());
+    }
+}
+
+#[test]
+fn initial_template_state_does_not_queue_layout_motion() {
+    use crate::{SLOT_TOGGLE_THUMB, ToggleSwitch, theme, toggle_checked};
+
+    let mut ui = Ui::new();
+    ui.set_theme(theme::default_theme());
+    ui.set_cascade(theme::default_cascade(ui.properties()));
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+
+    let toggle = ui.append(root, ToggleSwitch::new().checked(true));
+    let thumb = ui
+        .slot(toggle, SLOT_TOGGLE_THUMB)
+        .expect("toggle template should create a thumb slot");
+    let timeline = ui.inspection_snapshot().timeline;
+    assert_eq!(timeline.active_transitions, 0);
+    assert_eq!(timeline.pending_transitions, 0);
+
+    ui.compute_layout(Size::new(200.0, 80.0));
+    let checked_x = layer_x(&ui, thumb);
+    assert_close(checked_x, ui.effective_bounds(thumb).x0);
+    assert!(!ui.has_active_presentation_motion());
+
+    ui.set_now(millis(10_000));
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(layer_x(&ui, thumb), checked_x);
+    assert!(!ui.has_active_presentation_motion());
+
+    toggle_checked(&mut ui, toggle);
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert!(ui.has_active_presentation_motion());
+    assert_close(layer_x(&ui, thumb), checked_x);
+}
+
+#[test]
 fn slider_initial_value_positions_thumb() {
     use crate::Slider;
 
@@ -655,6 +759,7 @@ fn transition_rules_drive_custom_native_property_target() {
     );
 
     let panel = ui.append(root, crate::Panel::new().class(MOTION_PANEL));
+    ui.compute_layout(Size::new(100.0, 50.0));
     assert_eq!(
         ui.resolve_value_for(ui.get(panel).expect("panel should exist"), pressure),
         PressureReading(10.0)

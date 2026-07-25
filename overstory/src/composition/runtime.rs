@@ -119,6 +119,7 @@ struct ElementComposition {
     surface: Option<SurfaceId>,
     layer_offset: Vec2,
     visual_transform: Affine,
+    presentation_established: bool,
 }
 
 impl CompositionRuntime {
@@ -169,6 +170,7 @@ impl CompositionRuntime {
                 surface,
                 layer_offset: Vec2::ZERO,
                 visual_transform: Affine::IDENTITY,
+                presentation_established: false,
             },
         );
         self.layer_to_element.insert(layer, id);
@@ -224,6 +226,13 @@ impl CompositionRuntime {
     /// Returns the composition policy corresponding to `id`.
     pub(crate) fn policy_for(&self, id: ElementId) -> Option<CompositionPolicy> {
         self.elements.get(id).map(|entry| entry.policy)
+    }
+
+    /// Returns whether `id` has participated in a prepared presentation frame.
+    pub(crate) fn has_established_presentation(&self, id: ElementId) -> bool {
+        self.elements
+            .get(id)
+            .is_some_and(|entry| entry.presentation_established)
     }
 
     /// Returns the Overstory-owned scene surface corresponding to `id`.
@@ -361,6 +370,7 @@ impl CompositionRuntime {
         };
         entry.layer_offset = layer_offset;
         entry.visual_transform = visual_transform;
+        entry.presentation_established = true;
         self.elements.insert(id, entry);
         self.layers
             .set_transform(layer, layer_transform(layer_offset, visual_transform));
