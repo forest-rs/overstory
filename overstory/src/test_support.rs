@@ -67,6 +67,11 @@ pub(crate) fn touch_up(point: Point, time: u64) -> PointerEvent {
     })
 }
 
+/// Builds a touch-contact cancellation event.
+pub(crate) fn touch_cancel() -> PointerEvent {
+    PointerEvent::Cancel(touch_pointer_info())
+}
+
 /// Builds a pointer-move event at `point`.
 pub(crate) fn pointer_move(point: Point, time: u64, primary_down: bool) -> PointerEvent {
     PointerEvent::Move(PointerUpdate {

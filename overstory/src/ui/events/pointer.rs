@@ -325,6 +325,9 @@ impl Ui {
                         ));
                     }
                 }
+                if matches!(button_event.pointer.pointer_type, PointerType::Touch) {
+                    self.clear_hover_with_pointer(data, &mut result);
+                }
                 result
             }
             PointerEvent::Scroll(scroll_event) => {

@@ -656,6 +656,24 @@ impl Ui {
         assert!(id != self.root(), "remove: cannot remove the tree root");
         assert!(self.get(id).is_some(), "remove: id is stale");
 
+        // Overlay ownership gets first refusal while its target, popup, and
+        // responder paths are all live. In particular, a directly removed
+        // popup must restore or repair focus before generic subtree retirement
+        // observes an otherwise misleading transient `None`.
+        self.remove_overlay_state_for(id);
+        if self.get(id).is_none() {
+            return;
+        }
+
+        // Retire focus and pointer state while responder ancestry and widget
+        // behavior are still available. Focus callbacks may themselves remove
+        // this subtree, so all structural reads below must follow this phase.
+        self.begin_interaction_subtree_exit(id);
+        if self.get(id).is_none() {
+            self.end_interaction_subtree_exit(id);
+            return;
+        }
+
         let parent = self.get(id).and_then(crate::element::Element::parent);
         let previous_sibling = parent.and_then(|parent| {
             self.get(parent)
@@ -690,6 +708,7 @@ impl Ui {
         if let Some(previous_sibling) = previous_sibling {
             self.record_element_tree_upsert(previous_sibling);
         }
+        self.end_interaction_subtree_exit(id);
     }
 
     fn remove_subtree(&mut self, id: ElementId) {

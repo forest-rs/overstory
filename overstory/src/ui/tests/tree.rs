@@ -355,6 +355,130 @@ fn remove_drops_subtree_and_invalidates_handles() {
 }
 
 #[test]
+fn removing_hovered_element_clears_retained_hover_path() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(120.0, 80.0));
+    let child = ui.insert_child(root);
+    ui.set_layout(child, Layout::new().logical_size(80.0, 40.0));
+    ui.compute_layout(Size::new(120.0, 80.0));
+
+    let center = ui.effective_bounds(child).center();
+    assert!(
+        ui.dispatch_pointer_event(&pointer_move(center, 1, false))
+            .changed()
+    );
+    assert_eq!(ui.hovered(), Some(child));
+
+    ui.remove(child);
+
+    assert_eq!(ui.hovered(), None);
+}
+
+#[test]
+fn removing_captured_source_clears_its_external_pressed_visual() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let visual = ui.insert_child(root);
+    let source = ui.insert_child(visual);
+    ui.set_press_target(Some(visual));
+    ui.set_pointer_capture(Some(source));
+
+    ui.remove(source);
+
+    assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(ui.events.press_target(), None);
+    assert!(!ui.get(visual).unwrap().pseudos().contains(&PSEUDO_PRESSED));
+}
+
+#[test]
+fn removing_focused_subtree_routes_focus_lost_before_detaching_it() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.insert_child(root);
+    let focused = ui.insert_child(container);
+    ui.set_focusable(focused, true);
+
+    let lost = Rc::new(Cell::new(0_u32));
+    let lost_for_handler = Rc::clone(&lost);
+    ui.events(root).focus(move |ui, event| {
+        if event.kind == RoutedEventKind::FocusLost && event.phase().is_bubble() {
+            assert!(ui.get(container).is_some());
+            assert!(ui.get(focused).is_some());
+            lost_for_handler.set(lost_for_handler.get() + 1);
+        }
+    });
+    assert!(ui.set_focus(Some(focused)));
+
+    ui.remove(container);
+
+    assert_eq!(lost.get(), 1);
+    assert_eq!(ui.focused(), None);
+    assert!(ui.get(container).is_none());
+    assert!(ui.get(focused).is_none());
+}
+
+#[test]
+fn focus_lost_callback_cannot_refocus_a_subtree_being_removed() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.insert_child(root);
+    let focused = ui.insert_child(container);
+    ui.set_focusable(focused, true);
+
+    let accepted = Rc::new(Cell::new(None));
+    let accepted_for_handler = Rc::clone(&accepted);
+    ui.events(root).focus(move |ui, event| {
+        if event.kind == RoutedEventKind::FocusLost && event.phase().is_bubble() {
+            accepted_for_handler.set(Some(ui.set_focus(Some(focused))));
+        }
+    });
+    assert!(ui.set_focus(Some(focused)));
+
+    ui.remove(container);
+
+    assert_eq!(accepted.get(), Some(false));
+    assert_eq!(ui.focused(), None);
+}
+
+#[test]
+fn focus_lost_callback_may_finish_removing_the_same_subtree() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.insert_child(root);
+    let focused = ui.insert_child(container);
+    ui.set_focusable(focused, true);
+
+    let lost = Rc::new(Cell::new(0_u32));
+    let lost_for_handler = Rc::clone(&lost);
+    ui.events(root).focus(move |ui, event| {
+        if event.kind == RoutedEventKind::FocusLost && event.phase().is_bubble() {
+            lost_for_handler.set(lost_for_handler.get() + 1);
+            if ui.get(container).is_some() {
+                ui.remove(container);
+            }
+        }
+    });
+    assert!(ui.set_focus(Some(focused)));
+
+    ui.remove(container);
+
+    assert_eq!(lost.get(), 1);
+    assert_eq!(ui.focused(), None);
+    assert!(ui.get(container).is_none());
+    assert!(ui.get(focused).is_none());
+}
+
+#[test]
 fn slot_reuse_invalidates_old_handle() {
     let mut ui = Ui::new();
     let root = ui.root();

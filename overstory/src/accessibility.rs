@@ -570,6 +570,24 @@ mod tests {
     }
 
     #[test]
+    fn accesskit_focus_always_names_an_emitted_node_after_removal() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let container = ui.insert_child(root);
+        let button = ui.append(container, Button::new("Deploy"));
+        assert!(ui.set_focus(Some(button)));
+
+        ui.remove(container);
+
+        let update = ui.accesskit_tree_update();
+        assert_eq!(update.focus, accesskit_node_id(root));
+        assert!(
+            update.nodes.iter().any(|(id, _)| *id == update.focus),
+            "AccessKit focus must name a node in the same tree update"
+        );
+    }
+
+    #[test]
     fn accesskit_tree_skips_presentational_content_presenters() {
         let mut ui = Ui::new();
         let root = ui.root();

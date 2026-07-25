@@ -148,6 +148,100 @@ fn ancestor_visibility_controls_focus_eligibility_and_restores_preference() {
 }
 
 #[test]
+fn collapsed_subtree_clears_every_active_interaction_target() {
+    use crate::Button;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let container = ui.insert_child(root);
+    let button = ui.append(container, Button::new("Run"));
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    assert!(
+        ui.dispatch_pointer_event(&pointer_down(center, 1))
+            .changed()
+    );
+    assert_eq!(ui.focused(), Some(button));
+    assert!(ui.hovered().is_some());
+    assert!(ui.pointer_capture().is_some());
+    assert_eq!(ui.events.press_target(), Some(button));
+
+    ui.set_visibility(container, crate::Visibility::Collapsed);
+
+    assert_eq!(ui.focused(), None);
+    assert_eq!(ui.hovered(), None);
+    assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(ui.events.press_target(), None);
+    assert!(!ui.get(button).unwrap().pseudos().contains(&PSEUDO_PRESSED));
+}
+
+#[test]
+fn collapsed_focused_subtree_cannot_receive_later_keyboard_input() {
+    use alloc::rc::Rc;
+    use core::cell::Cell;
+    use ui_events::keyboard::{Code, Key, KeyboardEvent};
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let container = ui.insert_child(root);
+    let input = ui.insert_child(container);
+    ui.set_focusable(input, true);
+
+    let received = Rc::new(Cell::new(0_u32));
+    let received_for_handler = Rc::clone(&received);
+    ui.events(input).key(move |_ui, _event| {
+        received_for_handler.set(received_for_handler.get() + 1);
+    });
+    assert!(ui.set_focus(Some(input)));
+
+    ui.set_visibility(container, crate::Visibility::Collapsed);
+    let result = ui.dispatch_key(&KeyboardEvent::key_down(
+        Key::Character(String::from("x")),
+        Code::KeyX,
+    ));
+
+    assert_eq!(ui.focused(), None);
+    assert!(!result.handled);
+    assert_eq!(received.get(), 0);
+}
+
+#[test]
+fn disabled_control_drops_hover_from_its_template_part() {
+    use crate::Button;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let button = ui.append(root, Button::new("Run"));
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    assert!(
+        ui.dispatch_pointer_event(&pointer_move(center, 1, false))
+            .changed()
+    );
+    assert!(ui.hovered().is_some());
+
+    ui.set_enabled(button, false);
+
+    assert_eq!(ui.hovered(), None);
+}
+
+#[test]
+fn collapsed_element_rejects_explicit_pointer_capture() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let child = ui.insert_child(root);
+
+    ui.set_visibility(child, crate::Visibility::Collapsed);
+
+    assert!(!ui.capture_pointer(child));
+    assert_eq!(ui.pointer_capture(), None);
+}
+
+#[test]
 fn direct_is_checked_write_updates_checked_pseudo() {
     use crate::CheckBox;
 

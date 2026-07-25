@@ -7,7 +7,8 @@ use crate::pseudos::{
     PSEUDO_PRESSED, PSEUDO_SELECTED,
 };
 use crate::test_support::{
-    pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up, touch_down, touch_up,
+    pointer_down, pointer_leave, pointer_move, pointer_scroll, pointer_up, touch_cancel,
+    touch_down, touch_up,
 };
 use crate::{
     BindingOwner, CompositionPolicy, ControlTemplateSpecExt, ElementRef, ElementRefSpecExt,

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Interactive element state: classes, pseudos, focus, hover, press, and capture.
+//!
+//! This module owns reconciliation between retained element lifecycle and
+//! interactive state; it explicitly does not own tree mutation or routed-event
+//! storage.
 
 use super::events::PointerRouteData;
 use alloc::vec::Vec;
@@ -123,9 +127,10 @@ impl Ui {
     ///
     /// Capture is explicit UI state: while present, pointer move/up/cancel
     /// events route from the captured element even when hit testing points
-    /// somewhere else. Stale or disabled targets are rejected.
+    /// somewhere else. Stale, disabled, or effectively hidden targets are
+    /// rejected.
     pub fn capture_pointer(&mut self, id: ElementId) -> bool {
-        if self.get(id).is_none() || !self.is_enabled(id) {
+        if self.get(id).is_none() || !self.is_enabled(id) || !self.is_effectively_visible(id) {
             return false;
         }
         self.set_pointer_capture(Some(id))
@@ -327,15 +332,19 @@ impl Ui {
                     self.set_focus(None);
                 }
             }
-            let clear_pointer =
-                self.events.press_target() == Some(id) || self.events.pointer_capture() == Some(id);
-            if self.events.press_target() == Some(id) {
-                self.set_press_target(None);
+            if self
+                .hovered()
+                .is_some_and(|hovered| self.press_visual_target(hovered) == id)
+            {
+                self.clear_hover();
             }
-            if clear_pointer {
-                self.set_pointer_capture(None);
-                self.events.clear_press();
-                self.events.cancel_click();
+            if self.events.press_target() == Some(id)
+                || self
+                    .events
+                    .pointer_capture()
+                    .is_some_and(|capture| capture == id || self.press_visual_target(capture) == id)
+            {
+                self.clear_pointer_session();
             }
         }
     }
@@ -376,7 +385,14 @@ impl Ui {
         reason: FocusChangeReason,
     ) -> bool {
         let previous = self.focus.focused();
-        let accepted = new.filter(|id| self.is_enabled(*id) && self.is_effectively_visible(*id));
+        let accepted = new.filter(|id| {
+            self.is_enabled(*id)
+                && self.is_effectively_visible(*id)
+                && !self
+                    .interaction_exit_roots
+                    .iter()
+                    .any(|root| self.get(*root).is_some() && self.is_descendant_or_self(*id, *root))
+        });
         let mut changed = false;
         if self.focus.focused() == accepted {
             if let Some(id) = accepted {
@@ -451,6 +467,78 @@ impl Ui {
     fn clear_hover(&mut self) -> bool {
         let events = self.events.clear_hover();
         self.apply_hover_events(events)
+    }
+
+    /// Retires every interaction whose responder or visual target is inside a
+    /// subtree that is still live but about to be removed.
+    ///
+    /// Tree mutation owns when this is called. `EventRuntime` remains only the
+    /// storage and recognizer owner; it cannot route `FocusLost` or clear a
+    /// pressed visual that differs from the captured source on its own.
+    pub(in crate::ui) fn begin_interaction_subtree_exit(&mut self, root: ElementId) {
+        self.interaction_exit_roots.push(root);
+
+        if self
+            .focused()
+            .is_some_and(|focused| self.is_descendant_or_self(focused, root))
+        {
+            self.set_focus(None);
+        }
+        if self
+            .hovered()
+            .is_some_and(|hovered| self.is_descendant_or_self(hovered, root))
+        {
+            self.clear_hover();
+        }
+        if self
+            .events
+            .press_target()
+            .is_some_and(|pressed| self.is_descendant_or_self(pressed, root))
+            || self
+                .events
+                .pointer_capture()
+                .is_some_and(|capture| self.is_descendant_or_self(capture, root))
+        {
+            self.clear_pointer_session();
+        }
+    }
+
+    pub(in crate::ui) fn end_interaction_subtree_exit(&mut self, root: ElementId) {
+        let index = self
+            .interaction_exit_roots
+            .iter()
+            .rposition(|candidate| *candidate == root)
+            .expect("interaction subtree exits must remain balanced");
+        self.interaction_exit_roots.remove(index);
+    }
+
+    /// Clears interactions which became invalid because an element or one of
+    /// its ancestors is no longer visible.
+    pub(in crate::ui) fn reconcile_interaction_visibility(&mut self) {
+        if self
+            .hovered()
+            .is_some_and(|hovered| !self.is_effectively_visible(hovered))
+        {
+            self.clear_hover();
+        }
+        if self
+            .events
+            .press_target()
+            .is_some_and(|pressed| !self.is_effectively_visible(pressed))
+            || self
+                .events
+                .pointer_capture()
+                .is_some_and(|capture| !self.is_effectively_visible(capture))
+        {
+            self.clear_pointer_session();
+        }
+    }
+
+    fn clear_pointer_session(&mut self) {
+        self.set_press_target(None);
+        self.set_pointer_capture(None);
+        self.events.clear_press();
+        self.events.cancel_click();
     }
 
     pub(in crate::ui) fn clear_hover_with_pointer(

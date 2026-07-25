@@ -135,6 +135,12 @@ pub struct Ui {
     events: EventRuntime,
     /// Focused element, focusable preferences, and keyboard navigation policy.
     focus: FocusRuntime,
+    /// Subtree roots whose live responder paths are being retired before removal.
+    ///
+    /// Keeping them live until `FocusLost` finishes preserves routed-event
+    /// ancestry; excluding them here prevents callbacks from reviving focus in
+    /// a subtree whose removal has already begun.
+    interaction_exit_roots: Vec<ElementId>,
     /// Internal presentation timeline tracks sampled from host time.
     timeline: TimelineRuntime,
     /// Internal policy for planning presentation transitions from state changes.
@@ -335,6 +341,7 @@ impl Ui {
             binding_sources: BindingSourceRuntime::new(),
             events: EventRuntime::new(),
             focus: FocusRuntime::new(),
+            interaction_exit_roots: Vec::new(),
             timeline: TimelineRuntime::new(),
             motion_policy: MotionPolicy::new(),
             timeline_properties,

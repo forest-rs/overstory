@@ -86,7 +86,38 @@ fn touch_contact_activates_button() {
     let up = ui.dispatch_pointer_event(&touch_up(center, 2));
     assert!(up.changed());
     assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(
+        ui.hovered(),
+        None,
+        "a completed touch contact must not behave like persistent mouse hover"
+    );
     assert_eq!(count.get(), 1);
+}
+
+#[test]
+fn cancelled_touch_contact_clears_hover_press_and_capture() {
+    use crate::Button;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let button = ui.append(root, Button::new("Tap"));
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    let center = ui.effective_bounds(button).center();
+    let down = ui.dispatch_pointer_event(&touch_down(center, 1));
+    assert!(down.changed());
+    assert!(ui.hovered().is_some());
+    assert!(ui.pointer_capture().is_some());
+    assert!(ui.get(button).unwrap().pseudos().contains(&PSEUDO_PRESSED));
+
+    let cancel = ui.dispatch_pointer_event(&touch_cancel());
+
+    assert!(cancel.changed());
+    assert_eq!(ui.hovered(), None);
+    assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(ui.events.press_target(), None);
+    assert!(!ui.get(button).unwrap().pseudos().contains(&PSEUDO_PRESSED));
 }
 
 #[test]

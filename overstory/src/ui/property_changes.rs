@@ -157,6 +157,7 @@ impl Ui {
         {
             self.set_focus(None);
         }
+        self.reconcile_interaction_visibility();
     }
 
     /// Marks template-generated elements that depend on an owner property.
