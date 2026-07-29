@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use alloc::vec::Vec;
-use core::any::Any;
+use core::any::{Any, TypeId};
 use core::marker::PhantomData;
 
+use peniko::Color;
 use understory_animation::{
     AnimationPlayState, CompositeOperation, RetainedAnimationEffect, RetainedAnimationInstance,
     StackEffect, TimingSample, sample_effects,
@@ -167,7 +168,7 @@ impl TargetValueBridge<PresentationValue> for PresentationBridge {
         if let Some(value) = value.downcast_ref::<f64>() {
             return Some(PresentationValue::Scalar64(*value));
         }
-        if let Some(value) = value.downcast_ref::<peniko::Color>() {
+        if let Some(value) = value.downcast_ref::<Color>() {
             return Some(PresentationValue::Color(*value));
         }
         value
@@ -219,7 +220,13 @@ where
         let timing = TransitionTiming::new(spec.duration)
             .with_delay(spec.delay)
             .with_timing(spec.timing);
-        TransitionDeclarations::new().with(TransitionDeclaration::for_target::<T>(0, timing))
+        let declaration = if TypeId::of::<T>() == TypeId::of::<Color>() {
+            TransitionDeclaration::for_color_target(0, timing)
+                .with_color_interpolation(spec.color_interpolation)
+        } else {
+            TransitionDeclaration::for_target::<T>(0, timing)
+        };
+        TransitionDeclarations::new().with(declaration)
     }
 
     fn erase_transition_value(value: T) -> ErasedValue {

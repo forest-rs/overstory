@@ -36,9 +36,10 @@
 //! an `Option<Brush>` to match the canonical `Surface.*` brush longhands;
 //! foreground tokens carry a `Brush` to match `Foreground`. Motion tokens
 //! carry [`understory_timing::TimerDuration`], easing curves as
-//! [`crate::motion::TimingFunction`], or
-//! [`crate::motion::ColorInterpolation`]. Apps with richer palettes or motion
-//! systems should layer additional tokens on top.
+//! [`crate::motion::TimingFunction`], and the native color interpolation
+//! vocabulary from [`crate::color`] and [`crate::InterpolationAlphaSpace`].
+//! Apps with richer palettes or motion systems should layer additional tokens
+//! on top.
 //!
 //! Roadmap:
 //! - Keep the built-in theme small: it should demonstrate token roles and
@@ -51,7 +52,8 @@
 //!   the default theme so examples expose styling gaps early.
 
 use kurbo::Vec2;
-use peniko::{Brush, Color};
+use peniko::color::{ColorSpaceTag, HueDirection};
+use peniko::{Brush, Color, InterpolationAlphaSpace};
 use understory_style::{
     ResourceKey, Selector, SelectorStep, StyleBuilder, StyleCascade, StyleCascadeBuilder,
     StyleOrigin,
@@ -121,9 +123,8 @@ use crate::layouts::{
     LayoutSpacing,
 };
 use crate::motion::{
-    AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule, EffectRules,
-    PresentationTarget, TimingFunction, TransitionDeclaration, TransitionDeclarations,
-    TransitionResourceKey, TransitionTiming, millis,
+    AnimationTarget, EffectClip, EffectKeyframe, EffectRule, EffectRules, MotionSpec,
+    TimingFunction, Transitions, millis,
 };
 use crate::properties::BuiltInProperties;
 use crate::pseudos::{
@@ -252,8 +253,12 @@ pub const MOTION_NORMAL_DURATION: ResourceKey = ResourceKey::new(21);
 pub const MOTION_EMPHASIZED_DURATION: ResourceKey = ResourceKey::new(22);
 /// Default easing curve for interaction motion.
 pub const MOTION_STANDARD_EASING: ResourceKey = ResourceKey::new(23);
-/// Default color interpolation policy for color transitions.
-pub const MOTION_COLOR_INTERPOLATION: ResourceKey = ResourceKey::new(24);
+/// Default color space for color transitions.
+pub const MOTION_COLOR_SPACE: ResourceKey = ResourceKey::new(24);
+/// Default hue direction for color transitions.
+pub const MOTION_HUE_DIRECTION: ResourceKey = ResourceKey::new(25);
+/// Default alpha interpolation space for color transitions.
+pub const MOTION_ALPHA_SPACE: ResourceKey = ResourceKey::new(26);
 
 const DEFAULT_MOTION_FAST_DURATION: TimerDuration = millis(70);
 const DEFAULT_MOTION_NORMAL_DURATION: TimerDuration = millis(90);
@@ -359,7 +364,9 @@ fn finish_motion_tokens(builder: ThemeBuilder) -> ThemeBuilder {
             DEFAULT_MOTION_EMPHASIZED_DURATION,
         )
         .set(MOTION_STANDARD_EASING, DEFAULT_MOTION_STANDARD_EASING)
-        .set(MOTION_COLOR_INTERPOLATION, ColorInterpolation::SRGB)
+        .set(MOTION_COLOR_SPACE, ColorSpaceTag::Srgb)
+        .set(MOTION_HUE_DIRECTION, HueDirection::Shorter)
+        .set(MOTION_ALPHA_SPACE, InterpolationAlphaSpace::Premultiplied)
 }
 
 /// Builds Overstory's default control stylesheet for the built-in controls.
@@ -444,10 +451,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .background_resource(properties, THUMB_BG)
         .set(
             properties.transitions,
-            layer_offset_transition_rules(
-                DEFAULT_MOTION_EMPHASIZED_DURATION,
-                MOTION_EMPHASIZED_DURATION,
-            ),
+            layer_offset_transition_rules(MOTION_EMPHASIZED_DURATION),
         )
         .corner_radius(properties, 12.0_f64)
         .set(properties.layout_size, LayoutSize::logical(24.0, 24.0))
@@ -470,7 +474,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .border_width(properties, 1.0_f64)
         .set(
             properties.transitions,
-            layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
+            layer_offset_transition_rules(MOTION_NORMAL_DURATION),
         )
         .corner_radius(properties, 11.0_f64)
         .build();
@@ -1024,7 +1028,7 @@ pub fn default_cascade_builder(properties: &BuiltInProperties) -> StyleCascadeBu
         .corner_radius(properties, 7.0_f64)
         .set(
             properties.transitions,
-            layer_offset_transition_rules(DEFAULT_MOTION_NORMAL_DURATION, MOTION_NORMAL_DURATION),
+            layer_offset_transition_rules(MOTION_NORMAL_DURATION),
         )
         .build();
     let segmented_item_idle = StyleBuilder::new()
@@ -1825,105 +1829,72 @@ fn toggle_alignment(checked: bool) -> LayoutAlignment {
         .justify_content(justify)
 }
 
-fn button_transition_rules(
-    properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
-    surface_transition_rules(properties).with(
-        TransitionDeclaration::for_target::<f32>(
-            PresentationTarget::property(properties.opacity.id()),
-            TransitionTiming::new(DEFAULT_MOTION_FAST_DURATION),
-        )
-        .with_duration_resource(transition_key(MOTION_FAST_DURATION)),
+fn button_transition_rules(properties: &BuiltInProperties) -> Transitions {
+    surface_transition_rules(properties).property(
+        properties.opacity,
+        MotionSpec::from_duration_resource(MOTION_FAST_DURATION),
     )
 }
 
-fn surface_transition_rules(
-    properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
+fn surface_transition_rules(properties: &BuiltInProperties) -> Transitions {
     with_border_width_transition_rules(
         with_border_brush_transition_rules(background_transition_rules(properties), properties),
         properties,
     )
 }
 
-fn border_affordance_transition_rules(
-    properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
+fn border_affordance_transition_rules(properties: &BuiltInProperties) -> Transitions {
     with_border_width_transition_rules(
-        with_border_brush_transition_rules(TransitionDeclarations::new(), properties),
+        with_border_brush_transition_rules(Transitions::new(), properties),
         properties,
     )
 }
 
-fn background_transition_rules(
-    properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
-    TransitionDeclarations::new().with(color_transition(
-        PresentationTarget::property(properties.surface.background.id()),
-        DEFAULT_MOTION_NORMAL_DURATION,
-        MOTION_NORMAL_DURATION,
-    ))
+fn background_transition_rules(properties: &BuiltInProperties) -> Transitions {
+    Transitions::new().color(
+        properties.surface.background,
+        color_motion(MOTION_NORMAL_DURATION),
+    )
 }
 
 fn with_border_brush_transition_rules(
-    mut rules: TransitionDeclarations<PresentationTarget>,
+    mut rules: Transitions,
     properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
+) -> Transitions {
     let brushes = properties.surface.border_brushes;
     for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
-        rules.push(color_transition(
-            PresentationTarget::property(property.id()),
-            DEFAULT_MOTION_NORMAL_DURATION,
-            MOTION_NORMAL_DURATION,
-        ));
+        rules = rules.color(property, color_motion(MOTION_NORMAL_DURATION));
     }
     rules
 }
 
 fn with_border_width_transition_rules(
-    mut rules: TransitionDeclarations<PresentationTarget>,
+    mut rules: Transitions,
     properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
+) -> Transitions {
     let widths = properties.surface.border_widths;
     for property in [widths.top, widths.right, widths.bottom, widths.left] {
-        rules.push(
-            TransitionDeclaration::for_target::<f64>(
-                PresentationTarget::property(property.id()),
-                TransitionTiming::new(DEFAULT_MOTION_FAST_DURATION),
-            )
-            .with_duration_resource(transition_key(MOTION_FAST_DURATION)),
+        rules = rules.property(
+            property,
+            MotionSpec::from_duration_resource(MOTION_FAST_DURATION),
         );
     }
     rules
 }
 
-fn color_transition(
-    target: PresentationTarget,
-    duration: TimerDuration,
-    duration_token: ResourceKey,
-) -> TransitionDeclaration<PresentationTarget> {
-    TransitionDeclaration::for_color_target(target, TransitionTiming::new(duration))
-        .with_duration_resource(transition_key(duration_token))
-        .with_color_interpolation(ColorInterpolation::SRGB)
-        .with_color_interpolation_resource(transition_key(MOTION_COLOR_INTERPOLATION))
+fn color_motion(duration_token: ResourceKey) -> MotionSpec {
+    MotionSpec::from_duration_resource(duration_token)
+        .with_color_space_resource(MOTION_COLOR_SPACE)
+        .with_hue_direction_resource(MOTION_HUE_DIRECTION)
+        .with_alpha_space_resource(MOTION_ALPHA_SPACE)
 }
 
-fn layer_offset_transition_rules(
-    duration: TimerDuration,
-    duration_token: ResourceKey,
-) -> TransitionDeclarations<PresentationTarget> {
-    TransitionDeclarations::new().with(
-        TransitionDeclaration::for_target::<Vec2>(
-            PresentationTarget::layer_offset(),
-            TransitionTiming::new(duration).with_timing(DEFAULT_MOTION_STANDARD_EASING),
-        )
-        .with_duration_resource(transition_key(duration_token))
-        .with_timing_resource(transition_key(MOTION_STANDARD_EASING)),
+fn layer_offset_transition_rules(duration_token: ResourceKey) -> Transitions {
+    Transitions::new().target(
+        AnimationTarget::layer_offset(),
+        MotionSpec::from_duration_resource(duration_token)
+            .with_easing_resource(MOTION_STANDARD_EASING),
     )
-}
-
-const fn transition_key(key: ResourceKey) -> TransitionResourceKey {
-    TransitionResourceKey::new(key.index())
 }
 
 fn segmented_control_effect_rules() -> EffectRules {

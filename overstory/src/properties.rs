@@ -33,7 +33,7 @@ use crate::layouts::{
     Layout, LayoutAlignment, LayoutContainer, LayoutDirection, LayoutOverflow, LayoutPlacement,
     LayoutSize, LayoutSpacing,
 };
-use crate::motion::{EffectRules, PresentationTarget, TransitionDeclarations};
+use crate::motion::{EffectRules, Transitions};
 use crate::paragraph_direction::ParagraphDirection;
 use crate::template::ControlTemplate;
 
@@ -236,7 +236,7 @@ pub struct BuiltInProperties {
 
     /// Style-authored transition rules for dependency-property and visual
     /// output targets. Default empty, which snaps target changes.
-    pub transitions: Property<TransitionDeclarations<PresentationTarget>>,
+    pub transitions: Property<Transitions>,
 
     /// Style-authored effect rules for semantic control events.
     /// Default empty, which ignores effect triggers.
@@ -558,7 +558,7 @@ impl BuiltInProperties {
             ),
             transitions: registry.register(
                 "Transitions",
-                PropertyMetadataBuilder::new(TransitionDeclarations::new()).build(),
+                PropertyMetadataBuilder::new(Transitions::new()).build(),
             ),
             effects: registry.register(
                 "Effects",

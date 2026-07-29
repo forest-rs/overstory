@@ -7,6 +7,19 @@
 //! interpolation, timing functions, and single-value transition clips. It
 //! deliberately does not know about elements, dependency properties, style,
 //! invalidation, layout, or composition backends.
+//!
+//! Overstory exposes three authoring tiers over one retained runtime:
+//!
+//! 1. [`Transitions`] attaches typed, theme-aware motion to style changes.
+//! 2. [`Ui::with_motion`](crate::Ui::with_motion) applies one policy to
+//!    synchronous retained mutations without requiring a controller.
+//! 3. [`EffectClip`] and [`Ui::animate_target`](crate::Ui::animate_target)
+//!    retain explicit keyframes, timelines, composition, and playback control.
+//!
+//! The first two tiers lower into the same transition tracks. They do not
+//! create a second state system or a second sampler.
+
+mod authoring;
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -19,14 +32,14 @@ pub use understory_animation::{
     StackEffect, TimingPhase, TimingSample,
 };
 pub use understory_motion::{
-    AnimatableValue as Animatable, ColorInterpolation, ColorTransition, Interpolate,
-    TimingFunction, Transform2d, Transition, millis, normalized_progress,
+    AnimatableValue as Animatable, Interpolate, TimingFunction, Transform2d, Transition, millis,
+    normalized_progress,
 };
 use understory_property::{Property, PropertyId};
 use understory_timing::TimerDuration;
-pub use understory_transition::{
-    TransitionDeclaration, TransitionDeclarations, TransitionResourceKey, TransitionTiming,
-};
+
+pub(crate) use authoring::MotionValue;
+pub use authoring::{ColorTransitionProperty, MotionSpec, Transitions};
 
 /// Presentation-only output sampled by the motion runtime.
 ///
@@ -614,6 +627,7 @@ mod tests {
     use alloc::string::String;
     use peniko::InterpolationAlphaSpace;
     use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
+    use understory_motion::{ColorInterpolation, ColorTransition};
 
     #[test]
     fn timing_function_samples_expected_shape() {

@@ -14,9 +14,10 @@ use understory_property::PropertyId;
 
 use crate::element::ElementId;
 use crate::motion::{
-    Animatable, ColorInterpolation, EffectClip, EffectKeyframe, Interpolate, PresentationSlot,
-    PresentationTarget, PresentationValue, TimingFunction,
+    Animatable, EffectClip, EffectKeyframe, Interpolate, PresentationSlot, PresentationTarget,
+    PresentationValue, TimingFunction,
 };
+use understory_motion::ColorInterpolation;
 
 use super::timeline::DocumentTimeline;
 use super::*;

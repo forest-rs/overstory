@@ -63,6 +63,14 @@
 //!
 //! assert_eq!(ui.get(root).unwrap().children(), &[elements.card]);
 //! assert!(ui.get(elements.deploy).unwrap().parent().is_some());
+//!
+//! // A view does not own another runtime. Later mutations use the same public
+//! // retained API and scoped motion authoring as directly-built UI.
+//! ui.compute_layout(Size::new(400.0, 240.0));
+//! let opacity = ui.properties().opacity;
+//! ui.with_motion(MotionSpec::new(millis(180)), |ui| {
+//!     ui.set_local(elements.card, opacity, 0.8);
+//! });
 //! ```
 
 use crate::ui::ChildUi;

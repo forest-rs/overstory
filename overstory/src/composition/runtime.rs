@@ -235,6 +235,11 @@ impl CompositionRuntime {
             .is_some_and(|entry| entry.presentation_established)
     }
 
+    /// Returns the compositor-local offset currently presented for `id`.
+    pub(crate) fn layer_offset_for(&self, id: ElementId) -> Option<Vec2> {
+        self.elements.get(id).map(|entry| entry.layer_offset)
+    }
+
     /// Returns the Overstory-owned scene surface corresponding to `id`.
     pub(crate) fn owned_scene_surface_for(&self, id: ElementId) -> Option<SurfaceId> {
         let entry = self.elements.get(id)?;

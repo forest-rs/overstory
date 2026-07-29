@@ -12,10 +12,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 
-use overstory::motion::{
-    ColorInterpolation, PresentationTarget, TimingFunction, TransitionDeclaration,
-    TransitionDeclarations, TransitionTiming, millis,
-};
+use overstory::color::ColorSpaceTag;
+use overstory::motion::{MotionSpec, TimingFunction, Transitions, millis};
 use overstory::pseudos::{PSEUDO_FOCUS_VISIBLE, PSEUDO_PRESSED, PSEUDO_SELECTED};
 use overstory::{
     Accordion, AccordionChildUiExt, AccordionSection, Affine, Badge, BindingSpecExt, BorderStyle,

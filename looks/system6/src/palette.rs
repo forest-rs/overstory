@@ -9,8 +9,9 @@
 //! brush, which the toolkit doesn't expose yet.) The text-selection wash is
 //! derived from ink over paper via the canonical color interpolation API.
 
-use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use peniko::{Brush, Color, color::palette::css};
+use overstory::motion::{TimingFunction, millis};
+use peniko::color::{ColorSpaceTag, HueDirection, palette::css};
+use peniko::{Brush, Color, InterpolationAlphaSpace};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
@@ -88,7 +89,9 @@ pub(crate) struct TokenValues {
     pub(crate) motion_normal: TimerDuration,
     pub(crate) motion_emphasized: TimerDuration,
     pub(crate) motion_standard_easing: TimingFunction,
-    pub(crate) motion_color_interpolation: ColorInterpolation,
+    pub(crate) motion_color_space: ColorSpaceTag,
+    pub(crate) motion_hue_direction: HueDirection,
+    pub(crate) motion_alpha_space: InterpolationAlphaSpace,
 }
 
 const INSTANT: TimerDuration = millis(0);
@@ -127,6 +130,8 @@ pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
         motion_normal: INSTANT,
         motion_emphasized: INSTANT,
         motion_standard_easing: LINEAR,
-        motion_color_interpolation: ColorInterpolation::SRGB,
+        motion_color_space: ColorSpaceTag::Srgb,
+        motion_hue_direction: HueDirection::Shorter,
+        motion_alpha_space: InterpolationAlphaSpace::Premultiplied,
     }
 }

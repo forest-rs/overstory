@@ -357,7 +357,10 @@ fn schedule_movement(ui: &mut Ui, target: ElementId, interval: TimerDuration) {
     ui.on_timer(target, move |ui, _event| {
         let next = !active.get();
         active.set(next);
-        ui.set_layout(target, mover_layout(next));
+        ui.with_motion(
+            MotionSpec::new(millis(920)).with_easing(EASE_IN_OUT),
+            |ui| ui.set_layout(target, mover_layout(next)),
+        );
     });
 }
 
@@ -558,6 +561,7 @@ fn set_pseudo(ui: &mut Ui, target: ElementId, pseudo: PseudoClassId, active: boo
 mod tests {
     use super::*;
     use crate::app::pages::show_demo_page;
+    use overstory::PresentationTarget;
     use understory_property::DependencyObjectExt;
 
     #[test]

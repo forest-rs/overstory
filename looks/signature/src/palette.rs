@@ -13,8 +13,9 @@
 //! All gradients are authored in the unit square `[0, 1]²`; the surface painter
 //! scales them to each element's bounds (see GAPS.md G1).
 
-use overstory::motion::{ColorInterpolation, TimingFunction, millis};
-use peniko::{Brush, Color, Gradient, color::palette::css};
+use overstory::motion::{TimingFunction, millis};
+use peniko::color::{ColorSpaceTag, HueDirection, palette::css};
+use peniko::{Brush, Color, Gradient, InterpolationAlphaSpace};
 use understory_timing::TimerDuration;
 
 use crate::tokens::Scheme;
@@ -188,7 +189,9 @@ pub(crate) struct TokenValues {
     pub(crate) motion_glow: TimerDuration,
     pub(crate) motion_standard_easing: TimingFunction,
     pub(crate) motion_overshoot_easing: TimingFunction,
-    pub(crate) motion_color_interpolation: ColorInterpolation,
+    pub(crate) motion_color_space: ColorSpaceTag,
+    pub(crate) motion_hue_direction: HueDirection,
+    pub(crate) motion_alpha_space: InterpolationAlphaSpace,
 }
 
 /// Snappy ease-out (fast start settle) for most interaction motion.
@@ -259,6 +262,8 @@ pub(crate) fn token_values(_scheme: Scheme, s: &Seeds) -> TokenValues {
         motion_glow: millis(s.motion_glow_ms),
         motion_standard_easing: STANDARD_EASING,
         motion_overshoot_easing: OVERSHOOT_EASING,
-        motion_color_interpolation: ColorInterpolation::OKLAB,
+        motion_color_space: ColorSpaceTag::Oklab,
+        motion_hue_direction: HueDirection::Shorter,
+        motion_alpha_space: InterpolationAlphaSpace::Premultiplied,
     }
 }

@@ -54,7 +54,7 @@ fn owner_state_layout_change_transitions_descendant_layer_offset() {
                 StyleBuilder::new()
                     .set(
                         ui.properties().transitions,
-                        transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
+                        transition(AnimationTarget::layer_offset(), millis(100)),
                     )
                     .build(),
             )
@@ -124,7 +124,7 @@ fn paint_only_interaction_does_not_arm_layer_offset_transition() {
                 StyleBuilder::new()
                     .set(
                         ui.properties().transitions,
-                        transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
+                        transition(AnimationTarget::layer_offset(), millis(100)),
                     )
                     .build(),
             )
@@ -169,7 +169,7 @@ fn generic_layer_offset_transition_tracks_layout_target_changes() {
             StyleBuilder::new()
                 .set(
                     transitions,
-                    transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
+                    transition(AnimationTarget::layer_offset(), millis(100)),
                 )
                 .build(),
         )
@@ -230,7 +230,7 @@ fn snap_layout_placement_cancels_active_layer_offset_transition() {
             StyleBuilder::new()
                 .set(
                     transitions,
-                    transition::<Vec2>(PresentationTarget::layer_offset(), millis(100)),
+                    transition(AnimationTarget::layer_offset(), millis(100)),
                 )
                 .build(),
         )
@@ -265,4 +265,46 @@ fn snap_layout_placement_cancels_active_layer_offset_transition() {
     ui.set_layout_placement_without_motion(mover, LayoutPlacement::absolute_at(130.0, 20.0));
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, mover), 130.0);
+}
+
+#[test]
+fn scoped_layout_motion_preserves_the_presented_origin_on_first_move() {
+    use crate::Panel;
+
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::flex().logical_size(200.0, 80.0));
+    let stage = ui.append(
+        root,
+        Panel::new().layout(Layout::flex().relative().logical_size(180.0, 60.0)),
+    );
+    let mover = ui.append(
+        stage,
+        Panel::new().layout(
+            Layout::new()
+                .absolute_at(10.0, 20.0)
+                .logical_size(24.0, 24.0),
+        ),
+    );
+
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(layer_x(&ui, mover), 10.0);
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_layout(
+            mover,
+            Layout::new()
+                .absolute_at(130.0, 20.0)
+                .logical_size(24.0, 24.0),
+        );
+    });
+    ui.compute_layout(Size::new(200.0, 80.0));
+
+    assert_close(ui.effective_bounds(mover).x0, 130.0);
+    assert_close(layer_x(&ui, mover), 10.0);
+
+    ui.set_now(millis(50));
+    ui.compute_layout(Size::new(200.0, 80.0));
+    assert_close(layer_x(&ui, mover), 70.0);
 }

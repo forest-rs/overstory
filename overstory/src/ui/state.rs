@@ -26,7 +26,6 @@ use crate::pseudos::{
 };
 use crate::style_class::StyleClass;
 
-use super::transition_planner::InteractionTransitionPlan;
 use super::{ControlState, Ui};
 
 impl Ui {
@@ -35,12 +34,16 @@ impl Ui {
     /// Passing a class name interns it through this UI's style vocabulary.
     pub fn add_class(&mut self, id: ElementId, class: impl Into<StyleClass>) {
         let class = self.resolve_style_class(class);
+        let transition_plan = self.plan_presentation_change(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.add_class(class))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            if let Some(transition_plan) = transition_plan {
+                transition_plan.apply_after(self);
+            }
             self.record_element_tree_update(id);
         }
     }
@@ -64,40 +67,48 @@ impl Ui {
         let Some(class) = class.into().resolve_existing(self.style_vocabulary()) else {
             return;
         };
+        let transition_plan = self.plan_presentation_change(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_class(class))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
+            if let Some(transition_plan) = transition_plan {
+                transition_plan.apply_after(self);
+            }
             self.record_element_tree_update(id);
         }
     }
 
     /// Adds `pseudo` to `id` and re-styles the affected subtree.
     pub fn add_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
-        let transition_plan = InteractionTransitionPlan::capture(self, id);
+        let transition_plan = self.plan_presentation_change(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.add_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            transition_plan.apply_after(self, id);
+            if let Some(transition_plan) = transition_plan {
+                transition_plan.apply_after(self);
+            }
             self.record_element_tree_update(id);
         }
     }
 
     /// Removes `pseudo` from `id` and re-styles the affected subtree.
     pub fn remove_pseudo(&mut self, id: ElementId, pseudo: PseudoClassId) {
-        let transition_plan = InteractionTransitionPlan::capture(self, id);
+        let transition_plan = self.plan_presentation_change(id);
         let changed = self
             .get_mut(id)
             .map(|el| el.remove_pseudo(pseudo))
             .unwrap_or(false);
         if changed {
             self.restyle_subtree(id);
-            transition_plan.apply_after(self, id);
+            if let Some(transition_plan) = transition_plan {
+                transition_plan.apply_after(self);
+            }
             self.record_element_tree_update(id);
         }
     }
@@ -334,7 +345,7 @@ impl Ui {
                     .map(|child| (*child, enabled)),
             );
         }
-        let transition_plan = InteractionTransitionPlan::capture(self, root);
+        let transition_plan = self.plan_presentation_change(root);
         let mut pseudos_changed = false;
         for &(id, enabled) in &states {
             let Some(element) = self.elements.get_mut(id) else {
@@ -352,7 +363,9 @@ impl Ui {
         }
         if pseudos_changed {
             self.restyle_subtree(root);
-            transition_plan.apply_after(self, root);
+            if let Some(transition_plan) = transition_plan {
+                transition_plan.apply_after(self);
+            }
         }
 
         // Keep ineligible overlay anchors and the focused element in the focus

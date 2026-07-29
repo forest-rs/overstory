@@ -112,6 +112,30 @@ impl Ui {
         )
     }
 
+    /// Resolves the durable value below the property's animation stage.
+    pub(crate) fn resolve_base_value_for<T: Clone + 'static>(
+        &self,
+        element: &Element,
+        property: Property<T>,
+    ) -> T {
+        ResolveCx::new(
+            &self.registry,
+            self.style.theme(),
+            self.style.expressions(),
+            UiResolveLookup::new(self),
+        )
+        .query(element, property)
+        .style(self.style.cascade(), self.match_state(element.id()))
+        .without_animation()
+        .try_value()
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to resolve base value for property {:?}: {error:?}",
+                property.id()
+            )
+        })
+    }
+
     /// Resolves `property` for `element` and reports which source supplied the
     /// value. Element-based sibling of [`Self::explain_property`].
     pub(crate) fn explain_value_for<T: Clone + 'static>(

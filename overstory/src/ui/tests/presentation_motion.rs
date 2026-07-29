@@ -4,6 +4,486 @@
 use super::*;
 
 #[test]
+fn motion_scope_transitions_an_ordinary_property_write() {
+    const DURATION: ResourceKey = ResourceKey::new(1_201);
+
+    let mut ui = Ui::new();
+    ui.set_theme(ThemeBuilder::new().set(DURATION, millis(100)).build());
+    let root = ui.root();
+    let panel = ui.append(
+        root,
+        crate::Panel::new().layout(Layout::flex().logical_size(120.0, 40.0)),
+    );
+    let opacity = ui.properties().opacity;
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::from_duration_resource(DURATION), |ui| {
+        ui.set_local(panel, opacity, 0.25_f32);
+    });
+
+    assert_eq!(
+        ui.get(panel)
+            .and_then(|element| element.get_local_value(opacity)),
+        Some(&0.25),
+    );
+    assert_eq!(ui.presented_layer_opacity(panel), 1.0);
+    assert!(ui.has_active_presentation_motion());
+
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.625);
+    ui.set_now(millis(100));
+    assert_eq!(ui.presented_layer_opacity(panel), 0.25);
+    assert_eq!(ui.resolved_value(panel, opacity), Some(0.25));
+}
+
+#[test]
+fn motion_scope_retargets_a_property_from_its_presented_value() {
+    let mut ui = Ui::new();
+    let panel = ui.append(
+        ui.root(),
+        crate::Panel::new().layout(Layout::flex().logical_size(120.0, 40.0)),
+    );
+    let opacity = ui.properties().opacity;
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 0.0_f32);
+    });
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.5);
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 0.8_f32);
+    });
+
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.5);
+    ui.set_now(millis(100));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.65);
+    ui.set_now(millis(150));
+    assert_eq!(ui.presented_layer_opacity(panel), 0.8);
+}
+
+#[test]
+fn motion_scope_preserves_reversing_shortening() {
+    let mut ui = Ui::new();
+    let panel = ui.append(
+        ui.root(),
+        crate::Panel::new().layout(Layout::flex().logical_size(120.0, 40.0)),
+    );
+    let opacity = ui.properties().opacity;
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 0.0_f32);
+    });
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.5);
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 1.0_f32);
+    });
+
+    ui.set_now(millis(75));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.75);
+    ui.set_now(millis(100));
+    assert_eq!(ui.presented_layer_opacity(panel), 1.0);
+}
+
+#[test]
+fn motion_scope_applies_to_synchronous_binding_destinations() {
+    use crate::BindingSpecExt;
+
+    let mut ui = Ui::new();
+    let opacity = ui.properties().opacity;
+    let source = ui.local_state(1.0_f32);
+    let panel = ui.append(
+        ui.root(),
+        crate::Panel::new()
+            .bind_property(opacity, source.binding())
+            .layout(Layout::flex().logical_size(120.0, 40.0)),
+    );
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        assert!(source.set(ui, 0.4));
+        ui.flush_bindings();
+    });
+
+    assert_eq!(ui.presented_layer_opacity(panel), 1.0);
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.7);
+    ui.set_now(millis(100));
+    assert_eq!(ui.resolved_value(panel, opacity), Some(0.4));
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        assert!(source.set(ui, 0.8));
+    });
+    ui.flush_bindings();
+
+    assert_eq!(ui.presented_layer_opacity(panel), 0.8);
+    assert!(!ui.has_active_presentation_motion());
+}
+
+#[test]
+fn motion_scope_overrides_missing_style_motion_for_state_projection() {
+    const MOTION_PANEL: ClassId = ClassId(120);
+
+    let mut ui = Ui::new();
+    let opacity = ui.properties().opacity;
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(
+                    SelectorStep::type_tag(TYPE_GENERIC)
+                        .with_class(MOTION_PANEL)
+                        .with_pseudo(PSEUDO_SELECTED),
+                )
+                .build(),
+                StyleBuilder::new().set(opacity, 0.2_f32).build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(ui.root(), crate::Panel::new().class(MOTION_PANEL));
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.add_pseudo(panel, PSEUDO_SELECTED);
+    });
+
+    assert_eq!(ui.presented_layer_opacity(panel), 1.0);
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(panel)), 0.6);
+    ui.set_now(millis(100));
+    assert_eq!(ui.resolved_value(panel, opacity), Some(0.2));
+}
+
+#[test]
+fn nested_motion_scope_temporarily_overrides_its_parent() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let outer = ui.append(root, crate::Panel::new());
+    let inner = ui.append(root, crate::Panel::new());
+    let opacity = ui.properties().opacity;
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(outer, opacity, 0.0_f32);
+        ui.with_motion(MotionSpec::new(millis(200)), |ui| {
+            ui.set_local(inner, opacity, 0.0_f32);
+        });
+    });
+
+    ui.set_now(millis(50));
+    assert_close(f64::from(ui.presented_layer_opacity(outer)), 0.5);
+    assert_close(f64::from(ui.presented_layer_opacity(inner)), 0.75);
+}
+
+#[test]
+fn motion_scope_does_not_animate_initial_insertion() {
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let panel = ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.append(root, crate::Panel::new().opacity(0.25))
+    });
+
+    assert_eq!(ui.presented_layer_opacity(panel), 0.25);
+    assert!(!ui.has_active_presentation_motion());
+    ui.compute_layout(Size::new(160.0, 80.0));
+    assert!(!ui.has_active_presentation_motion());
+}
+
+#[test]
+fn removing_a_motion_target_tears_down_its_transaction_track() {
+    let mut ui = Ui::new();
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    let opacity = ui.properties().opacity;
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 0.0_f32);
+        ui.remove(panel);
+    });
+
+    assert!(ui.get(panel).is_none());
+    assert!(!ui.has_active_presentation_motion());
+}
+
+#[test]
+fn motion_scope_includes_value_changes_derived_from_range_coercion() {
+    let mut ui = Ui::new();
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    let value = ui.properties().value;
+    let maximum = ui.properties().maximum;
+    ui.register_animation_target_property(value);
+    ui.set_local(panel, maximum, 100.0);
+    ui.set_local(panel, value, 80.0);
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, maximum, 40.0);
+    });
+
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), value),
+        80.0,
+        "the derived coerced value should begin at its presented value"
+    );
+    ui.set_now(millis(50));
+    assert_eq!(ui.resolve_value_for(ui.get(panel).unwrap(), value), 60.0);
+}
+
+#[test]
+fn motion_scope_honors_color_interpolation_for_custom_color_properties() {
+    let mut ui = Ui::new();
+    let from = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
+    let to = Color::from_rgba8(0x00, 0xff, 0x00, 0xff);
+    let color = ui
+        .registry_mut()
+        .register("CustomColor", PropertyMetadataBuilder::new(from).build());
+    ui.register_animation_target_property(color);
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(
+        MotionSpec::new(millis(100)).with_color_interpolation(
+            ColorSpaceTag::Oklab,
+            HueDirection::Shorter,
+            InterpolationAlphaSpace::Premultiplied,
+        ),
+        |ui| ui.set_local(panel, color, to),
+    );
+    ui.set_now(millis(50));
+
+    let expected = DynamicColor::from_alpha_color(from)
+        .interpolate(
+            DynamicColor::from_alpha_color(to),
+            ColorSpaceTag::Oklab,
+            HueDirection::Shorter,
+        )
+        .eval(0.5)
+        .to_alpha_color::<Srgb>();
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), color),
+        expected
+    );
+}
+
+#[test]
+fn motion_scope_resolves_complete_color_interpolation_from_theme() {
+    use understory_motion::ColorInterpolation as RuntimeColorInterpolation;
+
+    const COLOR_SPACE: ResourceKey = ResourceKey::new(1_206);
+    const HUE_DIRECTION: ResourceKey = ResourceKey::new(1_207);
+    const ALPHA_SPACE: ResourceKey = ResourceKey::new(1_208);
+
+    let mut ui = Ui::new();
+    ui.set_theme(
+        ThemeBuilder::new()
+            .set(COLOR_SPACE, ColorSpaceTag::Hsl)
+            .set(HUE_DIRECTION, HueDirection::Increasing)
+            .set(ALPHA_SPACE, InterpolationAlphaSpace::Unpremultiplied)
+            .build(),
+    );
+    let from = Color::from_rgba8(0xff, 0x00, 0x00, 0x20);
+    let to = Color::from_rgba8(0x00, 0x00, 0xff, 0xe0);
+    let color = ui.registry_mut().register(
+        "ThemeResolvedCustomColor",
+        PropertyMetadataBuilder::new(from).build(),
+    );
+    ui.register_animation_target_property(color);
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.with_motion(
+        MotionSpec::new(millis(100))
+            .with_color_space_resource(COLOR_SPACE)
+            .with_hue_direction_resource(HUE_DIRECTION)
+            .with_alpha_space_resource(ALPHA_SPACE),
+        |ui| ui.set_local(panel, color, to),
+    );
+    ui.set_now(millis(50));
+
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), color),
+        RuntimeColorInterpolation::new(
+            ColorSpaceTag::Hsl,
+            HueDirection::Increasing,
+            InterpolationAlphaSpace::Unpremultiplied,
+        )
+        .interpolate(from, to, 0.5),
+    );
+}
+
+#[test]
+fn custom_color_registration_preserves_explicit_typed_animation() {
+    let mut ui = Ui::new();
+    let from = Color::from_rgba8(0xff, 0x00, 0x00, 0xff);
+    let transitioned = Color::from_rgba8(0x00, 0xff, 0x00, 0xff);
+    let animated = Color::from_rgba8(0x00, 0x00, 0xff, 0xff);
+    let color = ui.registry_mut().register(
+        "AnimatedCustomColor",
+        PropertyMetadataBuilder::new(from).build(),
+    );
+    ui.register_animation_target_property(color);
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, color, transitioned);
+    });
+    ui.set_now(millis(100));
+
+    let animation = ui.animate_target(
+        panel,
+        AnimationTarget::property(color),
+        EffectClip::from_keyframes([
+            EffectKeyframe::new(0, transitioned),
+            EffectKeyframe::new(millis(100), animated),
+        ]),
+    );
+
+    assert!(
+        animation.is_some(),
+        "a transitioned property must retain the same typed runtime track for explicit effects"
+    );
+    ui.set_now(millis(150));
+    assert_ne!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), color),
+        transitioned,
+        "color transition registration must retain the native typed adapter"
+    );
+}
+
+#[test]
+fn explicit_animation_then_scoped_transition_share_a_presentation_property_track() {
+    let mut ui = Ui::new();
+    let opacity = ui.properties().opacity;
+    let panel = ui.append(ui.root(), crate::Panel::new());
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    let animation = ui
+        .animate_property(
+            panel,
+            opacity,
+            EffectClip::from_keyframes([
+                EffectKeyframe::new(0, 1.0_f32),
+                EffectKeyframe::new(millis(100), 0.5_f32),
+            ]),
+        )
+        .expect("the explicit animation should start");
+    ui.set_now(millis(50));
+
+    ui.with_motion(MotionSpec::new(millis(100)), |ui| {
+        ui.set_local(panel, opacity, 0.25_f32);
+    });
+
+    assert_eq!(
+        ui.get(panel)
+            .and_then(|element| element.get_local_value(opacity)),
+        Some(&0.25),
+    );
+    assert!(
+        ui.animation_state(animation).is_some(),
+        "changing the underlying target must not discard the explicit effect"
+    );
+}
+
+#[test]
+fn registered_custom_brush_property_honors_typed_color_transition() {
+    const PANEL: ClassId = ClassId(1_204);
+
+    let mut ui = Ui::new();
+    let from = Brush::Solid(Color::from_rgba8(0xff, 0x00, 0x00, 0xff));
+    let to = Brush::Solid(Color::from_rgba8(0x00, 0xff, 0x00, 0xff));
+    let custom = ui.registry_mut().register(
+        "CustomBrush",
+        PropertyMetadataBuilder::new(from.clone()).build(),
+    );
+    ui.register_color_animation_target_property(custom);
+    let selector =
+        SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(PANEL)).build();
+    let selected = SelectorBuilder::new(
+        SelectorStep::type_tag(TYPE_GENERIC)
+            .with_class(PANEL)
+            .with_pseudo(PSEUDO_SELECTED),
+    )
+    .build();
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                selector,
+                StyleBuilder::new()
+                    .set(custom, from.clone())
+                    .set(
+                        ui.properties().transitions,
+                        Transitions::new().color(custom, MotionSpec::new(millis(100))),
+                    )
+                    .build(),
+            )
+            .push_rule(
+                StyleOrigin::Base,
+                selected,
+                StyleBuilder::new().set(custom, to.clone()).build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(ui.root(), crate::Panel::new().class(PANEL));
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.set_now(0);
+    ui.add_pseudo(panel, PSEUDO_SELECTED);
+
+    assert_eq!(
+        ui.resolve_value_for(ui.get(panel).unwrap(), custom),
+        from,
+        "accepted typed color properties should not silently snap"
+    );
+    assert!(ui.has_active_presentation_motion());
+}
+
+#[test]
+#[should_panic(expected = "is not registered")]
+fn unregistered_custom_brush_transition_fails_at_the_state_change() {
+    const PANEL: ClassId = ClassId(1_205);
+
+    let mut ui = Ui::new();
+    let custom = ui.registry_mut().register(
+        "UnregisteredCustomBrush",
+        PropertyMetadataBuilder::new(Brush::Solid(Color::BLACK)).build(),
+    );
+    ui.set_cascade(
+        StyleCascadeBuilder::new()
+            .push_rule(
+                StyleOrigin::Base,
+                SelectorBuilder::new(SelectorStep::type_tag(TYPE_GENERIC).with_class(PANEL))
+                    .build(),
+                StyleBuilder::new()
+                    .set(
+                        ui.properties().transitions,
+                        Transitions::new().color(custom, MotionSpec::new(millis(100))),
+                    )
+                    .build(),
+            )
+            .build(),
+    );
+    let panel = ui.append(ui.root(), crate::Panel::new().class(PANEL));
+    ui.compute_layout(Size::new(160.0, 80.0));
+
+    ui.add_pseudo(panel, PSEUDO_SELECTED);
+}
+
+#[test]
 fn initial_disabled_style_settles_without_transition_motion() {
     use crate::{Button, TYPE_BUTTON};
 
@@ -17,10 +497,7 @@ fn initial_disabled_style_settles_without_transition_motion() {
                     StyleBuilder::new()
                         .set(
                             ui.properties().transitions,
-                            transition::<f32>(
-                                PresentationTarget::property(opacity.id()),
-                                millis(120),
-                            ),
+                            transition(AnimationTarget::property(opacity), millis(120)),
                         )
                         .build(),
                 )
@@ -565,7 +1042,7 @@ fn ui_animate_uses_clip_timing_policy() {
         .animations
         .into_iter()
         .find(|row| row.id == animation)
-        .expect("native visual translation animation should be inspectable");
+        .expect("typed visual translation animation should be inspectable");
     assert_eq!(row.value_kind, Some(PresentationValueKind::Offset2d));
 }
 
@@ -741,10 +1218,7 @@ fn transition_rules_drive_custom_native_property_target() {
                     .set(pressure, PressureReading(10.0))
                     .set(
                         transitions,
-                        transition::<PressureReading>(
-                            PresentationTarget::property(pressure.id()),
-                            millis(100),
-                        ),
+                        transition(AnimationTarget::property(pressure), millis(100)),
                     )
                     .build(),
             )
@@ -991,15 +1465,10 @@ fn styled_transition_rule_controls_button_hover_duration() {
                 .set(background, Some(Brush::Solid(idle)))
                 .set(
                     transitions,
-                    TransitionDeclarations::new().with(
-                        TransitionDeclaration::for_color_target(
-                            PresentationTarget::property(background.id()),
-                            TransitionTiming::new(millis(90)),
-                        )
-                        .with_duration_resource(TransitionResourceKey::new(
-                            TEST_HOVER_DURATION.index(),
-                        ))
-                        .with_color_interpolation(ColorInterpolation::SRGB),
+                    Transitions::new().color(
+                        background,
+                        MotionSpec::from_duration_resource(TEST_HOVER_DURATION)
+                            .with_color_space(ColorSpaceTag::Srgb),
                     ),
                 )
                 .build(),
@@ -1064,13 +1533,7 @@ fn transition_rules_drive_registered_foreground_property() {
                 selector,
                 StyleBuilder::new()
                     .set(foreground, Brush::Solid(idle))
-                    .set(
-                        transitions,
-                        color_transition(
-                            PresentationTarget::property(foreground.id()),
-                            millis(100),
-                        ),
-                    )
+                    .set(transitions, color_transition(foreground, millis(100)))
                     .build(),
             )
             .push_rule(
@@ -1140,13 +1603,7 @@ fn interaction_transitions_track_descendant_effective_value_changes() {
                 label_selector,
                 StyleBuilder::new()
                     .set(foreground, Brush::Solid(idle))
-                    .set(
-                        transitions,
-                        color_transition(
-                            PresentationTarget::property(foreground.id()),
-                            millis(100),
-                        ),
-                    )
+                    .set(transitions, color_transition(foreground, millis(100)))
                     .build(),
             )
             .push_rule(
@@ -1213,13 +1670,7 @@ fn inherited_timeline_property_samples_invalidate_descendants() {
                 row_selector,
                 StyleBuilder::new()
                     .set(foreground, Brush::Solid(idle))
-                    .set(
-                        transitions,
-                        color_transition(
-                            PresentationTarget::property(foreground.id()),
-                            millis(100),
-                        ),
-                    )
+                    .set(transitions, color_transition(foreground, millis(100)))
                     .build(),
             )
             .push_rule(
@@ -1425,7 +1876,7 @@ fn slider_thumb_snaps_without_styled_transition_rule() {
     let root = ui.root();
     ui.set_layout(root, Layout::flex().logical_size(300.0, 80.0));
     let style = StyleBuilder::new()
-        .set(ui.properties().transitions, TransitionDeclarations::new())
+        .set(ui.properties().transitions, Transitions::new())
         .build();
     ui.set_cascade(
         StyleCascadeBuilder::new()

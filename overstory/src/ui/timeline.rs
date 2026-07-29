@@ -13,18 +13,20 @@ use alloc::vec::Vec;
 
 use kurbo::{Affine, Vec2};
 use understory_animation::{AnimationPlayState, TimingSample};
+use understory_motion::ColorInterpolation;
 use understory_property::Property;
-use understory_style::{ResourceKey, ThemeResolveOptions};
 use understory_timing::{TimerDuration, TimerInstant};
-use understory_transition::{TransitionResourceKey, TransitionResources};
 
 use crate::channels::COMPOSE;
 use crate::element::ElementId;
 use crate::motion::{
-    Animatable, AnimationTarget, EffectClip, EffectTriggerId, PresentationAnimationValue,
-    PresentationSlot, PresentationTarget, PresentationValue, PresentationValueKind,
+    Animatable, AnimationTarget, ColorTransitionProperty, EffectClip, EffectTriggerId, MotionSpec,
+    MotionValue, PresentationAnimationValue, PresentationSlot, PresentationTarget,
+    PresentationValue, PresentationValueKind,
 };
-use crate::timeline_properties::NativeTimelinePropertyAdapter;
+use crate::timeline_properties::{
+    NativeTimelinePropertyAdapter, TimelineTargetAdapter, lower_effect_clip_as,
+};
 use crate::timeline_runtime::{
     AnimationEvent, AnimationId, AnimationTimelineId, ChangeCause, NativeTimelineControlResult,
     NativeTimelineSample, PresentationRuntimeValue, ResolvedTransition, TimelineControlResult,
@@ -34,8 +36,71 @@ use crate::timeline_runtime::{
 
 use super::Ui;
 use super::property_changes::{PropertyChange, StateProjectionPolicy, TemplateRefreshPolicy};
+use super::transition_planner::PresentationTransitionPlan;
 
 impl Ui {
+    /// Runs `mutate` with one transition policy for synchronous retained changes.
+    ///
+    /// Ordinary local property writes and style-state changes made during the
+    /// closure are journaled and then transition from their currently presented
+    /// values to the final effective values. A nested scope temporarily commits
+    /// and replaces its parent's specification. Initial insertion never
+    /// animates because it has no established before-state. Built-in animatable
+    /// properties are registered automatically; register a custom property with
+    /// [`Self::register_animation_target_property`] or
+    /// [`Self::register_color_animation_target_property`].
+    ///
+    /// Interaction-state projection and class changes inherit the active
+    /// specification. Binding destinations inherit it only when bindings are
+    /// flushed inside the closure. Deferred binding work and global theme or
+    /// cascade swaps do not inherit it after the closure returns.
+    ///
+    /// This implicit tier does not produce an [`AnimationId`]. Use
+    /// [`Self::animate_target`] when cancellation, seeking, manual timelines,
+    /// or explicit playback lifecycle is part of the interaction.
+    pub fn with_motion<R>(&mut self, motion: MotionSpec, mutate: impl FnOnce(&mut Self) -> R) -> R {
+        // A nested scope is an explicit transaction boundary. Commit any work
+        // already journaled by its parent before installing the child policy.
+        self.finish_motion_transaction();
+        let resolved = self.resolve_motion_spec(motion);
+        let previous = self.motion_policy.replace_transaction(Some(resolved));
+        self.motion_transaction = Some(PresentationTransitionPlan::new(self.motion_policy));
+        let mut scope = MotionScope {
+            ui: self,
+            previous,
+            finished: false,
+        };
+        let result = mutate(&mut *scope.ui);
+        scope.finish();
+        result
+    }
+
+    fn resolve_motion_spec(&self, motion: MotionSpec) -> ResolvedTransition {
+        let theme = self.theme();
+        ResolvedTransition::new(
+            resolve_motion_value(&theme, motion.duration, 0),
+            resolve_motion_value(&theme, motion.delay, 0),
+            resolve_motion_value(&theme, motion.easing, crate::motion::TimingFunction::LINEAR),
+            ColorInterpolation::new(
+                resolve_motion_value(
+                    &theme,
+                    motion.color_space,
+                    peniko::color::ColorSpaceTag::Srgb,
+                ),
+                resolve_motion_value(
+                    &theme,
+                    motion.hue_direction,
+                    peniko::color::HueDirection::Shorter,
+                ),
+                resolve_motion_value(
+                    &theme,
+                    motion.alpha_space,
+                    peniko::InterpolationAlphaSpace::Premultiplied,
+                ),
+            ),
+        )
+    }
+
     pub(crate) fn request_presentation_transition(
         &mut self,
         element: ElementId,
@@ -105,6 +170,33 @@ impl Ui {
         T: Animatable,
     {
         self.timeline_properties.register_native(property);
+    }
+
+    /// Registers a custom color-presenting property as a transition target.
+    ///
+    /// `Color`, `Brush`, and `Option<Brush>` use different storage adapters,
+    /// but all sample the selected color space, hue direction, and alpha mode.
+    /// Built-in color-presenting properties are registered automatically.
+    pub fn register_color_animation_target_property(
+        &mut self,
+        property: impl ColorTransitionProperty,
+    ) {
+        property.register_adapter(self);
+    }
+
+    pub(crate) fn register_brush_color_animation_target(
+        &mut self,
+        property: Property<peniko::Brush>,
+    ) {
+        self.timeline_properties.register_brush_color(property);
+    }
+
+    pub(crate) fn register_optional_brush_color_animation_target(
+        &mut self,
+        property: Property<Option<peniko::Brush>>,
+    ) {
+        self.timeline_properties
+            .register_solid_brush_color(property);
     }
 
     pub(in crate::ui) fn has_presentation_target(
@@ -232,14 +324,15 @@ impl Ui {
         let element = self.get(element)?;
         let declarations = self.resolve_value_for(element, self.properties.transitions);
         let declaration = declarations.find(&target)?;
-        let resources = ThemeTransitionResources(self.theme());
-        let timing = declaration.resolve_timing(&resources);
-        Some(ResolvedTransition::new(
-            timing.duration(),
-            timing.delay(),
-            timing.timing(),
-            declaration.resolve_color_interpolation(&resources),
-        ))
+        if let PresentationTarget::Property(property) = target {
+            assert!(
+                self.timeline_properties.target_adapter(property).is_some(),
+                "motion target property {property:?} is not registered; register custom \
+                 properties with `Ui::register_animation_target_property` or \
+                 `Ui::register_color_animation_target_property`"
+            );
+        }
+        Some(self.resolve_motion_spec(declaration.motion()))
     }
 
     pub(crate) fn presented_layer_opacity(&self, element: ElementId) -> f32 {
@@ -384,8 +477,21 @@ impl Ui {
         if !self.timeline.has_timeline(timeline) {
             return None;
         }
-        if let PresentationTarget::Property(property) = target {
-            self.register_animation_target_property(Property::<T>::from_id(property));
+        match target {
+            PresentationTarget::Property(property) => {
+                if let Some(adapter) = self.timeline_properties.adapter(property) {
+                    let clip = adapter.lower_effect_clip(clip)?;
+                    return self
+                        .start_presentation_effect_on_timeline(element, target, clip, timeline);
+                }
+                self.register_animation_target_property(Property::<T>::from_id(property));
+            }
+            PresentationTarget::Slot(
+                PresentationSlot::LayerOffset | PresentationSlot::VisualTranslation,
+            ) => {
+                let clip = lower_effect_clip_as::<T, Vec2>(clip)?;
+                return self.start_presentation_effect_on_timeline(element, target, clip, timeline);
+            }
         }
         let key = TimelineTrackKey::new(element, target);
         let value_kind = self.native_target_value_kind(target);
@@ -541,8 +647,11 @@ impl Ui {
         match target {
             PresentationTarget::Property(property) => self
                 .timeline_properties
-                .adapter(property)
-                .map(|adapter| adapter.kind()),
+                .target_adapter(property)
+                .and_then(|adapter| match adapter {
+                    TimelineTargetAdapter::Presentation(adapter) => Some(adapter.kind()),
+                    TimelineTargetAdapter::Native(adapter) => adapter.value_kind(),
+                }),
             PresentationTarget::Slot(
                 PresentationSlot::LayerOffset | PresentationSlot::VisualTranslation,
             ) => Some(PresentationValueKind::Offset2d),
@@ -990,28 +1099,37 @@ impl Ui {
     }
 }
 
-struct ThemeTransitionResources<'a>(ThemeResolveOptions<'a>);
+struct MotionScope<'a> {
+    ui: &'a mut Ui,
+    previous: Option<ResolvedTransition>,
+    finished: bool,
+}
 
-impl TransitionResources for ThemeTransitionResources<'_> {
-    fn duration(&self, key: TransitionResourceKey) -> Option<TimerDuration> {
-        self.0
-            .get::<TimerDuration>(ResourceKey::new(key.index()))
-            .copied()
+impl MotionScope<'_> {
+    fn finish(&mut self) {
+        self.ui.finish_motion_transaction();
+        self.ui.motion_policy.replace_transaction(self.previous);
+        if self.ui.motion_policy.has_transaction() {
+            self.ui.motion_transaction =
+                Some(PresentationTransitionPlan::new(self.ui.motion_policy));
+        }
+        self.finished = true;
     }
+}
 
-    fn timing_function(&self, key: TransitionResourceKey) -> Option<crate::motion::TimingFunction> {
-        self.0
-            .get::<crate::motion::TimingFunction>(ResourceKey::new(key.index()))
-            .copied()
-    }
-
-    fn color_interpolation(
-        &self,
-        key: TransitionResourceKey,
-    ) -> Option<crate::motion::ColorInterpolation> {
-        self.0
-            .get::<crate::motion::ColorInterpolation>(ResourceKey::new(key.index()))
-            .copied()
+impl Drop for MotionScope<'_> {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        // Do not initiate new motion while unwinding a failed mutation. The
+        // retained writes remain, but the ambient policy is always restored.
+        self.ui.motion_transaction = None;
+        self.ui.motion_policy.replace_transaction(self.previous);
+        if self.ui.motion_policy.has_transaction() {
+            self.ui.motion_transaction =
+                Some(PresentationTransitionPlan::new(self.ui.motion_policy));
+        }
     }
 }
 
@@ -1021,5 +1139,19 @@ fn min_deadline(a: Option<TimerInstant>, b: Option<TimerInstant>) -> Option<Time
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,
+    }
+}
+
+fn resolve_motion_value<T>(
+    theme: &understory_style::ThemeResolveOptions<'_>,
+    value: MotionValue<T>,
+    fallback: T,
+) -> T
+where
+    T: Clone + Copy + 'static,
+{
+    match value {
+        MotionValue::Literal(value) => value,
+        MotionValue::Resource(resource) => theme.get(resource).copied().unwrap_or(fallback),
     }
 }

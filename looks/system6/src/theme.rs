@@ -8,8 +8,8 @@ use understory_style::{Theme, ThemeBuilder};
 use crate::palette::{Seeds, TokenValues, seeds_for, token_values};
 use crate::tokens::{
     ACCENT_BG, ACCENT_HOVER_BG, ACCENT_PRESSED_BG, CONTROL_BG, CONTROL_BORDER, CONTROL_HOVER_BG,
-    CONTROL_HOVER_BORDER, FOCUS_RING_BORDER, MOTION_COLOR_INTERPOLATION,
-    MOTION_EMPHASIZED_DURATION, MOTION_FAST_DURATION, MOTION_NORMAL_DURATION,
+    CONTROL_HOVER_BORDER, FOCUS_RING_BORDER, MOTION_ALPHA_SPACE, MOTION_COLOR_SPACE,
+    MOTION_EMPHASIZED_DURATION, MOTION_FAST_DURATION, MOTION_HUE_DIRECTION, MOTION_NORMAL_DURATION,
     MOTION_STANDARD_EASING, ON_ACCENT_FG, ON_SURFACE_FG, ON_SURFACE_MUTED_FG, PANEL_BG,
     ResolvedTokens, SLIDER_MAJOR_TICK_BG, SLIDER_MINOR_TICK_BG, SUCCESS_BG, SURFACE_BG, Scheme,
     TEXT_CARET_BG, TEXT_SELECTION_BG, THUMB_BG, TRACK_BG,
@@ -56,6 +56,8 @@ fn build(v: &TokenValues, tokens: &ResolvedTokens) -> Theme {
         .set(MOTION_NORMAL_DURATION, v.motion_normal)
         .set(MOTION_EMPHASIZED_DURATION, v.motion_emphasized)
         .set(MOTION_STANDARD_EASING, v.motion_standard_easing)
-        .set(MOTION_COLOR_INTERPOLATION, v.motion_color_interpolation)
+        .set(MOTION_COLOR_SPACE, v.motion_color_space)
+        .set(MOTION_HUE_DIRECTION, v.motion_hue_direction)
+        .set(MOTION_ALPHA_SPACE, v.motion_alpha_space)
         .build()
 }

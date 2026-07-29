@@ -95,10 +95,7 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
     // Idle reserves the ring width with a transparent border (plus a hairline
     // top highlight); focus recolors all four edges. No size change, no reflow.
     let button_idle = StyleBuilder::new()
-        .set(
-            properties.transitions,
-            motion::interaction(properties, tokens),
-        )
+        .set(properties.transitions, motion::interaction(properties))
         .border_width(properties, RING_WIDTH)
         .set(properties.surface.border_brushes.top, transparent())
         .set(properties.surface.border_brushes.right, transparent())
@@ -121,10 +118,7 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
     // The framework resting border is 1px and grows to 2px on focus (reflow).
     // Hold it at the ring width and recolor on focus.
     let text_input_idle = StyleBuilder::new()
-        .set(
-            properties.transitions,
-            motion::interaction(properties, tokens),
-        )
+        .set(properties.transitions, motion::interaction(properties))
         .border_width(properties, RING_WIDTH)
         .border_brush_resource(properties, CONTROL_BORDER)
         .build();
@@ -137,10 +131,7 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
     // a transparent ring at idle and recolor on focus; keep the corner fixed so
     // focusing changes neither size nor shape.
     let slider_idle = StyleBuilder::new()
-        .set(
-            properties.transitions,
-            motion::interaction(properties, tokens),
-        )
+        .set(properties.transitions, motion::interaction(properties))
         .border_width(properties, RING_WIDTH)
         .set(properties.surface.border_brushes.top, transparent())
         .set(properties.surface.border_brushes.right, transparent())
@@ -155,10 +146,7 @@ pub fn cascade(properties: &BuiltInProperties, tokens: &ResolvedTokens) -> Style
 
     // --- Select: constant-width ring, like the text input ------------------
     let select_idle = StyleBuilder::new()
-        .set(
-            properties.transitions,
-            motion::interaction(properties, tokens),
-        )
+        .set(properties.transitions, motion::interaction(properties))
         .border_width(properties, RING_WIDTH)
         .border_brush_resource(properties, CONTROL_BORDER)
         .build();

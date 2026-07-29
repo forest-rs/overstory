@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 use super::*;
 use crate::channels::{ARRANGE, COMPOSE, GEOMETRY, LAYOUT, PAINT};
+use crate::motion::{
+    Animatable, AnimationTarget, ColorTransitionProperty, EffectClip, EffectKeyframe, EffectRule,
+    EffectRules, EffectTriggerId, Interpolate, MotionSpec, PresentationSlot, PresentationTarget,
+    PresentationValue, PresentationValueKind, TimingFunction, Transitions, millis,
+};
 use crate::pseudos::{
     PSEUDO_CHECKED, PSEUDO_DISABLED, PSEUDO_FOCUS_VISIBLE, PSEUDO_FOCUSED, PSEUDO_HOVER,
     PSEUDO_PRESSED, PSEUDO_SELECTED,
@@ -24,40 +29,30 @@ use frameclock::FrameDemand;
 use imaging::record::{Command, Scene};
 use kurbo::{Affine, Point, Rect, Size, Vec2};
 use peniko::color::{ColorSpaceTag, DynamicColor, HueDirection, Srgb};
-use peniko::{Brush, Color};
+use peniko::{Brush, Color, InterpolationAlphaSpace};
 use understory_property::{DependencyObject, DependencyObjectExt, PropertyMetadataBuilder};
 use understory_style::{
     ClassId, PartTag, ResolveCx, ResourceKey, SelectorBuilder, SelectorStep, StyleBuilder,
     StyleCascadeBuilder, StyleOrigin, ThemeBuilder,
 };
 
-use crate::motion::{
-    Animatable, AnimationTarget, ColorInterpolation, EffectClip, EffectKeyframe, EffectRule,
-    EffectRules, EffectTriggerId, Interpolate, PresentationSlot, PresentationTarget,
-    PresentationValue, PresentationValueKind, TimingFunction, TransitionDeclaration,
-    TransitionDeclarations, TransitionResourceKey, TransitionTiming, millis,
-};
-
 fn transition<T>(
-    target: PresentationTarget,
+    target: AnimationTarget<T>,
     duration: understory_timing::TimerDuration,
-) -> TransitionDeclarations<PresentationTarget>
+) -> Transitions
 where
-    T: Interpolate + PartialEq + 'static,
+    T: Animatable,
 {
-    TransitionDeclarations::new().with(TransitionDeclaration::for_target::<T>(
-        target,
-        TransitionTiming::new(duration),
-    ))
+    Transitions::new().target(target, MotionSpec::new(duration))
 }
 
 fn color_transition(
-    target: PresentationTarget,
+    property: impl ColorTransitionProperty,
     duration: understory_timing::TimerDuration,
-) -> TransitionDeclarations<PresentationTarget> {
-    TransitionDeclarations::new().with(
-        TransitionDeclaration::for_color_target(target, TransitionTiming::new(duration))
-            .with_color_interpolation(ColorInterpolation::SRGB),
+) -> Transitions {
+    Transitions::new().color(
+        property,
+        MotionSpec::new(duration).with_color_space(ColorSpaceTag::Srgb),
     )
 }
 

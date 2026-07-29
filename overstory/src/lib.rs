@@ -276,8 +276,9 @@ pub use layouts::{
 };
 pub use lookup::{UiResolveLookup, UiStoreLookup};
 pub use motion::{
-    AnimationTarget, EffectClip, EffectKeyframe, PresentationAnimationValue, PresentationSlot,
-    PresentationTarget, PresentationValue, PresentationValueKind, TimingFunction,
+    AnimationTarget, EffectClip, EffectKeyframe, MotionSpec, PresentationAnimationValue,
+    PresentationSlot, PresentationTarget, PresentationValue, PresentationValueKind, TimingFunction,
+    Transitions, millis,
 };
 pub use overlay::Placement;
 pub use paragraph_direction::ParagraphDirection;
@@ -331,20 +332,21 @@ pub mod prelude {
         EFFECT_SEGMENTED_ACTIVATION_DENIED, EffectClip, EffectKeyframe, ElementId, ElementRef,
         ElementRefSpecExt, ElementSpec, ElementSpecExt, Expander, ExternalSource, FillMode,
         IndexedStack, Layout, LayoutDirection, ListBox, ListItemContext, LocalState, Menu,
-        MenuButton, MenuItem, MenuItemActivatedEvent, OutlineView, Panel, ParagraphDirection,
-        PartTag, PlaybackDirection, Popup, PresentationAnimationValue, PresentationSlot,
-        PresentationTarget, PresentationValue, PresentationValueKind, ProgressBar,
-        PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt, ResourceKey,
-        RoutedEvents, ScrollArea, ScrollBar, ScrollInputSource, ScrollOffsetChangedEvent,
-        ScrollState, ScrollView, SegmentedControl, Select, Size, Slider, SliderValueChangePhase,
-        SliderValueChangedEvent, Spinner, Splitter, StackAlignment, StyleClass, StyleTokenSet,
-        StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, TabBar, TabKey, TabOption, TabOverflow,
-        TabPage, TabView, TabViewChildUiExt, Text, TextAlign, TextInput, TextInputEditCommitReason,
-        TextInputEditCommittedEvent, TextInputEditRejectReason, TextInputEditRejectedEvent,
-        TextInputSubmitAction, TextInputSubmitEvent, TextInputTextChangeSource,
-        TextInputTextChangedEvent, TextSpecExt, TimerDuration, TimingFunction, TimingPhase,
-        TimingSample, ToggleSwitch, Tooltip, TooltipSpecExt, TypeTag, Ui, ValueBinding, VectorPath,
-        View, Viewport, Visibility, ZStack,
+        MenuButton, MenuItem, MenuItemActivatedEvent, MotionSpec, OutlineView, Panel,
+        ParagraphDirection, PartTag, PlaybackDirection, Popup, PresentationAnimationValue,
+        PresentationSlot, PresentationTarget, PresentationValue, PresentationValueKind,
+        ProgressBar, PropertyEndpoint, PseudoClassId, RadioButton, RadioGroup, RangeSpecExt,
+        ResourceKey, RoutedEvents, ScrollArea, ScrollBar, ScrollInputSource,
+        ScrollOffsetChangedEvent, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
+        SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter, StackAlignment,
+        StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, TabBar,
+        TabKey, TabOption, TabOverflow, TabPage, TabView, TabViewChildUiExt, Text, TextAlign,
+        TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
+        TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
+        TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,
+        TimerDuration, TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip,
+        TooltipSpecExt, Transitions, TypeTag, Ui, ValueBinding, VectorPath, View, Viewport,
+        Visibility, ZStack, millis,
     };
 }
 
@@ -354,7 +356,7 @@ pub mod prelude {
 pub use parley::{FontFeature, FontVariation};
 pub use peniko::color;
 pub use peniko::kurbo::{Affine, BezPath, Cap, Join, Rect, Size, Stroke, Vec2};
-pub use peniko::{Brush, Color, Fill};
+pub use peniko::{Brush, Color, Fill, InterpolationAlphaSpace};
 pub use understory_focus::Navigation;
 pub use understory_presentation::{
     BorderStyle, CornerShape, CornerShapes, Corners, Edges, FontFamily, FontFamilyName, FontStyle,

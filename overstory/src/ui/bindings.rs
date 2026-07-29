@@ -83,6 +83,7 @@ impl Ui {
         property: Property<T>,
         value: T,
     ) -> Option<ChannelSet> {
+        self.capture_motion_transaction_change(id);
         // Keep the typed store path for precise no-op suppression; the erased
         // store path conservatively returns full metadata channels.
         let channels = {
@@ -111,6 +112,7 @@ impl Ui {
         id: ElementId,
         property: Property<T>,
     ) -> Option<bool> {
+        self.capture_motion_transaction_change(id);
         let channels = {
             let element = self.elements.get_mut(id)?;
             if !element
@@ -145,6 +147,7 @@ impl Ui {
         source: LocalValueSource,
         template_refresh: TemplateRefreshPolicy,
     ) -> Option<ChannelSet> {
+        self.capture_motion_transaction_change(id);
         // Binding and config writes arrive erased, but they share all
         // post-write consequences with typed writes below.
         let channels = {

@@ -1,51 +1,53 @@
 // Copyright 2026 the Overstory Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Transition planning for interaction-driven effective-value changes.
+//! Transition planning for causally grouped effective-value changes.
 //!
-//! This module owns the bridge between an element state mutation and the
-//! timeline runtime. It does not decide which properties are animatable and it
-//! does not sample active tracks. Animatable property adapters live in
-//! `TimelinePropertyRegistry`; style-authored transition declarations decide
-//! which changed targets actually transition.
+//! This module owns before/after capture across one retained mutation or scoped
+//! motion transaction and bridges changed targets to the timeline runtime. It
+//! does not decide which properties are animatable or sample active tracks.
 
 use alloc::vec::Vec;
+
+use kurbo::Vec2;
+use understory_property::PropertyId;
 
 use crate::channels::ARRANGE;
 use crate::element::ElementId;
 use crate::motion::{PresentationSlot, PresentationTarget};
 use crate::timeline_properties::{TimelineTargetAdapter, TimelineTargetValue};
 use crate::timeline_runtime::{ChangeCause, ResolvedTransition};
-use understory_property::PropertyId;
 
 use super::{Ui, collect_preorder};
 
-/// Internal policy hook for interaction-driven motion.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Internal policy for implicit and scoped programmatic motion.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::ui) struct MotionPolicy {
-    interaction_transitions: bool,
+    transaction: Option<ResolvedTransition>,
 }
 
 impl MotionPolicy {
     /// Creates the default motion policy.
     #[must_use]
     pub(in crate::ui) const fn new() -> Self {
-        Self {
-            interaction_transitions: true,
-        }
+        Self { transaction: None }
     }
 
-    const fn decision_for_interaction(
-        self,
-        spec: Option<ResolvedTransition>,
-    ) -> TransitionDecision {
-        if self.interaction_transitions {
-            match spec {
-                Some(spec) => TransitionDecision::Animate(spec),
-                None => TransitionDecision::Snap,
-            }
-        } else {
-            TransitionDecision::Snap
+    pub(in crate::ui) fn replace_transaction(
+        &mut self,
+        transaction: Option<ResolvedTransition>,
+    ) -> Option<ResolvedTransition> {
+        core::mem::replace(&mut self.transaction, transaction)
+    }
+
+    pub(in crate::ui) const fn has_transaction(self) -> bool {
+        self.transaction.is_some()
+    }
+
+    fn decision(self, styled: Option<ResolvedTransition>) -> TransitionDecision {
+        match self.transaction.or(styled) {
+            Some(spec) => TransitionDecision::Animate(spec),
+            None => TransitionDecision::Snap,
         }
     }
 }
@@ -56,19 +58,41 @@ enum TransitionDecision {
     Animate(ResolvedTransition),
 }
 
-/// Before-state capture for one interaction state transition.
-pub(in crate::ui) struct InteractionTransitionPlan {
+/// Before-state journal for one causally grouped presentation change.
+pub(in crate::ui) struct PresentationTransitionPlan {
     policy: MotionPolicy,
-    root: ElementId,
+    roots: Vec<ElementId>,
     tracked: Vec<TrackedValue>,
     layout_outputs: Vec<TrackedLayoutOutput>,
 }
 
-impl InteractionTransitionPlan {
-    /// Captures animatable effective values before an interaction state change.
+impl PresentationTransitionPlan {
+    /// Creates an empty journal governed by `policy`.
+    pub(in crate::ui) const fn new(policy: MotionPolicy) -> Self {
+        Self {
+            policy,
+            roots: Vec::new(),
+            tracked: Vec::new(),
+            layout_outputs: Vec::new(),
+        }
+    }
+
+    /// Captures animatable effective values before a retained state change.
     pub(in crate::ui) fn capture(ui: &Ui, id: ElementId) -> Self {
-        let mut tracked = Vec::new();
-        let mut layout_outputs = Vec::new();
+        let mut plan = Self::new(ui.motion_policy);
+        plan.capture_root(ui, id);
+        plan
+    }
+
+    /// Adds the before-state of `id` and its existing descendants to the journal.
+    pub(in crate::ui) fn capture_root(&mut self, ui: &Ui, id: ElementId) {
+        if ui.get(id).is_none() {
+            return;
+        }
+        if !self.roots.contains(&id) {
+            self.roots.push(id);
+        }
+
         let target_adapters: Vec<_> = ui.timeline_properties.target_adapters().collect();
         for element in collect_preorder(ui, id) {
             // Values that have never participated in a frame are initial state,
@@ -76,40 +100,86 @@ impl InteractionTransitionPlan {
             if !ui.composition.has_established_presentation(element) {
                 continue;
             }
+            // The layout entry doubles as the per-element capture marker. All
+            // registered property adapters are captured in the same pass.
+            if self
+                .layout_outputs
+                .iter()
+                .any(|output| output.element == element)
+            {
+                continue;
+            }
             for &(property, adapter) in &target_adapters {
                 let target = PresentationTarget::Property(property);
-                tracked.push(TrackedValue {
+                self.tracked.push(TrackedValue {
                     element,
                     property,
                     target,
                     adapter,
-                    before: adapter.target_value(ui, element, property),
+                    before_presented: adapter.presented_value(ui, element, property),
+                    before_base: adapter.base_value(ui, element, property),
                     before_spec: ui.transition_spec_for(element, target, ChangeCause::Interaction),
                 });
             }
             let target = PresentationTarget::Slot(PresentationSlot::LayerOffset);
-            layout_outputs.push(TrackedLayoutOutput {
+            self.layout_outputs.push(TrackedLayoutOutput {
                 element,
                 target,
+                before_presented: ui
+                    .composition
+                    .layer_offset_for(element)
+                    .unwrap_or(Vec2::ZERO),
                 before_spec: ui.transition_spec_for(element, target, ChangeCause::Interaction),
             });
-        }
-
-        Self {
-            policy: ui.motion_policy,
-            root: id,
-            tracked,
-            layout_outputs,
         }
     }
 
     /// Applies transitions from captured before values to current after values.
-    pub(in crate::ui) fn apply_after(self, ui: &mut Ui, _id: ElementId) {
-        for tracked in self.tracked {
-            tracked.apply(ui, self.policy);
+    pub(in crate::ui) fn apply_after(self, ui: &mut Ui) {
+        let Self {
+            policy,
+            roots,
+            tracked,
+            layout_outputs,
+        } = self;
+
+        validate_transition_declarations(ui, &roots);
+        for tracked in tracked {
+            tracked.apply(ui, policy);
         }
-        for output in self.layout_outputs {
-            output.request_after(ui, self.root, self.policy);
+        for output in layout_outputs {
+            output.request_after(ui, &roots, policy);
+        }
+    }
+}
+
+impl Ui {
+    /// Records the before-state for a write in the active scoped transaction.
+    pub(in crate::ui) fn capture_motion_transaction_change(&mut self, root: ElementId) {
+        let Some(mut transaction) = self.motion_transaction.take() else {
+            return;
+        };
+        transaction.capture_root(self, root);
+        self.motion_transaction = Some(transaction);
+    }
+
+    /// Captures an ordinary state change, or journals it when a scope is active.
+    pub(in crate::ui) fn plan_presentation_change(
+        &mut self,
+        root: ElementId,
+    ) -> Option<PresentationTransitionPlan> {
+        if self.motion_transaction.is_some() {
+            self.capture_motion_transaction_change(root);
+            None
+        } else {
+            Some(PresentationTransitionPlan::capture(self, root))
+        }
+    }
+
+    /// Commits the current scoped journal, if any.
+    pub(in crate::ui) fn finish_motion_transaction(&mut self) {
+        if let Some(transaction) = self.motion_transaction.take() {
+            transaction.apply_after(self);
         }
     }
 }
@@ -118,18 +188,31 @@ impl InteractionTransitionPlan {
 struct TrackedLayoutOutput {
     element: ElementId,
     target: PresentationTarget,
+    before_presented: Vec2,
     before_spec: Option<ResolvedTransition>,
 }
 
 impl TrackedLayoutOutput {
-    fn request_after(self, ui: &mut Ui, root: ElementId, policy: MotionPolicy) {
-        if !has_arrange_invalidated_ancestor(ui, root, self.element) {
+    fn request_after(self, ui: &mut Ui, roots: &[ElementId], policy: MotionPolicy) {
+        if !roots
+            .iter()
+            .copied()
+            .any(|root| has_arrange_invalidated_ancestor(ui, root, self.element))
+        {
             return;
         }
         let spec = ui
             .transition_spec_for(self.element, self.target, ChangeCause::Interaction)
             .or(self.before_spec);
-        if let TransitionDecision::Animate(spec) = policy.decision_for_interaction(spec) {
+        if let TransitionDecision::Animate(spec) = policy.decision(spec) {
+            if !ui.has_presentation_target(self.element, self.target) {
+                ui.set_presentation_target(
+                    self.element,
+                    self.target,
+                    self.before_presented,
+                    ChangeCause::Other,
+                );
+            }
             ui.request_presentation_transition(self.element, self.target, spec);
         }
     }
@@ -150,12 +233,35 @@ fn has_arrange_invalidated_ancestor(ui: &Ui, root: ElementId, mut element: Eleme
     }
 }
 
+fn validate_transition_declarations(ui: &Ui, roots: &[ElementId]) {
+    for root in roots {
+        for element in collect_preorder(ui, *root) {
+            let Some(element_ref) = ui.get(element) else {
+                continue;
+            };
+            let declarations = ui.resolve_value_for(element_ref, ui.properties.transitions);
+            for declaration in declarations.declarations() {
+                let PresentationTarget::Property(property) = declaration.target() else {
+                    continue;
+                };
+                assert!(
+                    ui.timeline_properties.target_adapter(property).is_some(),
+                    "motion target property {property:?} is not registered; register custom \
+                     properties with `Ui::register_animation_target_property` or \
+                     `Ui::register_color_animation_target_property`"
+                );
+            }
+        }
+    }
+}
+
 struct TrackedValue {
     element: ElementId,
     property: PropertyId,
     target: PresentationTarget,
     adapter: TimelineTargetAdapter,
-    before: Option<TimelineTargetValue>,
+    before_presented: Option<TimelineTargetValue>,
+    before_base: Option<TimelineTargetValue>,
     before_spec: Option<ResolvedTransition>,
 }
 
@@ -166,12 +272,13 @@ impl TrackedValue {
             property,
             target,
             adapter,
-            before,
+            before_presented,
+            before_base,
             before_spec,
         } = self;
 
-        let after = adapter.target_value(ui, element, property);
-        if same_target_value(adapter, before.as_ref(), after.as_ref()) {
+        let after = adapter.base_value(ui, element, property);
+        if same_target_value(adapter, before_base.as_ref(), after.as_ref()) {
             return;
         }
 
@@ -179,18 +286,20 @@ impl TrackedValue {
             .transition_spec_for(element, target, ChangeCause::Interaction)
             .or(before_spec);
 
-        match (before, after) {
-            (Some(before), Some(after)) => match policy.decision_for_interaction(spec) {
+        match (before_presented, after) {
+            (Some(before), Some(after)) => match policy.decision(spec) {
                 TransitionDecision::Animate(spec) => {
-                    set_target(
-                        ui,
-                        element,
-                        property,
-                        target,
-                        adapter,
-                        before,
-                        ChangeCause::Other,
-                    );
+                    if !ui.has_presentation_target(element, target) {
+                        set_target(
+                            ui,
+                            element,
+                            property,
+                            target,
+                            adapter,
+                            before,
+                            ChangeCause::Other,
+                        );
+                    }
                     ui.request_presentation_transition(element, target, spec);
                     set_target(
                         ui,

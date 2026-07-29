@@ -657,12 +657,11 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .set(properties.font_size, 22.0_f64)
                 .set(
                     properties.transitions,
-                    TransitionDeclarations::new().with(
-                        TransitionDeclaration::for_color_target(
-                            PresentationTarget::property(properties.foreground.id()),
-                            TransitionTiming::new(millis(820)).with_timing(EASE_OUT),
-                        )
-                        .with_color_interpolation(ColorInterpolation::OKLAB),
+                    Transitions::new().color(
+                        properties.foreground,
+                        MotionSpec::new(millis(820))
+                            .with_easing(EASE_OUT)
+                            .with_color_space(ColorSpaceTag::Oklab),
                     ),
                 )
                 .build(),
@@ -707,7 +706,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                         properties,
                         millis(5_500),
                         MID_SLOW,
-                        ColorInterpolation::OKLAB,
+                        ColorSpaceTag::Oklab,
                     ),
                 )
                 .build(),
@@ -731,7 +730,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                         properties,
                         millis(5_500),
                         MID_SLOW,
-                        ColorInterpolation::SRGB,
+                        ColorSpaceTag::Srgb,
                     ),
                 )
                 .build(),
@@ -752,10 +751,10 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .set(properties.opacity, 1.0_f32)
                 .set(
                     properties.transitions,
-                    TransitionDeclarations::new().with(TransitionDeclaration::for_target::<f32>(
-                        PresentationTarget::property(properties.opacity.id()),
-                        TransitionTiming::new(millis(780)).with_timing(EASE_IN_OUT),
-                    )),
+                    Transitions::new().property(
+                        properties.opacity,
+                        MotionSpec::new(millis(780)).with_easing(EASE_IN_OUT),
+                    ),
                 )
                 .build(),
         )
@@ -791,13 +790,6 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
             StyleBuilder::new()
                 .background(properties, opt_solid(0xff, 0x9f, 0x1c, 0xff))
                 .corner_radius(properties, 21.0_f64)
-                .set(
-                    properties.transitions,
-                    TransitionDeclarations::new().with(TransitionDeclaration::for_target::<Vec2>(
-                        PresentationTarget::layer_offset(),
-                        TransitionTiming::new(millis(920)).with_timing(EASE_IN_OUT),
-                    )),
-                )
                 .build(),
         )
         .push_rule(
@@ -808,12 +800,7 @@ pub(super) fn demo_cascade(properties: &BuiltInProperties, tokens: DemoTokens) -
                 .corner_radius(properties, 18.0_f64)
                 .set(
                     properties.transitions,
-                    color_transition_rules(
-                        properties,
-                        millis(780),
-                        EASE_OUT,
-                        ColorInterpolation::OKLAB,
-                    ),
+                    color_transition_rules(properties, millis(780), EASE_OUT, ColorSpaceTag::Oklab),
                 )
                 .build(),
         )
@@ -903,37 +890,33 @@ pub(super) fn color_transition_rules(
     properties: &BuiltInProperties,
     duration: TimerDuration,
     timing: TimingFunction,
-    interpolation: ColorInterpolation,
-) -> TransitionDeclarations<PresentationTarget> {
-    TransitionDeclarations::new().with(
-        TransitionDeclaration::for_color_target(
-            PresentationTarget::property(properties.surface.background.id()),
-            TransitionTiming::new(duration).with_timing(timing),
-        )
-        .with_color_interpolation(interpolation),
+    color_space: ColorSpaceTag,
+) -> Transitions {
+    Transitions::new().color(
+        properties.surface.background,
+        MotionSpec::new(duration)
+            .with_easing(timing)
+            .with_color_space(color_space),
     )
 }
 
-pub(super) fn border_transition_rules(
-    properties: &BuiltInProperties,
-) -> TransitionDeclarations<PresentationTarget> {
+pub(super) fn border_transition_rules(properties: &BuiltInProperties) -> Transitions {
     let brushes = properties.surface.border_brushes;
     let widths = properties.surface.border_widths;
-    let mut rules = TransitionDeclarations::new();
+    let mut transitions = Transitions::new();
     for property in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
-        rules.push(
-            TransitionDeclaration::for_color_target(
-                PresentationTarget::property(property.id()),
-                TransitionTiming::new(millis(720)).with_timing(EASE_OUT),
-            )
-            .with_color_interpolation(ColorInterpolation::OKLAB),
+        transitions = transitions.color(
+            property,
+            MotionSpec::new(millis(720))
+                .with_easing(EASE_OUT)
+                .with_color_space(ColorSpaceTag::Oklab),
         );
     }
     for property in [widths.top, widths.right, widths.bottom, widths.left] {
-        rules.push(TransitionDeclaration::for_target::<f64>(
-            PresentationTarget::property(property.id()),
-            TransitionTiming::new(millis(520)).with_timing(EASE_IN_OUT),
-        ));
+        transitions = transitions.property(
+            property,
+            MotionSpec::new(millis(520)).with_easing(EASE_IN_OUT),
+        );
     }
-    rules
+    transitions
 }

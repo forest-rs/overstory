@@ -82,10 +82,9 @@ impl StyleTokenSet for BuiltInStyleTokens {
             "motion.emphasized.duration",
         );
         bindings.resource(theme::MOTION_STANDARD_EASING, "motion.standard.easing");
-        bindings.resource(
-            theme::MOTION_COLOR_INTERPOLATION,
-            "motion.color-interpolation",
-        );
+        bindings.resource(theme::MOTION_COLOR_SPACE, "motion.color-space");
+        bindings.resource(theme::MOTION_HUE_DIRECTION, "motion.hue-direction");
+        bindings.resource(theme::MOTION_ALPHA_SPACE, "motion.alpha-space");
 
         bindings.type_tag(TYPE_GENERIC, "Panel");
         bindings.type_tag(TYPE_ROOT, "Root");

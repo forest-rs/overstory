@@ -21,39 +21,26 @@
 //!   so hover/press feedback rides the ring color and opacity instead.
 
 use overstory::BuiltInProperties;
-use overstory::motion::{
-    PresentationTarget, TimingFunction, TransitionDeclaration, TransitionDeclarations,
-    TransitionResourceKey, TransitionTiming, millis,
-};
-use understory_style::ResourceKey;
+use overstory::motion::{MotionSpec, Transitions};
 
 use crate::tokens::{
-    MOTION_COLOR_INTERPOLATION, MOTION_FAST_DURATION, MOTION_NORMAL_DURATION,
-    MOTION_STANDARD_EASING, ResolvedTokens,
+    MOTION_ALPHA_SPACE, MOTION_COLOR_SPACE, MOTION_FAST_DURATION, MOTION_HUE_DIRECTION,
+    MOTION_NORMAL_DURATION, MOTION_STANDARD_EASING,
 };
 
-const FALLBACK_TIMING: TimingFunction = TimingFunction::cubic_bezier(0.22, 1.0, 0.36, 1.0);
-
-/// A color transition for a property, resolving duration/easing/interpolation
-/// from the standard motion theme tokens.
-fn color_transition(target: PresentationTarget) -> TransitionDeclaration<PresentationTarget> {
-    TransitionDeclaration::for_color_target(
-        target,
-        TransitionTiming::new(millis(140)).with_timing(FALLBACK_TIMING),
-    )
-    .with_duration_resource(transition_key(MOTION_NORMAL_DURATION))
-    .with_timing_resource(transition_key(MOTION_STANDARD_EASING))
-    .with_color_interpolation_resource(transition_key(MOTION_COLOR_INTERPOLATION))
+/// Color motion resolved from the standard theme tokens.
+const fn color_motion() -> MotionSpec {
+    MotionSpec::from_duration_resource(MOTION_NORMAL_DURATION)
+        .with_easing_resource(MOTION_STANDARD_EASING)
+        .with_color_space_resource(MOTION_COLOR_SPACE)
+        .with_hue_direction_resource(MOTION_HUE_DIRECTION)
+        .with_alpha_space_resource(MOTION_ALPHA_SPACE)
 }
 
-/// A plain scalar transition (opacity), standard timing.
-fn scalar_transition(target: PresentationTarget) -> TransitionDeclaration<PresentationTarget> {
-    TransitionDeclaration::for_target::<f32>(
-        target,
-        TransitionTiming::new(millis(90)).with_timing(FALLBACK_TIMING),
-    )
-    .with_duration_resource(transition_key(MOTION_FAST_DURATION))
-    .with_timing_resource(transition_key(MOTION_STANDARD_EASING))
+/// Scalar motion resolved from the standard theme tokens.
+const fn scalar_motion() -> MotionSpec {
+    MotionSpec::from_duration_resource(MOTION_FAST_DURATION)
+        .with_easing_resource(MOTION_STANDARD_EASING)
 }
 
 /// The Signature interaction motion bundle for a bordered control: the four
@@ -62,24 +49,13 @@ fn scalar_transition(target: PresentationTarget) -> TransitionDeclaration<Presen
 /// absent so focus/hover never reflow — the ring width stays constant and only
 /// its color changes (see the module docs and GAPS.md G7).
 #[must_use]
-pub fn interaction(
-    properties: &BuiltInProperties,
-    _tokens: &ResolvedTokens,
-) -> TransitionDeclarations<PresentationTarget> {
+pub fn interaction(properties: &BuiltInProperties) -> Transitions {
     let brushes = properties.surface.border_brushes;
-    let mut rules = TransitionDeclarations::new();
+    let mut transitions = Transitions::new();
     for brush in [brushes.top, brushes.right, brushes.bottom, brushes.left] {
-        rules.push(color_transition(PresentationTarget::property(brush.id())));
+        transitions = transitions.color(brush, color_motion());
     }
-    rules.push(color_transition(PresentationTarget::property(
-        properties.foreground.id(),
-    )));
-    rules.push(scalar_transition(PresentationTarget::property(
-        properties.opacity.id(),
-    )));
-    rules
-}
-
-const fn transition_key(key: ResourceKey) -> TransitionResourceKey {
-    TransitionResourceKey::new(key.index())
+    transitions
+        .color(properties.foreground, color_motion())
+        .property(properties.opacity, scalar_motion())
 }

@@ -88,7 +88,7 @@ mod visual;
 pub use events::RoutedEvents;
 pub use tree::ChildUi;
 
-use transition_planner::MotionPolicy;
+use transition_planner::{MotionPolicy, PresentationTransitionPlan};
 
 #[cfg(test)]
 mod tests;
@@ -145,6 +145,8 @@ pub struct Ui {
     timeline: TimelineRuntime,
     /// Internal policy for planning presentation transitions from state changes.
     motion_policy: MotionPolicy,
+    /// Before-state journal for the active scoped motion transaction.
+    motion_transaction: Option<PresentationTransitionPlan>,
     /// Property adapters that can receive timeline samples.
     timeline_properties: TimelinePropertyRegistry,
     /// Retained timer queue and per-element timer handlers.
@@ -346,6 +348,7 @@ impl Ui {
             interaction_exit_roots: Vec::new(),
             timeline: TimelineRuntime::new(),
             motion_policy: MotionPolicy::new(),
+            motion_transaction: None,
             timeline_properties,
             timers: TimerRuntime::new(),
             overlays: OverlayRuntime::default(),
