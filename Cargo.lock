@@ -1064,11 +1064,17 @@ version = "0.0.1"
 source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
 
 [[package]]
+name = "frameclock"
+version = "0.0.1"
+source = "git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0#8c38b517e8e4361e5b3b52d22948545fba8b01e0"
+
+[[package]]
 name = "frameclock_apple"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
+source = "git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0#8c38b517e8e4361e5b3b52d22948545fba8b01e0"
 dependencies = [
- "frameclock",
+ "dispatch2",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "objc2 0.6.4",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
@@ -1078,9 +1084,9 @@ dependencies = [
 [[package]]
 name = "frameclock_wayland"
 version = "0.0.1"
-source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
+source = "git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0#8c38b517e8e4361e5b3b52d22948545fba8b01e0"
 dependencies = [
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "rustix 1.1.4",
 ]
 
@@ -2232,7 +2238,7 @@ version = "0.0.1"
 dependencies = [
  "accesskit",
  "cursor-icon",
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "hashbrown 0.17.1",
  "imaging",
  "invalidation",
@@ -2278,7 +2284,7 @@ dependencies = [
 name = "overstory_demo"
 version = "0.0.1"
 dependencies = [
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "kurbo",
  "overstory",
  "overstory_app",
@@ -2319,7 +2325,7 @@ name = "overstory_host"
 version = "0.0.1"
 dependencies = [
  "accesskit",
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "hashbrown 0.17.1",
  "imaging",
  "kurbo",
@@ -2334,7 +2340,7 @@ version = "0.0.1"
 dependencies = [
  "accesskit",
  "accesskit_macos",
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "frameclock_apple",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -2355,7 +2361,7 @@ dependencies = [
 name = "overstory_host_uikit"
 version = "0.0.1"
 dependencies = [
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "frameclock_apple",
  "objc2 0.6.4",
  "objc2-core-foundation",
@@ -2374,7 +2380,7 @@ dependencies = [
 name = "overstory_host_wayland"
 version = "0.0.1"
 dependencies = [
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "frameclock_wayland",
  "overstory",
  "overstory_host",
@@ -2394,7 +2400,7 @@ name = "overstory_host_winit"
 version = "0.0.1"
 dependencies = [
  "accesskit_winit",
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/frameclock.git?rev=8c38b517e8e4361e5b3b52d22948545fba8b01e0)",
  "overstory",
  "overstory_host",
  "overstory_presenter_wgpu",
@@ -3329,7 +3335,7 @@ version = "0.0.1"
 source = "git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856#4aad14addd5e13fb64cfc7308b933fe587db8856"
 dependencies = [
  "color",
- "frameclock",
+ "frameclock 0.0.1 (git+https://github.com/forest-rs/subduction.git?rev=4aad14addd5e13fb64cfc7308b933fe587db8856)",
  "invalidation",
  "kurbo",
 ]
