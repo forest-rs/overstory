@@ -197,8 +197,10 @@ impl App {
     /// Drains completed frame callbacks and renders any frame they make due.
     fn pump_frames(&mut self, qh: &QueueHandle<Self>) -> HostResult<()> {
         while let Some(tick) = self.ticker.poll_tick() {
-            let opportunity =
-                frameclock_wayland::frame_opportunity(tick, FALLBACK_REFRESH_INTERVAL);
+            let opportunity = frameclock_wayland::frame_opportunity(
+                tick,
+                frameclock::DisplayTiming::fixed(FALLBACK_REFRESH_INTERVAL),
+            );
             self.render(opportunity, qh)?;
         }
         Ok(())
@@ -230,11 +232,11 @@ impl App {
     /// Prepares and presents one frame for `opportunity`, chaining the next
     /// callback.
     ///
-    /// When the scheduler has no frame due, this returns without presenting and
-    /// without requesting another callback, letting the surface go idle until
-    /// input, a timer, or a resize asks for more work. A frame that does present
-    /// also asks `wp_presentation` (when bound) to report when it reaches the
-    /// screen, so later frames pace against real scan-out times.
+    /// When the scheduler has no frame due, this returns without presenting.
+    /// The event loop keeps callbacks coming while queued work or deferred
+    /// feedback needs a tick. A frame that does present also asks
+    /// `wp_presentation` (when bound) to report when it reaches the screen, so
+    /// later frames pace against real scan-out times.
     fn render(&mut self, opportunity: FrameOpportunity, qh: &QueueHandle<Self>) -> HostResult<()> {
         let scale_factor = self.scale_factor();
         let (Some(host), Some(presenter), Some(wl_surface)) = (
@@ -341,14 +343,16 @@ impl App {
         self.render(opportunity, qh)
     }
 
-    /// Pumps UI timers due at `now`, reporting whether any work became due.
+    /// Pumps UI timers due at `now`.
     ///
-    /// The host promotes a due timer to animation demand itself, so a `true`
-    /// result only means the surface must be woken to draw the frame that work
-    /// now requires. `now` is sampled in `frameclock_wayland`'s monotonic
+    /// The host promotes a due timer to animation demand itself, so the event
+    /// loop requests a callback when that work needs a tick. `now` is sampled in
+    /// `frameclock_wayland`'s monotonic
     /// domain, the same timeline that stamps input and frame ticks.
-    fn pump_due_timers(&mut self, now: u64) -> bool {
-        self.host.as_mut().is_some_and(|host| host.pump_timers(now))
+    fn pump_due_timers(&mut self, now: u64) {
+        if let Some(host) = self.host.as_mut() {
+            host.pump_timers(now);
+        }
     }
 
     /// Returns the longest the loop may sleep before pending UI work is due.
@@ -454,7 +458,8 @@ where
         app.pump_frames(&qh)?;
 
         let now = app.now().ticks();
-        if app.pump_due_timers(now) {
+        app.pump_due_timers(now);
+        if app.host.as_ref().is_some_and(UiHost::needs_frame_tick) {
             app.ensure_frame_callback(&qh);
         }
 
@@ -485,13 +490,11 @@ where
 
 /// Scheduler configuration for the frame-callback-driven Wayland host.
 ///
-/// `frameclock_wayland` reports estimated presentation timing, so this starts
-/// from [`SchedulerConfig::estimated`] and then fixes the pipeline at one frame
-/// with a one-refresh frame-start margin. The `wl_surface.frame` callback is
-/// itself the frame-start wake, so each callback should hand back a ready frame
-/// rather than waiting on a separate timer.
+/// Use the adapter's estimated timing with the existing one-deep pipeline and
+/// fallback build margin. Native callback hints release due frames at ticks;
+/// cadence-held frames keep the callback chain running until they are ready.
 fn wayland_scheduler_config() -> SchedulerConfig {
-    let mut config = SchedulerConfig::estimated();
+    let mut config = frameclock_wayland::scheduler_config();
     config.min_depth = 1;
     config.max_depth = 1;
     config.initial_depth = 1;
@@ -738,7 +741,7 @@ impl Dispatch<wp_presentation_feedback::WpPresentationFeedback, ()> for App {
                 let refresh_interval = if refresh == 0 {
                     None
                 } else {
-                    Some(u64::from(refresh))
+                    Some(FrameDuration(u64::from(refresh)))
                 };
                 let flags = match flags {
                     WEnum::Value(kind) => kind.bits(),

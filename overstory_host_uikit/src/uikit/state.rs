@@ -16,11 +16,12 @@ use core::{
 };
 
 use frameclock::scheduler::DegradationPolicy;
+use frameclock::time::Timebase;
 use frameclock::{
     DisplayTiming, Duration as FrameDuration, FrameDemand, FrameOpportunity, FrameTick, HostTime,
     OutputId, SchedulerConfig,
 };
-use frameclock_apple::DisplayLink;
+use frameclock_apple::CaDisplayLink;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_ui_kit::UIViewController;
@@ -109,7 +110,7 @@ pub(crate) fn handle_display_tick(tick: FrameTick) {
 
 pub(crate) struct ViewState {
     presenter: WgpuPresenter,
-    display_link: DisplayLink,
+    display_link: CaDisplayLink,
     display_link_started: bool,
     #[allow(
         dead_code,
@@ -184,9 +185,7 @@ impl ViewState {
     }
 
     fn has_pending_work(&self) -> bool {
-        !self.host.pending_frame_demand().is_empty()
-            || self.host.pending_frame_start().is_some()
-            || self.duration_until_next_wakeup().is_some()
+        self.host.needs_frame_tick() || self.duration_until_next_wakeup().is_some()
     }
 
     fn resize_from_content_view(&mut self) {
@@ -256,10 +255,14 @@ impl ViewState {
                 !prepared.demand().is_empty(),
                 "requested frames should carry non-empty planned demand"
             );
-            if let Some(plan) = prepared.plan() {
-                let _ = self
-                    .display_link
-                    .set_preferred_frame_interval(plan.frame_interval, opportunity.display_timing);
+            if let Some(plan) = prepared.plan()
+                && let Some(range) = frameclock_apple::preferred_frame_rate_range(
+                    plan.frame_interval,
+                    opportunity.display_timing,
+                    Timebase::NANOS,
+                )
+            {
+                self.display_link.set_preferred_frame_rate_range(range);
             }
             self.presenter.present_scene(prepared.scene())
         };
@@ -277,7 +280,7 @@ impl ViewState {
         };
         self.host.record_frame_submission(
             timings,
-            frameclock_apple::DEFAULT_FEEDBACK_MODE.submission(self.submitted_at()),
+            CaDisplayLink::FEEDBACK_MODE.submission(self.submitted_at()),
         );
         Ok(())
     }
@@ -322,7 +325,7 @@ where
     )?;
     let host = UiHost::with_scheduler_config(build_ui(), uikit_scheduler_config());
     let time_map = AppleTimeMap::new();
-    let display_link = DisplayLink::new(handle_display_tick, OutputId(0), mtm);
+    let display_link = CaDisplayLink::new(handle_display_tick, OutputId(0));
 
     let view_controller =
         UIViewController::initWithNibName_bundle(mtm.alloc::<UIViewController>(), None, None);
@@ -344,10 +347,9 @@ where
 }
 
 fn uikit_scheduler_config() -> SchedulerConfig {
-    let mut config = SchedulerConfig::predictive();
-    // This host uses the display-link callback itself as the frame-start wake.
-    // Keep planning fixed at one frame until the UIKit host grows an explicit
-    // timer path for `UiHost::pending_frame_start`.
+    let mut config = SchedulerConfig::predictive(Timebase::NANOS);
+    // Preserve the one-deep pipeline and fallback build margin. Display-link
+    // hints select native callbacks as the frame-start wake.
     config.min_depth = 1;
     config.max_depth = 1;
     config.initial_depth = 1;

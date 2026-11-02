@@ -6,6 +6,7 @@
 use core::{fmt, time::Duration};
 
 use accesskit::{ActionRequest, TreeUpdate};
+use frameclock::time::Timebase;
 use frameclock::timing::FramePlan;
 use frameclock::{
     ActiveFrame, FrameBeginResult, FrameDemand, FrameDriver, FrameOpportunity, FrameSubmission,
@@ -82,7 +83,7 @@ impl UiHost {
     /// Creates a host for `ui` with a fresh monotonic clock anchor.
     #[must_use]
     pub fn new(ui: Ui) -> Self {
-        let mut config = SchedulerConfig::pacing_only();
+        let mut config = SchedulerConfig::pacing_only(Timebase::NANOS);
         config.initial_depth = 1;
         Self::with_scheduler_config(ui, config)
     }
@@ -90,11 +91,10 @@ impl UiHost {
     /// Creates a host for `ui` with an explicit frame scheduler
     /// configuration.
     ///
-    /// Platform hosts use this when their native wake source changes how
-    /// [`FrameBeginResult::WaitUntil`] should be handled. Event-loop hosts can
-    /// mirror frame-start waits into a timer queue; display-link-only hosts may
-    /// instead choose a fixed one-deep predictive plan that uses each display
-    /// callback as the frame-start wake.
+    /// Platform hosts select predictive, estimated, or pacing-only timing here.
+    /// Tick-started opportunities wait for native callbacks; timed waits are
+    /// exposed through [`Self::pending_frame_start`]. All supplied timing and
+    /// scheduler durations must use the host's nanosecond timebase.
     #[must_use]
     pub fn with_scheduler_config(ui: Ui, scheduler_config: SchedulerConfig) -> Self {
         Self {
@@ -228,10 +228,24 @@ impl UiHost {
         self.frame_driver.pending_demand()
     }
 
-    /// Returns the start time for the queued frame, if one is waiting.
+    /// Returns the timed wake for a queued frame, if one is waiting.
+    ///
+    /// Frames waiting for a native callback have no timed wake. Keep callbacks
+    /// coming while [`Self::needs_frame_tick`] is true.
     #[must_use]
     pub fn pending_frame_start(&self) -> Option<HostTime> {
-        self.frame_driver.next_frame_start()
+        self.frame_driver
+            .pending_frame()
+            .and_then(|frame| (!frame.hints.starts_at_tick()).then_some(frame.plan.frame_start))
+    }
+
+    /// Returns whether native frame callbacks should keep running.
+    ///
+    /// This includes queued frames waiting for a later tick and submissions
+    /// awaiting feedback from a later callback.
+    #[must_use]
+    pub fn needs_frame_tick(&self) -> bool {
+        self.frame_driver.needs_tick()
     }
 
     /// Returns the latest submitted frameclock timing summary.
@@ -531,7 +545,7 @@ impl UiHost {
     fn next_wakeup_deadline(&self) -> Option<TimerInstant> {
         min_deadline(
             self.ui.next_wakeup_deadline(),
-            self.frame_driver.next_frame_start().map(HostTime::ticks),
+            self.pending_frame_start().map(HostTime::ticks),
         )
     }
 
@@ -548,7 +562,7 @@ impl UiHost {
                 self.frame_driver.request(demand);
                 None
             }
-            FrameBeginResult::Idle | FrameBeginResult::WaitUntil(_) => None,
+            FrameBeginResult::Idle | FrameBeginResult::Wait(_) => None,
         }
     }
 
@@ -770,7 +784,10 @@ mod tests {
 
         assert_eq!(opportunity.tick.now, HostTime(10));
         assert_eq!(opportunity.tick.predicted_present, None);
-        assert_eq!(opportunity.tick.refresh_interval, Some(8_333_333));
+        assert_eq!(
+            opportunity.tick.refresh_interval,
+            Some(FrameDuration(8_333_333))
+        );
         assert_eq!(opportunity.hints.latest_commit(), HostTime(8_333_343));
         assert_eq!(
             opportunity.display_timing,
@@ -802,6 +819,36 @@ mod tests {
     }
 
     #[test]
+    fn tick_wait_keeps_callbacks_running_without_a_timer_wake() {
+        let mut host = UiHost::new(Ui::new());
+        host.request_frame(FrameDemand::BACKGROUND);
+        let tick_opportunity = |now| {
+            let mut opportunity = pacing_only(now);
+            opportunity.hints = opportunity.hints.starting_at_tick();
+            opportunity
+        };
+
+        assert!(
+            host.prepare_requested_frame(test_viewport(), tick_opportunity(HostTime(0)))
+                .is_none()
+        );
+        assert!(host.pending_frame_demand().is_empty());
+        assert!(host.needs_frame_tick());
+        assert_eq!(host.pending_frame_start(), None);
+        assert_eq!(host.duration_until_next_wakeup_at(0), None);
+
+        let prepared = host
+            .prepare_requested_frame(
+                test_viewport(),
+                tick_opportunity(HostTime(default_frame_interval().ticks())),
+            )
+            .expect("the next native tick should release the background frame");
+        assert_eq!(prepared.demand(), FrameDemand::BACKGROUND);
+        host.discard_prepared_frame();
+        assert!(!host.needs_frame_tick());
+    }
+
+    #[test]
     fn retained_pending_demand_survives_submitted_frame() {
         let mut host = UiHost::new(Ui::new());
 
@@ -813,6 +860,10 @@ mod tests {
         let frame_start = host
             .pending_frame_start()
             .expect("animation should queue a future frame start");
+        assert_eq!(
+            host.duration_until_next_wakeup_at(0),
+            Some(Duration::from_nanos(frame_start.ticks()))
+        );
 
         host.request_frame(FrameDemand::BACKGROUND);
         assert_eq!(host.pending_frame_demand(), FrameDemand::BACKGROUND);
@@ -962,6 +1013,8 @@ mod tests {
         );
         host.record_frame_submission(renderer_timings(), FrameSubmission::deferred(HostTime(1)));
         assert_eq!(host.last_frame_timing_summary(), None);
+        assert!(host.needs_frame_tick());
+        assert_eq!(host.pending_frame_start(), None);
 
         assert!(
             host.prepare_requested_frame(
@@ -974,6 +1027,7 @@ mod tests {
         let summary = host
             .last_frame_timing_summary()
             .expect("next tick should resolve deferred presentation feedback");
+        assert!(!host.needs_frame_tick());
         assert_eq!(summary.submitted_at, Some(HostTime(1)));
         assert_eq!(summary.actual_present, Some(HostTime(2)));
         assert_eq!(summary.timing_basis, FrameTimingBasis::ActualPresent);

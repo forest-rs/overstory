@@ -58,11 +58,11 @@ overstory_transcript = { path = "overstory_transcript", version = "0.0.1" }
 accesskit = { default-features = false, version = "0.24.0" }
 accesskit_macos = { version = "0.26.1" }
 chronostore = { default-features = false, git = "https://github.com/forest-rs/chronostore.git", rev = "f618fbf045db7767e4ca6c68e12b86a327447ad2" }
-frameclock = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
+frameclock = { default-features = false, git = "https://github.com/forest-rs/frameclock.git", rev = "8c38b517e8e4361e5b3b52d22948545fba8b01e0" }
 frameclock_apple = { default-features = false, features = [
     "ca-display-link",
-], git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
-frameclock_wayland = { default-features = false, git = "https://github.com/forest-rs/subduction.git", rev = "4aad14addd5e13fb64cfc7308b933fe587db8856" }
+], git = "https://github.com/forest-rs/frameclock.git", rev = "8c38b517e8e4361e5b3b52d22948545fba8b01e0" }
+frameclock_wayland = { default-features = false, git = "https://github.com/forest-rs/frameclock.git", rev = "8c38b517e8e4361e5b3b52d22948545fba8b01e0" }
 hashbrown = { default-features = false, features = [
     "alloc",
     "default-hasher",
