@@ -4,17 +4,19 @@
 //! Retained controls and an application-owned inline preview.
 
 use super::*;
+use kurbo::Shape;
 use overstory::{
     ControlTemplateSpecExt, LayoutDimension, LayoutSize, MotionSpec, Slider, TimingFunction, millis,
 };
 
 const PREVIEW_MOTION_MS: u64 = 280;
 
-/// A presentation scalar keeps corner interpolation on the existing timeline.
-/// Surface layout and the packing model retain their immediate target values.
+/// Presentation geometry follows the timeline while layout and packing
+/// retain their immediate target values.
 #[derive(Debug)]
 struct InstrumentTile {
     radius: understory_property::Property<f64>,
+    extent: understory_property::Property<Vec2>,
 }
 
 impl overstory::Widget for InstrumentTile {
@@ -28,11 +30,15 @@ impl overstory::Widget for InstrumentTile {
         >,
         node: understory_box_tree::NodeId,
     ) {
-        overstory::present_surface(element, ctx, store, node);
-        if let Some(surface) = store.surface_mut(node) {
-            let radius = ctx.get_value(element, self.radius).max(0.);
-            surface.corner_radii = overstory::Corners::all(Size::new(radius, radius));
+        let extent = ctx.get_value(element, self.extent);
+        let bounds = Rect::new(0., 0., extent.x.max(0.), extent.y.max(0.));
+        let radius = ctx.get_value(element, self.radius).max(0.);
+        let mut primitive =
+            overstory::PathPrimitive::new(bounds.to_rounded_rect(radius).to_path(0.1));
+        if let Some(brush) = ctx.get_value(element, ctx.properties.surface.background) {
+            primitive = primitive.fill(overstory::PathFill::new(brush));
         }
+        let _ = store.set_path(node, primitive);
     }
 }
 
@@ -50,6 +56,7 @@ pub(super) struct ParameterUi {
     rows: ElementId,
     preview_intent: Cell<Option<(CaseParameters, Size)>>,
     radius: understory_property::Property<f64>,
+    extent: understory_property::Property<Vec2>,
 }
 
 impl ParameterUi {
@@ -355,8 +362,19 @@ pub(super) fn append_parameter_controls(
         runtime.instrument_radius.set(Some(property));
         property
     });
+    let extent = runtime.instrument_extent.get().unwrap_or_else(|| {
+        let property = ui.registry_mut().register(
+            "FieldStation.InstrumentExtent",
+            understory_property::PropertyMetadataBuilder::new(Vec2::ZERO)
+                .affects_channels(overstory::channels::GEOMETRY.into_set())
+                .build(),
+        );
+        ui.register_animation_target_property(property);
+        runtime.instrument_extent.set(Some(property));
+        property
+    });
     let tiles = (0..12)
-        .map(|_| ui.append_widget(preview, Box::new(InstrumentTile { radius })))
+        .map(|_| ui.append_widget(preview, Box::new(InstrumentTile { radius, extent })))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -375,6 +393,7 @@ pub(super) fn append_parameter_controls(
         rows,
         preview_intent: Cell::new(None),
         radius,
+        extent,
     }));
     refresh_parameter_preview(ui, &runtime);
 }
@@ -440,6 +459,11 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
         for (index, (rect, radius)) in values.preview(bounds).into_iter().enumerate() {
             let element = parts.tiles[index];
             ui.set_local(element, parts.radius, radius);
+            ui.set_local(
+                element,
+                parts.extent,
+                Vec2::new(rect.width(), rect.height()),
+            );
             ui.set_layout(
                 element,
                 Layout::new()
@@ -479,6 +503,7 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use understory_property::DependencyObjectExt;
 
     fn presented_origin(ui: &Ui, element: ElementId) -> Point {
         let row = ui
@@ -551,6 +576,45 @@ mod tests {
             runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
             sliders
         );
+        assert_eq!(runtime.view.borrow().work, ViewWork::default());
+    }
+
+    #[test]
+    fn rescaling_interpolates_both_dimensions_and_retargets_without_layout_work() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let size = Size::new(1480., 820.);
+        ui.compute_layout(size);
+        let (tile, extent) = {
+            let parts = runtime.parameter_ui.borrow();
+            let parts = parts.as_ref().unwrap();
+            (parts.tiles[0], parts.extent)
+        };
+        let initial = ui.resolved_value(tile, extent).unwrap();
+        ui.set_now(0);
+        change_plan(&mut ui, &runtime, host, sidebar, 6., 24.);
+        ui.compute_layout(size);
+        let target = *ui.get(tile).unwrap().get_local_value(extent).unwrap();
+        assert!(target.x < initial.x && target.y < initial.y);
+        assert_eq!(ui.resolved_value(tile, extent).unwrap(), initial);
+        let revision = runtime.graph.borrow().computed.revision();
+        ui.reset_frame_stats();
+        ui.set_now(millis(PREVIEW_MOTION_MS / 2));
+        ui.compute_layout(size);
+        let middle = ui.resolved_value(tile, extent).unwrap();
+        assert!(target.x < middle.x && middle.x < initial.x);
+        assert!(target.y < middle.y && middle.y < initial.y);
+        assert!((middle.x / middle.y - initial.x / initial.y).abs() < 1e-9);
+        assert_eq!(ui.frame_stats().layout_passes, 0);
+        refresh_parameter_preview(&mut ui, &runtime);
+        assert_eq!(ui.resolved_value(tile, extent).unwrap(), middle);
+        change_plan(&mut ui, &runtime, host, sidebar, 4., 12.);
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, extent).unwrap(), middle);
+        ui.set_now(millis(PREVIEW_MOTION_MS * 2));
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, extent).unwrap(), initial);
+        assert!(!ui.has_active_presentation_motion());
+        assert_eq!(runtime.graph.borrow().computed.revision(), revision);
         assert_eq!(runtime.view.borrow().work, ViewWork::default());
     }
 

@@ -175,6 +175,7 @@ struct GraphDemoRuntime {
     surface: Cell<Option<(ElementId, ElementId)>>,
     roomy_controls: Cell<bool>,
     instrument_radius: Cell<Option<understory_property::Property<f64>>>,
+    instrument_extent: Cell<Option<understory_property::Property<Vec2>>>,
 }
 
 impl GraphDemoRuntime {
@@ -188,6 +189,7 @@ impl GraphDemoRuntime {
             surface: Cell::new(None),
             roomy_controls: Cell::new(false),
             instrument_radius: Cell::new(None),
+            instrument_extent: Cell::new(None),
         }
     }
 }
