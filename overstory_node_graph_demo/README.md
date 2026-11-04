@@ -38,6 +38,34 @@ routes keep their elements. Grid reconstruction follows viewport changes. The
 host still compares computed snapshots: this deliberately exposes the remaining
 need for a derived-change API rather than hiding the scan behind a full UI rebuild.
 
+The gold cable tie guides the three parameter connections through distinct,
+ordered lanes. Drag the tie or use **Toggle cable tie** to compare guided and
+ordinary routing. Moving or releasing it invalidates only its member routes;
+it never merges ports or edits graph topology. New-connection previews use the
+ordinary router until a connection is committed and explicitly assigned.
+This is an application-owned, horizontal-guide experiment, not a general
+obstacle router or a durable cable-authoring format.
+
+## Integration findings
+
+- Scoped edits and explicit node-local sockets work unchanged in this native
+  host as well as the notebook. No new graph-core API was needed for this slice.
+- The strongest next shared API candidate is a stream of changed computed
+  bounds, anchors, routes and visibility membership. The retained adapter can
+  then consume deltas rather than comparing every snapshot.
+- Rich content remains a host concern: controls measure and edit the inline
+  study; node_graph owns the enclosing bounds and connections. Zoom currently
+  recreates size-dependent node content; ordinary moves retain it.
+- Cable ties need ordered edge membership, guide geometry and member-route
+  invalidation. These compose with the existing router and invalidation hooks.
+  Multiple guides, guide orientation and editing membership need a second
+  experiment before becoming a shared model.
+- The `mine/rope-experiment` WIP in Understory offers a plausible optional
+  backend for individual cable curves and endpoint tangents. Its retained
+  simulation should advance on explicit application time, independently of
+  graph derivation. Tie membership and lane policy are separate from rope
+  geometry. No rope WIP code or simulation is included in this demo.
+
 The long-term goal is for this demo to become a visually rich stress case for
 animation, retained layout, hit testing, compositor-backed layers, and graph
 editing ergonomics.

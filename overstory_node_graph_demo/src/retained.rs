@@ -61,6 +61,7 @@ pub(super) struct Layers {
     pub(super) preview: ElementId,
     pub(super) nodes: ElementId,
     pub(super) ports: ElementId,
+    pub(super) ties: ElementId,
 }
 
 #[derive(Debug, Default)]
@@ -110,6 +111,7 @@ impl GraphView {
                 preview: layer(),
                 nodes: layer(),
                 ports: layer(),
+                ties: layer(),
             }
         })
     }

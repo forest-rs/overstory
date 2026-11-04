@@ -9,7 +9,7 @@ use alloc::rc::Rc;
 use core::cell::{Cell, RefCell};
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
-    ClickEvent, CursorIcon, DragEvent, ElementId, ElementSpecExt, Layout, Panel, Phase,
+    Button, ClickEvent, CursorIcon, DragEvent, ElementId, ElementSpecExt, Layout, Panel, Phase,
     PointerEventKind, PointerRoutedEvent, ScrollEvent, SurfaceSpecExt, Text, Tooltip, Ui, Viewport,
     theme,
 };
@@ -19,11 +19,13 @@ use understory_node_graph::{
     DeriveMetrics, DeriveMode, DerivePhase, EdgeId, EdgePreviewTarget, GraphComputed,
     GraphDeriveObserver, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
     GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver,
-    OrthogonalEdgeRouter, PortAnchor, PortDirection, PortId, PortView, RejectDuplicateConnections,
+    PortAnchor, PortDirection, PortId, PortView, RejectDuplicateConnections,
 };
 use understory_view2d::{ClampMode, FitMode};
 
+mod cables;
 mod parameter_view;
+use cables::{CableRouter, CableTie};
 mod retained;
 use retained::GraphView;
 mod parameters;
@@ -41,6 +43,7 @@ const ZOOM_SENSITIVITY: f64 = 0.0015;
 enum GraphGesture {
     DragNode(NodeId),
     CreateEdge(PortId),
+    MoveTie,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +112,7 @@ struct DemoGraph {
     work: DeriveWork,
     parameter_node: NodeId,
     parameters: SurfaceParameters,
+    tie: CableTie,
 }
 
 #[derive(Debug, Default)]
@@ -134,6 +138,17 @@ impl GraphDeriveObserver for DeriveWork {
 }
 
 impl DemoGraph {
+    fn invalidate_tie(&mut self) {
+        for edge in self.tie.members() {
+            self.invalidation.mark_routing_edge(*edge);
+        }
+    }
+
+    fn move_tie(&mut self, delta: Vec2) {
+        self.tie.center += delta;
+        self.invalidate_tie();
+    }
+
     fn rebuild_computed(&mut self) {
         self.work = DeriveWork::default();
         self.computed.rebuild_with_compatibility(
@@ -141,9 +156,7 @@ impl DemoGraph {
             &self.projection,
             &self.session,
             &mut self.invalidation,
-            &OrthogonalEdgeRouter {
-                min_horizontal_run: 44.0,
-            },
+            &CableRouter(&self.tie),
             &RejectDuplicateConnections,
             &mut self.work,
         );
@@ -250,6 +263,25 @@ fn build_ui() -> Ui {
         14.0,
     );
 
+    let toggle_runtime = Rc::clone(&runtime);
+    ui.append(
+        root,
+        Button::new("Toggle cable tie")
+            .layout(
+                Layout::new()
+                    .absolute_at(1128., 690.)
+                    .logical_size(280., 38.),
+            )
+            .on_activate(move |ui, _| {
+                {
+                    let mut graph = toggle_runtime.graph.borrow_mut();
+                    graph.tie.enabled = !graph.tie.enabled;
+                    graph.invalidate_tie();
+                    graph.rebuild_computed();
+                }
+                refresh_graph_view(ui, graph_host, sidebar, Rc::clone(&toggle_runtime));
+            }),
+    );
     install_viewport_interaction(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
     refresh_graph_view(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
 
@@ -413,6 +445,14 @@ fn build_demo_graph() -> DemoGraph {
         let _ = selection.select_only(GraphElementId::Node(presentation));
     });
 
+    let tie = CableTie::new(
+        Point::new(430., 190.),
+        parameter_ports
+            .iter()
+            .flat_map(|p| doc.port_edges(*p).unwrap())
+            .copied()
+            .collect(),
+    );
     let mut computed = GraphComputed::new();
     let mut invalidation = GraphInvalidation::new();
     let mut observer = NoopGraphDeriveObserver;
@@ -421,9 +461,7 @@ fn build_demo_graph() -> DemoGraph {
         &projection,
         &session,
         &mut invalidation,
-        &OrthogonalEdgeRouter {
-            min_horizontal_run: 44.0,
-        },
+        &CableRouter(&tie),
         &RejectDuplicateConnections,
         &mut observer,
     );
@@ -438,6 +476,7 @@ fn build_demo_graph() -> DemoGraph {
         work: DeriveWork::default(),
         parameter_node,
         parameters: SurfaceParameters::default(),
+        tie,
     }
 }
 
@@ -509,6 +548,8 @@ fn refresh_graph_view(
     }
     append_graph_nodes(ui, layers.nodes, sidebar, Rc::clone(&runtime), graph_host);
     append_graph_ports(ui, layers.ports, sidebar, Rc::clone(&runtime), graph_host);
+    clear_children(ui, layers.ties);
+    append_cable_tie(ui, layers.ties, graph_host, Rc::clone(&runtime));
     refresh_inspector(ui, sidebar, &runtime.graph.borrow());
 }
 
@@ -557,6 +598,12 @@ fn drag_graph_view(
         Some(GraphGesture::DragNode(node)) => {
             let mut graph = runtime.graph.borrow_mut();
             move_node_by_view_delta(&mut graph, node, event.delta);
+            graph.rebuild_computed();
+        }
+        Some(GraphGesture::MoveTie) => {
+            let mut graph = runtime.graph.borrow_mut();
+            let scale = graph.session.viewport().world_units_per_pixel();
+            graph.move_tie(event.delta * scale);
             graph.rebuild_computed();
         }
         Some(GraphGesture::CreateEdge(port)) => {
@@ -671,7 +718,7 @@ fn finish_graph_gesture(
             graph.session.set_interaction(InteractionState::Idle);
             graph.rebuild_computed();
         }
-        GraphGesture::DragNode(_) => {
+        GraphGesture::DragNode(_) | GraphGesture::MoveTie => {
             let mut graph = runtime.graph.borrow_mut();
             graph.session.set_hover(None);
             graph.session.set_interaction(InteractionState::Idle);
@@ -938,6 +985,46 @@ fn append_graph_ports(
     }
 }
 
+fn append_cable_tie(
+    ui: &mut Ui,
+    parent: ElementId,
+    graph_host: ElementId,
+    runtime: Rc<GraphDemoRuntime>,
+) {
+    let graph = runtime.graph.borrow();
+    if !graph.tie.enabled {
+        return;
+    }
+    let center = graph
+        .session
+        .viewport()
+        .world_to_view_point(graph.tie.center);
+    let element = append_rect(
+        ui,
+        parent,
+        Rect::new(center.x - 5., center.y - 17., center.x + 5., center.y + 17.),
+        Color::from_rgba8(0xf3, 0xd5, 0x97, 0xff),
+        4.,
+    );
+    ui.set_tooltip(
+        element,
+        Tooltip::new("Cable tie / drag to guide three separate connections"),
+    );
+    let handler_runtime = Rc::clone(&runtime);
+    ui.events(element)
+        .pointer(PointerEventKind::Down, move |ui, event| {
+            if event.phase() != Phase::Target {
+                return;
+            }
+            handler_runtime
+                .active_gesture
+                .set(Some(GraphGesture::MoveTie));
+            let _ = ui.capture_pointer(graph_host);
+            event.mark_handled();
+            event.stop_propagation();
+        });
+}
+
 fn append_graph_preview(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
     let Some(preview) = graph.computed.preview() else {
         return;
@@ -1056,6 +1143,15 @@ fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
         .unwrap_or("none");
     for line in [
         format!("selected: {selected}"),
+        format!(
+            "cable tie: {} / {} distinct edges",
+            if graph.tie.enabled {
+                "guided"
+            } else {
+                "released"
+            },
+            graph.tie.members().len()
+        ),
         format!(
             "geometry: {} nodes / {} routes",
             graph.work.nodes, graph.work.routes
