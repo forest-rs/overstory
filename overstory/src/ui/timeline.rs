@@ -1000,7 +1000,19 @@ impl Ui {
     fn clear_timeline_composition_sample(&mut self, key: TimelineTrackKey) {
         match key.target() {
             PresentationTarget::Slot(PresentationSlot::LayerOffset) => {
-                self.composition.set_layer_offset(key.element(), Vec2::ZERO);
+                // This slot is the complete arranged local offset, not an
+                // additive translation. Clearing motion must restore layout;
+                // zero would become the origin of the next state transition.
+                let id = key.element();
+                let origin = self.effective_bounds(id).origin();
+                let parent_origin = self
+                    .get(id)
+                    .and_then(|element| element.parent())
+                    .map_or(kurbo::Point::ZERO, |parent| {
+                        self.effective_bounds(parent).origin()
+                    });
+                self.composition
+                    .set_layer_offset(id, origin - parent_origin);
             }
             PresentationTarget::Slot(PresentationSlot::VisualTranslation) => {
                 self.composition.set_visual_transform(
