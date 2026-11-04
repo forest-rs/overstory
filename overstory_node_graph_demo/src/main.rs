@@ -16,14 +16,16 @@ use overstory::{
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_node_graph::{
-    DeriveMetrics, DeriveMode, DerivePhase, EdgePreviewTarget, GraphComputed, GraphDeriveObserver,
-    GraphDoc, GraphElementId, GraphInvalidation, GraphProjection, GraphSession, HitTarget,
-    InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver, OrthogonalEdgeRouter,
-    PortAnchor, PortDirection, PortId, PortView, RejectDuplicateConnections,
+    DeriveMetrics, DeriveMode, DerivePhase, EdgeId, EdgePreviewTarget, GraphComputed,
+    GraphDeriveObserver, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
+    GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver,
+    OrthogonalEdgeRouter, PortAnchor, PortDirection, PortId, PortView, RejectDuplicateConnections,
 };
 use understory_view2d::{ClampMode, FitMode};
 
 mod parameter_view;
+mod retained;
+use retained::GraphView;
 mod parameters;
 use parameter_view::{ParameterUi, append_parameter_controls};
 use parameters::{Parameter, SurfaceParameters};
@@ -154,6 +156,7 @@ struct GraphDemoRuntime {
     selected_element: Cell<Option<ElementId>>,
     active_gesture: Cell<Option<GraphGesture>>,
     parameter_ui: RefCell<Option<ParameterUi>>,
+    view: RefCell<GraphView>,
 }
 
 impl GraphDemoRuntime {
@@ -163,6 +166,7 @@ impl GraphDemoRuntime {
             selected_element: Cell::new(None),
             active_gesture: Cell::new(None),
             parameter_ui: RefCell::new(None),
+            view: RefCell::new(GraphView::default()),
         }
     }
 }
@@ -487,22 +491,25 @@ fn refresh_graph_view(
     runtime: Rc<GraphDemoRuntime>,
 ) {
     runtime.selected_element.set(None);
-    runtime.parameter_ui.replace(None);
-    clear_children(ui, graph_host);
-    clear_children(ui, sidebar);
-
+    let layers = runtime.view.borrow_mut().layers(ui, graph_host);
     {
         let graph = runtime.graph.borrow();
-        append_grid(ui, graph_host, &graph);
-        append_graph_edges(ui, graph_host, &graph);
-        append_graph_preview(ui, graph_host, &graph);
+        let mut view = runtime.view.borrow_mut();
+        if view.prune_nodes(ui, &graph) {
+            runtime.parameter_ui.replace(None);
+        }
+        if view.visible_world != Some(graph.session.visible_world_rect()) {
+            clear_children(ui, layers.grid);
+            append_grid(ui, layers.grid, &graph);
+            view.visible_world = Some(graph.session.visible_world_rect());
+        }
+        view.sync_edges(ui, layers.edges, &graph);
+        clear_children(ui, layers.preview);
+        append_graph_preview(ui, layers.preview, &graph);
     }
-    append_graph_nodes(ui, graph_host, sidebar, Rc::clone(&runtime));
-    append_graph_ports(ui, graph_host, sidebar, Rc::clone(&runtime));
-    {
-        let graph = runtime.graph.borrow();
-        append_inspector(ui, sidebar, &graph);
-    }
+    append_graph_nodes(ui, layers.nodes, sidebar, Rc::clone(&runtime), graph_host);
+    append_graph_ports(ui, layers.ports, sidebar, Rc::clone(&runtime), graph_host);
+    refresh_inspector(ui, sidebar, &runtime.graph.borrow());
 }
 
 fn refresh_inspector(ui: &mut Ui, sidebar: ElementId, graph: &DemoGraph) {
@@ -536,7 +543,13 @@ fn drag_graph_view(
         return;
     }
 
-    if runtime.active_gesture.get().is_none() && event.source() != graph_host {
+    if runtime.active_gesture.get().is_none()
+        && runtime
+            .parameter_ui
+            .borrow()
+            .as_ref()
+            .is_some_and(|parts| parts.sliders.contains(&event.semantic_source()))
+    {
         return;
     }
     let _ = ui.capture_pointer(graph_host);
@@ -749,27 +762,12 @@ fn append_grid_axis(
     }
 }
 
-fn append_graph_edges(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
-    for edge in graph.computed.visible_edges() {
-        let Some(route) = graph.computed.edge_route(*edge) else {
-            continue;
-        };
-        for (start, end) in route.segments() {
-            let start = graph.session.viewport().world_to_view_point(start);
-            let end = graph.session.viewport().world_to_view_point(end);
-            if (start - end).hypot() <= 0.5 {
-                continue;
-            }
-            append_edge_segment(ui, parent, start, end);
-        }
-    }
-}
-
 fn append_graph_nodes(
     ui: &mut Ui,
     parent: ElementId,
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
+    graph_host: ElementId,
 ) {
     let nodes = {
         let graph = runtime.graph.borrow();
@@ -790,6 +788,25 @@ fn append_graph_nodes(
                 .contains(&GraphElementId::Node(node));
             (rect, meta, selected)
         };
+        if let Some(element) = runtime.view.borrow().node_element(node, rect.size()) {
+            ui.set_layout(
+                element,
+                Layout::column(8.)
+                    .absolute_at(rect.x0, rect.y0)
+                    .logical_size(rect.width(), rect.height()),
+            );
+            style_node(ui, element, meta.accent, selected);
+            if selected {
+                runtime.selected_element.set(Some(element));
+            }
+            continue;
+        }
+        if let Some(old) = runtime.view.borrow_mut().remove_node(node) {
+            ui.remove(old);
+            if node == runtime.graph.borrow().parameter_node {
+                runtime.parameter_ui.replace(None);
+            }
+        }
         let node_element = ui.append(
             parent,
             Panel::column(8.0).padding_all(14.0).layout(
@@ -798,6 +815,10 @@ fn append_graph_nodes(
                     .logical_size(rect.width(), rect.height()),
             ),
         );
+        runtime
+            .view
+            .borrow_mut()
+            .insert_node(node, node_element, rect.size());
         style_node(ui, node_element, meta.accent, selected);
         if selected {
             runtime.selected_element.set(Some(node_element));
@@ -812,7 +833,7 @@ fn append_graph_nodes(
                 start_node_drag(
                     ui,
                     event,
-                    parent,
+                    graph_host,
                     sidebar,
                     node,
                     meta.accent,
@@ -855,6 +876,7 @@ fn append_graph_ports(
     parent: ElementId,
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
+    graph_host: ElementId,
 ) {
     let ports = {
         let graph = runtime.graph.borrow();
@@ -873,6 +895,15 @@ fn append_graph_ports(
             graph.session.viewport().world_to_view_point(anchor)
         };
         let color = meta.kind.color();
+        if let Some(element) = runtime.view.borrow().port_element(port) {
+            ui.set_layout(
+                element,
+                Layout::new()
+                    .absolute_at(view.x - PORT_RADIUS, view.y - PORT_RADIUS)
+                    .logical_size(PORT_RADIUS * 2., PORT_RADIUS * 2.),
+            );
+            continue;
+        }
         let port_element = append_rect(
             ui,
             parent,
@@ -885,6 +916,7 @@ fn append_graph_ports(
             color,
             PORT_RADIUS,
         );
+        runtime.view.borrow_mut().insert_port(port, port_element);
         ui.set_tooltip(
             port_element,
             Tooltip::new(format!("{} {}", meta.kind, meta.label)),
@@ -896,7 +928,7 @@ fn append_graph_ports(
                     start_port_drag(
                         ui,
                         event,
-                        parent,
+                        graph_host,
                         sidebar,
                         port,
                         Rc::clone(&runtime_for_handler),
@@ -1077,16 +1109,6 @@ fn select_node(
     }
     style_node(ui, event.current(), accent, true);
     event.mark_handled();
-}
-
-fn append_edge_segment(ui: &mut Ui, parent: ElementId, start: Point, end: Point) {
-    append_edge_segment_with_color(
-        ui,
-        parent,
-        start,
-        end,
-        Color::from_rgba8(0x62, 0xd8, 0xff, 0xff),
-    );
 }
 
 fn append_edge_segment_with_color(

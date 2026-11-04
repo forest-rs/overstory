@@ -8,7 +8,7 @@ use overstory::Slider;
 
 #[derive(Debug)]
 pub(super) struct ParameterUi {
-    preview: ElementId,
+    tiles: [ElementId; 12],
     labels: [ElementId; 3],
     pub(super) sliders: [ElementId; 3],
     size: Size,
@@ -134,8 +134,13 @@ pub(super) fn append_parameter_controls(
         10.,
         ink,
     );
+    let tiles = (0..12)
+        .map(|_| append_rect(ui, preview, Rect::ZERO, ValueKind::Number.color(), 0.))
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
     runtime.parameter_ui.replace(Some(ParameterUi {
-        preview,
+        tiles,
         labels: labels.try_into().unwrap(),
         sliders: sliders.try_into().unwrap(),
         size: Size::new(size.width - 28., 110. * scale),
@@ -161,22 +166,29 @@ fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
             ),
         );
     }
-    clear_children(ui, parts.preview);
     for (index, (rect, radius)) in graph
         .parameters
         .preview(Rect::from_origin_size(Point::ZERO, parts.size))
         .into_iter()
         .enumerate()
     {
-        let element = append_rect(
+        let element = parts.tiles[index];
+        ui.set_layout(
+            element,
+            Layout::new()
+                .absolute_at(rect.x0, rect.y0)
+                .logical_size(rect.width(), rect.height()),
+        );
+        style_surface(
             ui,
-            parts.preview,
-            rect,
-            if index % 3 == 0 {
+            element,
+            Some(if index % 3 == 0 {
                 ValueKind::Number.color()
             } else {
                 Color::from_rgba8(0x39, 0x70, 0x68, 0xff)
-            },
+            }),
+            None,
+            0.,
             radius,
         );
         ui.set_tooltip(element, Tooltip::new(format!("Surface {}", index + 1)));

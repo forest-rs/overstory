@@ -32,6 +32,12 @@ and accessibility edits use the same slider value path. Preview edits retain the
 controls and report zero graph geometry work. The card's output sockets use
 node-local anchors beside the parameter rows.
 
+Node bodies, controls, ports and committed route segments retain their element
+identities across local edits. Changed geometry updates their layout; unchanged
+routes keep their elements. Grid reconstruction follows viewport changes. The
+host still compares computed snapshots: this deliberately exposes the remaining
+need for a derived-change API rather than hiding the scan behind a full UI rebuild.
+
 The long-term goal is for this demo to become a visually rich stress case for
 animation, retained layout, hit testing, compositor-backed layers, and graph
 editing ergonomics.
