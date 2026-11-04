@@ -252,7 +252,7 @@ pub use controls::toggle::{
 pub use controls::tooltip::{
     PART_TOOLTIP_LABEL, SLOT_TOOLTIP_CONTENT, TYPE_TOOLTIP, Tooltip, TooltipSpec, TooltipSpecExt,
 };
-pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath};
+pub use controls::vector_path::{TYPE_VECTOR_PATH, VectorPath, set_vector_path};
 pub use controls::viewport::{TYPE_VIEWPORT, Viewport};
 pub use controls::zstack::{StackAlignment, TYPE_ZSTACK, ZStack};
 pub use cursor_icon::CursorIcon;

@@ -35,6 +35,27 @@ use crate::widget::{AppendSpec, ElementConfig, ElementSpec, Widget};
 /// Selector identity for vector path elements.
 pub const TYPE_VECTOR_PATH: TypeTag = TypeTag(19);
 
+/// Replaces a retained vector path's resolved drawing intent without replacing its element.
+///
+/// Returns `true` and invalidates paint when the primitive changes. Returns
+/// `false` for equal primitives, stale handles, or elements that are not vector
+/// paths. Layout bounds remain caller-owned; update them separately if needed.
+pub fn set_vector_path(ui: &mut Ui, element: ElementId, primitive: PathPrimitive) -> bool {
+    let mut changed = false;
+    ui.with_widget_mut(element, |widget, ui| {
+        let Some(widget) = widget.downcast_mut::<VectorPathWidget>() else {
+            return;
+        };
+        if widget.primitive == primitive {
+            return;
+        }
+        widget.primitive = primitive;
+        ui.mark_channels(element, crate::channels::PAINT.into());
+        changed = true;
+    });
+    changed
+}
+
 /// Builder + spec for a retained vector path element.
 #[derive(Clone, Debug)]
 pub struct VectorPath {
@@ -157,6 +178,47 @@ mod tests {
     use imaging::record::{Command, Draw, Scene};
     use kurbo::Size;
     use peniko::Color;
+
+    #[test]
+    fn replacing_path_intent_retains_identity_and_only_invalidates_paint() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let path = ui.append(root, VectorPath::new(kurbo::BezPath::new()));
+        ui.compute_layout(Size::new(40., 40.));
+        ui.paint(&mut Scene::new());
+        let mut shape = kurbo::BezPath::new();
+        shape.move_to((0., 0.));
+        shape.line_to((20., 20.));
+        let primitive = PathPrimitive::new(shape).stroke(PathStroke::new(Color::WHITE, 2.));
+        assert!(set_vector_path(&mut ui, path, primitive.clone()));
+        assert!(
+            ui.invalidation()
+                .is_invalidated(path, crate::channels::PAINT)
+        );
+        assert!(
+            !ui.invalidation()
+                .is_invalidated(path, crate::channels::LAYOUT)
+        );
+        assert_eq!(
+            ui.get(path)
+                .unwrap()
+                .widget()
+                .unwrap()
+                .downcast_ref::<VectorPathWidget>()
+                .unwrap()
+                .primitive,
+            primitive
+        );
+        ui.paint(&mut Scene::new());
+        assert!(!set_vector_path(&mut ui, path, primitive.clone()));
+        assert!(
+            !ui.invalidation()
+                .is_invalidated(path, crate::channels::PAINT)
+        );
+        assert!(!set_vector_path(&mut ui, root, primitive.clone()));
+        ui.remove(path);
+        assert!(!set_vector_path(&mut ui, path, primitive));
+    }
 
     #[test]
     fn vector_path_paints_path_primitive() {
