@@ -20,6 +20,11 @@ The demo currently exercises:
 - dragging nodes and previewing edge creation without a separate canvas-item
   object model.
 
+Node moves and connection commits use Understory's scoped edit receipts. The
+demo retains its invalidation state between derives, so ordinary edits can
+update neighboring geometry instead of forcing a full rebuild. The inspector
+reports actual visited nodes and router calls separately from visibility scans.
+
 The long-term goal is for this demo to become a visually rich stress case for
 animation, retained layout, hit testing, compositor-backed layers, and graph
 editing ergonomics.

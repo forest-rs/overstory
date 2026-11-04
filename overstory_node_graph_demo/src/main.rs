@@ -15,9 +15,10 @@ use overstory::{
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_node_graph::{
-    EdgePreviewTarget, GraphComputed, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
-    GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver,
-    OrthogonalEdgeRouter, PortDirection, PortId, PortView, RejectDuplicateConnections,
+    DeriveMetrics, DeriveMode, DerivePhase, EdgePreviewTarget, GraphComputed, GraphDeriveObserver,
+    GraphDoc, GraphElementId, GraphInvalidation, GraphProjection, GraphSession, HitTarget,
+    InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver, OrthogonalEdgeRouter,
+    PortDirection, PortId, PortView, RejectDuplicateConnections,
 };
 use understory_view2d::{ClampMode, FitMode};
 
@@ -93,23 +94,45 @@ struct DemoGraph {
     session: GraphSession,
     computed: GraphComputed,
     selected: NodeId,
+    invalidation: GraphInvalidation,
+    work: DeriveWork,
+}
+
+#[derive(Debug, Default)]
+struct DeriveWork {
+    nodes: usize,
+    routes: usize,
+    visibility: usize,
+    full_geometry: bool,
+}
+
+impl GraphDeriveObserver for DeriveWork {
+    fn derive_end(&mut self, phase: DerivePhase, metrics: DeriveMetrics) {
+        match phase {
+            DerivePhase::NodeBounds => {
+                self.nodes += metrics.nodes;
+                self.full_geometry |= metrics.mode == DeriveMode::Full;
+            }
+            DerivePhase::EdgeRouting => self.routes += metrics.routed_edges,
+            DerivePhase::Visibility => self.visibility += metrics.nodes,
+            _ => {}
+        }
+    }
 }
 
 impl DemoGraph {
     fn rebuild_computed(&mut self) {
-        let mut invalidation = GraphInvalidation::new();
-        invalidation.mark_viewport();
-        let mut observer = NoopGraphDeriveObserver;
+        self.work = DeriveWork::default();
         self.computed.rebuild_with_compatibility(
             &self.doc,
             &self.projection,
             &self.session,
-            &mut invalidation,
+            &mut self.invalidation,
             &OrthogonalEdgeRouter {
                 min_horizontal_run: 44.0,
             },
             &RejectDuplicateConnections,
-            &mut observer,
+            &mut self.work,
         );
     }
 }
@@ -350,6 +373,8 @@ fn build_demo_graph() -> DemoGraph {
         session,
         computed,
         selected: presentation,
+        invalidation,
+        work: DeriveWork::default(),
     }
 }
 
@@ -526,7 +551,10 @@ fn zoom_graph_view(
 
 fn move_node_by_view_delta(graph: &mut DemoGraph, node: NodeId, delta: Vec2) {
     let scale = graph.session.viewport().world_units_per_pixel();
-    graph.projection.translate_node(node, delta * scale);
+    let (_, changes) = graph
+        .projection
+        .edit(|edit| edit.translate_node(node, delta * scale));
+    graph.invalidation.record(&changes);
 }
 
 fn finish_graph_gesture(
@@ -557,9 +585,10 @@ fn finish_graph_gesture(
                 if let Some(HitTarget::Port(to)) = target
                     && from != to
                 {
-                    let _ = graph
+                    let (_, changes) = graph
                         .doc
-                        .add_edge_with(from, to, (), &RejectDuplicateConnections);
+                        .edit(|edit| edit.add_edge_with(from, to, (), &RejectDuplicateConnections));
+                    graph.invalidation.record(&changes);
                 }
             }
             graph.session.set_hover(None);
@@ -920,6 +949,11 @@ fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
         .unwrap_or("none");
     for line in [
         format!("selected: {selected}"),
+        format!(
+            "geometry: {} nodes / {} routes",
+            graph.work.nodes, graph.work.routes
+        ),
+        format!("visibility scan: {} nodes", graph.work.visibility),
         format!("nodes: {}", graph.doc.node_count()),
         format!("ports: {}", graph.doc.port_count()),
         format!("edges: {}", graph.doc.edge_count()),
@@ -1067,4 +1101,47 @@ fn projection_bounds(projection: &DemoProjection) -> Rect {
         });
     }
     bounds.unwrap_or(Rect::new(0.0, 0.0, 1.0, 1.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn moving_a_node_derives_only_its_neighborhood() {
+        let mut graph = build_demo_graph();
+        let node = graph.selected;
+        move_node_by_view_delta(&mut graph, node, Vec2::new(10.0, 0.0));
+        graph.rebuild_computed();
+        assert_eq!(graph.work.nodes, 1);
+        assert_eq!(graph.work.routes, 2);
+        assert!(!graph.work.full_geometry);
+        graph.rebuild_computed();
+        assert_eq!(graph.work.nodes, 0);
+        assert_eq!(graph.work.routes, 0);
+        assert_eq!(graph.work.visibility, 0);
+    }
+
+    #[test]
+    fn creating_an_edge_uses_the_document_receipt() {
+        let mut graph = build_demo_graph();
+        let outputs: Vec<_> = graph
+            .doc
+            .iter_ports()
+            .filter(|(_, p)| p.direction == PortDirection::Output)
+            .map(|(id, _)| id)
+            .collect();
+        let input = graph
+            .doc
+            .iter_ports()
+            .find(|(_, p)| p.direction == PortDirection::Input)
+            .unwrap()
+            .0;
+        let (_, changes) = graph.doc.edit(|edit| edit.add_edge(outputs[1], input, ()));
+        graph.invalidation.record(&changes);
+        graph.rebuild_computed();
+        assert_eq!(graph.work.nodes, 0);
+        assert_eq!(graph.work.routes, 1);
+        assert!(!graph.work.full_geometry);
+    }
 }
