@@ -33,9 +33,19 @@ study's values. Native sliders support pointer, keyboard and accessibility input
 - Node moves and connection commits deliver scoped document/projection change
   receipts to retained invalidation state. The inspector distinguishes geometry
   visits and actual router calls from visibility scans.
-- Parameter names, values, compact controls and sockets share a row geometry.
-  Names focus their controls; values include units and align to a common edge.
-  Channel colors remain distinct even when two connections have the same unit.
+- Node content uses flow layout. The Overstory adapter measures slider-track
+  and text-row centers after arrangement and publishes node-local port anchors
+  through scoped projection edits. Row coordinates are not shared with the
+  headless model. Slot references survive control-template replacement.
+- **Roomier controls** changes parameter text size and row spacing in place.
+  Sockets and cables follow the arranged controls, and the case preview uses
+  the remaining measured space. Names focus their controls; values include
+  units and align to a common edge. Channel colors remain distinct even when
+  two connections have the same unit.
+- Measurement settles through the existing bounded element-realization phase.
+  Subpixel rounding during panning does not become repeated projection edits.
+  Wrapped-label, node-width and zoom checks cover attachment alignment, stable
+  controls/focus, and convergence without layout feedback.
 - The shaded case footprint has its dimensions attached above the drawing.
   Instruments remain visible outside its boundary, and overhanging modules
   use the warning color. Clearance feedback lives outside the drawing.

@@ -28,6 +28,7 @@ use story::{StudyCompatibility, build_demo_graph};
 mod cables;
 mod parameter_view;
 use cables::{CableRouter, CableTie};
+mod measured;
 mod retained;
 use retained::{GraphView, ViewWork};
 mod parameters;
@@ -171,6 +172,8 @@ struct GraphDemoRuntime {
     active_gesture: Cell<Option<GraphGesture>>,
     parameter_ui: RefCell<Option<ParameterUi>>,
     view: RefCell<GraphView>,
+    surface: Cell<Option<(ElementId, ElementId)>>,
+    roomy_controls: Cell<bool>,
 }
 
 impl GraphDemoRuntime {
@@ -181,6 +184,8 @@ impl GraphDemoRuntime {
             active_gesture: Cell::new(None),
             parameter_ui: RefCell::new(None),
             view: RefCell::new(GraphView::default()),
+            surface: Cell::new(None),
+            roomy_controls: Cell::new(false),
         }
     }
 }
@@ -239,7 +244,15 @@ fn build_study_ui() -> (Ui, Rc<GraphDemoRuntime>, ElementId, ElementId) {
             .foreground(Color::from_rgba8(0xb7, 0xb8, 0xc8, 0xff)),
     );
 
-    let graph_host = ui.append(root, Viewport::new().cursor_icon(CursorIcon::Grab));
+    let surface = ui.append_widget(
+        root,
+        Box::new(measured::MeasuredGraph::new(Rc::clone(&runtime))),
+    );
+    ui.set_layout(
+        surface,
+        Layout::new().absolute_at(0., 0.).percent_size(1., 1.),
+    );
+    let graph_host = ui.append(surface, Viewport::new().cursor_icon(CursorIcon::Grab));
     ui.set_layout(
         graph_host,
         Layout::new()
@@ -257,7 +270,7 @@ fn build_study_ui() -> (Ui, Rc<GraphDemoRuntime>, ElementId, ElementId) {
     );
 
     let sidebar = ui.append(
-        root,
+        surface,
         Panel::column(14.0).padding_all(18.0).layout(
             Layout::column(14.0)
                 .absolute_at(1110.0, 128.0)
@@ -313,6 +326,18 @@ fn build_study_ui() -> (Ui, Rc<GraphDemoRuntime>, ElementId, ElementId) {
             }),
     );
     install_viewport_interaction(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
+    runtime.surface.set(Some((graph_host, sidebar)));
+    let density_runtime = Rc::clone(&runtime);
+    ui.append(
+        root,
+        Button::new("Roomier controls")
+            .font_size(13.)
+            .layout(Layout::new().absolute_at(708., 62.).logical_size(180., 38.))
+            .on_activate(move |ui, _| {
+                parameter_view::toggle_roomy_controls(ui, &density_runtime);
+            }),
+    );
+
     refresh_graph_view(&mut ui, graph_host, sidebar, Rc::clone(&runtime));
 
     (ui, runtime, graph_host, sidebar)
@@ -714,7 +739,7 @@ fn append_graph_nodes(
         if let Some(element) = runtime.view.borrow().node_element(node, rect.size()) {
             ui.set_layout(
                 element,
-                Layout::column(8.)
+                Layout::new()
                     .absolute_at(rect.x0, rect.y0)
                     .logical_size(rect.width(), rect.height()),
             );
@@ -772,41 +797,36 @@ fn append_graph_nodes(
         });
 
         if node == runtime.graph.borrow().parameter_node {
-            append_parameter_controls(
-                ui,
-                node_element,
-                sidebar,
-                graph_host,
-                rect.size(),
-                Rc::clone(&runtime),
-            );
+            append_parameter_controls(ui, node_element, sidebar, graph_host, Rc::clone(&runtime));
             continue;
         }
         if runtime.graph.borrow().story.is_layout(node) {
-            let scale = rect.width() / 280.;
             ui.append(
                 node_element,
                 Text::new(meta.title)
                     .font_size(15.)
                     .foreground(Color::from_rgba8(0xef, 0xf4, 0xf5, 0xff))
-                    .layout(
-                        Layout::new()
-                            .absolute_at(16., 16.)
-                            .logical_size(rect.width() - 32., 24.),
-                    ),
+                    .layout(Layout::new().fill_width().flex_shrink(0.)),
             );
-            for (index, parameter) in Parameter::ALL.into_iter().enumerate() {
-                let y = (98. + index as f64 * 66.) * scale;
-                ui.append(
-                    node_element,
+            let inputs = ui.append(
+                node_element,
+                Panel::column(12.).layout(Layout::column(12.).fill_width().flex_shrink(0.)),
+            );
+            for parameter in Parameter::ALL {
+                let label = ui.append(
+                    inputs,
                     Text::new(parameter.label())
+                        .wrap()
                         .font_size(12.)
                         .foreground(parameter.color())
-                        .layout(
-                            Layout::new()
-                                .absolute_at(18., y - 8.)
-                                .logical_size(rect.width() - 36., 20.),
-                        ),
+                        .layout(Layout::new().fill_width().flex_shrink(0.)),
+                );
+                measured::bind_socket(
+                    &runtime,
+                    node,
+                    &parameter.label().to_lowercase(),
+                    label,
+                    None,
                 );
             }
             let reading = ui.append(
@@ -815,13 +835,28 @@ fn append_graph_nodes(
                     .wrap()
                     .font_size(12.)
                     .foreground(Color::from_rgba8(0xcd, 0xda, 0xe0, 0xff))
-                    .layout(
-                        Layout::new()
-                            .absolute_at(18., rect.height() - 54.)
-                            .logical_size(rect.width() - 36., 42.),
-                    ),
+                    .layout(Layout::new().fill_width().flex_shrink(0.)),
             );
             runtime.view.borrow_mut().insert_reading(node, reading);
+            let outputs = ui.append(
+                node_element,
+                Panel::column(8.).layout(Layout::column(8.).fill_width().flex_shrink(0.)),
+            );
+            for (port, text, color) in [
+                ("footprint", "Footprint", ValueKind::Geometry.color()),
+                ("plate profile", "Plate profile", Parameter::Radius.color()),
+            ] {
+                let label = ui.append(
+                    outputs,
+                    Text::new(text)
+                        .wrap()
+                        .font_size(11.)
+                        .foreground(color)
+                        .layout(Layout::new().fill_width().flex_shrink(0.)),
+                );
+                ui.set_local(label, ui.properties().text_align, overstory::TextAlign::End);
+                measured::bind_socket(&runtime, node, port, label, None);
+            }
             continue;
         }
         ui.append(
@@ -837,6 +872,12 @@ fn append_graph_nodes(
                 .font_size(12.)
                 .foreground(Color::from_rgba8(0xc6, 0xdb, 0xdb, 0xff)),
         );
+        let label = if node == runtime.graph.borrow().story.check_node() {
+            "footprint"
+        } else {
+            "plate profile"
+        };
+        measured::bind_socket(&runtime, node, label, reading, None);
         runtime.view.borrow_mut().insert_reading(node, reading);
     }
 }

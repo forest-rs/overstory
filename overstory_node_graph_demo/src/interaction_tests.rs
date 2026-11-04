@@ -120,6 +120,29 @@ fn slider_drag_changes_the_case_plan_without_panning_or_replacing_controls() {
 }
 
 #[test]
+fn changing_control_density_during_a_drag_keeps_the_pressed_slider_alive() {
+    let (mut ui, runtime, _, _) = build_study_ui();
+    let size = Size::new(1480., 820.);
+    ui.compute_layout(size);
+    let sliders = runtime.parameter_ui.borrow().as_ref().unwrap().sliders;
+    let thumb = ui.slot(sliders[1], overstory::SLOT_SLIDER_THUMB).unwrap();
+    let point = ui.effective_bounds(thumb).center();
+    ui.dispatch_pointer_event(&down(point));
+    ui.dispatch_pointer_event(&moved(point + Vec2::new(20., 0.)));
+    let capture = ui.pointer_capture();
+    assert!(capture.is_some());
+    parameter_view::toggle_roomy_controls(&mut ui, &runtime);
+    ui.compute_layout(size);
+    assert_eq!(ui.pointer_capture(), capture);
+    assert_eq!(
+        runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
+        sliders
+    );
+    ui.dispatch_pointer_event(&up(point + Vec2::new(20., 0.)));
+    assert_eq!(ui.pointer_capture(), None);
+}
+
+#[test]
 fn body_drag_moves_only_the_selected_node_and_releases_capture() {
     let (mut ui, runtime, host, _) = build_study_ui();
     ui.compute_layout(Size::new(1480., 820.));

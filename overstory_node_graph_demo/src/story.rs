@@ -177,23 +177,16 @@ pub(super) fn build_demo_graph() -> DemoGraph {
         let from = output(&mut doc, parameter_node, label, kind);
         let to = input(&mut doc, layout, label, kind);
         members.push(doc.add_edge(from, to, ()).unwrap());
-        for (port, point) in [
-            (from, Point::new(380., Parameter::socket_y(index))),
-            (to, Point::new(0., 98. + index as f64 * 66.)),
-        ] {
-            let mut view = PortView::new(());
-            view.anchor = PortAnchor::NodeLocal(point);
-            view.hit_radius = 12.;
-            projection.set_port_view(port, view);
-        }
     }
-    for (node, label, y) in [(check, "footprint", 140.), (cut, "plate profile", 270.)] {
+    for (node, label) in [(check, "footprint"), (cut, "plate profile")] {
         let from = output(&mut doc, layout, label, ValueKind::Geometry);
-        let mut view = PortView::new(());
-        view.anchor = PortAnchor::NodeLocal(Point::new(280., y));
-        projection.set_port_view(from, view);
         let to = input(&mut doc, node, label, ValueKind::Geometry);
         doc.add_edge(from, to, ()).unwrap();
+    }
+    for (port, _) in doc.iter_ports() {
+        let mut view = PortView::new(());
+        view.hit_radius = 12.;
+        projection.set_port_view(port, view);
     }
     let tie = CableTie::new(Point::new(500., 342.), members);
     let mut session = GraphSession::new(GRAPH_VIEW);

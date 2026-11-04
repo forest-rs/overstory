@@ -4,7 +4,7 @@
 //! Retained controls and an application-owned inline preview.
 
 use super::*;
-use overstory::{ControlTemplateSpecExt, Slider};
+use overstory::{ControlTemplateSpecExt, LayoutDimension, LayoutSize, Slider};
 
 #[derive(Debug)]
 pub(super) struct ParameterUi {
@@ -15,6 +15,9 @@ pub(super) struct ParameterUi {
     status: ElementId,
     pub(super) sliders: [ElementId; 3],
     size: Size,
+    preview: ElementId,
+    caption: ElementId,
+    rows: ElementId,
 }
 
 impl ParameterUi {
@@ -51,9 +54,64 @@ fn label_at(
     )
 }
 
+fn flow_text(
+    ui: &mut Ui,
+    parent: ElementId,
+    text: &str,
+    font_size: f64,
+    color: Color,
+) -> ElementId {
+    ui.append(
+        parent,
+        Text::new(text)
+            .wrap()
+            .font_size(font_size)
+            .foreground(color)
+            .layout(Layout::new().fill_width().flex_shrink(0.)),
+    )
+}
+
+pub(super) fn toggle_roomy_controls(ui: &mut Ui, runtime: &GraphDemoRuntime) {
+    let roomy = !runtime.roomy_controls.get();
+    runtime.roomy_controls.set(roomy);
+    let parts = runtime.parameter_ui.borrow();
+    if let Some(parts) = parts.as_ref() {
+        ui.set_layout(parts.rows, Layout::column(if roomy { 32. } else { 20. }));
+        for element in parts.names.iter().chain(&parts.labels) {
+            ui.set_local(
+                *element,
+                ui.properties().font_size,
+                if roomy { 17. } else { 13. },
+            );
+        }
+    }
+}
+
+pub(super) fn resize_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) -> bool {
+    let changed = {
+        let mut parts = runtime.parameter_ui.borrow_mut();
+        let Some(parts) = parts.as_mut() else {
+            return false;
+        };
+        let size = ui.effective_bounds(parts.preview).size();
+        if size.width <= 0. || size.height <= 0. || size == parts.size {
+            return false;
+        }
+        parts.size = size;
+        ui.set_layout_size(
+            parts.caption,
+            LayoutSize::logical((size.width - 24.).max(0.), 17.),
+        );
+        true
+    };
+    if changed {
+        refresh_parameter_preview(ui, runtime);
+    }
+    changed
+}
+
 #[derive(Debug)]
 struct ParameterSliderTemplate {
-    width: f64,
     color: Color,
 }
 impl overstory::Template for ParameterSliderTemplate {
@@ -62,9 +120,11 @@ impl overstory::Template for ParameterSliderTemplate {
         let track = cx.surface_slot(overstory::SLOT_SLIDER_TRACK);
         cx.set_layout(
             track,
-            Layout::new()
-                .absolute_at(0., 12.)
-                .logical_size(self.width, 4.),
+            Layout::new().absolute_at(0., 12.).size(
+                LayoutSize::new()
+                    .width(LayoutDimension::Percent(1.))
+                    .height(LayoutDimension::Logical(4.)),
+            ),
         );
         cx.set_local(
             track,
@@ -94,56 +154,68 @@ pub(super) fn append_parameter_controls(
     parent: ElementId,
     sidebar: ElementId,
     graph_host: ElementId,
-    size: Size,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    let scale = size.width / 380.;
-    let margin = 18.;
-    let width = size.width - margin * 2.;
+    let roomy = runtime.roomy_controls.get();
+    let font_size = if roomy { 17. } else { 13. };
+    ui.set_layout(parent, Layout::column(12.));
+    let padding = ui.properties().surface.padding_widths;
+    for property in [padding.top, padding.right, padding.bottom, padding.left] {
+        ui.set_local(parent, property, 18.);
+    }
     let ink = Color::from_rgba8(0xed, 0xf3, 0xf5, 0xff);
     let muted = Color::from_rgba8(0xa3, 0xb5, 0xbf, 0xff);
-    label_at(
-        ui,
+    let header = ui.append(
         parent,
-        "FIELD KIT / 12 MODULES",
-        (margin, 16.),
-        width,
-        10.,
-        muted,
+        Panel::column(8.).layout(Layout::column(8.).fill_width().flex_shrink(0.)),
     );
-    label_at(
-        ui,
+    flow_text(ui, header, "FIELD KIT / 12 MODULES", 10., muted);
+    flow_text(ui, header, "Instrument layout", 18., ink);
+    let rows = ui.append(
         parent,
-        "Instrument layout",
-        (margin, 36.),
-        width,
-        18.,
-        ink,
+        Panel::column(if roomy { 32. } else { 20. }).layout(
+            Layout::column(if roomy { 32. } else { 20. })
+                .fill_width()
+                .flex_shrink(0.),
+        ),
     );
     let values = runtime.graph.borrow().parameters;
     let mut labels = Vec::new();
     let mut names = Vec::new();
     let mut sliders = Vec::new();
-    for (index, parameter) in Parameter::ALL.into_iter().enumerate() {
-        let center = Parameter::socket_y(index) * scale;
-        let name = label_at(
-            ui,
-            parent,
-            parameter.label(),
-            (margin, center - 46.),
-            width - 74.,
-            13.,
-            ink,
+    for parameter in Parameter::ALL {
+        let row = ui.append(
+            rows,
+            Panel::column(14.).layout(Layout::column(14.).fill_width().flex_shrink(0.)),
+        );
+        let heading = ui.append(
+            row,
+            Panel::row(8.).layout(Layout::row(8.).fill_width().flex_shrink(0.)),
+        );
+        let name = ui.append(
+            heading,
+            Text::new(parameter.label())
+                .wrap()
+                .font_size(font_size)
+                .foreground(ink)
+                .layout(
+                    Layout::new()
+                        .flex_basis(LayoutDimension::Logical(0.))
+                        .flex_grow(1.)
+                        .min_logical_size(0., 0.),
+                ),
         );
         names.push(name);
-        let label = label_at(
-            ui,
-            parent,
-            "",
-            (size.width - margin - 74., center - 46.),
-            74.,
-            13.,
-            parameter.color(),
+        let label = ui.append(
+            heading,
+            Text::new("")
+                .font_size(font_size)
+                .foreground(parameter.color())
+                .layout(
+                    Layout::new()
+                        .size(LayoutSize::new().width(LayoutDimension::Logical(74.)))
+                        .flex_shrink(0.),
+                ),
         );
         ui.set_local(label, ui.properties().text_align, overstory::TextAlign::End);
         ui.set_local(
@@ -160,19 +232,19 @@ pub(super) fn append_parameter_controls(
         let (min, max) = parameter.range();
         let callback_runtime = Rc::clone(&runtime);
         let slider = ui.append(
-            parent,
+            row,
             Slider::new()
                 .range(min, max)
                 .step(1.)
                 .value(values.value(parameter))
                 .template(overstory::ControlTemplate::new(ParameterSliderTemplate {
-                    width,
                     color: parameter.color(),
                 }))
                 .layout(
                     Layout::new()
-                        .absolute_at(margin, center - 14.)
-                        .logical_size(width, 28.),
+                        .fill_width()
+                        .size(LayoutSize::new().height(LayoutDimension::Logical(28.)))
+                        .flex_shrink(0.),
                 )
                 .on_value_changed(move |ui, event| {
                     let changed = {
@@ -195,16 +267,23 @@ pub(super) fn append_parameter_controls(
             ui.set_focus(Some(slider));
             event.mark_handled();
         });
+        let node = runtime.graph.borrow().parameter_node;
+        measured::bind_socket(
+            &runtime,
+            node,
+            &parameter.label().to_lowercase(),
+            slider,
+            Some(overstory::SLOT_SLIDER_TRACK),
+        );
         sliders.push(slider);
     }
-    let preview_top = Parameter::socket_y(2) * scale + 32.;
-    let preview_size = Size::new(width, (size.height - preview_top - 54.).max(64.));
     let preview = ui.append(
         parent,
         Panel::new().layout(
             Layout::new()
-                .absolute_at(margin, preview_top)
-                .logical_size(preview_size.width, preview_size.height),
+                .fill_width()
+                .flex_grow(1.)
+                .min_logical_size(0., 96.),
         ),
     );
     style_surface(
@@ -224,12 +303,12 @@ pub(super) fn append_parameter_controls(
         Color::from_rgba8(0x2a, 0x39, 0x40, 0xff),
         0.,
     );
-    label_at(
+    let caption = label_at(
         ui,
         preview,
         "CASE INTERIOR · 300 × 240 mm",
         (12., 10.),
-        width - 24.,
+        1.,
         10.,
         Color::from_rgba8(0xbc, 0xcb, 0xd3, 0xff),
     );
@@ -238,24 +317,8 @@ pub(super) fn append_parameter_controls(
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-    let status = label_at(
-        ui,
-        parent,
-        "",
-        (margin, preview_top + preview_size.height + 10.),
-        width,
-        11.,
-        ink,
-    );
-    label_at(
-        ui,
-        parent,
-        "12 modules · each 44 × 32 mm",
-        (margin, size.height - 22.),
-        width,
-        10.,
-        muted,
-    );
+    let status = flow_text(ui, parent, "", 11., ink);
+    flow_text(ui, parent, "12 modules · each 44 × 32 mm", 10., muted);
     runtime.parameter_ui.replace(Some(ParameterUi {
         tiles,
         case_footprint,
@@ -263,7 +326,10 @@ pub(super) fn append_parameter_controls(
         names: names.try_into().unwrap(),
         sliders: sliders.try_into().unwrap(),
         status,
-        size: preview_size,
+        size: Size::ZERO,
+        preview,
+        caption,
+        rows,
     }));
     refresh_parameter_preview(ui, &runtime);
 }
@@ -288,6 +354,9 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
     let Some(values) = graph.effective_parameters() else {
         return;
     };
+    if parts.size.width <= 0. || parts.size.height <= 0. {
+        return;
+    }
     let bounds = parts.plot_bounds();
     let case = values.case_rect(bounds);
     ui.set_layout(

@@ -30,9 +30,6 @@ impl Parameter {
             Self::Radius => peniko::Color::from_rgba8(0xc4, 0xa3, 0xef, 0xff),
         }
     }
-    pub(super) fn socket_y(index: usize) -> f64 {
-        170. + index as f64 * 120.
-    }
 
     pub(super) fn range(self) -> (f64, f64) {
         match self {

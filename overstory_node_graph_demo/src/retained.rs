@@ -221,6 +221,7 @@ pub(super) struct GraphView {
     edges: HashMap<EdgeId, ElementId>,
     readings: HashMap<NodeId, ElementId>,
     pub(super) work: ViewWork,
+    pub(super) attachments: HashMap<PortId, measured::SocketAttachment>,
 }
 
 impl GraphView {
@@ -265,6 +266,7 @@ impl GraphView {
                 self.work.removed += 1;
             }
             self.readings.clear();
+            self.attachments.clear();
             self.selected = None;
             self.visible_nodes = graph.computed.visible_nodes().iter().copied().collect();
             self.visible_edges = graph.computed.visible_edges().iter().copied().collect();
@@ -399,6 +401,8 @@ impl GraphView {
     }
     pub(super) fn remove_node(&mut self, node: NodeId) -> Option<ElementId> {
         self.readings.remove(&node);
+        self.attachments
+            .retain(|_, attachment| attachment.node != node);
         self.nodes.remove(&node).map(|(id, _)| id)
     }
     pub(super) fn insert_node(&mut self, node: NodeId, id: ElementId, size: Size) {
