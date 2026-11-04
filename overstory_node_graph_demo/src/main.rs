@@ -9,8 +9,9 @@ use alloc::rc::Rc;
 use core::cell::{Cell, RefCell};
 use kurbo::{Point, Rect, Size, Vec2};
 use overstory::{
-    ClickEvent, CursorIcon, DragEvent, ElementId, Layout, Panel, Phase, PointerEventKind,
-    PointerRoutedEvent, ScrollEvent, SurfaceSpecExt, Text, Tooltip, Ui, Viewport, theme,
+    ClickEvent, CursorIcon, DragEvent, ElementId, ElementSpecExt, Layout, Panel, Phase,
+    PointerEventKind, PointerRoutedEvent, ScrollEvent, SurfaceSpecExt, Text, Tooltip, Ui, Viewport,
+    theme,
 };
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
@@ -18,9 +19,14 @@ use understory_node_graph::{
     DeriveMetrics, DeriveMode, DerivePhase, EdgePreviewTarget, GraphComputed, GraphDeriveObserver,
     GraphDoc, GraphElementId, GraphInvalidation, GraphProjection, GraphSession, HitTarget,
     InteractionState, NodeData, NodeId, NodeView, NoopGraphDeriveObserver, OrthogonalEdgeRouter,
-    PortDirection, PortId, PortView, RejectDuplicateConnections,
+    PortAnchor, PortDirection, PortId, PortView, RejectDuplicateConnections,
 };
 use understory_view2d::{ClampMode, FitMode};
+
+mod parameter_view;
+mod parameters;
+use parameter_view::{ParameterUi, append_parameter_controls};
+use parameters::{Parameter, SurfaceParameters};
 
 const INITIAL_SIZE: (u32, u32) = (1480, 820);
 const GRAPH_VIEW: Rect = Rect::new(0.0, 0.0, 1040.0, 640.0);
@@ -43,11 +49,13 @@ enum ValueKind {
     Primitive,
     Layer,
     Frame,
+    Number,
 }
 
 impl ValueKind {
     fn color(self) -> Color {
         match self {
+            Self::Number => Color::from_rgba8(0x55, 0xe1, 0xcd, 0xff),
             Self::Event => Color::from_rgba8(0xff, 0xd1, 0x66, 0xff),
             Self::State => Color::from_rgba8(0x70, 0xe2, 0x9a, 0xff),
             Self::Geometry => Color::from_rgba8(0x69, 0xd2, 0xff, 0xff),
@@ -61,6 +69,7 @@ impl ValueKind {
 impl core::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Self::Number => f.write_str("number"),
             Self::Event => f.write_str("event"),
             Self::State => f.write_str("state"),
             Self::Geometry => f.write_str("geometry"),
@@ -96,6 +105,8 @@ struct DemoGraph {
     selected: NodeId,
     invalidation: GraphInvalidation,
     work: DeriveWork,
+    parameter_node: NodeId,
+    parameters: SurfaceParameters,
 }
 
 #[derive(Debug, Default)]
@@ -142,6 +153,7 @@ struct GraphDemoRuntime {
     graph: RefCell<DemoGraph>,
     selected_element: Cell<Option<ElementId>>,
     active_gesture: Cell<Option<GraphGesture>>,
+    parameter_ui: RefCell<Option<ParameterUi>>,
 }
 
 impl GraphDemoRuntime {
@@ -150,6 +162,7 @@ impl GraphDemoRuntime {
             graph: RefCell::new(graph),
             selected_element: Cell::new(None),
             active_gesture: Cell::new(None),
+            parameter_ui: RefCell::new(None),
         }
     }
 }
@@ -188,13 +201,13 @@ fn build_ui() -> Ui {
     );
     ui.append(
         title_panel,
-        Text::new("Overstory Frame Graph")
+        Text::new("Surface laboratory")
             .font_size(30.0)
             .foreground(Color::from_rgba8(0xf7, 0xf3, 0xff, 0xff)),
     );
     ui.append(
         title_panel,
-        Text::new("Input, layout, presentation, layers, and final frame")
+        Text::new("A retained graph study / edit the material, follow the structure")
             .font_size(13.0)
             .foreground(Color::from_rgba8(0xb7, 0xb8, 0xc8, 0xff)),
     );
@@ -290,6 +303,28 @@ fn build_demo_graph() -> DemoGraph {
         },
     );
 
+    let parameter_node = add_node(
+        &mut doc,
+        NodeMeta {
+            title: "Surface parameters",
+            subtitle: "three values / one live study",
+            accent: ValueKind::Number.color(),
+        },
+    );
+    let parameter_ports = [
+        output(&mut doc, parameter_node, "columns", ValueKind::Number),
+        output(&mut doc, parameter_node, "spacing", ValueKind::Number),
+        output(&mut doc, parameter_node, "radius", ValueKind::Number),
+    ];
+    for (port, (node, label)) in parameter_ports.into_iter().zip([
+        (layout, "columns"),
+        (layout, "spacing"),
+        (presentation, "radius"),
+    ]) {
+        let target = input(&mut doc, node, label, ValueKind::Number);
+        doc.add_edge(port, target, ()).unwrap();
+    }
+
     let _platform_events = input(&mut doc, events, "platform", ValueKind::Event);
     let routed_events = output(&mut doc, events, "routed", ValueKind::Event);
     let state_events = input(&mut doc, ui_state, "events", ValueKind::Event);
@@ -334,10 +369,32 @@ fn build_demo_graph() -> DemoGraph {
         present,
         NodeView::new(Point::new(1236.0, 172.0), Size::new(222.0, 126.0), ()),
     );
+    for (node, origin) in [
+        (events, Point::new(470., 0.)),
+        (ui_state, Point::new(470., 240.)),
+        (layout, Point::new(780., 0.)),
+        (presentation, Point::new(780., 240.)),
+        (layers, Point::new(1090., 0.)),
+        (present, Point::new(1090., 240.)),
+    ] {
+        projection.set_node_origin(node, origin);
+    }
+    projection.set_node_view(
+        parameter_node,
+        NodeView::new(Point::new(0.0, 0.0), Size::new(380.0, 530.0), ()),
+    );
+    for (index, port) in parameter_ports.iter().enumerate() {
+        let mut view = PortView::new(());
+        view.anchor = PortAnchor::NodeLocal(Point::new(380.0, 118.0 + index as f64 * 84.0));
+        view.hit_radius = 10.0;
+        projection.set_port_view(*port, view);
+    }
     for port in doc.iter_ports().map(|(port, _)| port).collect::<Vec<_>>() {
         let mut view = PortView::new(());
         view.hit_radius = 10.0;
-        projection.set_port_view(port, view);
+        if !parameter_ports.contains(&port) {
+            projection.set_port_view(port, view);
+        }
     }
 
     let mut session = GraphSession::new(GRAPH_VIEW);
@@ -375,6 +432,8 @@ fn build_demo_graph() -> DemoGraph {
         selected: presentation,
         invalidation,
         work: DeriveWork::default(),
+        parameter_node,
+        parameters: SurfaceParameters::default(),
     }
 }
 
@@ -428,6 +487,7 @@ fn refresh_graph_view(
     runtime: Rc<GraphDemoRuntime>,
 ) {
     runtime.selected_element.set(None);
+    runtime.parameter_ui.replace(None);
     clear_children(ui, graph_host);
     clear_children(ui, sidebar);
 
@@ -476,6 +536,9 @@ fn drag_graph_view(
         return;
     }
 
+    if runtime.active_gesture.get().is_none() && event.source() != graph_host {
+        return;
+    }
     let _ = ui.capture_pointer(graph_host);
     match runtime.active_gesture.get() {
         Some(GraphGesture::DragNode(node)) => {
@@ -768,6 +831,10 @@ fn append_graph_nodes(
             );
         });
 
+        if node == runtime.graph.borrow().parameter_node {
+            append_parameter_controls(ui, node_element, sidebar, rect.size(), Rc::clone(&runtime));
+            continue;
+        }
         ui.append(
             node_element,
             Text::new(meta.title)
@@ -872,6 +939,14 @@ fn start_node_drag(
     runtime: Rc<GraphDemoRuntime>,
 ) {
     if !matches!(event.phase(), Phase::Target | Phase::Bubble) {
+        return;
+    }
+    if runtime
+        .parameter_ui
+        .borrow()
+        .as_ref()
+        .is_some_and(|parts| parts.sliders.contains(&event.origin.semantic_source()))
+    {
         return;
     }
     let Some(position) = event.position else {
@@ -1114,7 +1189,7 @@ mod tests {
         move_node_by_view_delta(&mut graph, node, Vec2::new(10.0, 0.0));
         graph.rebuild_computed();
         assert_eq!(graph.work.nodes, 1);
-        assert_eq!(graph.work.routes, 2);
+        assert_eq!(graph.work.routes, 3);
         assert!(!graph.work.full_geometry);
         graph.rebuild_computed();
         assert_eq!(graph.work.nodes, 0);
@@ -1143,5 +1218,18 @@ mod tests {
         assert_eq!(graph.work.nodes, 0);
         assert_eq!(graph.work.routes, 1);
         assert!(!graph.work.full_geometry);
+    }
+    #[test]
+    fn parameter_changes_preserve_graph_geometry_and_topology() {
+        let mut graph = build_demo_graph();
+        let document = graph.doc.revision();
+        let projection = graph.projection.revision();
+        graph.parameters.set(Parameter::Columns, 6.);
+        graph.rebuild_computed();
+        assert_eq!(graph.doc.revision(), document);
+        assert_eq!(graph.projection.revision(), projection);
+        assert_eq!(graph.work.routes, 0);
+        assert_eq!(graph.work.nodes, 0);
+        assert_eq!(graph.work.visibility, 0);
     }
 }

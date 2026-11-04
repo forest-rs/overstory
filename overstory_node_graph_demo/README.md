@@ -25,6 +25,13 @@ demo retains its invalidation state between derives, so ordinary edits can
 update neighboring geometry instead of forcing a full rebuild. The inspector
 reports actual visited nodes and router calls separately from visibility scans.
 
+The Surface parameters card contains three native sliders and a twelve-surface
+inline study. Columns, spacing and corner radius belong to the application model;
+they do not mutate graph topology or run an execution engine. Pointer, keyboard
+and accessibility edits use the same slider value path. Preview edits retain the
+controls and report zero graph geometry work. The card's output sockets use
+node-local anchors beside the parameter rows.
+
 The long-term goal is for this demo to become a visually rich stress case for
 animation, retained layout, hit testing, compositor-backed layers, and graph
 editing ergonomics.
