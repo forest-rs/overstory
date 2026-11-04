@@ -308,3 +308,40 @@ fn scoped_layout_motion_preserves_the_presented_origin_on_first_move() {
     ui.compute_layout(Size::new(200.0, 80.0));
     assert_close(layer_x(&ui, mover), 70.0);
 }
+
+#[test]
+fn committing_a_drag_does_not_replay_thumb_motion_from_the_minimum() {
+    use crate::test_support::{pointer_down, pointer_move, pointer_up};
+    use crate::{SLOT_SLIDER_THUMB, Slider, set_slider_value};
+    let mut ui = Ui::new();
+    ui.set_theme(crate::theme::default_theme());
+    let root = ui.root();
+    let slider = ui.append(
+        root,
+        Slider::new().value(0.4).on_value_changed(|ui, event| {
+            // Hosts can normalize a value during both changing and committed events.
+            set_slider_value(ui, event.element, event.value);
+        }),
+    );
+    let viewport = Size::new(400., 120.);
+    ui.compute_layout(viewport);
+    ui.set_now(0);
+    let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+    let press = ui.effective_bounds(thumb).center();
+    let end = press + Vec2::new(65., 0.);
+    ui.dispatch_pointer_event(&pointer_down(press, 1));
+    ui.compute_layout(viewport);
+    ui.dispatch_pointer_event(&pointer_move(end, 2, true));
+    ui.compute_layout(viewport);
+    ui.dispatch_pointer_event(&pointer_up(end, 3));
+    for now in [0, 20_000_000, 70_000_000, 200_000_000] {
+        ui.set_now(now);
+        ui.compute_layout(viewport);
+        let expected = ui.effective_bounds(thumb).origin() - ui.effective_bounds(slider).origin();
+        let presented = ui.composition.layer_offset_for(thumb).unwrap();
+        assert!(
+            (presented - expected).hypot() < 0.01,
+            "released thumb moved: {presented:?}, expected {expected:?}"
+        );
+    }
+}
