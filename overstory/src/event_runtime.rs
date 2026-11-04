@@ -993,6 +993,8 @@ pub(crate) struct EventRuntime {
     press_position: Option<Point>,
     /// Previous pointer position used to compute drag deltas.
     last_drag_position: Option<Point>,
+    /// Whether the tracked press has produced nonzero drag movement.
+    dragging: bool,
 }
 
 impl EventRuntime {
@@ -1010,6 +1012,7 @@ impl EventRuntime {
             pointer_capture: None,
             press_position: None,
             last_drag_position: None,
+            dragging: false,
         }
     }
 
@@ -1212,11 +1215,13 @@ impl EventRuntime {
     }
 
     pub(crate) fn start_press(&mut self, position: Point) {
+        self.dragging = false;
         self.press_position = Some(position);
         self.last_drag_position = Some(position);
     }
 
     pub(crate) fn clear_press(&mut self) {
+        self.dragging = false;
         self.press_position = None;
         self.last_drag_position = None;
     }
@@ -1229,7 +1234,12 @@ impl EventRuntime {
         self.last_drag_position
     }
 
+    pub(crate) fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+
     pub(crate) fn set_last_drag_position(&mut self, position: Point) {
+        self.dragging |= self.last_drag_position.is_some_and(|last| last != position);
         self.last_drag_position = Some(position);
     }
 
