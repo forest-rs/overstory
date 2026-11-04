@@ -4,7 +4,7 @@ Twelve instrument modules must fit inside a 300 x 240 mm transport case.
 Each module is fixed at 44 x 32 mm. Change the column count, inter-module
 spacing, and plate corner radius in the native parameter card. The inline plan,
 footprint, case-clearance result, and plate specification follow those values.
-Modules that extend beyond the case outline are highlighted.
+Modules that exceed the case dimensions are highlighted.
 
 Try six columns and 24 mm spacing: the footprint is 384 x 88 mm, exceeding the
 case width by 84 mm. Two columns at the same spacing make a 112 x 312 mm

@@ -9,7 +9,6 @@ use overstory::{ControlTemplateSpecExt, Slider};
 #[derive(Debug)]
 pub(super) struct ParameterUi {
     tiles: [ElementId; 12],
-    case_outline: ElementId,
     labels: [ElementId; 3],
     pub(super) names: [ElementId; 3],
     status: ElementId,
@@ -223,7 +222,6 @@ pub(super) fn append_parameter_controls(
         1.,
         6.,
     );
-    let case_outline = append_rect(ui, preview, Rect::ZERO, Color::TRANSPARENT, 0.);
     let tiles = (0..12)
         .map(|_| append_rect(ui, preview, Rect::ZERO, Parameter::Columns.color(), 0.))
         .collect::<Vec<_>>()
@@ -249,7 +247,6 @@ pub(super) fn append_parameter_controls(
     );
     runtime.parameter_ui.replace(Some(ParameterUi {
         tiles,
-        case_outline,
         labels: labels.try_into().unwrap(),
         names: names.try_into().unwrap(),
         sliders: sliders.try_into().unwrap(),
@@ -281,7 +278,6 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
     };
     let bounds = Rect::from_origin_size(Point::ZERO, parts.size).inflate(-12., -12.);
     let case = values.case_rect(bounds);
-    let frame = case.inflate(4., 4.);
     let clearance = values.clearance();
     let fits = clearance.width >= 0. && clearance.height >= 0.;
     let status = if fits {
@@ -303,20 +299,6 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
         } else {
             Color::from_rgba8(0xf1, 0xa0, 0x87, 0xff)
         }),
-    );
-    ui.set_layout(
-        parts.case_outline,
-        Layout::new()
-            .absolute_at(frame.x0, frame.y0)
-            .logical_size(frame.width(), frame.height()),
-    );
-    style_surface(
-        ui,
-        parts.case_outline,
-        Some(Color::TRANSPARENT),
-        Some(Color::from_rgba8(0xe2, 0xd2, 0xaf, 0xff)),
-        1.,
-        2.,
     );
     for (index, (rect, radius)) in values.preview(bounds).into_iter().enumerate() {
         let element = parts.tiles[index];
@@ -386,9 +368,15 @@ mod tests {
                 track.center().y
             );
         }
-        let frame = ui.effective_bounds(parts.case_outline).inflate(-2., -2.);
+        let preview = ui.get(parts.tiles[0]).unwrap().parent().unwrap();
+        let bounds = ui.effective_bounds(preview).inflate(-12., -12.);
+        let case = graph
+            .effective_parameters()
+            .unwrap()
+            .case_rect(bounds)
+            .inflate(1., 1.);
         for tile in parts.tiles {
-            assert!(frame.contains_rect(ui.effective_bounds(tile)));
+            assert!(case.contains_rect(ui.effective_bounds(tile)));
         }
     }
 
