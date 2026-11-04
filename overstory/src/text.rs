@@ -590,10 +590,15 @@ impl Equivalent<TextLayoutKey> for TextLayoutLookupKey<'_> {
 
 impl TextLayoutLookupKey<'_> {
     fn is_satisfied_by(&self, key: &TextLayoutKey, layout: &Layout<Brush>) -> bool {
+        // Center/end offsets depend on the container width even when no line
+        // breaks change. Only physical start alignment can reuse another width.
         self.text == key.text.as_ref()
             && self.style == key.style
             && self.policy == key.policy
-            && max_advance_satisfies(self.max_advance, key.max_advance, layout.width())
+            && (self.max_advance == key.max_advance
+                || (self.policy.align == 0
+                    && self.policy.base_direction != 2
+                    && max_advance_satisfies(self.max_advance, key.max_advance, layout.width())))
     }
 }
 
@@ -745,6 +750,26 @@ mod tests {
         assert_eq!(engine.layout_cache_len(), 2);
         assert_eq!(engine.layout_cache_stats().misses, 2);
         assert_eq!(engine.layout_cache_stats().hits, 0);
+    }
+
+    #[test]
+    fn aligned_text_recomputes_offsets_for_its_actual_container_width() {
+        let resources = TextResources::empty();
+        for align in [TextAlign::Center, TextAlign::End] {
+            let mut engine = TextEngine::from_resources(&resources);
+            let style = TextStyle::default();
+            let policy = TextLayout {
+                align,
+                ..TextLayout::default()
+            };
+            let _ = engine.shape("12 mm", &style, policy, None);
+            let wide = engine.shape("12 mm", &style, policy, Some(120.));
+            let narrow = engine.shape("12 mm", &style, policy, Some(80.));
+            let wide_offset = wide.lines().next().unwrap().metrics().offset;
+            let narrow_offset = narrow.lines().next().unwrap().metrics().offset;
+            assert!(wide_offset > narrow_offset);
+            assert_eq!(engine.layout_cache_len(), 3);
+        }
     }
 
     #[test]
