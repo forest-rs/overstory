@@ -6,11 +6,16 @@
 use super::*;
 
 #[derive(Debug)]
-struct Layer;
+struct Layer {
+    interactive_children: bool,
+}
 
 impl overstory::Widget for Layer {
     fn is_hit_test_visible(&self, _: &overstory::Element) -> bool {
         false
+    }
+    fn is_hit_test_subtree_visible(&self, _: &overstory::Element) -> bool {
+        self.interactive_children
     }
 }
 
@@ -88,6 +93,8 @@ impl GraphView {
             removed_parameters |= *node == graph.parameter_node;
             false
         });
+        self.readings
+            .retain(|(node, _)| graph.computed.visible_nodes().contains(node));
         self.ports.retain(|(port, element)| {
             if graph.computed.port_anchor(*port).is_some() {
                 return true;
@@ -99,8 +106,13 @@ impl GraphView {
     }
     pub(super) fn layers(&mut self, ui: &mut Ui, parent: ElementId) -> Layers {
         *self.layers.get_or_insert_with(|| {
-            let mut layer = || {
-                let id = ui.append_widget(parent, Box::new(Layer));
+            let mut layer = |interactive_children| {
+                let id = ui.append_widget(
+                    parent,
+                    Box::new(Layer {
+                        interactive_children,
+                    }),
+                );
                 ui.set_layout(
                     id,
                     Layout::new()
@@ -110,12 +122,12 @@ impl GraphView {
                 id
             };
             Layers {
-                grid: layer(),
-                edges: layer(),
-                preview: layer(),
-                nodes: layer(),
-                ports: layer(),
-                ties: layer(),
+                grid: layer(false),
+                edges: layer(false),
+                preview: layer(false),
+                nodes: layer(true),
+                ports: layer(true),
+                ties: layer(true),
             }
         })
     }

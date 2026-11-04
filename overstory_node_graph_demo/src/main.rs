@@ -475,6 +475,14 @@ fn zoom_graph_view(
     if runtime.active_gesture.get().is_some() {
         return;
     }
+    if runtime
+        .parameter_ui
+        .borrow()
+        .as_ref()
+        .is_some_and(|parts| parts.sliders.contains(&event.semantic_source()))
+    {
+        return;
+    }
     let delta = event.logical_delta(Vec2::new(48.0, 48.0), Vec2::new(260.0, 260.0));
     let amount = if delta.y.abs() >= delta.x.abs() {
         delta.y

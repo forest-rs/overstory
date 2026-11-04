@@ -85,7 +85,8 @@ impl GeometryRuntime {
     }
 
     pub(crate) fn hit_test(&self, point: Point) -> Option<Hit> {
-        self.tree.hit_test_point(point, QueryFilter::new())
+        self.tree
+            .hit_test_point(point, QueryFilter::new().pickable())
     }
 
     pub(crate) fn commit(&mut self) {

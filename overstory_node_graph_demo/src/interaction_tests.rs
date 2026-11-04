@@ -55,6 +55,25 @@ fn up(point: Point) -> PointerEvent {
 }
 
 #[test]
+fn background_pan_keeps_capture_while_decorative_geometry_is_updated() {
+    let (mut ui, runtime, host, _) = build_study_ui();
+    ui.compute_layout(Size::new(1480., 820.));
+    let point = ui.effective_bounds(host).origin() + Vec2::new(20., 20.);
+    let before = runtime.graph.borrow().session.visible_world_rect();
+    ui.dispatch_pointer_event(&down(point));
+    assert_eq!(ui.pointer_capture(), Some(host));
+    ui.dispatch_pointer_event(&moved(point + Vec2::new(40., 20.)));
+    let first = runtime.graph.borrow().session.visible_world_rect();
+    assert_ne!(first, before);
+    assert_eq!(ui.pointer_capture(), Some(host));
+    ui.dispatch_pointer_event(&moved(point + Vec2::new(80., 40.)));
+    assert_ne!(runtime.graph.borrow().session.visible_world_rect(), first);
+    assert_eq!(ui.pointer_capture(), Some(host));
+    ui.dispatch_pointer_event(&up(point + Vec2::new(80., 40.)));
+    assert_eq!(ui.pointer_capture(), None);
+}
+
+#[test]
 fn slider_drag_changes_the_case_plan_without_panning_or_replacing_controls() {
     let (mut ui, runtime, _, _) = build_study_ui();
     ui.compute_layout(Size::new(1480., 820.));

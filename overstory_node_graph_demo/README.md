@@ -39,6 +39,10 @@ study's values. Native sliders support pointer, keyboard and accessibility input
   cancellation through the real event dispatcher.
 - Wires use native retained vector paths. `set_vector_path` updates drawing intent
   while retaining element identity, and invalidates paint only for changed intent.
+- Grid and wire layers are passive hit-test subtrees. Overstory's geometry query
+  now honors pickability, so the viewport owns background pans and decorative
+  paths cannot intercept them. Wheel input over a parameter control stays out of
+  the canvas zoom handler.
 - Parameter edits update the host model and retained preview without changing
   graph topology or deriving geometry. Moving a tie invalidates only its members;
   rebindings update its member handles while preserving lane order.

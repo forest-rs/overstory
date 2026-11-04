@@ -4,6 +4,57 @@
 use super::*;
 
 #[test]
+fn decorative_subtrees_do_not_intercept_underlying_hits() {
+    #[derive(Debug)]
+    struct Decoration(bool);
+    impl crate::Widget for Decoration {
+        fn is_hit_test_visible(&self, _: &Element) -> bool {
+            false
+        }
+        fn is_hit_test_subtree_visible(&self, _: &Element) -> bool {
+            self.0
+        }
+    }
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(200., 200.));
+    let underneath = ui.append(
+        root,
+        crate::Panel::new().layout(Layout::new().absolute_at(0., 0.).logical_size(200., 200.)),
+    );
+    let passive = ui.append_widget(root, Box::new(Decoration(false)));
+    ui.set_layout(
+        passive,
+        Layout::new().absolute_at(0., 0.).logical_size(200., 200.),
+    );
+    let artwork = ui.append(
+        passive,
+        crate::Panel::new().layout(Layout::new().absolute_at(0., 0.).logical_size(200., 200.)),
+    );
+    ui.compute_layout(Size::new(200., 200.));
+    assert_eq!(ui.hit_test(Point::new(50., 50.)), Some(underneath));
+    ui.set_layout(
+        artwork,
+        Layout::new().absolute_at(20., 20.).logical_size(120., 120.),
+    );
+    ui.compute_layout(Size::new(200., 200.));
+    assert_eq!(ui.hit_test(Point::new(50., 50.)), Some(underneath));
+
+    let transparent = ui.append_widget(root, Box::new(Decoration(true)));
+    ui.set_layout(
+        transparent,
+        Layout::new().absolute_at(0., 0.).logical_size(200., 200.),
+    );
+    let control = ui.append(
+        transparent,
+        crate::Panel::new().layout(Layout::new().absolute_at(40., 40.).logical_size(40., 40.)),
+    );
+    ui.compute_layout(Size::new(200., 200.));
+    assert_eq!(ui.hit_test(Point::new(50., 50.)), Some(control));
+    assert_eq!(ui.hit_test(Point::new(150., 150.)), Some(underneath));
+}
+
+#[test]
 #[should_panic(expected = "is already registered")]
 fn scroll_target_registration_cannot_replace_widget_owned_state() {
     let mut ui = Ui::new();
