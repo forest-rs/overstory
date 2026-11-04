@@ -27,6 +27,9 @@ impl PortCompatibility<NodeMeta, PortMeta, ()> for StudyCompatibility {
 }
 
 impl StoryNodes {
+    pub(super) fn is_layout(&self, node: NodeId) -> bool {
+        node == self.layout
+    }
     pub(super) fn check_node(&self) -> NodeId {
         self.check
     }
@@ -80,11 +83,15 @@ impl DemoGraph {
             )
         } else if node == self.story.check {
             if clearance.width < 0. || clearance.height < 0. {
-                format!(
-                    "Does not fit\n{:.0} mm too wide / {:.0} mm too tall",
-                    (-clearance.width).max(0.),
-                    (-clearance.height).max(0.)
-                )
+                let excess = match (clearance.width < 0., clearance.height < 0.) {
+                    (true, true) => format!(
+                        "{:.0} mm too wide\n{:.0} mm too tall",
+                        -clearance.width, -clearance.height
+                    ),
+                    (true, false) => format!("{:.0} mm too wide", -clearance.width),
+                    _ => format!("{:.0} mm too tall", -clearance.height),
+                };
+                format!("Does not fit\n{excess}")
             } else {
                 format!(
                     "Fits the case\n{:.0} mm / {:.0} mm spare",
@@ -148,15 +155,15 @@ pub(super) fn build_demo_graph() -> DemoGraph {
         &mut doc,
         NodeMeta {
             title: "Plate specification",
-            accent: ValueKind::Geometry.color(),
+            accent: Parameter::Radius.color(),
         },
     );
     let mut projection = DemoProjection::new();
     for (node, origin, size) in [
-        (parameter_node, Point::new(0., 0.), Size::new(380., 700.)),
-        (layout, Point::new(530., 180.), Size::new(270., 220.)),
-        (check, Point::new(960., 90.), Size::new(270., 180.)),
-        (cut, Point::new(960., 390.), Size::new(270., 180.)),
+        (parameter_node, Point::new(0., 0.), Size::new(380., 820.)),
+        (layout, Point::new(640., 230.), Size::new(280., 360.)),
+        (check, Point::new(1080., 140.), Size::new(280., 180.)),
+        (cut, Point::new(1080., 500.), Size::new(280., 180.)),
     ] {
         projection.set_node_view(node, NodeView::new(origin, size, ()));
     }
@@ -171,8 +178,8 @@ pub(super) fn build_demo_graph() -> DemoGraph {
         let to = input(&mut doc, layout, label, kind);
         members.push(doc.add_edge(from, to, ()).unwrap());
         for (port, point) in [
-            (from, Point::new(380., 118. + index as f64 * 100.)),
-            (to, Point::new(0., 60. + index as f64 * 50.)),
+            (from, Point::new(380., Parameter::socket_y(index))),
+            (to, Point::new(0., 98. + index as f64 * 66.)),
         ] {
             let mut view = PortView::new(());
             view.anchor = PortAnchor::NodeLocal(point);
@@ -180,12 +187,15 @@ pub(super) fn build_demo_graph() -> DemoGraph {
             projection.set_port_view(port, view);
         }
     }
-    let arrangement = output(&mut doc, layout, "arrangement", ValueKind::Geometry);
-    for node in [check, cut] {
-        let to = input(&mut doc, node, "arrangement", ValueKind::Geometry);
-        doc.add_edge(arrangement, to, ()).unwrap();
+    for (node, label, y) in [(check, "footprint", 140.), (cut, "plate profile", 270.)] {
+        let from = output(&mut doc, layout, label, ValueKind::Geometry);
+        let mut view = PortView::new(());
+        view.anchor = PortAnchor::NodeLocal(Point::new(280., y));
+        projection.set_port_view(from, view);
+        let to = input(&mut doc, node, label, ValueKind::Geometry);
+        doc.add_edge(from, to, ()).unwrap();
     }
-    let tie = CableTie::new(Point::new(435., 280.), members);
+    let tie = CableTie::new(Point::new(500., 342.), members);
     let mut session = GraphSession::new(GRAPH_VIEW);
     let bounds = projection_bounds(&projection).inflate(72., 72.);
     session.update_viewport(|viewport| {

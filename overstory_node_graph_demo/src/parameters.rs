@@ -23,6 +23,17 @@ impl Parameter {
         }
     }
 
+    pub(super) fn color(self) -> peniko::Color {
+        match self {
+            Self::Columns => peniko::Color::from_rgba8(0x75, 0xdc, 0xb3, 0xff),
+            Self::Spacing => peniko::Color::from_rgba8(0x7b, 0xbe, 0xf3, 0xff),
+            Self::Radius => peniko::Color::from_rgba8(0xc4, 0xa3, 0xef, 0xff),
+        }
+    }
+    pub(super) fn socket_y(index: usize) -> f64 {
+        170. + index as f64 * 120.
+    }
+
     pub(super) fn range(self) -> (f64, f64) {
         match self {
             Self::Columns => (2., 6.),

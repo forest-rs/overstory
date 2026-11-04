@@ -39,7 +39,7 @@ impl CableTie {
         let index = self.members.iter().position(|id| *id == edge)?;
         Some(
             self.center.y
-                + (index as f64 - (self.members.len().saturating_sub(1)) as f64 * 0.5) * 8.,
+                + (index as f64 - (self.members.len().saturating_sub(1)) as f64 * 0.5) * 14.,
         )
     }
 }
@@ -48,6 +48,24 @@ pub(super) struct CableRouter<'a>(pub(super) &'a CableTie);
 
 impl EdgeRouter for CableRouter<'_> {
     fn route(&self, request: RouteRequest, cx: &RouteContext) -> RoutedEdge {
+        if !self.0.enabled
+            && let RouteRequest::Edge(edge) = request
+            && let Some(index) = self.0.members.iter().position(|id| *id == edge)
+        {
+            let rank = if cx.input_anchor.y >= cx.output_anchor.y {
+                self.0.members.len() - index
+            } else {
+                index + 1
+            };
+            let fraction = rank as f64 / (self.0.members.len() + 1) as f64;
+            let x = cx.output_anchor.x + (cx.input_anchor.x - cx.output_anchor.x) * fraction;
+            return RoutedEdge::from_points(vec![
+                cx.output_anchor,
+                Point::new(x, cx.output_anchor.y),
+                Point::new(x, cx.input_anchor.y),
+                cx.input_anchor,
+            ]);
+        }
         if self.0.enabled
             && let RouteRequest::Edge(edge) = request
             && let Some(y) = self.0.lane(edge)
@@ -55,14 +73,20 @@ impl EdgeRouter for CableRouter<'_> {
             let x = self.0.center.x;
             let output = cx.output_anchor;
             let input = cx.input_anchor;
+            let index = self.0.members.iter().position(|id| *id == edge).unwrap();
+            let last = self.0.members.len().saturating_sub(1);
+            let entry_rank = if output.y < y { index } else { last - index };
+            let exit_rank = if input.y > y { last - index } else { index };
+            let entry = x - 22. - 24. - entry_rank as f64 * 14.;
+            let exit = x + 22. + 24. + exit_rank as f64 * 14.;
             return RoutedEdge::from_points(vec![
                 output,
-                Point::new(x - 30., output.y),
-                Point::new(x - 30., y),
-                Point::new(x - 14., y),
-                Point::new(x + 14., y),
-                Point::new(input.x - 44., y),
-                Point::new(input.x - 44., input.y),
+                Point::new(entry, output.y),
+                Point::new(entry, y),
+                Point::new(x - 22., y),
+                Point::new(x + 22., y),
+                Point::new(exit, y),
+                Point::new(exit, input.y),
                 input,
             ]);
         }
@@ -77,6 +101,53 @@ impl EdgeRouter for CableRouter<'_> {
 mod tests {
     use super::*;
     use crate::*;
+
+    #[test]
+    fn ordered_parameter_routes_do_not_cross_or_share_runs() {
+        let mut graph = build_demo_graph();
+        for (enabled, y) in [(true, 262.), (true, 342.), (true, 422.), (false, 342.)] {
+            graph.tie.enabled = enabled;
+            graph.tie.center.y = y;
+            graph.invalidate_tie();
+            graph.rebuild_computed();
+            let routes = graph
+                .tie
+                .members()
+                .iter()
+                .map(|edge| graph.computed.edge_route(*edge).unwrap())
+                .collect::<Vec<_>>();
+            for (index, first) in routes.iter().enumerate() {
+                for second in routes.iter().skip(index + 1) {
+                    for (a, b) in first.segments() {
+                        for (c, d) in second.segments() {
+                            let ar =
+                                Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+                            let br =
+                                Rect::new(c.x.min(d.x), c.y.min(d.y), c.x.max(d.x), c.y.max(d.y));
+                            assert!(
+                                ar.x1 < br.x0 || br.x1 < ar.x0 || ar.y1 < br.y0 || br.y1 < ar.y0,
+                                "crossing {a:?} {b:?} with {c:?} {d:?}"
+                            );
+                        }
+                    }
+                }
+            }
+            let colors = graph
+                .tie
+                .members()
+                .iter()
+                .map(|edge| {
+                    graph
+                        .doc
+                        .port(graph.doc.edge(*edge).unwrap().output)
+                        .unwrap()
+                        .meta
+                        .color()
+                })
+                .collect::<Vec<_>>();
+            assert!(colors[0] != colors[1] && colors[1] != colors[2] && colors[0] != colors[2]);
+        }
+    }
 
     #[test]
     fn moving_a_tie_only_reroutes_its_members_without_editing_topology() {
@@ -102,7 +173,7 @@ mod tests {
             .iter()
             .map(|edge| graph.tie.lane(*edge).unwrap())
             .collect::<Vec<_>>();
-        assert!(lanes.windows(2).all(|ys| ys[1] - ys[0] == 8.));
+        assert!(lanes.windows(2).all(|ys| ys[1] - ys[0] == 14.));
         for (edge, old) in graph.tie.members().iter().zip(before) {
             let route = graph.computed.edge_route(*edge).unwrap();
             assert_ne!(route.points, old);
@@ -116,7 +187,7 @@ mod tests {
                 graph.computed.port_anchor(edge_data.input)
             );
             assert!(route.points.contains(&Point::new(
-                graph.tie.center.x - 14.,
+                graph.tie.center.x - 22.,
                 graph.tie.lane(*edge).unwrap()
             )));
         }

@@ -32,6 +32,14 @@ study's values. Native sliders support pointer, keyboard and accessibility input
 - Node moves and connection commits deliver scoped document/projection change
   receipts to retained invalidation state. The inspector distinguishes geometry
   visits and actual router calls from visibility scans.
+- Parameter names, values, compact controls and sockets share a row geometry.
+  Names focus their controls; values include units and align to a common edge.
+  Channel colors remain distinct even when two connections have the same unit.
+- The case stroke surrounds the physical interior with an explicit visual
+  inset. Valid modules stay inside its border; overhanging modules use the
+  warning color. Captions and clearance feedback live outside the drawing.
+- Tied cables have ordered entry and exit leads. Untied cables use separate
+  channels too, so releasing the guide does not collapse their routes together.
 - Node bodies, controls, ports, cable guides and wire elements retain identities
   during local edits. Subpixel size rounding cannot replace a pressed node.
   Zoom can recreate size-dependent node content; viewport changes rebuild grid

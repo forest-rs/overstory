@@ -85,6 +85,18 @@ struct PortMeta {
     kind: ValueKind,
 }
 
+impl PortMeta {
+    fn color(self) -> Color {
+        match self.label {
+            "columns" => Parameter::Columns.color(),
+            "spacing" => Parameter::Spacing.color(),
+            "radius" => Parameter::Radius.color(),
+            "plate profile" => Parameter::Radius.color(),
+            _ => self.kind.color(),
+        }
+    }
+}
+
 type DemoDoc = GraphDoc<NodeMeta, PortMeta, ()>;
 type DemoProjection = GraphProjection<(), (), ()>;
 
@@ -188,6 +200,11 @@ fn build_study_ui() -> (Ui, Rc<GraphDemoRuntime>, ElementId, ElementId) {
     let mut ui = Ui::new();
     ui.set_theme(theme::default_theme());
     let root = ui.root();
+    ui.set_local(
+        root,
+        ui.properties().font_family,
+        overstory::FontFamily::from("'Segoe UI', sans-serif"),
+    );
     ui.set_layout(root, Layout::new().relative().percent_size(1.0, 1.0));
     style_surface(
         &mut ui,
@@ -416,7 +433,7 @@ fn drag_graph_view(
             .parameter_ui
             .borrow()
             .as_ref()
-            .is_some_and(|parts| parts.sliders.contains(&event.semantic_source()))
+            .is_some_and(|parts| parts.owns_control(event.semantic_source()))
     {
         return;
     }
@@ -479,7 +496,7 @@ fn zoom_graph_view(
         .parameter_ui
         .borrow()
         .as_ref()
-        .is_some_and(|parts| parts.sliders.contains(&event.semantic_source()))
+        .is_some_and(|parts| parts.owns_control(event.semantic_source()))
     {
         return;
     }
@@ -613,9 +630,9 @@ fn append_grid_axis(
         let index = (world / spacing).round();
         let major = ((index / 5.0) - (index / 5.0).round()).abs() <= 0.001;
         let color = if major {
-            Color::from_rgba8(0x46, 0x48, 0x58, 0x92)
+            Color::from_rgba8(0x46, 0x48, 0x58, 0x50)
         } else {
-            Color::from_rgba8(0x31, 0x31, 0x3d, 0x72)
+            Color::from_rgba8(0x31, 0x31, 0x3d, 0x40)
         };
         let view = if vertical {
             graph
@@ -702,7 +719,6 @@ fn append_graph_nodes(
         if selected {
             runtime.selected_element.set(Some(node_element));
         }
-        ui.set_tooltip(node_element, Tooltip::new(meta.title));
         let runtime_for_handler = Rc::clone(&runtime);
         ui.events(node_element)
             .pointer(PointerEventKind::Down, move |ui, event| {
@@ -730,6 +746,48 @@ fn append_graph_nodes(
 
         if node == runtime.graph.borrow().parameter_node {
             append_parameter_controls(ui, node_element, sidebar, rect.size(), Rc::clone(&runtime));
+            continue;
+        }
+        if runtime.graph.borrow().story.is_layout(node) {
+            let scale = rect.width() / 280.;
+            ui.append(
+                node_element,
+                Text::new(meta.title)
+                    .font_size(15.)
+                    .foreground(Color::from_rgba8(0xef, 0xf4, 0xf5, 0xff))
+                    .layout(
+                        Layout::new()
+                            .absolute_at(16., 16.)
+                            .logical_size(rect.width() - 32., 24.),
+                    ),
+            );
+            for (index, parameter) in Parameter::ALL.into_iter().enumerate() {
+                let y = (98. + index as f64 * 66.) * scale;
+                ui.append(
+                    node_element,
+                    Text::new(parameter.label())
+                        .font_size(12.)
+                        .foreground(parameter.color())
+                        .layout(
+                            Layout::new()
+                                .absolute_at(18., y - 8.)
+                                .logical_size(rect.width() - 36., 20.),
+                        ),
+                );
+            }
+            let reading = ui.append(
+                node_element,
+                Text::new(runtime.graph.borrow().node_summary(node))
+                    .wrap()
+                    .font_size(12.)
+                    .foreground(Color::from_rgba8(0xcd, 0xda, 0xe0, 0xff))
+                    .layout(
+                        Layout::new()
+                            .absolute_at(18., rect.height() - 54.)
+                            .logical_size(rect.width() - 36., 42.),
+                    ),
+            );
+            runtime.view.borrow_mut().insert_reading(node, reading);
             continue;
         }
         ui.append(
@@ -772,7 +830,7 @@ fn append_graph_ports(
             };
             graph.session.viewport().world_to_view_point(anchor)
         };
-        let color = meta.kind.color();
+        let color = meta.color();
         if let Some(element) = runtime.view.borrow().port_element(port) {
             ui.set_layout(
                 element,
@@ -846,7 +904,15 @@ fn append_cable_tie(
         ui,
         parent,
         Rect::new(center.x - 5., center.y - 17., center.x + 5., center.y + 17.),
-        Color::from_rgba8(0xf3, 0xd5, 0x97, 0xff),
+        Color::TRANSPARENT,
+        4.,
+    );
+    style_surface(
+        ui,
+        element,
+        Some(Color::TRANSPARENT),
+        Some(Color::from_rgba8(0xe9, 0xce, 0x9d, 0xff)),
+        1.5,
         4.,
     );
     ui.set_tooltip(
@@ -912,7 +978,7 @@ fn start_node_drag(
         .parameter_ui
         .borrow()
         .as_ref()
-        .is_some_and(|parts| parts.sliders.contains(&event.origin.semantic_source()))
+        .is_some_and(|parts| parts.owns_control(event.semantic_source()))
     {
         return;
     }

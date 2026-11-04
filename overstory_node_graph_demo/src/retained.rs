@@ -189,7 +189,7 @@ impl GraphView {
                 .map(|p| graph.session.viewport().world_to_view_point(*p))
                 .collect();
             let data = graph.doc.edge(*edge).unwrap();
-            let color = graph.doc.port(data.output).unwrap().meta.kind.color();
+            let color = graph.doc.port(data.output).unwrap().meta.color();
             let primitive = wire_primitive(&points, color);
             if let Some((_, previous, element)) =
                 self.edges.iter_mut().find(|(id, _, _)| id == edge)

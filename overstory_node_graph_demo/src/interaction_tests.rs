@@ -55,6 +55,22 @@ fn up(point: Point) -> PointerEvent {
 }
 
 #[test]
+fn clicking_a_parameter_name_focuses_its_control_without_starting_a_graph_drag() {
+    let (mut ui, runtime, _, _) = build_study_ui();
+    ui.compute_layout(Size::new(1480., 820.));
+    let (name, slider) = {
+        let parts = runtime.parameter_ui.borrow();
+        let parts = parts.as_ref().unwrap();
+        (parts.names[1], parts.sliders[1])
+    };
+    let point = ui.effective_bounds(name).center();
+    ui.dispatch_pointer_event(&down(point));
+    ui.dispatch_pointer_event(&up(point));
+    assert_eq!(ui.focused(), Some(slider));
+    assert!(runtime.active_gesture.get().is_none());
+}
+
+#[test]
 fn background_pan_keeps_capture_while_decorative_geometry_is_updated() {
     let (mut ui, runtime, host, _) = build_study_ui();
     ui.compute_layout(Size::new(1480., 820.));
