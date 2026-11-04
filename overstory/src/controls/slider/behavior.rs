@@ -83,6 +83,16 @@ impl Widget for SliderWidget {
         Some(TYPE_SLIDER)
     }
 
+    fn cursor_icon(&self, element: &Element) -> Option<cursor_icon::CursorIcon> {
+        Some(
+            if element.pseudos().contains(&crate::pseudos::PSEUDO_DISABLED) {
+                cursor_icon::CursorIcon::Default
+            } else {
+                cursor_icon::CursorIcon::EwResize
+            },
+        )
+    }
+
     fn accessibility_role(
         &self,
         _element: &Element,

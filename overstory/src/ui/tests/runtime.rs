@@ -802,3 +802,89 @@ fn two_independent_bindings_both_propagate() {
     assert_eq!(read(&ui, t1).as_deref(), Some("one"));
     assert_eq!(read(&ui, t2).as_deref(), Some("two"));
 }
+
+#[test]
+fn viewport_drag_cursor_requires_movement_and_ends_on_release_or_cancel() {
+    use crate::{CursorIcon, Viewport};
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(200., 200.));
+    let viewport = ui.append(
+        root,
+        Viewport::new()
+            .layout(Layout::new().logical_size(200., 200.))
+            .drag_cursor_icon(CursorIcon::Move),
+    );
+    ui.compute_layout(Size::new(200., 200.));
+    let start = Point::new(20., 20.);
+    let end = Point::new(220., 20.);
+    ui.dispatch_pointer_event(&pointer_move(start, 0, false));
+    assert_eq!(ui.cursor_icon(), None);
+    ui.dispatch_pointer_event(&pointer_down(start, 1));
+    assert_eq!(ui.pointer_capture(), Some(viewport));
+    assert_eq!(ui.cursor_icon(), None);
+    ui.dispatch_pointer_event(&pointer_move(start, 2, true));
+    assert_eq!(ui.cursor_icon(), None, "stationary presses are not drags");
+    ui.dispatch_pointer_event(&pointer_move(end, 3, true));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::Move));
+    ui.dispatch_pointer_event(&pointer_move(start, 4, true));
+    assert_eq!(
+        ui.cursor_icon(),
+        Some(CursorIcon::Move),
+        "returning to the press keeps the drag active"
+    );
+    ui.dispatch_pointer_event(&pointer_up(start, 5));
+    assert_eq!(ui.cursor_icon(), None);
+    ui.dispatch_pointer_event(&pointer_down(start, 6));
+    ui.dispatch_pointer_event(&pointer_move(end, 7, true));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::Move));
+    let ui_events::pointer::PointerEvent::Down(press) = pointer_down(start, 6) else {
+        unreachable!()
+    };
+    ui.dispatch_pointer_event(&ui_events::pointer::PointerEvent::Cancel(press.pointer));
+    assert_eq!(ui.cursor_icon(), None);
+}
+
+#[test]
+fn slider_cursor_overrides_ancestor_drag_cursor_through_template_parts() {
+    use crate::{CursorIcon, SLOT_SLIDER_THUMB, SLOT_SLIDER_TRACK, Slider, Viewport};
+    let mut ui = Ui::new();
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(400., 200.));
+    let viewport = ui.append(
+        root,
+        Viewport::new()
+            .layout(Layout::new().logical_size(400., 200.))
+            .cursor_icon(CursorIcon::Grab)
+            .drag_cursor_icon(CursorIcon::Move),
+    );
+    let slider = ui.append(
+        viewport,
+        Slider::new()
+            .value(0.5)
+            .layout(Layout::new().absolute_at(40., 40.).logical_size(240., 32.)),
+    );
+    ui.compute_layout(Size::new(400., 200.));
+    for slot in [SLOT_SLIDER_TRACK, SLOT_SLIDER_THUMB] {
+        let part = ui.slot(slider, slot).unwrap();
+        ui.dispatch_pointer_event(&pointer_move(ui.effective_bounds(part).center(), 0, false));
+        assert_eq!(ui.cursor_icon(), Some(CursorIcon::EwResize));
+    }
+    let start = ui
+        .effective_bounds(ui.slot(slider, SLOT_SLIDER_THUMB).unwrap())
+        .center();
+    ui.dispatch_pointer_event(&pointer_down(start, 1));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::EwResize));
+    let outside = Point::new(420., 40.);
+    ui.dispatch_pointer_event(&pointer_move(outside, 2, true));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::EwResize));
+    ui.dispatch_pointer_event(&pointer_up(outside, 3));
+    assert_eq!(ui.cursor_icon(), None);
+    ui.set_enabled(slider, false);
+    ui.dispatch_pointer_event(&pointer_move(
+        ui.effective_bounds(slider).center(),
+        4,
+        false,
+    ));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::Default));
+}

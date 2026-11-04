@@ -259,6 +259,15 @@ pub trait Widget: Any + core::fmt::Debug + 'static {
         None
     }
 
+    /// Returns a cursor override during a primary-pointer drag.
+    ///
+    /// The UI consults this only after movement during the current press,
+    /// until release or cancellation. `None` falls back to [`Self::cursor_icon`].
+    /// A descendant's cursor takes precedence over an ancestor's drag cursor.
+    fn drag_cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
+        None
+    }
+
     /// Returns whether this widget participates in pointer hit testing.
     ///
     /// The default is hit-test visible. Passive overlays such as tooltips can

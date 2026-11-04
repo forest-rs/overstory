@@ -159,7 +159,8 @@ impl Ui {
     /// or deepest hovered widget.
     ///
     /// Hosts can call this after pointer dispatch and apply the
-    /// result to their platform window. `None` means the host should
+    /// result to their platform window. Drag overrides apply after pointer
+    /// movement, and end on release or cancellation. `None` means the host should
     /// use its platform default.
     #[must_use]
     pub fn cursor_icon(&self) -> Option<CursorIcon> {
@@ -715,10 +716,13 @@ impl Ui {
         let mut current = Some(target);
         while let Some(id) = current {
             let element = self.get(id)?;
-            if let Some(icon) = element
-                .widget()
-                .and_then(|widget| widget.cursor_icon(element))
-            {
+            if let Some(icon) = element.widget().and_then(|widget| {
+                self.events
+                    .is_dragging()
+                    .then(|| widget.drag_cursor_icon(element))
+                    .flatten()
+                    .or_else(|| widget.cursor_icon(element))
+            }) {
                 return Some(icon);
             }
             current = element.templated_parent().or_else(|| element.parent());

@@ -35,6 +35,7 @@ pub const TYPE_VIEWPORT: TypeTag = TypeTag(17);
 pub struct Viewport {
     element: ElementConfig,
     cursor_icon: Option<CursorIcon>,
+    drag_cursor_icon: Option<CursorIcon>,
 }
 
 impl Viewport {
@@ -48,6 +49,16 @@ impl Viewport {
     #[must_use]
     pub fn layout(mut self, layout: impl Into<Layout>) -> Self {
         self.element.set_layout(layout);
+        self
+    }
+
+    /// Sets the cursor during a primary-pointer drag within the viewport.
+    ///
+    /// The override begins with movement and ends on release or cancellation.
+    /// Descendant controls keep their own cursor preferences.
+    #[must_use]
+    pub fn drag_cursor_icon(mut self, cursor_icon: CursorIcon) -> Self {
+        self.drag_cursor_icon = Some(cursor_icon);
         self
     }
 
@@ -66,6 +77,7 @@ impl AppendSpec for Viewport {
             parent,
             Box::new(ViewportWidget {
                 cursor_icon: self.cursor_icon,
+                drag_cursor_icon: self.drag_cursor_icon,
             }),
         );
         self.element.apply_to(ui, id);
@@ -83,6 +95,7 @@ impl ElementSpec for Viewport {
 #[derive(Debug, Default)]
 pub(crate) struct ViewportWidget {
     cursor_icon: Option<CursorIcon>,
+    drag_cursor_icon: Option<CursorIcon>,
 }
 
 impl Widget for ViewportWidget {
@@ -100,6 +113,10 @@ impl Widget for ViewportWidget {
 
     fn cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
         self.cursor_icon
+    }
+
+    fn drag_cursor_icon(&self, _element: &Element) -> Option<CursorIcon> {
+        self.drag_cursor_icon
     }
 
     fn clips_subtree(&self, _element: &Element) -> bool {
