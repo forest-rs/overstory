@@ -36,9 +36,9 @@ study's values. Native sliders support pointer, keyboard and accessibility input
 - Parameter names, values, compact controls and sockets share a row geometry.
   Names focus their controls; values include units and align to a common edge.
   Channel colors remain distinct even when two connections have the same unit.
-- The case stroke surrounds the physical interior with an explicit visual
-  inset. Valid modules stay inside its border; overhanging modules use the
-  warning color. Captions and clearance feedback live outside the drawing.
+- The shaded case footprint has its dimensions attached above the drawing.
+  Instruments remain visible outside its boundary, and overhanging modules
+  use the warning color. Clearance feedback lives outside the drawing.
 - Tied cables have ordered entry and exit leads. Untied cables use separate
   channels too, so releasing the guide does not collapse their routes together.
 - Node bodies, controls, ports, cable guides and wire elements retain identities
@@ -55,9 +55,18 @@ study's values. Native sliders support pointer, keyboard and accessibility input
 - Parameter edits update the host model and retained preview without changing
   graph topology or deriving geometry. Moving a tie invalidates only its members;
   rebindings update its member handles while preserving lane order.
-- The current native adapter compares computed snapshots. The strongest next
-  shared API candidate is a stream of changed bounds, anchors, routes and
-  visibility membership, so a host can consume deltas directly.
+- The native adapter consumes computed-result reports for changed/removed
+  bounds, anchors and routes, visibility membership and the preview. It stores
+  element identities rather than copies of route geometry. Initial display,
+  resets and skipped reports use a snapshot baseline; normal local updates
+  touch only reported entities. Camera motion transforms materialized geometry
+  explicitly because result reports use world coordinates.
+- The inspector separates derive work from retained view updates. Dragging the
+  case-check node updates one node, one socket and one wire; dragging the tie
+  updates three wires and no node/socket geometry. Parameter changes update
+  readings and the packing preview with zero graph-geometry updates. An equal
+  reroute visits the router but produces no retained wire update. Input tests
+  assert these counts while also checking capture, focus and stable identities.
 - Tie membership, guide orientation and multiple-guide editing remain host-side
   experiments. The `mine/rope-experiment` WIP in Understory is a prospective
   backend for individual cable curves and endpoint tangents. Its simulation

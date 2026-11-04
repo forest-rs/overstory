@@ -16,10 +16,10 @@ use overstory::{
 use overstory_host_winit::WindowOptions;
 use peniko::{Brush, Color};
 use understory_node_graph::{
-    DeriveMetrics, DeriveMode, DerivePhase, EdgeId, EdgePreviewTarget, GraphComputed,
-    GraphDeriveObserver, GraphDoc, GraphElementId, GraphInvalidation, GraphProjection,
-    GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView, PortAnchor,
-    PortDirection, PortId, PortView,
+    ComputedChanges, DeriveMetrics, DeriveMode, DerivePhase, EdgeId, EdgePreviewTarget,
+    GraphComputed, GraphDeriveObserver, GraphDoc, GraphElementId, GraphInvalidation,
+    GraphProjection, GraphSession, HitTarget, InteractionState, NodeData, NodeId, NodeView,
+    PortAnchor, PortDirection, PortId, PortView,
 };
 use understory_view2d::{ClampMode, FitMode};
 
@@ -29,7 +29,7 @@ mod cables;
 mod parameter_view;
 use cables::{CableRouter, CableTie};
 mod retained;
-use retained::GraphView;
+use retained::{GraphView, ViewWork};
 mod parameters;
 use parameter_view::{ParameterUi, append_parameter_controls};
 use parameters::{CaseParameters, Parameter};
@@ -106,6 +106,7 @@ struct DemoGraph {
     projection: DemoProjection,
     session: GraphSession,
     computed: GraphComputed,
+    result_changes: ComputedChanges,
     selected: NodeId,
     invalidation: GraphInvalidation,
     work: DeriveWork,
@@ -151,7 +152,7 @@ impl DemoGraph {
 
     fn rebuild_computed(&mut self) {
         self.work = DeriveWork::default();
-        self.computed.rebuild_with_compatibility(
+        self.result_changes = self.computed.rebuild_with_compatibility_and_changes(
             &self.doc,
             &self.projection,
             &self.session,
@@ -369,37 +370,66 @@ fn refresh_graph_view(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
 ) {
-    runtime.selected_element.set(None);
     let layers = runtime.view.borrow_mut().layers(ui, graph_host);
+    let plan = {
+        let graph = runtime.graph.borrow();
+        let mut view = runtime.view.borrow_mut();
+        let plan = view.update_plan(ui, &graph);
+        if plan.removed_parameters {
+            runtime.parameter_ui.replace(None);
+        }
+        if plan.camera_changed {
+            clear_children(ui, layers.grid);
+            append_grid(ui, layers.grid, &graph);
+        }
+        view.sync_edges(ui, layers.edges, &graph, &plan.edges);
+        if plan.preview_changed {
+            clear_children(ui, layers.preview);
+            append_graph_preview(ui, layers.preview, &graph);
+        }
+        plan
+    };
+    append_graph_nodes(
+        ui,
+        layers.nodes,
+        sidebar,
+        Rc::clone(&runtime),
+        graph_host,
+        &plan.nodes,
+    );
+    append_graph_ports(
+        ui,
+        layers.ports,
+        sidebar,
+        Rc::clone(&runtime),
+        graph_host,
+        &plan.ports,
+    );
+    append_cable_tie(ui, layers.ties, graph_host, Rc::clone(&runtime));
     {
         let graph = runtime.graph.borrow();
         let mut view = runtime.view.borrow_mut();
-        if view.prune_nodes(ui, &graph) {
-            runtime.parameter_ui.replace(None);
-        }
-        if view.visible_world != Some(graph.session.visible_world_rect()) {
-            clear_children(ui, layers.grid);
-            append_grid(ui, layers.grid, &graph);
-            view.visible_world = Some(graph.session.visible_world_rect());
-        }
-        view.sync_edges(ui, layers.edges, &graph);
-        clear_children(ui, layers.preview);
-        append_graph_preview(ui, layers.preview, &graph);
+        view.sync_selection(ui, &graph);
+        runtime
+            .selected_element
+            .set(view.element_for_node(graph.selected));
     }
-    append_graph_nodes(ui, layers.nodes, sidebar, Rc::clone(&runtime), graph_host);
-    append_graph_ports(ui, layers.ports, sidebar, Rc::clone(&runtime), graph_host);
-    append_cable_tie(ui, layers.ties, graph_host, Rc::clone(&runtime));
     runtime
         .view
         .borrow()
         .sync_readings(ui, &runtime.graph.borrow());
     parameter_view::refresh_parameter_preview(ui, &runtime);
-    refresh_inspector(ui, sidebar, &runtime.graph.borrow());
+    refresh_inspector(
+        ui,
+        sidebar,
+        &runtime.graph.borrow(),
+        runtime.view.borrow().work,
+    );
 }
 
-fn refresh_inspector(ui: &mut Ui, sidebar: ElementId, graph: &DemoGraph) {
+fn refresh_inspector(ui: &mut Ui, sidebar: ElementId, graph: &DemoGraph, work: ViewWork) {
     clear_children(ui, sidebar);
-    append_inspector(ui, sidebar, graph);
+    append_inspector(ui, sidebar, graph, work);
 }
 
 fn clear_children(ui: &mut Ui, parent: ElementId) {
@@ -664,12 +694,9 @@ fn append_graph_nodes(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
     graph_host: ElementId,
+    nodes: &[NodeId],
 ) {
-    let nodes = {
-        let graph = runtime.graph.borrow();
-        graph.computed.visible_nodes().to_vec()
-    };
-    for node in nodes {
+    for &node in nodes {
         let (rect, meta, selected) = {
             let graph = runtime.graph.borrow();
             let world = graph
@@ -745,7 +772,14 @@ fn append_graph_nodes(
         });
 
         if node == runtime.graph.borrow().parameter_node {
-            append_parameter_controls(ui, node_element, sidebar, rect.size(), Rc::clone(&runtime));
+            append_parameter_controls(
+                ui,
+                node_element,
+                sidebar,
+                graph_host,
+                rect.size(),
+                Rc::clone(&runtime),
+            );
             continue;
         }
         if runtime.graph.borrow().story.is_layout(node) {
@@ -813,16 +847,17 @@ fn append_graph_ports(
     sidebar: ElementId,
     runtime: Rc<GraphDemoRuntime>,
     graph_host: ElementId,
+    ports: &[PortId],
 ) {
-    let ports = {
-        let graph = runtime.graph.borrow();
-        graph
-            .doc
-            .iter_ports()
-            .map(|(port, data)| (port, data.direction, data.meta))
-            .collect::<Vec<_>>()
-    };
-    for (port, direction, meta) in ports {
+    for &port in ports {
+        let (direction, meta) = {
+            let graph = runtime.graph.borrow();
+            let data = graph
+                .doc
+                .port(port)
+                .expect("planned socket has a live port");
+            (data.direction, data.meta)
+        };
         let view = {
             let graph = runtime.graph.borrow();
             let Some(anchor) = graph.computed.port_anchor(port) else {
@@ -1007,7 +1042,7 @@ fn start_node_drag(
             node,
             pointer_origin: local_point(ui, graph_host, position),
         });
-        refresh_inspector(ui, sidebar, &graph);
+        refresh_inspector(ui, sidebar, &graph, runtime.view.borrow().work);
     }
     style_node(ui, event.current(), accent, true);
 }
@@ -1041,7 +1076,7 @@ fn start_port_drag(
     refresh_graph_view(ui, graph_host, sidebar, runtime);
 }
 
-fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
+fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph, work: ViewWork) {
     ui.append(
         parent,
         Text::new("300 × 240 mm case")
@@ -1078,6 +1113,15 @@ fn append_inspector(ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
             graph.work.nodes, graph.work.routes
         ),
         format!("visibility scan: {} nodes", graph.work.visibility),
+        format!(
+            "view: {} nodes / {} sockets / {} wires",
+            work.nodes, work.ports, work.edges
+        ),
+        format!(
+            "view sync: {} / {} removed",
+            if work.resync { "snapshot" } else { "delta" },
+            work.removed
+        ),
     ] {
         ui.append(
             parent,
@@ -1112,7 +1156,7 @@ fn select_node(
         graph.session.update_selection(|selection| {
             let _ = selection.select_only(GraphElementId::Node(node));
         });
-        refresh_inspector(ui, sidebar, &graph);
+        refresh_inspector(ui, sidebar, &graph, runtime.view.borrow().work);
     }
     style_node(ui, event.current(), accent, true);
     event.mark_handled();

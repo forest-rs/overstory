@@ -93,6 +93,7 @@ pub(super) fn append_parameter_controls(
     ui: &mut Ui,
     parent: ElementId,
     sidebar: ElementId,
+    graph_host: ElementId,
     size: Size,
     runtime: Rc<GraphDemoRuntime>,
 ) {
@@ -185,12 +186,7 @@ pub(super) fn append_parameter_controls(
                     let accepted = callback_runtime.graph.borrow().parameters.value(parameter);
                     overstory::set_slider_value(ui, event.element, accepted);
                     if changed {
-                        callback_runtime
-                            .view
-                            .borrow()
-                            .sync_readings(ui, &callback_runtime.graph.borrow());
-                        refresh_parameter_preview(ui, &callback_runtime);
-                        refresh_inspector(ui, sidebar, &callback_runtime.graph.borrow());
+                        refresh_graph_view(ui, graph_host, sidebar, Rc::clone(&callback_runtime));
                     }
                 }),
         );

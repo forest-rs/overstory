@@ -4,6 +4,7 @@
 //! Host-owned identity mapping from graph geometry to retained elements.
 
 use super::*;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 struct Layer {
@@ -24,6 +25,122 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unchanged_routes_and_repeated_refreshes_do_no_geometry_work() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let routes = runtime.view.borrow().edges.clone();
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            let edge = graph.tie.members()[0];
+            graph.invalidation.mark_routing_edge(edge);
+            graph.rebuild_computed();
+            assert_eq!(graph.work.routes, 1);
+            assert!(graph.result_changes.is_empty());
+        }
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        assert_eq!(runtime.view.borrow().work, ViewWork::default());
+        assert_eq!(runtime.view.borrow().edges, routes);
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        assert_eq!(runtime.view.borrow().work, ViewWork::default());
+    }
+
+    #[test]
+    fn a_missed_report_resynchronizes_from_the_current_snapshot() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let before = runtime.parameter_ui.borrow().as_ref().unwrap().sliders;
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            let node = graph.selected;
+            for _ in 0..2 {
+                move_node_by_view_delta(&mut graph, node, Vec2::new(10., 5.));
+                graph.rebuild_computed();
+            }
+        }
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        let view = runtime.view.borrow();
+        let graph = runtime.graph.borrow();
+        assert!(view.work.resync);
+        assert_eq!(view.nodes.len(), graph.computed.visible_nodes().len());
+        assert_eq!(view.edges.len(), graph.computed.visible_edges().len());
+        assert_eq!(view.ports.len(), graph.doc.port_count());
+        assert!(before.into_iter().all(|id| ui.get(id).is_none()));
+        assert_ne!(
+            runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
+            before
+        );
+    }
+
+    #[test]
+    fn camera_motion_updates_screen_geometry_without_replacing_controls() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let before = runtime.parameter_ui.borrow().as_ref().unwrap().sliders;
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            graph
+                .session
+                .update_viewport(|view| view.pan_by_view(Vec2::new(8., 4.)));
+            graph.rebuild_computed();
+            assert!(graph.result_changes.nodes.is_empty());
+            assert!(graph.result_changes.ports.is_empty());
+            assert!(graph.result_changes.edges.is_empty());
+        }
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        let view = runtime.view.borrow();
+        let graph = runtime.graph.borrow();
+        assert!(!view.work.resync);
+        assert_eq!(view.work.nodes, graph.computed.visible_nodes().len());
+        assert_eq!(view.work.ports, graph.doc.port_count());
+        assert_eq!(view.work.edges, graph.computed.visible_edges().len());
+        assert_eq!(
+            runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
+            before
+        );
+    }
+
+    #[test]
+    fn cascading_removal_retires_only_the_reported_elements() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let before = runtime.parameter_ui.borrow().as_ref().unwrap().sliders;
+        let (removed_node, removed_ports, removed_edges) = {
+            let graph = runtime.graph.borrow();
+            let view = runtime.view.borrow();
+            let node = graph.story.check_node();
+            let ports = graph.doc.node_ports(node).unwrap();
+            let edges = graph.doc.port_edges(ports[0]).unwrap();
+            (
+                view.element_for_node(node).unwrap(),
+                ports.iter().map(|id| view.ports[id]).collect::<Vec<_>>(),
+                edges.iter().map(|id| view.edges[id]).collect::<Vec<_>>(),
+            )
+        };
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            let node = graph.story.check_node();
+            let (_, changes) = graph.doc.edit(|edit| edit.remove_node(node));
+            graph.invalidation.record(&changes);
+            graph.rebuild_computed();
+        }
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        assert!(ui.get(removed_node).is_none());
+        assert!(
+            removed_ports
+                .into_iter()
+                .chain(removed_edges)
+                .all(|id| ui.get(id).is_none())
+        );
+        assert_eq!(
+            runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
+            before
+        );
+        assert_eq!(
+            runtime.view.borrow().work,
+            ViewWork {
+                removed: 3,
+                ..ViewWork::default()
+            }
+        );
+    }
+
+    #[test]
     fn local_geometry_edits_retain_controls_and_unaffected_route_elements() {
         let mut ui = Ui::new();
         let root = ui.root();
@@ -38,7 +155,7 @@ mod tests {
             .borrow()
             .edges
             .iter()
-            .map(|(e, _, id)| (*e, *id))
+            .map(|(e, id)| (*e, *id))
             .collect::<Vec<_>>();
         {
             let mut graph = runtime.graph.borrow_mut();
@@ -55,7 +172,7 @@ mod tests {
         assert_eq!(ui.focused(), Some(sliders[0]));
         for (edge, before) in routes {
             let view = runtime.view.borrow();
-            let after = &view.edges.iter().find(|(e, _, _)| *e == edge).unwrap().2;
+            let after = view.edges.get(&edge).unwrap();
             assert_eq!(&before, after);
         }
     }
@@ -71,39 +188,173 @@ pub(super) struct Layers {
     pub(super) ties: ElementId,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ViewWork {
+    pub(super) nodes: usize,
+    pub(super) ports: usize,
+    pub(super) edges: usize,
+    pub(super) removed: usize,
+    pub(super) resync: bool,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ViewPlan {
+    pub(super) nodes: Vec<NodeId>,
+    pub(super) ports: Vec<PortId>,
+    pub(super) edges: Vec<EdgeId>,
+    pub(super) camera_changed: bool,
+    pub(super) preview_changed: bool,
+    pub(super) removed_parameters: bool,
+}
+
 #[derive(Debug, Default)]
 pub(super) struct GraphView {
     pub(super) tie: Option<ElementId>,
     layers: Option<Layers>,
-    pub(super) visible_world: Option<Rect>,
-    nodes: Vec<(NodeId, ElementId, Size)>,
-    ports: Vec<(PortId, ElementId)>,
-    edges: Vec<(EdgeId, Vec<Point>, ElementId)>,
-    readings: Vec<(NodeId, ElementId)>,
+    revision: Option<understory_node_graph::Revision>,
+    camera: Option<(Rect, Rect)>,
+    visible_nodes: HashSet<NodeId>,
+    visible_edges: HashSet<EdgeId>,
+    selected: Option<NodeId>,
+    nodes: HashMap<NodeId, (ElementId, Size)>,
+    ports: HashMap<PortId, ElementId>,
+    edges: HashMap<EdgeId, ElementId>,
+    readings: HashMap<NodeId, ElementId>,
+    pub(super) work: ViewWork,
 }
 
 impl GraphView {
-    pub(super) fn prune_nodes(&mut self, ui: &mut Ui, graph: &DemoGraph) -> bool {
-        let mut removed_parameters = false;
-        self.nodes.retain(|(node, element, _)| {
-            if graph.computed.visible_nodes().contains(node) {
-                return true;
+    pub(super) fn update_plan(&mut self, ui: &mut Ui, graph: &DemoGraph) -> ViewPlan {
+        let changes = &graph.result_changes;
+        let new_results = self.revision != Some(graph.computed.revision());
+        let resync = self.revision.is_none()
+            || (new_results && (changes.reset || self.revision != Some(changes.before)));
+        let camera = (
+            graph
+                .session
+                .viewport()
+                .world_to_view_rect(Rect::new(0., 0., 1., 1.)),
+            graph.session.viewport().view_rect(),
+        );
+        let camera_changed = self.camera != Some(camera);
+        let mut plan = ViewPlan {
+            camera_changed,
+            ..ViewPlan::default()
+        };
+        self.work = ViewWork {
+            resync,
+            ..ViewWork::default()
+        };
+        let mut nodes = HashSet::new();
+        let mut ports = HashSet::new();
+        let mut edges = HashSet::new();
+        if resync {
+            // Missing a report is safe, but requires a snapshot baseline. This
+            // path also prevents document-local ids from leaking across reset.
+            for (element, _) in self.nodes.drain().map(|(_, value)| value) {
+                ui.remove(element);
+                self.work.removed += 1;
             }
-            ui.remove(*element);
-            removed_parameters |= *node == graph.parameter_node;
-            false
-        });
-        self.readings
-            .retain(|(node, _)| graph.computed.visible_nodes().contains(node));
-        self.ports.retain(|(port, element)| {
-            if graph.computed.port_anchor(*port).is_some() {
-                return true;
+            for element in self
+                .ports
+                .drain()
+                .map(|(_, id)| id)
+                .chain(self.edges.drain().map(|(_, id)| id))
+            {
+                ui.remove(element);
+                self.work.removed += 1;
             }
-            ui.remove(*element);
-            false
-        });
-        removed_parameters
+            self.readings.clear();
+            self.selected = None;
+            self.visible_nodes = graph.computed.visible_nodes().iter().copied().collect();
+            self.visible_edges = graph.computed.visible_edges().iter().copied().collect();
+            nodes.extend(&self.visible_nodes);
+            edges.extend(&self.visible_edges);
+            ports.extend(
+                graph
+                    .doc
+                    .iter_ports()
+                    .filter_map(|(id, _)| graph.computed.port_anchor(id).map(|_| id)),
+            );
+            plan.removed_parameters = true;
+            plan.preview_changed = true;
+        } else if new_results {
+            for id in changes
+                .visible_nodes
+                .exited
+                .iter()
+                .chain(&changes.nodes.removed)
+            {
+                self.visible_nodes.remove(id);
+                if let Some(element) = self.remove_node(*id) {
+                    ui.remove(element);
+                    self.work.removed += 1;
+                    plan.removed_parameters |= *id == graph.parameter_node;
+                }
+            }
+            self.visible_nodes.extend(&changes.visible_nodes.entered);
+            for id in changes
+                .visible_edges
+                .exited
+                .iter()
+                .chain(&changes.edges.removed)
+            {
+                self.visible_edges.remove(id);
+                if let Some(element) = self.edges.remove(id) {
+                    ui.remove(element);
+                    self.work.removed += 1;
+                }
+            }
+            self.visible_edges.extend(&changes.visible_edges.entered);
+            for id in &changes.ports.removed {
+                if let Some(element) = self.ports.remove(id) {
+                    ui.remove(element);
+                    self.work.removed += 1;
+                }
+            }
+            nodes.extend(
+                changes
+                    .nodes
+                    .updated
+                    .iter()
+                    .chain(&changes.visible_nodes.entered)
+                    .copied()
+                    .filter(|id| self.visible_nodes.contains(id)),
+            );
+            edges.extend(
+                changes
+                    .edges
+                    .updated
+                    .iter()
+                    .chain(&changes.visible_edges.entered)
+                    .copied()
+                    .filter(|id| self.visible_edges.contains(id)),
+            );
+            ports.extend(&changes.ports.updated);
+            plan.preview_changed = changes.preview_changed;
+        }
+        if camera_changed {
+            // Result geometry stays in world space. A changed host transform
+            // needs new screen coordinates for every materialized element.
+            nodes.extend(&self.visible_nodes);
+            edges.extend(&self.visible_edges);
+            ports.extend(self.ports.keys());
+            plan.preview_changed = true;
+        }
+        plan.nodes = nodes.into_iter().collect();
+        plan.ports = ports.into_iter().collect();
+        plan.edges = edges.into_iter().collect();
+        plan.nodes.sort_unstable();
+        plan.ports.sort_unstable();
+        plan.edges.sort_unstable();
+        self.work.nodes = plan.nodes.len();
+        self.work.ports = plan.ports.len();
+        self.work.edges = plan.edges.len();
+        self.revision = Some(graph.computed.revision());
+        self.camera = Some(camera);
+        plan
     }
+
     pub(super) fn layers(&mut self, ui: &mut Ui, parent: ElementId) -> Layers {
         *self.layers.get_or_insert_with(|| {
             let mut layer = |interactive_children| {
@@ -132,72 +383,75 @@ impl GraphView {
         })
     }
 
-    pub(super) fn node_element(&self, node: NodeId, size: Size) -> Option<ElementId> {
-        self.nodes
-            .iter()
-            // Moving a transformed rectangle can introduce subpixel rounding
-            // in its measured size. It must not replace the pressed subtree.
-            .find(|(n, _, s)| {
-                *n == node
-                    && (s.width - size.width).abs() < 1e-6
-                    && (s.height - size.height).abs() < 1e-6
-            })
-            .map(|(_, id, _)| *id)
-    }
-    pub(super) fn remove_node(&mut self, node: NodeId) -> Option<ElementId> {
-        self.readings.retain(|(n, _)| *n != node);
-        let index = self.nodes.iter().position(|(n, _, _)| *n == node)?;
-        Some(self.nodes.swap_remove(index).1)
-    }
-    pub(super) fn insert_node(&mut self, node: NodeId, id: ElementId, size: Size) {
-        self.nodes.push((node, id, size));
-    }
-    pub(super) fn port_element(&self, port: PortId) -> Option<ElementId> {
-        self.ports
-            .iter()
-            .find(|(p, _)| *p == port)
-            .map(|(_, id)| *id)
-    }
-    pub(super) fn insert_port(&mut self, port: PortId, id: ElementId) {
-        self.ports.push((port, id));
+    pub(super) fn element_for_node(&self, node: NodeId) -> Option<ElementId> {
+        self.nodes.get(&node).map(|(id, _)| *id)
     }
 
+    pub(super) fn node_element(&self, node: NodeId, size: Size) -> Option<ElementId> {
+        self.nodes
+            .get(&node)
+            // Subpixel transform rounding must not replace a pressed subtree.
+            .filter(|(_, previous)| {
+                (previous.width - size.width).abs() < 1e-6
+                    && (previous.height - size.height).abs() < 1e-6
+            })
+            .map(|(id, _)| *id)
+    }
+    pub(super) fn remove_node(&mut self, node: NodeId) -> Option<ElementId> {
+        self.readings.remove(&node);
+        self.nodes.remove(&node).map(|(id, _)| id)
+    }
+    pub(super) fn insert_node(&mut self, node: NodeId, id: ElementId, size: Size) {
+        self.nodes.insert(node, (id, size));
+    }
+    pub(super) fn port_element(&self, port: PortId) -> Option<ElementId> {
+        self.ports.get(&port).copied()
+    }
+    pub(super) fn insert_port(&mut self, port: PortId, id: ElementId) {
+        self.ports.insert(port, id);
+    }
+    pub(super) fn sync_selection(&mut self, ui: &mut Ui, graph: &DemoGraph) {
+        if self.selected == Some(graph.selected) {
+            return;
+        }
+        for node in self.selected.into_iter().chain(Some(graph.selected)) {
+            if let Some(element) = self.element_for_node(node)
+                && let Some(data) = graph.doc.node(node)
+            {
+                style_node(ui, element, data.meta.accent, node == graph.selected);
+            }
+        }
+        self.selected = Some(graph.selected);
+    }
     pub(super) fn sync_readings(&self, ui: &mut Ui, graph: &DemoGraph) {
         for (node, label) in &self.readings {
             ui.set_local(*label, ui.properties().text, graph.node_summary(*node));
         }
     }
     pub(super) fn insert_reading(&mut self, node: NodeId, label: ElementId) {
-        self.readings.retain(|(n, _)| *n != node);
-        self.readings.push((node, label));
+        self.readings.insert(node, label);
     }
-    pub(super) fn sync_edges(&mut self, ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
-        self.edges.retain(|(edge, _, element)| {
-            if graph.computed.visible_edges().contains(edge) {
-                return true;
-            }
-            ui.remove(*element);
-            false
-        });
-        for edge in graph.computed.visible_edges() {
+    pub(super) fn sync_edges(
+        &mut self,
+        ui: &mut Ui,
+        parent: ElementId,
+        graph: &DemoGraph,
+        edges: &[EdgeId],
+    ) {
+        for &edge in edges {
             let points: Vec<_> = graph
                 .computed
-                .edge_route(*edge)
+                .edge_route(edge)
                 .unwrap()
                 .points
                 .iter()
                 .map(|p| graph.session.viewport().world_to_view_point(*p))
                 .collect();
-            let data = graph.doc.edge(*edge).unwrap();
+            let data = graph.doc.edge(edge).unwrap();
             let color = graph.doc.port(data.output).unwrap().meta.color();
             let primitive = wire_primitive(&points, color);
-            if let Some((_, previous, element)) =
-                self.edges.iter_mut().find(|(id, _, _)| id == edge)
-            {
-                if *previous != points {
-                    overstory::set_vector_path(ui, *element, primitive);
-                    *previous = points;
-                }
+            if let Some(element) = self.edges.get(&edge) {
+                overstory::set_vector_path(ui, *element, primitive);
             } else {
                 let element = ui.append(
                     parent,
@@ -207,7 +461,7 @@ impl GraphView {
                             .logical_size(GRAPH_VIEW.width(), GRAPH_VIEW.height()),
                     ),
                 );
-                self.edges.push((*edge, points, element));
+                self.edges.insert(edge, element);
             }
         }
     }

@@ -114,6 +114,7 @@ fn slider_drag_changes_the_case_plan_without_panning_or_replacing_controls() {
         sliders
     );
     assert_eq!(runtime.graph.borrow().work.routes, 0);
+    assert_eq!(runtime.view.borrow().work, ViewWork::default());
     assert!(runtime.active_gesture.get().is_none());
     assert_eq!(ui.pointer_capture(), None);
 }
@@ -156,6 +157,15 @@ fn body_drag_moves_only_the_selected_node_and_releases_capture() {
     );
     assert_eq!(runtime.graph.borrow().work.nodes, 1);
     assert_eq!(runtime.graph.borrow().work.routes, 1);
+    assert_eq!(
+        runtime.view.borrow().work,
+        ViewWork {
+            nodes: 1,
+            ports: 1,
+            edges: 1,
+            ..ViewWork::default()
+        }
+    );
     assert_eq!(runtime.graph.borrow().session.visible_world_rect(), camera);
     ui.dispatch_pointer_event(&up(end));
     assert!(runtime.active_gesture.get().is_none());
@@ -188,6 +198,13 @@ fn tie_drag_guides_only_its_members_without_becoming_a_node_drag() {
     );
     assert_eq!(runtime.graph.borrow().work.routes, 3);
     assert_eq!(runtime.graph.borrow().work.nodes, 0);
+    assert_eq!(
+        runtime.view.borrow().work,
+        ViewWork {
+            edges: 3,
+            ..ViewWork::default()
+        }
+    );
     ui.dispatch_pointer_event(&PointerEvent::Cancel(pointer()));
     assert!(runtime.active_gesture.get().is_none());
     assert_eq!(ui.pointer_capture(), None);

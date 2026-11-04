@@ -212,6 +212,7 @@ pub(super) fn build_demo_graph() -> DemoGraph {
         projection,
         session,
         computed: GraphComputed::new(),
+        result_changes: ComputedChanges::default(),
         selected: check,
         invalidation: GraphInvalidation::new(),
         work: DeriveWork::default(),
