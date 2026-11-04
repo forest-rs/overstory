@@ -4,7 +4,37 @@
 //! Retained controls and an application-owned inline preview.
 
 use super::*;
-use overstory::{ControlTemplateSpecExt, LayoutDimension, LayoutSize, Slider};
+use overstory::{
+    ControlTemplateSpecExt, LayoutDimension, LayoutSize, MotionSpec, Slider, TimingFunction, millis,
+};
+
+const PREVIEW_MOTION_MS: u64 = 280;
+
+/// A presentation scalar keeps corner interpolation on the existing timeline.
+/// Surface layout and the packing model retain their immediate target values.
+#[derive(Debug)]
+struct InstrumentTile {
+    radius: understory_property::Property<f64>,
+}
+
+impl overstory::Widget for InstrumentTile {
+    fn present(
+        &self,
+        element: &overstory::Element,
+        ctx: &overstory::PresentContext<'_>,
+        store: &mut understory_presentation::PresentationStore<
+            understory_box_tree::NodeId,
+            ElementId,
+        >,
+        node: understory_box_tree::NodeId,
+    ) {
+        overstory::present_surface(element, ctx, store, node);
+        if let Some(surface) = store.surface_mut(node) {
+            let radius = ctx.get_value(element, self.radius).max(0.);
+            surface.corner_radii = overstory::Corners::all(Size::new(radius, radius));
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(super) struct ParameterUi {
@@ -18,6 +48,8 @@ pub(super) struct ParameterUi {
     preview: ElementId,
     caption: ElementId,
     rows: ElementId,
+    preview_intent: Cell<Option<(CaseParameters, Size)>>,
+    radius: understory_property::Property<f64>,
 }
 
 impl ParameterUi {
@@ -312,8 +344,19 @@ pub(super) fn append_parameter_controls(
         10.,
         Color::from_rgba8(0xbc, 0xcb, 0xd3, 0xff),
     );
+    let radius = runtime.instrument_radius.get().unwrap_or_else(|| {
+        let property = ui.registry_mut().register(
+            "FieldStation.InstrumentRadius",
+            understory_property::PropertyMetadataBuilder::new(0_f64)
+                .affects_channels(overstory::channels::GEOMETRY.into_set())
+                .build(),
+        );
+        ui.register_animation_target_property(property);
+        runtime.instrument_radius.set(Some(property));
+        property
+    });
     let tiles = (0..12)
-        .map(|_| append_rect(ui, preview, Rect::ZERO, Parameter::Columns.color(), 0.))
+        .map(|_| ui.append_widget(preview, Box::new(InstrumentTile { radius })))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -330,6 +373,8 @@ pub(super) fn append_parameter_controls(
         preview,
         caption,
         rows,
+        preview_intent: Cell::new(None),
+        radius,
     }));
     refresh_parameter_preview(ui, &runtime);
 }
@@ -357,6 +402,10 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
     if parts.size.width <= 0. || parts.size.height <= 0. {
         return;
     }
+    // Initial arrangement and viewport reflow establish geometry directly.
+    // Only changes to the packing plan animate between established readings.
+    let previous = parts.preview_intent.replace(Some((values, parts.size)));
+    let animate = previous.is_some_and(|(before, size)| before != values && size == parts.size);
     let bounds = parts.plot_bounds();
     let case = values.case_rect(bounds);
     ui.set_layout(
@@ -387,36 +436,207 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
             Color::from_rgba8(0xf1, 0xa0, 0x87, 0xff)
         }),
     );
-    for (index, (rect, radius)) in values.preview(bounds).into_iter().enumerate() {
-        let element = parts.tiles[index];
-        ui.set_layout(
-            element,
-            Layout::new()
-                .absolute_at(rect.x0, rect.y0)
-                .logical_size(rect.width(), rect.height()),
+    let update_instruments = |ui: &mut Ui| {
+        for (index, (rect, radius)) in values.preview(bounds).into_iter().enumerate() {
+            let element = parts.tiles[index];
+            ui.set_local(element, parts.radius, radius);
+            ui.set_layout(
+                element,
+                Layout::new()
+                    .absolute_at(rect.x0, rect.y0)
+                    .logical_size(rect.width(), rect.height()),
+            );
+            style_surface(
+                ui,
+                element,
+                Some(if !case.inflate(0.001, 0.001).contains_rect(rect) {
+                    Color::from_rgba8(0xe7, 0x99, 0x80, 0xff)
+                } else {
+                    Color::from_rgba8(0x58, 0xb3, 0x97, 0xff)
+                }),
+                None,
+                0.,
+                radius,
+            );
+            ui.set_tooltip(
+                element,
+                Tooltip::new(format!("Instrument module {}", index + 1)),
+            );
+        }
+    };
+    if animate {
+        ui.with_motion(
+            MotionSpec::new(millis(PREVIEW_MOTION_MS))
+                .with_easing(TimingFunction::cubic_bezier(0.215, 0.61, 0.355, 1.))
+                .with_color_space(peniko::color::ColorSpaceTag::Oklab),
+            update_instruments,
         );
-        style_surface(
-            ui,
-            element,
-            Some(if !case.inflate(0.001, 0.001).contains_rect(rect) {
-                Color::from_rgba8(0xe7, 0x99, 0x80, 0xff)
-            } else {
-                Color::from_rgba8(0x58, 0xb3, 0x97, 0xff)
-            }),
-            None,
-            0.,
-            radius,
-        );
-        ui.set_tooltip(
-            element,
-            Tooltip::new(format!("Instrument module {}", index + 1)),
-        );
+    } else if previous != Some((values, parts.size)) {
+        update_instruments(ui);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn presented_origin(ui: &Ui, element: ElementId) -> Point {
+        let row = ui
+            .inspection_snapshot()
+            .composition
+            .layers
+            .into_iter()
+            .find(|row| row.element == Some(element))
+            .unwrap();
+        ui.composition_layers()
+            .world_transform_at(row.id.index)
+            .transform_point(Point::ZERO)
+            .unwrap()
+    }
+
+    fn change_plan(
+        ui: &mut Ui,
+        runtime: &Rc<GraphDemoRuntime>,
+        host: ElementId,
+        sidebar: ElementId,
+        columns: f64,
+        spacing: f64,
+    ) {
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            graph.parameters.set(Parameter::Columns, columns);
+            graph.parameters.set(Parameter::Spacing, spacing);
+            graph.rebuild_computed();
+        }
+        refresh_graph_view(ui, host, sidebar, Rc::clone(runtime));
+    }
+
+    #[test]
+    fn instrument_motion_retargets_from_the_presented_position_without_replacing_controls() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let size = Size::new(1480., 820.);
+        ui.compute_layout(size);
+        assert!(!ui.has_active_presentation_motion());
+        let (tile, sliders) = {
+            let parts = runtime.parameter_ui.borrow();
+            let parts = parts.as_ref().unwrap();
+            (parts.tiles[3], parts.sliders)
+        };
+        let original = presented_origin(&ui, tile);
+        let geometry = runtime.graph.borrow().computed.revision();
+        ui.set_now(0);
+        change_plan(&mut ui, &runtime, host, sidebar, 3., 12.);
+        ui.compute_layout(size);
+        assert!((presented_origin(&ui, tile) - original).hypot() < 0.01);
+        let target = ui.effective_bounds(tile).origin();
+        assert!((target - original).hypot() > 20.);
+        assert!(ui.has_active_presentation_motion());
+        ui.set_now(millis(PREVIEW_MOTION_MS / 2));
+        ui.compute_layout(size);
+        let middle = presented_origin(&ui, tile);
+        assert!((middle - original).hypot() > 1.);
+        assert!((middle - target).hypot() > 1.);
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        ui.compute_layout(size);
+        assert!((presented_origin(&ui, tile) - middle).hypot() < 0.01);
+        change_plan(&mut ui, &runtime, host, sidebar, 2., 12.);
+        ui.compute_layout(size);
+        assert!((presented_origin(&ui, tile) - middle).hypot() < 0.01);
+        ui.set_now(millis(PREVIEW_MOTION_MS * 2));
+        ui.compute_layout(size);
+        assert!((presented_origin(&ui, tile) - ui.effective_bounds(tile).origin()).hypot() < 0.01);
+        assert!(!ui.has_active_presentation_motion());
+        assert_eq!(runtime.graph.borrow().computed.revision(), geometry);
+        assert_eq!(
+            runtime.parameter_ui.borrow().as_ref().unwrap().sliders,
+            sliders
+        );
+        assert_eq!(runtime.view.borrow().work, ViewWork::default());
+    }
+
+    #[test]
+    fn radius_motion_samples_and_retargets_without_layout_or_graph_work() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let size = Size::new(1480., 820.);
+        ui.compute_layout(size);
+        let (tile, radius) = {
+            let parts = runtime.parameter_ui.borrow();
+            let parts = parts.as_ref().unwrap();
+            (parts.tiles[0], parts.radius)
+        };
+        let initial = ui.resolved_value(tile, radius).unwrap();
+        let geometry = runtime.graph.borrow().computed.revision();
+        ui.set_now(0);
+        runtime
+            .graph
+            .borrow_mut()
+            .parameters
+            .set(Parameter::Radius, 0.);
+        change_plan(&mut ui, &runtime, host, sidebar, 4., 12.);
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, radius).unwrap(), initial);
+        ui.reset_frame_stats();
+        ui.set_now(millis(PREVIEW_MOTION_MS / 2));
+        ui.compute_layout(size);
+        let middle = ui.resolved_value(tile, radius).unwrap();
+        assert!(middle > 0. && middle < initial);
+        assert_eq!(ui.frame_stats().layout_passes, 0);
+        runtime
+            .graph
+            .borrow_mut()
+            .parameters
+            .set(Parameter::Radius, 16.);
+        change_plan(&mut ui, &runtime, host, sidebar, 4., 12.);
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, radius).unwrap(), middle);
+        ui.set_now(millis(PREVIEW_MOTION_MS * 2));
+        ui.compute_layout(size);
+        assert!(ui.resolved_value(tile, radius).unwrap() > initial);
+        assert!(!ui.has_active_presentation_motion());
+        assert_eq!(runtime.graph.borrow().computed.revision(), geometry);
+        assert_eq!(runtime.view.borrow().work, ViewWork::default());
+    }
+
+    #[test]
+    fn warning_colors_fade_and_reverse_while_clearance_updates_immediately() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        let size = Size::new(1480., 820.);
+        ui.compute_layout(size);
+        let tile = runtime.parameter_ui.borrow().as_ref().unwrap().tiles[5];
+        let background = ui.properties().surface.background;
+        let green = ui.resolved_value(tile, background).unwrap();
+        let coral = Some(Brush::from(Color::from_rgba8(0xe7, 0x99, 0x80, 0xff)));
+        ui.set_now(0);
+        change_plan(&mut ui, &runtime, host, sidebar, 6., 24.);
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, background).unwrap(), green);
+        assert_eq!(
+            runtime
+                .graph
+                .borrow()
+                .effective_parameters()
+                .unwrap()
+                .clearance()
+                .width,
+            -84.
+        );
+        ui.set_now(millis(PREVIEW_MOTION_MS / 2));
+        ui.compute_layout(size);
+        let middle = ui.resolved_value(tile, background).unwrap();
+        assert_ne!(middle, green);
+        assert_ne!(middle, coral);
+        change_plan(&mut ui, &runtime, host, sidebar, 4., 12.);
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, background).unwrap(), middle);
+        ui.set_now(millis(PREVIEW_MOTION_MS * 2));
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, background).unwrap(), green);
+        change_plan(&mut ui, &runtime, host, sidebar, 6., 24.);
+        ui.compute_layout(size);
+        ui.set_now(millis(PREVIEW_MOTION_MS * 3));
+        ui.compute_layout(size);
+        assert_eq!(ui.resolved_value(tile, background).unwrap(), coral);
+    }
 
     #[test]
     fn parameter_labels_controls_and_sockets_share_the_same_rows() {
@@ -479,6 +699,8 @@ mod tests {
                 graph.rebuild_computed();
             }
             refresh_parameter_preview(&mut ui, &runtime);
+            ui.compute_layout(viewport);
+            ui.set_now(ui.now() + millis(PREVIEW_MOTION_MS));
             ui.compute_layout(viewport);
             let case = ui.effective_bounds(footprint);
             let preview = ui.get(footprint).unwrap().parent().unwrap();

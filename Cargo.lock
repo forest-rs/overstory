@@ -2474,7 +2474,10 @@ dependencies = [
  "overstory_host_winit",
  "peniko",
  "ui-events",
+ "understory_box_tree",
  "understory_node_graph",
+ "understory_presentation",
+ "understory_property",
  "understory_view2d",
 ]
 

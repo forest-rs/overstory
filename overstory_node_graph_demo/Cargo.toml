@@ -13,7 +13,10 @@ kurbo.workspace = true
 overstory = { features = ["system-fonts"], workspace = true }
 overstory_host_winit.workspace = true
 peniko.workspace = true
+understory_box_tree.workspace = true
 understory_node_graph.workspace = true
+understory_presentation.workspace = true
+understory_property.workspace = true
 understory_view2d.workspace = true
 ui-events.workspace = true
 

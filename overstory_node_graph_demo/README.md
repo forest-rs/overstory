@@ -7,6 +7,12 @@ footprint, case-clearance result, and plate specification follow those values.
 The shaded area beneath the case-dimension label is the usable case interior.
 Modules that exceed it remain visible outside the footprint and turn coral.
 
+Changing the plan animates instrument positions, corner radii and green/coral
+fill over 280 ms. Rapid edits retarget from the currently presented state; clearance
+readings show the new result immediately. Initial display and preview resizing
+establish geometry directly. Motion uses Overstory's retained presentation
+timeline and does not add graph derivation work.
+
 Try six columns and 24 mm spacing: the footprint is 384 x 88 mm, exceeding the
 case width by 84 mm. Two columns at the same spacing make a 112 x 312 mm
 footprint, which is 72 mm too tall. The module dimensions stay fixed; fitting
