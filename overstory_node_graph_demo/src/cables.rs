@@ -25,6 +25,12 @@ impl CableTie {
         }
     }
 
+    pub(super) fn replace_member(&mut self, old: EdgeId, new: EdgeId) {
+        if let Some(member) = self.members.iter_mut().find(|edge| **edge == old) {
+            *member = new;
+        }
+    }
+
     pub(super) fn members(&self) -> &[EdgeId] {
         &self.members
     }

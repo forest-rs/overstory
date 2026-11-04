@@ -9,6 +9,7 @@ use overstory::Slider;
 #[derive(Debug)]
 pub(super) struct ParameterUi {
     tiles: [ElementId; 12],
+    case_outline: ElementId,
     labels: [ElementId; 3],
     pub(super) sliders: [ElementId; 3],
     size: Size,
@@ -30,7 +31,7 @@ fn label_at(
             .foreground(color)
             .layout(
                 Layout::new()
-                    .absolute_at(x, y)
+                    .absolute_at(x + 14., y + 14.)
                     .logical_size(width, font_size + 7.),
             ),
     )
@@ -48,16 +49,16 @@ pub(super) fn append_parameter_controls(
     label_at(
         ui,
         parent,
-        "SURFACE / 01",
+        "PACKING / FIELD 01",
         (0., 0.),
         size.width - 28.,
         11.,
-        ValueKind::Number.color(),
+        ValueKind::Count.color(),
     );
     label_at(
         ui,
         parent,
-        "Surface parameters",
+        "Instrument layout",
         (0., 26. * scale),
         size.width - 28.,
         16.,
@@ -67,7 +68,7 @@ pub(super) fn append_parameter_controls(
     let mut labels = Vec::new();
     let mut sliders = Vec::new();
     for (index, parameter) in Parameter::ALL.into_iter().enumerate() {
-        let y = (76. + index as f64 * 84.) * scale;
+        let y = (76. + index as f64 * 100.) * scale;
         labels.push(label_at(
             ui,
             parent,
@@ -87,7 +88,7 @@ pub(super) fn append_parameter_controls(
                 .value(values.value(parameter))
                 .layout(
                     Layout::new()
-                        .absolute_at(0., y + 22.)
+                        .absolute_at(14., y + 36.)
                         .logical_size(size.width - 36., 20.),
                 )
                 .on_value_changed(move |ui, event| {
@@ -99,7 +100,13 @@ pub(super) fn append_parameter_controls(
                         }
                         changed
                     };
+                    let accepted = callback_runtime.graph.borrow().parameters.value(parameter);
+                    overstory::set_slider_value(ui, event.element, accepted);
                     if changed {
+                        callback_runtime
+                            .view
+                            .borrow()
+                            .sync_readings(ui, &callback_runtime.graph.borrow());
                         refresh_parameter_preview(ui, &callback_runtime);
                         refresh_inspector(ui, sidebar, &callback_runtime.graph.borrow());
                     }
@@ -111,44 +118,46 @@ pub(super) fn append_parameter_controls(
     label_at(
         ui,
         parent,
-        "INLINE PREVIEW / 12 SURFACES",
-        (0., 340. * scale),
+        "CASE PLAN / 300 × 240 mm",
+        (0., 380. * scale),
         size.width - 28.,
         10.,
-        ValueKind::Number.color(),
+        ValueKind::Count.color(),
     );
     let preview = ui.append(
         parent,
         Panel::new().layout(
             Layout::new()
-                .absolute_at(0., 370. * scale)
-                .logical_size(size.width - 28., 110. * scale),
+                .absolute_at(14., 416. * scale + 14.)
+                .logical_size(size.width - 28., 210. * scale),
         ),
     );
     label_at(
         ui,
         parent,
-        "Values change paint, not topology.",
-        (0., 490. * scale),
+        "12 instruments · fixed 44 × 32 mm",
+        (0., 640. * scale),
         size.width - 28.,
         10.,
         ink,
     );
+    let case_outline = append_rect(ui, preview, Rect::ZERO, Color::TRANSPARENT, 0.);
     let tiles = (0..12)
-        .map(|_| append_rect(ui, preview, Rect::ZERO, ValueKind::Number.color(), 0.))
+        .map(|_| append_rect(ui, preview, Rect::ZERO, ValueKind::Count.color(), 0.))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
     runtime.parameter_ui.replace(Some(ParameterUi {
         tiles,
+        case_outline,
         labels: labels.try_into().unwrap(),
         sliders: sliders.try_into().unwrap(),
-        size: Size::new(size.width - 28., 110. * scale),
+        size: Size::new(size.width - 28., 210. * scale),
     }));
     refresh_parameter_preview(ui, &runtime);
 }
 
-fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
+pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
     let parts = runtime.parameter_ui.borrow();
     let Some(parts) = parts.as_ref() else {
         return;
@@ -166,12 +175,26 @@ fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
             ),
         );
     }
-    for (index, (rect, radius)) in graph
-        .parameters
-        .preview(Rect::from_origin_size(Point::ZERO, parts.size))
-        .into_iter()
-        .enumerate()
-    {
+    let Some(values) = graph.effective_parameters() else {
+        return;
+    };
+    let bounds = Rect::from_origin_size(Point::ZERO, parts.size);
+    let case = values.case_rect(bounds);
+    ui.set_layout(
+        parts.case_outline,
+        Layout::new()
+            .absolute_at(case.x0, case.y0)
+            .logical_size(case.width(), case.height()),
+    );
+    style_surface(
+        ui,
+        parts.case_outline,
+        Some(Color::TRANSPARENT),
+        Some(Color::from_rgba8(0xe2, 0xd2, 0xaf, 0xff)),
+        1.,
+        2.,
+    );
+    for (index, (rect, radius)) in values.preview(bounds).into_iter().enumerate() {
         let element = parts.tiles[index];
         ui.set_layout(
             element,
@@ -182,8 +205,10 @@ fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
         style_surface(
             ui,
             element,
-            Some(if index % 3 == 0 {
-                ValueKind::Number.color()
+            Some(if !case.inflate(0.001, 0.001).contains_rect(rect) {
+                Color::from_rgba8(0xe7, 0x99, 0x80, 0xff)
+            } else if index % 3 == 0 {
+                ValueKind::Count.color()
             } else {
                 Color::from_rgba8(0x39, 0x70, 0x68, 0xff)
             }),
@@ -191,6 +216,46 @@ fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime) {
             0.,
             radius,
         );
-        ui.set_tooltip(element, Tooltip::new(format!("Surface {}", index + 1)));
+        ui.set_tooltip(
+            element,
+            Tooltip::new(format!("Instrument module {}", index + 1)),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnecting_a_length_source_updates_the_retained_case_plan() {
+        let (mut ui, runtime, host, sidebar) = build_study_ui();
+        ui.compute_layout(Size::new(1480., 820.));
+        let tile = runtime.parameter_ui.borrow().as_ref().unwrap().tiles[1];
+        let before = ui.effective_bounds(tile);
+        {
+            let mut graph = runtime.graph.borrow_mut();
+            let from = graph
+                .doc
+                .iter_ports()
+                .find(|(_, p)| p.owner == graph.parameter_node && p.meta.label == "radius")
+                .unwrap()
+                .0;
+            let to = graph
+                .doc
+                .iter_ports()
+                .find(|(_, p)| p.owner != graph.parameter_node && p.meta.label == "spacing")
+                .unwrap()
+                .0;
+            assert!(graph.rebind(from, to));
+            graph.rebuild_computed();
+        }
+        refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
+        ui.compute_layout(Size::new(1480., 820.));
+        assert_eq!(
+            runtime.parameter_ui.borrow().as_ref().unwrap().tiles[1],
+            tile
+        );
+        assert_ne!(ui.effective_bounds(tile), before);
     }
 }

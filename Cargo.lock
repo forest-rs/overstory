@@ -2473,6 +2473,7 @@ dependencies = [
  "overstory",
  "overstory_host_winit",
  "peniko",
+ "ui-events",
  "understory_node_graph",
  "understory_view2d",
 ]

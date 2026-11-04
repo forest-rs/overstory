@@ -27,12 +27,13 @@ mod tests {
         let runtime = Rc::new(GraphDemoRuntime::new(build_demo_graph()));
         refresh_graph_view(&mut ui, host, sidebar, Rc::clone(&runtime));
         let sliders = runtime.parameter_ui.borrow().as_ref().unwrap().sliders;
+        assert!(ui.set_focus(Some(sliders[0])));
         let routes = runtime
             .view
             .borrow()
             .edges
             .iter()
-            .map(|(e, _, ids)| (*e, ids.clone()))
+            .map(|(e, _, id)| (*e, *id))
             .collect::<Vec<_>>();
         {
             let mut graph = runtime.graph.borrow_mut();
@@ -46,6 +47,7 @@ mod tests {
             sliders
         );
         assert!(sliders.iter().all(|id| ui.get(*id).is_some()));
+        assert_eq!(ui.focused(), Some(sliders[0]));
         for (edge, before) in routes {
             let view = runtime.view.borrow();
             let after = &view.edges.iter().find(|(e, _, _)| *e == edge).unwrap().2;
@@ -66,11 +68,13 @@ pub(super) struct Layers {
 
 #[derive(Debug, Default)]
 pub(super) struct GraphView {
+    pub(super) tie: Option<ElementId>,
     layers: Option<Layers>,
     pub(super) visible_world: Option<Rect>,
     nodes: Vec<(NodeId, ElementId, Size)>,
     ports: Vec<(PortId, ElementId)>,
-    edges: Vec<(EdgeId, Vec<Point>, Vec<ElementId>)>,
+    edges: Vec<(EdgeId, Vec<Point>, ElementId)>,
+    readings: Vec<(NodeId, ElementId)>,
 }
 
 impl GraphView {
@@ -119,10 +123,17 @@ impl GraphView {
     pub(super) fn node_element(&self, node: NodeId, size: Size) -> Option<ElementId> {
         self.nodes
             .iter()
-            .find(|(n, _, s)| *n == node && *s == size)
+            // Moving a transformed rectangle can introduce subpixel rounding
+            // in its measured size. It must not replace the pressed subtree.
+            .find(|(n, _, s)| {
+                *n == node
+                    && (s.width - size.width).abs() < 1e-6
+                    && (s.height - size.height).abs() < 1e-6
+            })
             .map(|(_, id, _)| *id)
     }
     pub(super) fn remove_node(&mut self, node: NodeId) -> Option<ElementId> {
+        self.readings.retain(|(n, _)| *n != node);
         let index = self.nodes.iter().position(|(n, _, _)| *n == node)?;
         Some(self.nodes.swap_remove(index).1)
     }
@@ -139,79 +150,79 @@ impl GraphView {
         self.ports.push((port, id));
     }
 
+    pub(super) fn sync_readings(&self, ui: &mut Ui, graph: &DemoGraph) {
+        for (node, label) in &self.readings {
+            ui.set_local(*label, ui.properties().text, graph.node_summary(*node));
+        }
+    }
+    pub(super) fn insert_reading(&mut self, node: NodeId, label: ElementId) {
+        self.readings.retain(|(n, _)| *n != node);
+        self.readings.push((node, label));
+    }
     pub(super) fn sync_edges(&mut self, ui: &mut Ui, parent: ElementId, graph: &DemoGraph) {
-        self.edges.retain(|(edge, _, elements)| {
+        self.edges.retain(|(edge, _, element)| {
             if graph.computed.visible_edges().contains(edge) {
                 return true;
             }
-            for element in elements {
-                ui.remove(*element);
-            }
+            ui.remove(*element);
             false
         });
-        // The current computed API exposes snapshots. Retain identities while
-        // comparing them; a future derived-change stream can remove this scan.
         for edge in graph.computed.visible_edges() {
-            let route = graph
+            let points: Vec<_> = graph
                 .computed
                 .edge_route(*edge)
-                .expect("visible edge is routed");
-            let points: Vec<_> = route
+                .unwrap()
                 .points
                 .iter()
                 .map(|p| graph.session.viewport().world_to_view_point(*p))
                 .collect();
-            let index = self
-                .edges
-                .iter()
-                .position(|(e, _, _)| e == edge)
-                .unwrap_or_else(|| {
-                    self.edges.push((*edge, Vec::new(), Vec::new()));
-                    self.edges.len() - 1
-                });
-            let (_, old, elements) = &mut self.edges[index];
-            if *old == points {
-                continue;
-            }
-            while elements.len() > points.len().saturating_sub(1) {
-                ui.remove(elements.pop().unwrap());
-            }
-            for (index, segment) in points.windows(2).enumerate() {
-                let (start, end) = (segment[0], segment[1]);
-                let half = EDGE_THICKNESS * 0.5;
-                let rect = if (start.x - end.x).abs() >= (start.y - end.y).abs() {
-                    Rect::new(
-                        start.x.min(end.x),
-                        start.y - half,
-                        start.x.max(end.x),
-                        start.y + half,
-                    )
-                } else {
-                    Rect::new(
-                        start.x - half,
-                        start.y.min(end.y),
-                        start.x + half,
-                        start.y.max(end.y),
-                    )
-                };
-                if let Some(id) = elements.get(index) {
-                    ui.set_layout(
-                        *id,
-                        Layout::new()
-                            .absolute_at(rect.x0, rect.y0)
-                            .logical_size(rect.width().max(1.), rect.height().max(1.)),
-                    );
-                } else {
-                    elements.push(append_rect(
-                        ui,
-                        parent,
-                        rect,
-                        Color::from_rgba8(0x62, 0xd8, 0xff, 0xff),
-                        half,
-                    ));
+            let data = graph.doc.edge(*edge).unwrap();
+            let color = graph.doc.port(data.output).unwrap().meta.kind.color();
+            let primitive = wire_primitive(&points, color);
+            if let Some((_, previous, element)) =
+                self.edges.iter_mut().find(|(id, _, _)| id == edge)
+            {
+                if *previous != points {
+                    overstory::set_vector_path(ui, *element, primitive);
+                    *previous = points;
                 }
+            } else {
+                let element = ui.append(
+                    parent,
+                    overstory::VectorPath::from_primitive(primitive).layout(
+                        Layout::new()
+                            .absolute_at(0., 0.)
+                            .logical_size(GRAPH_VIEW.width(), GRAPH_VIEW.height()),
+                    ),
+                );
+                self.edges.push((*edge, points, element));
             }
-            *old = points;
         }
     }
+}
+
+pub(super) fn wire_primitive(points: &[Point], color: Color) -> overstory::PathPrimitive {
+    let mut path = kurbo::BezPath::new();
+    if let Some(first) = points.first() {
+        path.move_to(*first);
+        for corner in points.windows(3) {
+            let incoming = corner[0] - corner[1];
+            let outgoing = corner[2] - corner[1];
+            let radius = 8_f64
+                .min(incoming.hypot() * 0.5)
+                .min(outgoing.hypot() * 0.5);
+            if radius <= 0.001 {
+                continue;
+            }
+            path.line_to(corner[1] + incoming * (radius / incoming.hypot()));
+            path.quad_to(
+                corner[1],
+                corner[1] + outgoing * (radius / outgoing.hypot()),
+            );
+        }
+        if let Some(last) = points.last() {
+            path.line_to(*last);
+        }
+    }
+    overstory::PathPrimitive::new(path).stroke(overstory::PathStroke::new(color, 2.25))
 }
