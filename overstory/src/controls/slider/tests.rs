@@ -12,6 +12,55 @@ use kurbo::{Point, Size};
 use ui_events::keyboard::{Code, Key, KeyboardEvent, NamedKey};
 
 #[test]
+fn custom_track_and_thumb_geometry_controls_both_value_placement_and_pointer_mapping() {
+    #[derive(Debug)]
+    struct Compact;
+    impl crate::Template for Compact {
+        fn instantiate(&self, cx: &mut crate::TemplateContext<'_>) {
+            let track = cx.surface_slot(SLOT_SLIDER_TRACK);
+            cx.set_layout(
+                track,
+                Layout::new().absolute_at(12., 13.).logical_size(300., 4.),
+            );
+            let thumb = cx.surface_slot(SLOT_SLIDER_THUMB);
+            cx.set_layout(
+                thumb,
+                Layout::new().absolute_at(0., 8.).logical_size(14., 14.),
+            );
+        }
+    }
+    use crate::{ControlTemplateSpecExt, ElementSpecExt};
+    let mut ui = Ui::new();
+    let root = ui.root();
+    let slider = ui.append(
+        root,
+        Slider::new()
+            .range(0., 100.)
+            .value(0.)
+            .template(crate::ControlTemplate::new(Compact))
+            .layout(Layout::new().absolute_at(20., 20.).logical_size(340., 32.)),
+    );
+    ui.compute_layout(Size::new(400., 100.));
+    let track = ui.effective_bounds(ui.slot(slider, SLOT_SLIDER_TRACK).unwrap());
+    let thumb = ui.slot(slider, SLOT_SLIDER_THUMB).unwrap();
+    let start = ui.effective_bounds(thumb).center();
+    assert_eq!(start, Point::new(track.x0 + 7., track.center().y));
+    let end = Point::new(track.x1 - 7., track.center().y);
+    ui.dispatch_pointer_event(&pointer_down(start, 1));
+    ui.dispatch_pointer_event(&pointer_move(end, 2, true));
+    ui.dispatch_pointer_event(&pointer_up(end, 3));
+    ui.compute_layout(Size::new(400., 100.));
+    assert_eq!(
+        ui.resolve_value_for(ui.get(slider).unwrap(), ui.properties().value),
+        100.
+    );
+    assert_eq!(ui.effective_bounds(thumb).center(), end);
+    set_slider_value(&mut ui, slider, 0.);
+    ui.compute_layout(Size::new(400., 100.));
+    assert_eq!(ui.effective_bounds(thumb).center(), start);
+}
+
+#[test]
 fn slider_range_and_step_builders_configure_properties() {
     let mut ui = Ui::new();
     let root = ui.root();
