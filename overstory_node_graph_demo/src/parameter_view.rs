@@ -9,6 +9,7 @@ use overstory::{ControlTemplateSpecExt, Slider};
 #[derive(Debug)]
 pub(super) struct ParameterUi {
     tiles: [ElementId; 12],
+    case_footprint: ElementId,
     labels: [ElementId; 3],
     pub(super) names: [ElementId; 3],
     status: ElementId,
@@ -19,6 +20,12 @@ pub(super) struct ParameterUi {
 impl ParameterUi {
     pub(super) fn owns_control(&self, source: ElementId) -> bool {
         self.sliders.contains(&source) || self.names.contains(&source)
+    }
+
+    fn plot_bounds(&self) -> Rect {
+        // Keep the case's label above the drawing, including when modules
+        // extend below or to the right of the case itself.
+        Rect::new(12., 32., self.size.width - 12., self.size.height - 12.)
     }
 }
 
@@ -194,18 +201,8 @@ pub(super) fn append_parameter_controls(
         });
         sliders.push(slider);
     }
-    let caption = Parameter::socket_y(2) * scale + 32.;
-    label_at(
-        ui,
-        parent,
-        "CASE INTERIOR / 300 × 240 mm",
-        (margin, caption),
-        width,
-        10.,
-        muted,
-    );
-    let preview_top = caption + 24.;
-    let preview_size = Size::new(width, (size.height - preview_top - 54.).max(40.));
+    let preview_top = Parameter::socket_y(2) * scale + 32.;
+    let preview_size = Size::new(width, (size.height - preview_top - 54.).max(64.));
     let preview = ui.append(
         parent,
         Panel::new().layout(
@@ -221,6 +218,24 @@ pub(super) fn append_parameter_controls(
         Some(Color::from_rgba8(0x39, 0x48, 0x51, 0xff)),
         1.,
         6.,
+    );
+    // Modules are siblings of the footprint, so the case never clips an
+    // instrument that extends beyond its usable interior.
+    let case_footprint = append_rect(
+        ui,
+        preview,
+        Rect::ZERO,
+        Color::from_rgba8(0x2a, 0x39, 0x40, 0xff),
+        0.,
+    );
+    label_at(
+        ui,
+        preview,
+        "CASE INTERIOR · 300 × 240 mm",
+        (12., 10.),
+        width - 24.,
+        10.,
+        Color::from_rgba8(0xbc, 0xcb, 0xd3, 0xff),
     );
     let tiles = (0..12)
         .map(|_| append_rect(ui, preview, Rect::ZERO, Parameter::Columns.color(), 0.))
@@ -247,6 +262,7 @@ pub(super) fn append_parameter_controls(
     );
     runtime.parameter_ui.replace(Some(ParameterUi {
         tiles,
+        case_footprint,
         labels: labels.try_into().unwrap(),
         names: names.try_into().unwrap(),
         sliders: sliders.try_into().unwrap(),
@@ -276,8 +292,14 @@ pub(super) fn refresh_parameter_preview(ui: &mut Ui, runtime: &GraphDemoRuntime)
     let Some(values) = graph.effective_parameters() else {
         return;
     };
-    let bounds = Rect::from_origin_size(Point::ZERO, parts.size).inflate(-12., -12.);
+    let bounds = parts.plot_bounds();
     let case = values.case_rect(bounds);
+    ui.set_layout(
+        parts.case_footprint,
+        Layout::new()
+            .absolute_at(case.x0, case.y0)
+            .logical_size(case.width(), case.height()),
+    );
     let clearance = values.clearance();
     let fits = clearance.width >= 0. && clearance.height >= 0.;
     let status = if fits {
@@ -368,15 +390,61 @@ mod tests {
                 track.center().y
             );
         }
-        let preview = ui.get(parts.tiles[0]).unwrap().parent().unwrap();
-        let bounds = ui.effective_bounds(preview).inflate(-12., -12.);
-        let case = graph
-            .effective_parameters()
-            .unwrap()
-            .case_rect(bounds)
-            .inflate(1., 1.);
+        let case = ui.effective_bounds(parts.case_footprint).inflate(1., 1.);
         for tile in parts.tiles {
             assert!(case.contains_rect(ui.effective_bounds(tile)));
+        }
+    }
+
+    #[test]
+    fn case_footprint_tracks_the_plan_without_hiding_overflow_on_either_axis() {
+        let (mut ui, runtime, _, _) = build_study_ui();
+        let viewport = Size::new(1480., 820.);
+        ui.compute_layout(viewport);
+        let (footprint, tiles) = {
+            let parts = runtime.parameter_ui.borrow();
+            let parts = parts.as_ref().unwrap();
+            (parts.case_footprint, parts.tiles)
+        };
+        for (columns, spacing, expected_overflow) in [(6., 24., 4), (2., 24., 4), (4., 12., 0)] {
+            {
+                let mut graph = runtime.graph.borrow_mut();
+                graph.parameters.set(Parameter::Columns, columns);
+                graph.parameters.set(Parameter::Spacing, spacing);
+                graph.rebuild_computed();
+            }
+            refresh_parameter_preview(&mut ui, &runtime);
+            ui.compute_layout(viewport);
+            let case = ui.effective_bounds(footprint);
+            let preview = ui.get(footprint).unwrap().parent().unwrap();
+            let visible = ui.effective_bounds(preview).inflate(1., 1.);
+            let mut overflowing = 0;
+            for tile in tiles {
+                let rect = ui.effective_bounds(tile);
+                let outside = !case.inflate(1., 1.).contains_rect(rect);
+                overflowing += usize::from(outside);
+                assert!(visible.contains_rect(rect));
+                assert_eq!(ui.get(tile).unwrap().parent(), Some(preview));
+                let expected = if outside {
+                    Color::from_rgba8(0xe7, 0x99, 0x80, 0xff)
+                } else {
+                    Color::from_rgba8(0x58, 0xb3, 0x97, 0xff)
+                };
+                assert_eq!(
+                    ui.resolved_value(tile, ui.properties().surface.background),
+                    Some(Some(expected.into()))
+                );
+            }
+            assert_eq!(overflowing, expected_overflow);
+            assert_eq!(
+                runtime
+                    .parameter_ui
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .case_footprint,
+                footprint
+            );
         }
     }
 
