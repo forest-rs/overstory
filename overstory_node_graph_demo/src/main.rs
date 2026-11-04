@@ -256,7 +256,7 @@ fn build_study_ui() -> (Ui, Rc<GraphDemoRuntime>, ElementId, ElementId) {
         surface,
         Layout::new().absolute_at(0., 0.).percent_size(1., 1.),
     );
-    let graph_host = ui.append(surface, Viewport::new().cursor_icon(CursorIcon::Grab));
+    let graph_host = ui.append(surface, Viewport::new().drag_cursor_icon(CursorIcon::Move));
     ui.set_layout(
         graph_host,
         Layout::new()

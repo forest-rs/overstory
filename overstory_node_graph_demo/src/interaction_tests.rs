@@ -76,10 +76,13 @@ fn background_pan_keeps_capture_while_decorative_geometry_is_updated() {
     ui.compute_layout(Size::new(1480., 820.));
     let point = ui.effective_bounds(host).origin() + Vec2::new(20., 20.);
     let before = runtime.graph.borrow().session.visible_world_rect();
+    assert_eq!(ui.cursor_icon(), None);
     ui.dispatch_pointer_event(&down(point));
+    assert_eq!(ui.cursor_icon(), None);
     assert_eq!(ui.pointer_capture(), Some(host));
     ui.dispatch_pointer_event(&moved(point + Vec2::new(40., 20.)));
     let first = runtime.graph.borrow().session.visible_world_rect();
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::Move));
     assert_ne!(first, before);
     assert_eq!(ui.pointer_capture(), Some(host));
     ui.dispatch_pointer_event(&moved(point + Vec2::new(80., 40.)));
@@ -87,6 +90,7 @@ fn background_pan_keeps_capture_while_decorative_geometry_is_updated() {
     assert_eq!(ui.pointer_capture(), Some(host));
     ui.dispatch_pointer_event(&up(point + Vec2::new(80., 40.)));
     assert_eq!(ui.pointer_capture(), None);
+    assert_eq!(ui.cursor_icon(), None);
 }
 
 #[test]
@@ -98,8 +102,10 @@ fn slider_drag_changes_the_case_plan_without_panning_or_replacing_controls() {
     let camera = runtime.graph.borrow().session.visible_world_rect();
     let point = Point::new(rect.x0 + rect.width() * 0.5, rect.center().y);
     ui.dispatch_pointer_event(&down(point));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::EwResize));
     let end = Point::new(rect.x0 + rect.width() * 0.89, point.y);
     ui.dispatch_pointer_event(&moved(end));
+    assert_eq!(ui.cursor_icon(), Some(CursorIcon::EwResize));
     ui.dispatch_pointer_event(&up(end));
     let accepted = runtime.graph.borrow().parameters.value(Parameter::Columns);
     assert_eq!(accepted, 6.);
