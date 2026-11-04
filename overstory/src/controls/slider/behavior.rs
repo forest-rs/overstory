@@ -23,7 +23,7 @@ use super::events::{
 use super::ids::{
     DEFAULT_LARGE_CHANGE_FRACTION, DEFAULT_SMALL_CHANGE_FRACTION, SLIDER_HEIGHT, SLIDER_WIDTH,
     SLOT_SLIDER_AXIS, SLOT_SLIDER_THUMB, SLOT_SLIDER_TICK, SLOT_SLIDER_TICK_LABEL,
-    SLOT_SLIDER_TRACK, THUMB_DIAMETER, TYPE_SLIDER,
+    SLOT_SLIDER_TRACK, THUMB_DIAMETER, TRACK_HEIGHT, TYPE_SLIDER,
 };
 use super::template::format_tick_value;
 
@@ -396,7 +396,7 @@ pub(super) fn set_value(
     ui.set_local(slider, value_prop, value);
     let settled = slider_value(ui, slider);
     let left = thumb_left_for_slider(ui, slider, settled, min, max);
-    let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
+    let (_, _, top) = slider_track_geometry(ui, slider, thumb);
     let placement = LayoutPlacement::absolute_at(left, top);
     match motion {
         ThumbMotion::Animate => ui.set_layout_placement(thumb, placement),
@@ -429,8 +429,12 @@ fn set_value_from_center_position(
     if bounds.width() <= 0.0 {
         return None;
     }
-    let track_width = SLIDER_WIDTH - THUMB_DIAMETER;
-    let usable_origin = bounds.origin().x + THUMB_DIAMETER / 2.0;
+    let (track, thumb_size, _) = slider_track_geometry(ui, slider, thumb);
+    let track_width = (track.width() - thumb_size.width).max(0.);
+    if track_width <= f64::EPSILON {
+        return None;
+    }
+    let usable_origin = bounds.origin().x + track.x0 + thumb_size.width / 2.;
     let t = mirror_slider_fraction(
         ui,
         slider,
@@ -457,7 +461,7 @@ fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
         )
     };
     let left = thumb_left_for_slider(ui, slider, value, min, max);
-    let top = (SLIDER_HEIGHT - THUMB_DIAMETER) / 2.0;
+    let (_, _, top) = slider_track_geometry(ui, slider, thumb);
     let placement = LayoutPlacement::absolute_at(left, top);
     if ui.effective_layout_placement(thumb) == placement {
         return false;
@@ -468,7 +472,45 @@ fn sync_slider_thumb_layout(ui: &mut Ui, slider: ElementId) -> bool {
 
 fn thumb_left_for_slider(ui: &Ui, slider: ElementId, value: f64, min: f64, max: f64) -> f64 {
     let fraction = ScalarRange::new(min, max).fraction(value);
-    mirror_slider_fraction(ui, slider, fraction) * (SLIDER_WIDTH - THUMB_DIAMETER)
+    let thumb = ui
+        .slot(slider, SLOT_SLIDER_THUMB)
+        .expect("slider has a thumb");
+    let (track, thumb_size, _) = slider_track_geometry(ui, slider, thumb);
+    track.x0
+        + mirror_slider_fraction(ui, slider, fraction) * (track.width() - thumb_size.width).max(0.)
+}
+
+// Track and thumb dimensions belong to the selected template. Use defaults
+// only before their first arrangement, rather than imposing default geometry
+// on custom templates and their input mapping.
+fn slider_track_geometry(
+    ui: &Ui,
+    slider: ElementId,
+    thumb: ElementId,
+) -> (kurbo::Rect, kurbo::Size, f64) {
+    let owner = ui.effective_bounds(slider);
+    let track = ui
+        .slot(slider, SLOT_SLIDER_TRACK)
+        .map(|id| ui.effective_bounds(id))
+        .filter(|rect| rect.width() > 0. && rect.height() > 0.)
+        .map(|rect| rect - owner.origin().to_vec2())
+        .unwrap_or(kurbo::Rect::new(
+            0.,
+            (SLIDER_HEIGHT - TRACK_HEIGHT) * 0.5,
+            SLIDER_WIDTH,
+            (SLIDER_HEIGHT + TRACK_HEIGHT) * 0.5,
+        ));
+    let thumb_size = ui.effective_bounds(thumb).size();
+    let thumb_size = if thumb_size.width > 0. && thumb_size.height > 0. {
+        thumb_size
+    } else {
+        kurbo::Size::new(THUMB_DIAMETER, THUMB_DIAMETER)
+    };
+    (
+        track,
+        thumb_size,
+        track.center().y - thumb_size.height * 0.5,
+    )
 }
 
 fn mirror_slider_fraction(ui: &Ui, slider: ElementId, fraction: f64) -> f64 {
