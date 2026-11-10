@@ -14,6 +14,7 @@ members = [
     "overstory_demo",
     "overstory_demo_uikit",
     "overstory_devtools",
+    "overstory_docking",
     "overstory_host",
     "overstory_host_appkit",
     "overstory_host_uikit",
@@ -40,6 +41,7 @@ repository = "https://github.com/forest-rs/overstory"
 overstory = { default-features = false, path = "overstory", version = "0.0.1" }
 overstory_app = { default-features = false, path = "overstory_app", version = "0.0.1" }
 overstory_demo = { default-features = false, path = "overstory_demo", version = "0.0.1" }
+overstory_docking = { default-features = false, path = "overstory_docking", version = "0.0.1" }
 overstory_devtools = { path = "overstory_devtools", version = "0.0.1" }
 overstory_host = { path = "overstory_host", version = "0.0.1" }
 overstory_host_appkit = { path = "overstory_host_appkit", version = "0.0.1" }
@@ -94,6 +96,7 @@ understory_property_binding = { default-features = false, git = "https://github.
 understory_responder = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
 understory_selection = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
 understory_style = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
+understory_tiling = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
 understory_timeline_model = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
 understory_timing = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }
 understory_transition = { default-features = false, git = "https://github.com/forest-rs/understory.git", rev = "52d9c442a2119198b4323e1dc09d6a9e2aed0c4c" }

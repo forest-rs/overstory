@@ -2315,6 +2315,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "overstory_docking"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "understory_tiling",
+]
+
+[[package]]
 name = "overstory_host"
 version = "0.0.1"
 dependencies = [
@@ -3854,6 +3862,14 @@ dependencies = [
  "invalidation",
  "understory_property",
  "understory_property_expression",
+]
+
+[[package]]
+name = "understory_tiling"
+version = "0.1.0"
+source = "git+https://github.com/forest-rs/understory.git?rev=52d9c442a2119198b4323e1dc09d6a9e2aed0c4c#52d9c442a2119198b4323e1dc09d6a9e2aed0c4c"
+dependencies = [
+ "kurbo",
 ]
 
 [[package]]

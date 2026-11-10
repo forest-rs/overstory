@@ -1,0 +1,20 @@
+[package]
+name = "overstory_docking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Overstory docking state, interaction, and retained presentation."
+publish = false
+
+[features]
+default = []
+std = ["overstory/std", "understory_tiling/std"]
+
+[dependencies]
+overstory.workspace = true
+understory_tiling = { features = ["libm"], workspace = true }
+
+[lints]
+workspace = true
