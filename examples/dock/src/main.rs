@@ -17,13 +17,13 @@ use overstory::{
 };
 use overstory_app::WindowOptions;
 #[cfg(test)]
-use overstory_docking::tiling::{Placement, TileId};
+use overstory_docking::tiling::{InteractionState, Placement, TileId};
 use overstory_docking::{
-    DockGeometryError, DockInteractionKind, DockOutcome, DockPaint, DockState, DockSurface,
-    DockSurfaceStyle,
+    DockDragPreview, DockGeometryError, DockInteractionKind, DockOutcome, DockPaint, DockState,
+    DockSurface, DockSurfaceStyle,
     tiling::{
-        Axis, DockTarget, InteractionState, LayoutInput, PaneBookmark, PaneId, Point, Rect, Size,
-        TileError, TileOp, TileSpec, TileTree,
+        Axis, DockTarget, LayoutInput, PaneBookmark, PaneId, Point, Rect, Size, TileError, TileOp,
+        TileSpec, TileTree,
     },
 };
 use peniko::{Brush, Color};
@@ -46,6 +46,7 @@ struct DockModel {
     next_pane: u32,
     status: String,
     closed: Option<PaneBookmark>,
+    drag_preview: DockDragPreview,
 }
 
 impl DockModel {
@@ -55,11 +56,14 @@ impl DockModel {
             next_pane: 6,
             status: String::from("Ready. Try dragging Preview onto the center of Search."),
             closed: None,
+            drag_preview: DockDragPreview::Outline,
         }
     }
 
     fn reset(&mut self) {
+        let drag_preview = self.drag_preview;
         *self = Self::new();
+        self.drag_preview = drag_preview;
         self.status = String::from("Reset sample layout");
     }
 
@@ -205,6 +209,7 @@ struct DockView {
     zoom: ElementId,
     reset: ElementId,
     policy: ElementId,
+    preview: ElementId,
 }
 
 fn build_ui() -> Ui {
@@ -238,12 +243,12 @@ fn build_shell(ui: &mut Ui, root: ElementId) -> DockView {
                 .foreground(brush(color(0xf4, 0xf7, 0xfb, 0xff))));
             shell.add(Text::new("Drag to a pane center to make tabs. Drag to an edge to split. Drag along a tab strip to insert.")
                 .font_size(14.0).foreground(brush(color(0x9d, 0xb2, 0xca, 0xff))));
-            let [split_h, split_v, collapse, close, reopen, zoom, policy, reset] = shell.with_child(
+            let [split_h, split_v, collapse, close, reopen, zoom, policy, preview, reset] = shell.with_child(
                 Panel::row(8.0).layout(Layout::row(8.0).fill_width()),
                 |toolbar| {
-                    ["Split across", "Split below", "Collapse", "Close", "Reopen", "Zoom / restore", "Toggle lock", "Reset"].map(|label| {
+                    ["Split across", "Split below", "Collapse", "Close", "Reopen", "Zoom / restore", "Toggle lock", "Preview: outline", "Reset"].map(|label| {
                         toolbar.add(Button::new(label).font_size(13.0)
-                            .layout(Layout::new().logical_size(120.0, 34.0)))
+                            .layout(Layout::new().logical_size(110.0, 34.0)))
                     })
                 },
             );
@@ -256,7 +261,7 @@ fn build_shell(ui: &mut Ui, root: ElementId) -> DockView {
             let status = shell.add(Text::new("").font_size(14.0)
                 .foreground(brush(color(0x62, 0xe6, 0xd3, 0xff)))
                 .layout(Layout::new().flex_shrink(0.0)));
-            DockView { surface, status, split_h, split_v, close, reopen, collapse, zoom, reset, policy }
+            DockView { surface, status, split_h, split_v, close, reopen, collapse, zoom, reset, policy, preview }
         },
     )
 }
@@ -346,6 +351,18 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
         event.mark_handled();
     });
 
+    let preview_state = Rc::clone(&state);
+    let preview_view = view.clone();
+    ui.events(view.preview).click(move |ui, event| {
+        let mut model = preview_state.borrow_mut();
+        model.drag_preview = match model.drag_preview {
+            DockDragPreview::Outline => DockDragPreview::FullLayout,
+            DockDragPreview::FullLayout => DockDragPreview::Outline,
+        };
+        render(ui, &preview_view, &model);
+        event.mark_handled();
+    });
+
     let reset_state = Rc::clone(&state);
     let reset_view = view.clone();
     ui.events(view.reset).click(move |ui, event| {
@@ -432,14 +449,22 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
 }
 
 fn render(ui: &mut Ui, view: &DockView, model: &DockModel) {
-    if matches!(model.dock.interaction(), InteractionState::Drag(_)) {
-        // Draw prospective placement over the current panes. The actual
-        // contents and hit geometry stay steady until the user releases.
-        view.surface.sync_overlay(ui, model.dock.overlay());
-    } else {
-        view.surface
-            .sync(ui, &model.dock, build_pane_content, pane_title);
-    }
+    view.surface.sync_with_drag_preview(
+        ui,
+        &model.dock,
+        model.drag_preview,
+        build_pane_content,
+        pane_title,
+    );
+    let preview_label = match model.drag_preview {
+        DockDragPreview::Outline => "Preview: outline",
+        DockDragPreview::FullLayout => "Preview: layout",
+    };
+    ui.set_local(
+        view.preview,
+        ui.properties().content,
+        String::from(preview_label),
+    );
     set_text(ui, view.status, model.status.clone());
 }
 

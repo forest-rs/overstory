@@ -13,7 +13,10 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use overstory::{ChildUi, ElementId, Layout, Panel, SurfaceSpecExt, Ui};
-use understory_tiling::{PaneId, Point, Rect, TabGroupGeometry};
+use understory_tiling::{
+    DropTargetId, InteractionState, LayoutFrame, OverlayFrame, PaneId, Point, Rect,
+    TabGroupGeometry,
+};
 
 use crate::DockState;
 
@@ -27,6 +30,17 @@ pub use geometry::DockGeometryError;
 use realization::{DockLayer, DockSurfaceInner, absolute_layout, hide};
 use style::apply_paint;
 pub use style::{DockPaint, DockSurfaceStyle};
+
+/// How a surface presents a proposed docking layout during a drag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DockDragPreview {
+    /// Keep the committed panes in place and show the placement outline or insertion marker.
+    Outline,
+    /// Arrange the panes and tabs in their proposed positions.
+    ///
+    /// The proposed tab order replaces the marker drawn on the committed strip.
+    FullLayout,
+}
 
 /// Reusable retained presentation of one [`DockState`].
 ///
@@ -184,7 +198,7 @@ impl DockSurface {
     ///
     /// Use this while dragging when the host wants to draw a proposed
     /// placement over the committed layout. Call [`Self::sync`] when the drag ends.
-    pub fn sync_overlay(&self, ui: &mut Ui, overlay: &understory_tiling::OverlayFrame) {
+    pub fn sync_overlay(&self, ui: &mut Ui, overlay: &OverlayFrame) {
         self.inner.borrow_mut().sync_overlay(ui, overlay);
     }
 
@@ -193,13 +207,78 @@ impl DockSurface {
     /// `build_pane` runs only when a pane id first appears (or reappears after
     /// removal), with a scoped builder rooted inside that pane's retained
     /// wrapper. `pane_title` supplies the current title for tab chrome.
-    pub fn sync<B, T>(&self, ui: &mut Ui, state: &DockState, mut build_pane: B, mut pane_title: T)
+    pub fn sync<B, T>(&self, ui: &mut Ui, state: &DockState, build_pane: B, pane_title: T)
     where
         B: FnMut(PaneId, &mut ChildUi<'_>),
         T: FnMut(PaneId) -> String,
     {
+        self.sync_frame(
+            ui,
+            state,
+            state.display_frame(),
+            state.overlay(),
+            build_pane,
+            pane_title,
+        );
+    }
+
+    /// Reconciles the surface using the host's drag preview preference.
+    ///
+    /// This affects presentation only. Both modes use the same committed hit
+    /// geometry and proposal. Split resize continues to show its live layout.
+    /// Pane realization follows the same rules as [`Self::sync`].
+    pub fn sync_with_drag_preview<B, T>(
+        &self,
+        ui: &mut Ui,
+        state: &DockState,
+        mode: DockDragPreview,
+        build_pane: B,
+        pane_title: T,
+    ) where
+        B: FnMut(PaneId, &mut ChildUi<'_>),
+        T: FnMut(PaneId) -> String,
+    {
+        if !matches!(state.interaction(), InteractionState::Drag(_)) {
+            self.sync(ui, state, build_pane, pane_title);
+            return;
+        }
+
+        let overlay = state.overlay();
+        let preview = match mode {
+            DockDragPreview::Outline => None,
+            DockDragPreview::FullLayout => state.preview_frame(),
+        };
+        let tab_preview_overlay;
+        let overlay = if preview.is_some()
+            && matches!(overlay.active_target, Some(DropTargetId::TabBar(_)))
+        {
+            // This marker refers to the committed strip's gap. In a full
+            // preview the moved tab itself shows the resulting insertion.
+            tab_preview_overlay = OverlayFrame {
+                dragged: overlay.dragged,
+                ..OverlayFrame::default()
+            };
+            &tab_preview_overlay
+        } else {
+            overlay
+        };
+        let frame = preview.unwrap_or_else(|| state.frame());
+        self.sync_frame(ui, state, frame, overlay, build_pane, pane_title);
+    }
+
+    fn sync_frame<B, T>(
+        &self,
+        ui: &mut Ui,
+        state: &DockState,
+        frame: &LayoutFrame,
+        overlay: &OverlayFrame,
+        mut build_pane: B,
+        mut pane_title: T,
+    ) where
+        B: FnMut(PaneId, &mut ChildUi<'_>),
+        T: FnMut(PaneId) -> String,
+    {
         let mut inner = self.inner.borrow_mut();
-        let frame = state.display_frame();
         let panes = state.pane_ids();
         let _suppression = self.tab_events.suppress();
         inner.sync_panes(ui, &panes, frame.panes(), state.selected(), &mut build_pane);
@@ -212,8 +291,10 @@ impl DockSurface {
         );
         inner.sync_handles(ui, frame.split_handles());
         inner.sync_collapsed_tiles(ui, frame.collapsed_tiles());
-        inner.sync_overlay(ui, state.overlay());
-        inner.synchronized_frame_epoch = Some(state.frame_epoch());
+        inner.sync_overlay(ui, overlay);
+        // Preview geometry is never authoritative for the next gesture.
+        inner.synchronized_frame_epoch =
+            core::ptr::eq(frame, state.frame()).then_some(state.frame_epoch());
     }
 }
 

@@ -18,7 +18,7 @@ mod view;
 
 pub use outcome::{DockInteractionKind, DockOutcome};
 pub use state::DockState;
-pub use view::{DockGeometryError, DockPaint, DockSurface, DockSurfaceStyle};
+pub use view::{DockDragPreview, DockGeometryError, DockPaint, DockSurface, DockSurfaceStyle};
 
 /// Re-export of the underlying headless tiling crate.
 ///

@@ -11,10 +11,11 @@ use core::cell::RefCell;
 
 use overstory::{Layout, Panel, TabKey, TextResources, Ui, Visibility, select_tab_key};
 use understory_tiling::{
-    Axis, LayoutInput, PaneId, Placement, Rect, Size, TileOp, TileSpec, TileTree,
+    Axis, DropTargetId, LayoutInput, PaneId, Placement, Point, Rect, Size, TileOp, TileSpec,
+    TileTree,
 };
 
-use super::DockSurface;
+use super::{DockDragPreview, DockSurface};
 use crate::DockState;
 
 fn state() -> DockState {
@@ -127,6 +128,70 @@ fn pane_realization_is_keyed_across_tabs_zoom_splits_and_removal() {
         ui.get(pane_two).is_none(),
         "removed pane subtree is cleaned up"
     );
+}
+
+#[test]
+fn preview_preference_can_change_during_a_tab_insertion() {
+    let mut ui = Ui::with_text_resources(&TextResources::empty());
+    let surface = mount(&mut ui);
+    let mut state = state();
+    let build_pane = |_, _: &mut overstory::ChildUi<'_>| {};
+    let title = |_| String::from("Pane");
+    surface.sync(&mut ui, &state, build_pane, title);
+    ui.compute_layout(Size::new(600.0, 400.0));
+
+    let pane_one = surface.pane_element(PaneId(1)).unwrap();
+    let pane_three = surface.pane_element(PaneId(3)).unwrap();
+    let original_bounds = ui.effective_bounds(pane_three);
+    let revision = state.tree().revision();
+    let start = state
+        .frame()
+        .panes()
+        .iter()
+        .find(|pane| pane.pane == PaneId(3))
+        .unwrap()
+        .rect
+        .center();
+    let end = Point::new(20.0, 14.0);
+    state.begin_pointer(start);
+    state.update_pointer(end);
+    assert!(matches!(
+        state.overlay().active_target,
+        Some(DropTargetId::TabBar(_))
+    ));
+    let overlay_layer = surface.inner.borrow().overlay_layer;
+
+    surface.sync_with_drag_preview(&mut ui, &state, DockDragPreview::Outline, build_pane, title);
+    ui.compute_layout(Size::new(600.0, 400.0));
+    assert_eq!(ui.effective_bounds(pane_three), original_bounds);
+    assert_eq!(ui.visibility(pane_one), Some(Visibility::Visible));
+    assert_eq!(ui.get(overlay_layer).unwrap().children().len(), 3);
+
+    surface.sync_with_drag_preview(
+        &mut ui,
+        &state,
+        DockDragPreview::FullLayout,
+        build_pane,
+        title,
+    );
+    ui.compute_layout(Size::new(600.0, 400.0));
+    let proposed_bounds = ui.effective_bounds(pane_three);
+    assert!(proposed_bounds.width() > original_bounds.width());
+    assert_eq!(ui.visibility(pane_one), Some(Visibility::Collapsed));
+    assert_eq!(ui.get(overlay_layer).unwrap().children().len(), 1);
+    assert_eq!(state.overlay().ghost_rects.len(), 1);
+    assert_eq!(state.tree().revision(), revision);
+
+    surface.sync_with_drag_preview(&mut ui, &state, DockDragPreview::Outline, build_pane, title);
+    ui.compute_layout(Size::new(600.0, 400.0));
+    assert_eq!(ui.effective_bounds(pane_three), original_bounds);
+    assert_eq!(ui.get(overlay_layer).unwrap().children().len(), 3);
+
+    state.end_pointer(end);
+    surface.sync_with_drag_preview(&mut ui, &state, DockDragPreview::Outline, build_pane, title);
+    ui.compute_layout(Size::new(600.0, 400.0));
+    assert_eq!(surface.pane_element(PaneId(3)), Some(pane_three));
+    assert_eq!(ui.effective_bounds(pane_three), proposed_bounds);
 }
 
 #[test]
