@@ -3,9 +3,9 @@
 
 //! Keyed tab-header selection.
 
-use alloc::{boxed::Box, format, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, format, rc::Rc, string::String, vec, vec::Vec};
 
-use kurbo::{Axis, Vec2};
+use kurbo::{Axis, Rect, Vec2};
 use understory_selection::Selection;
 use understory_style::TypeTag;
 
@@ -16,11 +16,11 @@ use crate::controls::scroll::runtime::{
     update_scroll_metrics_from_layout, wheel_scroll_delta,
 };
 use crate::controls::support::{
-    CallbackSlot, EventHandler, InlineArrowDirection, inline_arrow_direction,
+    CallbackSlot, EventHandler, InlineArrowDirection, Vec2AxisExt, inline_arrow_direction,
 };
 use crate::element::{Element, ElementId};
 use crate::event_runtime::{ClickEvent, KeyEvent, ScrollEvent};
-use crate::layouts::Layout;
+use crate::layouts::{Layout, LayoutContainer};
 use crate::pseudos::PSEUDO_SELECTED;
 use crate::scroll_runtime::{ScrollInputSource, ScrollState};
 use crate::ui::{ChildUi, ControlState, Ui};
@@ -33,14 +33,47 @@ pub const TYPE_TAB_ITEM: TypeTag = TypeTag(36);
 /// Selector identity for a generated tab close button.
 pub const TYPE_TAB_CLOSE_BUTTON: TypeTag = TypeTag(39);
 
-/// Behavior used when tab headers are wider than their viewport.
+/// Behavior used when tab headers exceed their viewport along the major axis.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TabOverflow {
-    /// Retains every tab at its natural width and scrolls the strip horizontally.
+    /// Retains every tab at its natural extent and scrolls the strip.
     #[default]
     Scroll,
-    /// Allows tab headers to shrink to share the available width.
+    /// Allows tab headers to shrink to share the available extent.
     Compress,
+}
+
+/// Major axis used to arrange and scroll tab headers.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TabOrientation {
+    /// Arranges tab headers from left to right.
+    #[default]
+    Horizontal,
+    /// Arranges tab headers from top to bottom.
+    Vertical,
+}
+
+impl TabOrientation {
+    const fn axis(self) -> Axis {
+        match self {
+            Self::Horizontal => Axis::Horizontal,
+            Self::Vertical => Axis::Vertical,
+        }
+    }
+
+    fn layout(self) -> Layout {
+        match self {
+            Self::Horizontal => Layout::row(2.0),
+            Self::Vertical => Layout::column(2.0),
+        }
+    }
+
+    fn container(self) -> LayoutContainer {
+        match self {
+            Self::Horizontal => LayoutContainer::row(),
+            Self::Vertical => LayoutContainer::column(),
+        }
+    }
 }
 
 /// Stable application identity for a tab.
@@ -182,7 +215,31 @@ pub struct TabCloseRequestedEvent {
     pub tab: ElementId,
 }
 
-/// Builder for a keyed horizontal tab header strip.
+/// Arranged geometry for one generated tab header.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TabItemLayoutSnapshot {
+    /// Stable key represented by the header.
+    pub key: TabKey,
+    /// Generated tab-header element.
+    pub element: ElementId,
+    /// Full arranged bounds, including portions clipped by scrolling.
+    pub bounds: Rect,
+    /// Visible regions that activate the tab, excluding embedded close controls.
+    pub interaction_regions: Vec<Rect>,
+}
+
+/// Arranged geometry for a retained [`TabBar`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct TabBarLayoutSnapshot {
+    /// Visible clipped viewport occupied by the tab strip.
+    pub viewport: Rect,
+    /// Headers in semantic tab order.
+    pub items: Vec<TabItemLayoutSnapshot>,
+    /// Visible tab-bar background not occupied by a header.
+    pub background_regions: Vec<Rect>,
+}
+
+/// Builder for a keyed tab-header strip.
 pub struct TabBar {
     options: Vec<TabOption>,
     selected_key: Option<TabKey>,
@@ -190,6 +247,7 @@ pub struct TabBar {
     on_selection_changed: Option<TabSelectionChangedHandler>,
     on_close_requested: Option<TabCloseRequestedHandler>,
     overflow: TabOverflow,
+    orientation: TabOrientation,
     element: ElementConfig,
 }
 
@@ -207,7 +265,7 @@ impl TabBar {
     #[must_use]
     pub fn new() -> Self {
         let mut element = ElementConfig::default();
-        element.set_layout(Layout::row(2.0));
+        element.set_layout(TabOrientation::Horizontal.layout());
         element.set_focusable(true);
         Self {
             options: Vec::new(),
@@ -216,6 +274,7 @@ impl TabBar {
             on_selection_changed: None,
             on_close_requested: None,
             overflow: TabOverflow::Scroll,
+            orientation: TabOrientation::Horizontal,
             element,
         }
     }
@@ -273,6 +332,14 @@ impl TabBar {
         self
     }
 
+    /// Sets the major axis used to arrange and scroll headers.
+    #[must_use]
+    pub fn orientation(mut self, orientation: TabOrientation) -> Self {
+        self.orientation = orientation;
+        self.element.set_layout(orientation.layout());
+        self
+    }
+
     /// Registers a close-request callback.
     ///
     /// A request does not remove application-owned content. The owner decides
@@ -316,6 +383,7 @@ impl AppendSpec for TabBar {
                 changed: CallbackSlot::new(self.on_selection_changed),
                 close_requested: CallbackSlot::new(self.on_close_requested),
                 overflow: self.overflow,
+                orientation: self.orientation,
                 scroll: ScrollState::new(),
                 scroll_layout: ScrollLayoutState::default(),
                 reveal_selection: true,
@@ -324,6 +392,11 @@ impl AppendSpec for TabBar {
         let scroll = tab_bar_widget(ui, id).unwrap().scroll.clone();
         ui.register_scroll_target(id, scroll);
         self.element.apply_to(ui, id);
+        // Orientation is control semantics, so it must win regardless of
+        // whether `.orientation(...)` or `.layout(...)` was called last.
+        // This partial layout write preserves caller-provided sizing, gap,
+        // alignment, overflow, and placement longhands.
+        ui.set_layout(id, Layout::new().container(self.orientation.container()));
         rebuild_items(ui, id);
         id
     }
@@ -343,6 +416,7 @@ struct TabBarWidget {
     changed: CallbackSlot<TabSelectionChangedEvent>,
     close_requested: CallbackSlot<TabCloseRequestedEvent>,
     overflow: TabOverflow,
+    orientation: TabOrientation,
     scroll: ScrollState,
     scroll_layout: ScrollLayoutState,
     reveal_selection: bool,
@@ -381,13 +455,27 @@ impl Widget for TabBarWidget {
         }
         let offset = self.scroll.offset();
         let max = self.scroll.max_offset();
-        node.set_scroll_x(offset.x);
-        node.set_scroll_x_min(0.0);
-        node.set_scroll_x_max(max.x);
-        if ctx.is_enabled(element.id()) && max.x > f64::EPSILON {
-            node.add_action(accesskit::Action::ScrollLeft);
-            node.add_action(accesskit::Action::ScrollRight);
-            node.add_action(accesskit::Action::SetScrollOffset);
+        match self.orientation {
+            TabOrientation::Horizontal => {
+                node.set_scroll_x(offset.x);
+                node.set_scroll_x_min(0.0);
+                node.set_scroll_x_max(max.x);
+                if ctx.is_enabled(element.id()) && max.x > f64::EPSILON {
+                    node.add_action(accesskit::Action::ScrollLeft);
+                    node.add_action(accesskit::Action::ScrollRight);
+                    node.add_action(accesskit::Action::SetScrollOffset);
+                }
+            }
+            TabOrientation::Vertical => {
+                node.set_scroll_y(offset.y);
+                node.set_scroll_y_min(0.0);
+                node.set_scroll_y_max(max.y);
+                if ctx.is_enabled(element.id()) && max.y > f64::EPSILON {
+                    node.add_action(accesskit::Action::ScrollUp);
+                    node.add_action(accesskit::Action::ScrollDown);
+                    node.add_action(accesskit::Action::SetScrollOffset);
+                }
+            }
         }
     }
 
@@ -451,8 +539,9 @@ impl Widget for TabBarWidget {
 
     fn child_layout_offset(&self, _element: &Element) -> Vec2 {
         if self.overflow == TabOverflow::Scroll {
+            let axis = self.orientation.axis();
             let offset = self.scroll_layout.child_offset(&self.scroll);
-            Vec2::new(offset.x, 0.0)
+            axis.pack_vec2(offset.along(axis), 0.0)
         } else {
             Vec2::ZERO
         }
@@ -465,25 +554,30 @@ impl Widget for TabBarWidget {
         let Some(delta) = wheel_scroll_delta(ctx, ctx.id(), event) else {
             return;
         };
-        let horizontal = if delta.x.abs() > f64::EPSILON {
-            delta.x
-        } else {
-            delta.y
+        let amount = match self.orientation {
+            TabOrientation::Horizontal if delta.x.abs() > f64::EPSILON => delta.x,
+            TabOrientation::Horizontal => delta.y,
+            TabOrientation::Vertical if delta.y.abs() > f64::EPSILON => delta.y,
+            TabOrientation::Vertical => delta.x,
         };
         let id = ctx.id();
+        let axis = self.orientation.axis();
         let change = scroll_by(
             ctx,
             id,
             &self.scroll,
-            Vec2::new(horizontal, 0.0),
+            axis.pack_vec2(amount, 0.0),
             ScrollInputSource::Wheel,
         );
-        let consumed = if delta.x.abs() > f64::EPSILON {
-            Vec2::new(change.consumed_delta.x, 0.0)
-        } else {
-            Vec2::new(0.0, change.consumed_delta.x)
+        let input_axis = match self.orientation {
+            TabOrientation::Horizontal if delta.x.abs() > f64::EPSILON => Axis::Horizontal,
+            TabOrientation::Vertical if delta.y.abs() <= f64::EPSILON => Axis::Horizontal,
+            _ => Axis::Vertical,
         };
-        event.consume_logical_delta(delta, consumed);
+        event.consume_logical_delta(
+            delta,
+            input_axis.pack_vec2(change.consumed_delta.along(axis), 0.0),
+        );
     }
 
     fn handle_accessibility_action(
@@ -495,35 +589,52 @@ impl Widget for TabBarWidget {
             return false;
         }
         let id = ctx.id();
-        match request.action {
-            accesskit::Action::ScrollLeft => scroll_by_accessibility_action(
-                ctx,
-                id,
-                &self.scroll,
-                Axis::Horizontal,
-                -1.0,
-                request,
-            )
-            .is_some(),
-            accesskit::Action::ScrollRight => scroll_by_accessibility_action(
-                ctx,
-                id,
-                &self.scroll,
-                Axis::Horizontal,
-                1.0,
-                request,
-            )
-            .is_some(),
-            accesskit::Action::SetScrollOffset => {
+        match (self.orientation, request.action) {
+            (TabOrientation::Horizontal, accesskit::Action::ScrollLeft) => {
+                scroll_by_accessibility_action(
+                    ctx,
+                    id,
+                    &self.scroll,
+                    Axis::Horizontal,
+                    -1.0,
+                    request,
+                )
+                .is_some()
+            }
+            (TabOrientation::Horizontal, accesskit::Action::ScrollRight) => {
+                scroll_by_accessibility_action(
+                    ctx,
+                    id,
+                    &self.scroll,
+                    Axis::Horizontal,
+                    1.0,
+                    request,
+                )
+                .is_some()
+            }
+            (TabOrientation::Vertical, accesskit::Action::ScrollUp) => {
+                scroll_by_accessibility_action(ctx, id, &self.scroll, Axis::Vertical, -1.0, request)
+                    .is_some()
+            }
+            (TabOrientation::Vertical, accesskit::Action::ScrollDown) => {
+                scroll_by_accessibility_action(ctx, id, &self.scroll, Axis::Vertical, 1.0, request)
+                    .is_some()
+            }
+            (_, accesskit::Action::SetScrollOffset) => {
                 let Some(accesskit::ActionData::SetScrollOffset(point)) = request.data.as_ref()
                 else {
                     return false;
+                };
+                let axis = self.orientation.axis();
+                let amount = match axis {
+                    Axis::Horizontal => point.x,
+                    Axis::Vertical => point.y,
                 };
                 apply_scroll_offset(
                     ctx,
                     id,
                     &self.scroll,
-                    Vec2::new(point.x, 0.0),
+                    axis.pack_vec2(amount, 0.0),
                     ScrollInputSource::Accessibility,
                 )
                 .changed()
@@ -591,13 +702,18 @@ impl TabBarWidget {
         else {
             return false;
         };
-        let current = self.scroll.offset().x;
-        let logical_left = item.x0 + current - viewport.x0;
-        let logical_right = item.x1 + current - viewport.x0;
-        let next = if logical_left < current {
-            logical_left
-        } else if logical_right > current + viewport.width() {
-            logical_right - viewport.width()
+        let axis = self.orientation.axis();
+        let current = self.scroll.offset().along(axis);
+        let (viewport_min, viewport_length, item_min, item_max) = match axis {
+            Axis::Horizontal => (viewport.x0, viewport.width(), item.x0, item.x1),
+            Axis::Vertical => (viewport.y0, viewport.height(), item.y0, item.y1),
+        };
+        let logical_min = item_min + current - viewport_min;
+        let logical_max = item_max + current - viewport_min;
+        let next = if logical_min < current {
+            logical_min
+        } else if logical_max > current + viewport_length {
+            logical_max - viewport_length
         } else {
             current
         };
@@ -606,7 +722,7 @@ impl TabBarWidget {
             ctx.ui_mut(),
             id,
             &self.scroll,
-            Vec2::new(next, 0.0),
+            axis.pack_vec2(next, 0.0),
             ScrollInputSource::Programmatic,
         )
         .changed()
@@ -826,7 +942,9 @@ fn tab_bar_widget(ui: &Ui, id: ElementId) -> Option<&TabBarWidget> {
     ui.get(id)?.widget()?.downcast_ref()
 }
 
-pub(crate) fn tab_options(ui: &Ui, id: ElementId) -> Option<&[TabOption]> {
+/// Returns a tab bar's current ordered metadata.
+#[must_use]
+pub fn tab_bar_options(ui: &Ui, id: ElementId) -> Option<&[TabOption]> {
     Some(&tab_bar_widget(ui, id)?.options)
 }
 fn tab_key_at(ui: &Ui, id: ElementId, index: usize) -> Option<TabKey> {
@@ -858,6 +976,93 @@ pub fn selected_tab_key(ui: &Ui, tab_bar: ElementId) -> Option<TabKey> {
 #[must_use]
 pub fn selected_tab_index(ui: &Ui, tab_bar: ElementId) -> Option<usize> {
     tab_bar_widget(ui, tab_bar)?.selected_index()
+}
+
+/// Captures the current arranged tab-strip geometry.
+///
+/// Bounds use the UI's effective coordinate space. Interaction regions are
+/// clipped to the viewport and exclude generated close controls, allowing
+/// interaction adapters to share the exact geometry users see.
+#[must_use]
+pub fn tab_bar_layout_snapshot(ui: &Ui, tab_bar: ElementId) -> Option<TabBarLayoutSnapshot> {
+    let widget = tab_bar_widget(ui, tab_bar)?;
+    let viewport = ui.effective_bounds(tab_bar);
+    let mut items = Vec::with_capacity(widget.items.len());
+    let mut background_regions = vec![viewport];
+    for (option, item) in widget.options.iter().zip(&widget.items) {
+        let bounds = ui.effective_bounds(*item);
+        let close_bounds = ui.get(*item).and_then(|element| {
+            element.children().iter().find_map(|child| {
+                (ui.get(*child)?.type_tag() == Some(TYPE_TAB_CLOSE_BUTTON))
+                    .then(|| ui.effective_bounds(*child))
+            })
+        });
+        let mut interaction_regions = vec![bounds];
+        if let Some(close_bounds) = close_bounds {
+            interaction_regions = subtract_regions(interaction_regions, close_bounds);
+        }
+        interaction_regions = interaction_regions
+            .into_iter()
+            .filter_map(|region| intersect_rect(region, viewport))
+            .collect();
+        if let Some(visible_bounds) = intersect_rect(bounds, viewport) {
+            background_regions = subtract_regions(background_regions, visible_bounds);
+        }
+        items.push(TabItemLayoutSnapshot {
+            key: option.key,
+            element: *item,
+            bounds,
+            interaction_regions,
+        });
+    }
+    Some(TabBarLayoutSnapshot {
+        viewport,
+        items,
+        background_regions,
+    })
+}
+
+fn subtract_regions(regions: Vec<Rect>, hole: Rect) -> Vec<Rect> {
+    let mut result = Vec::new();
+    for region in regions {
+        let Some(overlap) = intersect_rect(region, hole) else {
+            result.push(region);
+            continue;
+        };
+        push_non_empty_rect(
+            &mut result,
+            Rect::new(region.x0, region.y0, overlap.x0, region.y1),
+        );
+        push_non_empty_rect(
+            &mut result,
+            Rect::new(overlap.x1, region.y0, region.x1, region.y1),
+        );
+        push_non_empty_rect(
+            &mut result,
+            Rect::new(overlap.x0, region.y0, overlap.x1, overlap.y0),
+        );
+        push_non_empty_rect(
+            &mut result,
+            Rect::new(overlap.x0, overlap.y1, overlap.x1, region.y1),
+        );
+    }
+    result
+}
+
+fn intersect_rect(a: Rect, b: Rect) -> Option<Rect> {
+    let rect = Rect::new(
+        a.x0.max(b.x0),
+        a.y0.max(b.y0),
+        a.x1.min(b.x1),
+        a.y1.min(b.y1),
+    );
+    (rect.width() > 0.0 && rect.height() > 0.0).then_some(rect)
+}
+
+fn push_non_empty_rect(rects: &mut Vec<Rect>, rect: Rect) {
+    if rect.width() > 0.0 && rect.height() > 0.0 {
+        rects.push(rect);
+    }
 }
 /// Replaces tab metadata, preserving selection by key when possible.
 pub fn replace_tab_options(
@@ -1022,5 +1227,64 @@ mod tests {
 
         assert_eq!(requested.get(), Some(TabKey::new(2)));
         assert_eq!(selected_tab_key(&ui, bar), Some(TabKey::new(1)));
+    }
+
+    #[test]
+    fn layout_snapshot_excludes_close_control_from_tab_and_background_hits() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let bar = ui.append(
+            root,
+            TabBar::new()
+                .tab(TabOption::new(1, "Closable").closable(true))
+                .layout(Layout::new().logical_size(180.0, 48.0)),
+        );
+        ui.compute_layout(Size::new(180.0, 48.0));
+        let item = tab_bar_widget(&ui, bar).unwrap().items[0];
+        let close = *ui.get(item).unwrap().children().last().unwrap();
+        let close_center = ui.effective_bounds(close).center();
+
+        let snapshot = tab_bar_layout_snapshot(&ui, bar).unwrap();
+
+        assert_eq!(snapshot.items[0].key, TabKey::new(1));
+        assert!(
+            !snapshot.items[0]
+                .interaction_regions
+                .iter()
+                .any(|region| region.contains(close_center))
+        );
+        assert!(
+            !snapshot
+                .background_regions
+                .iter()
+                .any(|region| region.contains(close_center))
+        );
+    }
+
+    #[test]
+    fn vertical_overflow_scrolls_and_reveals_selection() {
+        let mut ui = Ui::new();
+        let root = ui.root();
+        let bar = ui.append(
+            root,
+            TabBar::new()
+                .orientation(TabOrientation::Vertical)
+                .tabs((0_u64..8).map(|key| TabOption::new(key, "A vertical tab")))
+                .layout(Layout::new().logical_size(120.0, 90.0)),
+        );
+        ui.compute_layout(Size::new(120.0, 90.0));
+        let state = ui.scroll_target(bar).unwrap().state();
+        assert!(
+            state.max_offset().y > 0.0,
+            "viewport={:?} max_offset={:?} items={:?}",
+            state.viewport_size(),
+            state.max_offset(),
+            tab_bar_layout_snapshot(&ui, bar).unwrap().items
+        );
+
+        assert!(select_tab_key(&mut ui, bar, Some(TabKey::new(7))));
+        ui.compute_layout(Size::new(120.0, 90.0));
+        assert!(state.offset().y > 0.0);
+        assert_eq!(state.offset().x, 0.0);
     }
 }

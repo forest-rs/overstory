@@ -12,7 +12,7 @@ use crate::controls::indexed_stack::{IndexedStack, set_indexed_stack_visible_ind
 use crate::controls::support::{CallbackSlot, EventHandler};
 use crate::controls::tab_bar::{
     TabBar, TabCloseRequestedEvent, TabItemContext, TabKey, TabOption, TabOverflow,
-    replace_tab_options, select_tab_key, selected_tab_key, tab_options,
+    replace_tab_options, select_tab_key, selected_tab_key, tab_bar_options,
 };
 use crate::element::{Element, ElementId};
 use crate::layouts::Layout;
@@ -364,7 +364,7 @@ fn sync_tab_structure(ui: &mut Ui, tab_view: ElementId) -> bool {
         })
         .collect();
     let mut changed = false;
-    if tab_options(ui, bar) != Some(options.as_slice()) {
+    if tab_bar_options(ui, bar) != Some(options.as_slice()) {
         changed |= replace_tab_options(ui, bar, options);
     }
     let target = requested

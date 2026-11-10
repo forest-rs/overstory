@@ -56,6 +56,15 @@ impl Ui {
         Some(self.resolve_value_for(element, self.properties.layout_direction))
     }
 
+    /// Returns whether layout or arrangement work remains before geometry
+    /// queries can observe the current authored state.
+    ///
+    /// Hosts normally drain this work through [`Self::compute_layout`].
+    #[must_use]
+    pub fn has_pending_layout(&self) -> bool {
+        self.invalidation.has_invalidated(LAYOUT) || self.invalidation.has_invalidated(ARRANGE)
+    }
+
     /// Sets an element's layout contribution.
     ///
     /// This is the app-facing shortcut for writing layout longhands. Only

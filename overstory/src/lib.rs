@@ -228,9 +228,10 @@ pub use controls::splitter::{
 };
 pub use controls::support::CheckedChangedEvent;
 pub use controls::tab_bar::{
-    TYPE_TAB_BAR, TYPE_TAB_CLOSE_BUTTON, TYPE_TAB_ITEM, TabBar, TabCloseRequestedEvent,
-    TabItemContext, TabKey, TabOption, TabOverflow, TabSelectionChangedEvent, replace_tab_options,
-    select_tab_key, selected_tab_index, selected_tab_key,
+    TYPE_TAB_BAR, TYPE_TAB_CLOSE_BUTTON, TYPE_TAB_ITEM, TabBar, TabBarLayoutSnapshot,
+    TabCloseRequestedEvent, TabItemContext, TabItemLayoutSnapshot, TabKey, TabOption,
+    TabOrientation, TabOverflow, TabSelectionChangedEvent, replace_tab_options, select_tab_key,
+    selected_tab_index, selected_tab_key, tab_bar_layout_snapshot, tab_bar_options,
 };
 pub use controls::tab_view::{
     TYPE_TAB_PAGE, TYPE_TAB_VIEW, TabPage, TabView, TabViewChildUiExt, TabViewCloseRequestedEvent,
@@ -340,8 +341,8 @@ pub mod prelude {
         ScrollOffsetChangedEvent, ScrollState, ScrollView, SegmentedControl, Select, Size, Slider,
         SliderValueChangePhase, SliderValueChangedEvent, Spinner, Splitter, StackAlignment,
         StyleClass, StyleTokenSet, StyleVocabulary, SurfaceSpecExt, SurfaceStyleExt, TabBar,
-        TabKey, TabOption, TabOverflow, TabPage, TabView, TabViewChildUiExt, Text, TextAlign,
-        TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
+        TabKey, TabOption, TabOrientation, TabOverflow, TabPage, TabView, TabViewChildUiExt, Text,
+        TextAlign, TextInput, TextInputEditCommitReason, TextInputEditCommittedEvent,
         TextInputEditRejectReason, TextInputEditRejectedEvent, TextInputSubmitAction,
         TextInputSubmitEvent, TextInputTextChangeSource, TextInputTextChangedEvent, TextSpecExt,
         TimerDuration, TimingFunction, TimingPhase, TimingSample, ToggleSwitch, Tooltip,

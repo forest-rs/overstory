@@ -4,6 +4,20 @@
 use super::*;
 
 #[test]
+fn pending_layout_reports_geometry_freshness() {
+    let mut ui = Ui::new();
+    ui.compute_layout(Size::new(100.0, 100.0));
+    assert!(!ui.has_pending_layout());
+
+    let root = ui.root();
+    ui.set_layout(root, Layout::new().logical_size(80.0, 80.0));
+    assert!(ui.has_pending_layout());
+
+    ui.compute_layout(Size::new(100.0, 100.0));
+    assert!(!ui.has_pending_layout());
+}
+
+#[test]
 fn compute_layout_writes_bounds() {
     let mut ui = Ui::new();
     let root = ui.root();
