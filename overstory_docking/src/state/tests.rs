@@ -53,6 +53,26 @@ fn resolved_tab_geometry(state: &DockState) -> Vec<TabGroupGeometry> {
 }
 
 #[test]
+fn a_collapsed_strip_expands_and_a_bookmark_preserves_unrelated_edits() {
+    let mut state = DockState::new(sample_tree(), input(), PaneId(1));
+    let before = state.frame().panes()[0].rect;
+    state.collapse_selected(40.0).unwrap();
+    let strip = state.frame().collapsed_tiles()[0];
+    state.begin_pointer(strip.rect.center());
+    assert!(matches!(
+        state.end_pointer(strip.rect.center()),
+        DockOutcome::Committed(TileOp::SetCollapsed { extent: None, .. })
+    ));
+    assert_eq!(state.frame().panes()[0].rect, before);
+
+    let bookmark = state.close_selected_with_bookmark().unwrap();
+    state.activate_pane(PaneId(4)).unwrap();
+    assert_eq!(state.reopen_pane(&bookmark), Ok(ReopenPlacement::Exact));
+    assert_eq!(state.frame().panes()[0].pane, PaneId(1));
+    assert_eq!(state.frame().panes()[1].pane, PaneId(4));
+}
+
+#[test]
 fn clicking_tab_activates_without_drag() {
     let mut state = DockState::new(sample_tree(), input(), PaneId(1));
     let tab = state

@@ -14,12 +14,12 @@ use alloc::vec::Vec;
 use overstory::{
     AppendSpec, Brush, ChildUi, CursorIcon, Edges, Element, ElementId, ElementSpecExt, Layout,
     LayoutPlacement, LayoutSize, Panel, SurfaceSpecExt, TabBar, TabKey, TabOption, TabOrientation,
-    Ui, Viewport, Visibility, Widget, replace_tab_options, select_tab_key, tab_bar_layout_snapshot,
-    tab_bar_options,
+    Text, Ui, Viewport, Visibility, Widget, replace_tab_options, select_tab_key,
+    tab_bar_layout_snapshot, tab_bar_options,
 };
 use understory_tiling::{
-    Axis, DropTargetFrame, DropTargetId, GhostFrame, GhostKind, OverlayFrame, PaneFrame, PaneId,
-    Rect, SplitHandleFrame, TabBarFrame, TabBarPlacement, TabFrame, TileId,
+    Axis, CollapsedTileFrame, DropTargetFrame, DropTargetId, GhostFrame, GhostKind, OverlayFrame,
+    PaneFrame, PaneId, Rect, SplitHandleFrame, TabBarFrame, TabBarPlacement, TabFrame, TileId,
 };
 
 use super::events::DockTabEvents;
@@ -34,6 +34,7 @@ pub(super) struct DockSurfaceInner {
     pub(super) panes: Vec<PaneView>,
     pub(super) tab_bars: Vec<TabBarView>,
     handles: Vec<HandleView>,
+    collapsed: Vec<(TileId, ElementId)>,
     targets: Vec<TargetView>,
     ghosts: Vec<ElementId>,
     pub(super) dragged: ElementId,
@@ -113,6 +114,7 @@ impl DockSurfaceInner {
             panes: Vec::new(),
             tab_bars: Vec::new(),
             handles: Vec::new(),
+            collapsed: Vec::new(),
             targets: Vec::new(),
             ghosts: Vec::new(),
             dragged,
@@ -319,6 +321,37 @@ impl DockSurfaceInner {
                 },
             );
             set_rect_snap(ui, body, frame.rect);
+            apply_paint(ui, body, self.style.split_handle);
+        }
+    }
+
+    pub(super) fn sync_collapsed_tiles(&mut self, ui: &mut Ui, frames: &[CollapsedTileFrame]) {
+        remove_missing(
+            ui,
+            &mut self.collapsed,
+            |(tile, _)| frames.iter().any(|frame| frame.tile == *tile),
+            |(_, body)| *body,
+        );
+        for frame in frames {
+            let body = keyed_element(
+                &mut self.collapsed,
+                |(tile, _)| *tile == frame.tile,
+                |(_, body)| *body,
+                || {
+                    let body = ui.append(
+                        self.chrome_layer,
+                        Panel::column(0.0).align_center().layout(
+                            Layout::column(0.0)
+                                .align_center()
+                                .justify_center()
+                                .absolute(),
+                        ),
+                    );
+                    ui.append(body, Text::new("+").font_size(20.0));
+                    (frame.tile, body)
+                },
+            );
+            set_rect(ui, body, frame.rect);
             apply_paint(ui, body, self.style.split_handle);
         }
     }

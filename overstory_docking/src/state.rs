@@ -11,10 +11,11 @@ use alloc::vec::Vec;
 use crate::{DockInteractionKind, DockOutcome};
 
 use understory_tiling::{
-    Axis, DockPolicy, FrameProjectionInput, HitKind, InteractionOptions, InteractionState,
-    InteractionUpdate, LayoutFrame, LayoutInput, OverlayFrame, PaneId, Placement, Point,
-    TabGeometryError, TabGroupGeometry, TileError, TileOp, TileTree, begin_interaction,
-    commit_proposal, hit_test, update_interaction, validate_interaction_update,
+    Axis, DockPolicy, DropRejection, DropTargetId, FrameProjectionInput, HitKind,
+    InteractionOptions, InteractionState, InteractionUpdate, LayoutFrame, LayoutInput,
+    OverlayFrame, PaneBookmark, PaneId, Placement, Point, ReopenPlacement, TabGeometryError,
+    TabGroupGeometry, TileError, TileId, TileOp, TileTree, begin_interaction, commit_proposal,
+    hit_test, update_interaction_with_policy, validate_interaction_update,
 };
 
 /// Reusable docking state for an Overstory workbench region.
@@ -32,6 +33,7 @@ pub struct DockState {
     interaction: InteractionState,
     selected: PaneId,
     zoomed: Option<PaneId>,
+    pressed_collapsed: Option<TileId>,
 }
 
 impl DockState {
@@ -71,6 +73,7 @@ impl DockState {
             interaction: InteractionState::None,
             selected,
             zoomed: None,
+            pressed_collapsed: None,
         }
     }
 
@@ -103,7 +106,12 @@ impl DockState {
     /// Returns the frame that should be rendered now.
     #[must_use]
     pub fn display_frame(&self) -> &LayoutFrame {
-        self.preview_frame.as_ref().unwrap_or(&self.frame)
+        if matches!(self.overlay.active_target, Some(DropTargetId::TabBar(_))) {
+            // The insertion marker describes a gap in the original strip.
+            &self.frame
+        } else {
+            self.preview_frame.as_ref().unwrap_or(&self.frame)
+        }
     }
 
     /// Returns the current interaction overlay.
@@ -310,9 +318,50 @@ impl DockState {
         Ok(op)
     }
 
+    /// Collapses the selected visible tile, retaining its expanded share.
+    pub fn collapse_selected(&mut self, extent: f64) -> Result<TileOp, TileError> {
+        let pane = self.selected_visible_pane();
+        let tile = self
+            .frame
+            .panes()
+            .iter()
+            .find(|item| item.pane == pane)
+            .ok_or(TileError::InvalidTarget)?
+            .tile;
+        self.apply_op(TileOp::SetCollapsed {
+            tile,
+            extent: Some(extent),
+        })
+    }
+
+    /// Closes the selected visible pane and returns its placement bookmark.
+    pub fn close_selected_with_bookmark(&mut self) -> Result<PaneBookmark, TileError> {
+        let bookmark = self
+            .tree
+            .close_pane_with_bookmark(self.selected_visible_pane())?;
+        self.cancel_interaction();
+        self.relayout();
+        self.selected = self.selected_visible_pane();
+        Ok(bookmark)
+    }
+
+    /// Reopens a bookmarked pane against the current layout.
+    pub fn reopen_pane(&mut self, bookmark: &PaneBookmark) -> Result<ReopenPlacement, TileError> {
+        let placement = self.tree.reopen_pane(bookmark)?;
+        self.cancel_interaction();
+        self.relayout();
+        self.selected = bookmark.pane();
+        Ok(placement)
+    }
+
     /// Starts pointer interaction from a local point.
     pub fn begin_pointer(&mut self, point: Point) -> DockOutcome {
-        if let Some(pane) = pane_from_hit(hit_test(&self.frame, point)) {
+        let hit = hit_test(&self.frame, point);
+        self.pressed_collapsed = match hit {
+            Some(HitKind::CollapsedTile { tile }) => Some(tile),
+            _ => None,
+        };
+        if let Some(pane) = pane_from_hit(hit) {
             self.selected = pane;
         }
         self.interaction = begin_interaction(&self.frame, point, &self.interaction_options);
@@ -326,18 +375,21 @@ impl DockState {
 
     /// Updates the active pointer interaction.
     pub fn update_pointer(&mut self, point: Point) -> DockOutcome {
-        let update = update_interaction(
+        let update = update_interaction_with_policy(
             &self.tree,
             &self.frame,
             &mut self.interaction,
             point,
             &self.interaction_options,
+            &self.policy,
         );
         let outcome = if update.proposal.is_some() {
             match self.validate_update(&update) {
                 Ok(validated) => DockOutcome::ProposalValid(validated.operation().clone()),
                 Err(error) => DockOutcome::ProposalRejected(error),
             }
+        } else if let Some(error) = rejected_drop(&update) {
+            DockOutcome::ProposalRejected(error)
         } else {
             interaction_kind(&self.interaction).map_or(DockOutcome::None, DockOutcome::NoProposal)
         };
@@ -351,6 +403,23 @@ impl DockState {
 
     /// Ends the active pointer interaction.
     pub fn end_pointer(&mut self, point: Point) -> DockOutcome {
+        if let Some(tile) = self.pressed_collapsed.take()
+            && hit_test(&self.frame, point) == Some(HitKind::CollapsedTile { tile })
+            && let Some(strip) = self
+                .frame
+                .collapsed_tiles()
+                .iter()
+                .find(|strip| strip.tile == tile)
+        {
+            let pane = strip.active_pane;
+            return match self.apply_op(TileOp::SetCollapsed { tile, extent: None }) {
+                Ok(op) => {
+                    self.selected = pane;
+                    DockOutcome::Committed(op)
+                }
+                Err(error) => DockOutcome::Rejected(error),
+            };
+        }
         let mut interaction = core::mem::replace(&mut self.interaction, InteractionState::None);
         match &interaction {
             InteractionState::None => return DockOutcome::None,
@@ -360,17 +429,22 @@ impl DockState {
             _ => {}
         }
 
-        let update = update_interaction(
+        let update = update_interaction_with_policy(
             &self.tree,
             &self.frame,
             &mut interaction,
             point,
             &self.interaction_options,
+            &self.policy,
         );
-        let result = update.proposal.is_some().then(|| {
-            self.validate_update(&update)
-                .and_then(|validated| commit_proposal(&mut self.tree, validated))
-        });
+        let result = update
+            .proposal
+            .is_some()
+            .then(|| {
+                self.validate_update(&update)
+                    .and_then(|validated| commit_proposal(&mut self.tree, validated))
+            })
+            .or_else(|| rejected_drop(&update).map(Err));
 
         self.overlay = update.overlay;
         self.preview_frame = self.finalize_preview(update.preview);
@@ -463,9 +537,6 @@ impl DockState {
 
     fn finalize_preview(&self, preview: Option<LayoutFrame>) -> Option<LayoutFrame> {
         preview.map(|mut frame| {
-            if !self.resolved_tab_geometry.is_empty() {
-                let _ = frame.apply_tab_group_geometry(&self.resolved_tab_geometry);
-            }
             if let Some(pane) = self.zoomed {
                 let _ = frame.apply_projection(FrameProjectionInput::Zoom {
                     focus: pane,
@@ -477,9 +548,23 @@ impl DockState {
     }
 
     fn cancel_interaction(&mut self) {
+        self.pressed_collapsed = None;
         self.overlay = OverlayFrame::default();
         self.preview_frame = None;
         self.interaction = InteractionState::None;
+    }
+}
+
+fn rejected_drop(update: &InteractionUpdate) -> Option<TileError> {
+    match update.overlay.drop_targets.first()?.rejection? {
+        DropRejection::LayoutLocked
+        | DropRejection::MoveDisabled
+        | DropRejection::SplitDisabled
+        | DropRejection::TabDisabled
+        | DropRejection::ZoneDisabled
+        | DropRejection::EdgeDisabled => Some(TileError::PolicyRejected),
+        DropRejection::InvalidOperation(error) => Some(error),
+        DropRejection::IncompatibleSubject | DropRejection::ReorderDisabled => None,
     }
 }
 

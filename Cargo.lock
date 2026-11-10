@@ -3877,7 +3877,7 @@ dependencies = [
 [[package]]
 name = "understory_tiling"
 version = "0.1.0"
-source = "git+https://github.com/forest-rs/understory.git?rev=52d9c442a2119198b4323e1dc09d6a9e2aed0c4c#52d9c442a2119198b4323e1dc09d6a9e2aed0c4c"
+source = "git+https://github.com/forest-rs/understory.git?rev=13a3c8d151e14292f95c9c6058d2ec79ce396598#13a3c8d151e14292f95c9c6058d2ec79ce396598"
 dependencies = [
  "kurbo",
 ]

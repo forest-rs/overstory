@@ -21,8 +21,8 @@ use overstory_docking::tiling::{DockTarget, Placement, TileId};
 use overstory_docking::{
     DockInteractionKind, DockOutcome, DockState, DockSurface,
     tiling::{
-        Axis, FrameItemId, HitKind, LayoutFrame, LayoutInput, PaneId, Point, Rect, Size, TileError,
-        TileOp, TileSpec, TileTree, hit_test,
+        Axis, FrameItemId, HitKind, LayoutFrame, LayoutInput, PaneBookmark, PaneId, Point, Rect,
+        Size, TileError, TileOp, TileSpec, TileTree, hit_test,
     },
 };
 use peniko::{Brush, Color};
@@ -46,6 +46,7 @@ struct DockModel {
     hit: Option<HitKind>,
     status: String,
     last_op: String,
+    closed: Option<PaneBookmark>,
 }
 
 impl DockModel {
@@ -56,6 +57,7 @@ impl DockModel {
             hit: None,
             status: String::from("Ready"),
             last_op: String::from("seed sample layout"),
+            closed: None,
         }
     }
 
@@ -93,8 +95,38 @@ impl DockModel {
     }
 
     fn close_selected(&mut self) {
-        let result = self.dock.close_selected();
-        self.record_command_result("close selected pane", result);
+        match self.dock.close_selected_with_bookmark() {
+            Ok(bookmark) => {
+                self.last_op = format!("close pane {}", bookmark.pane().0);
+                self.status = String::from("Pane closed. Reopen it after editing the layout.");
+                self.closed = Some(bookmark);
+            }
+            Err(error) => self.status = format!("Close rejected: {error}"),
+        }
+    }
+
+    fn reopen_closed(&mut self) {
+        let Some(bookmark) = self.closed.as_ref() else {
+            self.status = String::from("Close a pane to record its placement.");
+            return;
+        };
+        match self.dock.reopen_pane(bookmark) {
+            Ok(placement) => {
+                self.last_op = format!("reopen pane {}", bookmark.pane().0);
+                self.status = format!("Pane reopened ({placement:?} placement)");
+                self.closed = None;
+            }
+            Err(error) => self.status = format!("Reopen rejected: {error}"),
+        }
+    }
+
+    fn collapse_selected(&mut self) {
+        let result = self.dock.collapse_selected(44.0);
+        let collapsed = result.is_ok();
+        self.record_command_result("collapse selected tile", result);
+        if collapsed {
+            self.status = String::from("Tile collapsed. Click its + strip to expand.");
+        }
     }
 
     fn toggle_policy_lock(&mut self) {
@@ -187,6 +219,8 @@ struct DockView {
     split_h: ElementId,
     split_v: ElementId,
     close: ElementId,
+    reopen: ElementId,
+    collapse: ElementId,
     zoom: ElementId,
     reset: ElementId,
     policy: ElementId,
@@ -256,6 +290,8 @@ fn build_shell(ui: &mut Ui, root: ElementId) -> DockView {
                 split_h: side.split_h,
                 split_v: side.split_v,
                 close: side.close,
+                reopen: side.reopen,
+                collapse: side.collapse,
                 zoom: side.zoom,
                 reset: side.reset,
                 policy: side.policy,
@@ -282,6 +318,8 @@ struct SideView {
     split_h: ElementId,
     split_v: ElementId,
     close: ElementId,
+    reopen: ElementId,
+    collapse: ElementId,
     zoom: ElementId,
     reset: ElementId,
     policy: ElementId,
@@ -309,7 +347,9 @@ fn build_side(row: &mut ChildUi<'_>) -> SideView {
             );
             let split_h = side.add(Button::new("Split H").font_size(12.0));
             let split_v = side.add(Button::new("Split V").font_size(12.0));
-            let close = side.add(Button::new("Close").font_size(12.0));
+            let close = side.add(Button::new("Close selected").font_size(12.0));
+            let reopen = side.add(Button::new("Reopen last closed pane").font_size(12.0));
+            let collapse = side.add(Button::new("Collapse selected tile").font_size(12.0));
             let zoom = side.add(Button::new("Zoom / restore selected").font_size(12.0));
             let policy = side.add(Button::new("Toggle policy lock").font_size(12.0));
             let reset = side.add(Button::new("Reset").font_size(12.0));
@@ -325,6 +365,8 @@ fn build_side(row: &mut ChildUi<'_>) -> SideView {
                 split_h,
                 split_v,
                 close,
+                reopen,
+                collapse,
                 zoom,
                 reset,
                 policy,
@@ -396,6 +438,22 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
     ui.events(view.close).click(move |ui, event| {
         close_state.borrow_mut().close_selected();
         render(ui, &close_view, &close_state.borrow());
+        event.mark_handled();
+    });
+
+    let reopen_state = Rc::clone(&state);
+    let reopen_view = view.clone();
+    ui.events(view.reopen).click(move |ui, event| {
+        reopen_state.borrow_mut().reopen_closed();
+        render(ui, &reopen_view, &reopen_state.borrow());
+        event.mark_handled();
+    });
+
+    let collapse_state = Rc::clone(&state);
+    let collapse_view = view.clone();
+    ui.events(view.collapse).click(move |ui, event| {
+        collapse_state.borrow_mut().collapse_selected();
+        render(ui, &collapse_view, &collapse_state.borrow());
         event.mark_handled();
     });
 
@@ -581,6 +639,7 @@ fn hit_summary(hit: Option<HitKind>) -> String {
         Some(HitKind::SplitHandle { split, handle }) => {
             format!("split {} handle {}", split.0, handle)
         }
+        Some(HitKind::CollapsedTile { tile }) => format!("collapsed tile {}", tile.0),
         Some(HitKind::Empty) => String::from("empty"),
         None => String::from("none"),
     }
@@ -618,6 +677,7 @@ fn paint_list(items: &[FrameItemId]) -> String {
         .take(8)
         .map(|item| match item {
             FrameItemId::Pane(pane) => format!("P{}", pane.0),
+            FrameItemId::CollapsedTile(tile) => format!("R{}", tile.0),
             FrameItemId::Tab { pane, .. } => format!("T{}", pane.0),
             FrameItemId::TabBar(group) => format!("B{}", group.0),
             FrameItemId::SplitChild { split, child } => format!("C{}:{}", split.0, child.0),
@@ -643,6 +703,9 @@ fn op_label(op: &TileOp) -> String {
         }
         TileOp::ReorderTab { group, pane, index } => {
             format!("reorder pane {} in group {} to {}", pane.0, group.0, index)
+        }
+        TileOp::SetCollapsed { tile, extent } => {
+            format!("set tile {} collapsed extent {:?}", tile.0, extent)
         }
         TileOp::SetSplitShares { split, shares } => {
             format!("set split {} shares {:?}", split.0, shares)
@@ -808,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn top_half_drop_prefers_pane_vertical_split_target() {
+    fn local_top_edge_targets_the_pane_below_its_tab_bar() {
         let mut model = DockModel::new();
         let source = model
             .dock
@@ -828,7 +891,9 @@ mod tests {
         let start = source.rect.center();
         let hover = Point::new(
             target.rect.center().x,
-            target.rect.y0 + target.rect.height() * 0.2,
+            // The edge is measured from the full tile, including its tab bar.
+            // Stay below the ancestor container's outer docking strip.
+            target.rect.y0 + 24.0,
         );
 
         model.begin_pointer(start);
@@ -848,11 +913,42 @@ mod tests {
             ..
         }) = &drag.proposal
         else {
-            panic!("top-half hover should produce a split move proposal");
+            panic!("pane-edge hover should produce a split move proposal");
         };
         assert_eq!(*tile, target.tile);
         assert_eq!(*axis, Axis::Vertical);
         assert_eq!(*placement, Placement::Before);
+    }
+
+    #[test]
+    fn left_workspace_edge_previews_the_committed_split() {
+        let mut model = DockModel::new();
+        let source = model
+            .dock
+            .frame()
+            .panes()
+            .iter()
+            .find(|pane| pane.pane == PaneId(5))
+            .unwrap()
+            .rect
+            .center();
+        let left = Point::new(2.0, CANVAS_HEIGHT / 2.0);
+        let root = model.dock.tree().root();
+
+        model.begin_pointer(source);
+        model.update_pointer(left);
+        assert!(matches!(
+            model.dock.overlay().active_target,
+            Some(overstory_docking::tiling::DropTargetId::Split {
+                tile, axis: Axis::Horizontal, placement: Placement::Before,
+            }) if tile == root
+        ));
+        let ghost = model.dock.overlay().ghost_rects[0].rect;
+        assert_eq!(model.display_frame().panes()[0].rect, ghost);
+
+        model.end_pointer(left);
+        assert_eq!(model.display_frame().panes()[0].pane, PaneId(5));
+        assert_eq!(model.display_frame().panes()[0].rect, ghost);
     }
 
     #[test]

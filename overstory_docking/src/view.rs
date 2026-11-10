@@ -203,6 +203,7 @@ impl DockSurface {
             &self.tab_events,
         );
         inner.sync_handles(ui, frame.split_handles());
+        inner.sync_collapsed_tiles(ui, frame.collapsed_tiles());
         inner.sync_overlay(ui, state.overlay());
         inner.synchronized_frame_epoch = Some(state.frame_epoch());
     }
