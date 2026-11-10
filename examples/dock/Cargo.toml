@@ -1,0 +1,23 @@
+[package]
+name = "dock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Docking and tiling example for Overstory and understory_tiling."
+publish = false
+
+[features]
+default = ["winit-host"]
+appkit-host = ["overstory_app/appkit-host"]
+winit-host = ["overstory_app/winit-host"]
+
+[dependencies]
+overstory = { features = ["system-fonts"], workspace = true }
+overstory_app = { default-features = false, workspace = true }
+overstory_docking = { features = ["std"], workspace = true }
+peniko.workspace = true
+
+[lints]
+workspace = true

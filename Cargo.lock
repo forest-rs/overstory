@@ -852,6 +852,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dock"
+version = "0.0.1"
+dependencies = [
+ "overstory",
+ "overstory_app",
+ "overstory_docking",
+ "peniko",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

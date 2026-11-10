@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/sightline",
     "examples/binding",
+    "examples/dock",
     "examples/hello",
     "looks/chicago",
     "looks/core",
