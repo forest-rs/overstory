@@ -12,29 +12,30 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use overstory::{
-    Button, ChildUi, ElementId, ElementSpecExt, Layout, LayoutDimension, LayoutSize, Panel,
-    PointerEventKind, SurfaceSpecExt, Text, Ui, theme,
+    Button, ChildUi, ElementId, ElementSpecExt, Layout, Panel, PointerEventKind, SurfaceSpecExt,
+    Text, Ui, theme,
 };
 use overstory_app::WindowOptions;
 #[cfg(test)]
-use overstory_docking::tiling::{DockTarget, Placement, TileId};
+use overstory_docking::tiling::{Placement, TileId};
 use overstory_docking::{
-    DockInteractionKind, DockOutcome, DockState, DockSurface,
+    DockGeometryError, DockInteractionKind, DockOutcome, DockPaint, DockState, DockSurface,
+    DockSurfaceStyle,
     tiling::{
-        Axis, FrameItemId, HitKind, LayoutFrame, LayoutInput, PaneBookmark, PaneId, Point, Rect,
-        Size, TileError, TileOp, TileSpec, TileTree, hit_test,
+        Axis, DockTarget, InteractionState, LayoutInput, PaneBookmark, PaneId, Point, Rect, Size,
+        TileError, TileOp, TileSpec, TileTree,
     },
 };
 use peniko::{Brush, Color};
 
-const INITIAL_WIDTH: u32 = 1360;
-const INITIAL_HEIGHT: u32 = 860;
-const CANVAS_WIDTH: f64 = 920.0;
-const CANVAS_HEIGHT: f64 = 620.0;
-const SIDE_WIDTH: f64 = 332.0;
+const INITIAL_WIDTH: u32 = 1112;
+const INITIAL_HEIGHT: u32 = 710;
+const CANVAS_WIDTH: f64 = 1064.0;
+const CANVAS_HEIGHT: f64 = 484.0;
 fn main() -> overstory_app::HostResult<()> {
     overstory_app::run(
-        WindowOptions::new("Dock").initial_size(INITIAL_WIDTH, INITIAL_HEIGHT),
+        WindowOptions::new("Overstory | Dock workbench")
+            .initial_size(INITIAL_WIDTH, INITIAL_HEIGHT),
         build_ui,
     )
 }
@@ -43,9 +44,7 @@ fn main() -> overstory_app::HostResult<()> {
 struct DockModel {
     dock: DockState,
     next_pane: u32,
-    hit: Option<HitKind>,
     status: String,
-    last_op: String,
     closed: Option<PaneBookmark>,
 }
 
@@ -54,9 +53,7 @@ impl DockModel {
         Self {
             dock: DockState::new(sample_tree(), layout_input(), PaneId(1)),
             next_pane: 6,
-            hit: None,
-            status: String::from("Ready"),
-            last_op: String::from("seed sample layout"),
+            status: String::from("Ready. Try dragging Preview onto the center of Search."),
             closed: None,
         }
     }
@@ -66,7 +63,8 @@ impl DockModel {
         self.status = String::from("Reset sample layout");
     }
 
-    fn display_frame(&self) -> &LayoutFrame {
+    #[cfg(test)]
+    fn display_frame(&self) -> &overstory_docking::tiling::LayoutFrame {
         self.dock.display_frame()
     }
 
@@ -79,7 +77,6 @@ impl DockModel {
     fn record_command_result(&mut self, label: &str, result: Result<TileOp, TileError>) {
         match result {
             Ok(_op) => {
-                self.last_op = String::from(label);
                 self.status = format!("{label} committed");
             }
             Err(error) => {
@@ -97,7 +94,6 @@ impl DockModel {
     fn close_selected(&mut self) {
         match self.dock.close_selected_with_bookmark() {
             Ok(bookmark) => {
-                self.last_op = format!("close pane {}", bookmark.pane().0);
                 self.status = String::from("Pane closed. Reopen it after editing the layout.");
                 self.closed = Some(bookmark);
             }
@@ -112,7 +108,6 @@ impl DockModel {
         };
         match self.dock.reopen_pane(bookmark) {
             Ok(placement) => {
-                self.last_op = format!("reopen pane {}", bookmark.pane().0);
                 self.status = format!("Pane reopened ({placement:?} placement)");
                 self.closed = None;
             }
@@ -151,13 +146,11 @@ impl DockModel {
     }
 
     fn begin_pointer(&mut self, point: Point) {
-        self.hit = hit_test(self.dock.frame(), point);
         let outcome = self.dock.begin_pointer(point);
         self.record_outcome(outcome);
     }
 
     fn update_pointer(&mut self, point: Point) {
-        self.hit = hit_test(self.dock.frame(), point);
         let outcome = self.dock.update_pointer(point);
         self.record_outcome(outcome);
     }
@@ -173,39 +166,30 @@ impl DockModel {
     }
 
     fn record_outcome(&mut self, outcome: DockOutcome) {
-        match outcome {
-            DockOutcome::None => {}
-            DockOutcome::NoHit => self.status = String::from("No tiling hit at pointer down"),
-            DockOutcome::InteractionStarted(kind) => {
-                self.status = interaction_started_label(kind);
+        self.status = match outcome {
+            DockOutcome::None
+            | DockOutcome::NoHit
+            | DockOutcome::ClickMiss(_)
+            | DockOutcome::InteractionStarted(DockInteractionKind::PendingDrag)
+            | DockOutcome::NoProposal(DockInteractionKind::PendingDrag) => return,
+            DockOutcome::InteractionStarted(DockInteractionKind::Resize)
+            | DockOutcome::NoProposal(DockInteractionKind::Resize) => "Resizing split".into(),
+            DockOutcome::InteractionStarted(DockInteractionKind::Drag)
+            | DockOutcome::NoProposal(DockInteractionKind::Drag) => {
+                "Move to a pane center to make tabs, or to an edge to split.".into()
             }
-            DockOutcome::NoProposal(kind) => {
-                self.status = no_proposal_label(kind);
+            DockOutcome::ProposalValid(op) => placement_label(&op, false),
+            DockOutcome::PaneSelected(pane) => format!("Selected {}.", pane_title(pane)),
+            DockOutcome::Committed(op) => placement_label(&op, true),
+            DockOutcome::ProposalRejected(error) | DockOutcome::Rejected(error) => {
+                if error == TileError::PolicyRejected {
+                    "Docking is locked.".into()
+                } else {
+                    format!("Can't place the pane here ({error}).")
+                }
             }
-            DockOutcome::ProposalValid(op) => {
-                self.status = format!("valid proposal: {}", op_label(&op));
-            }
-            DockOutcome::ProposalRejected(error) => {
-                self.status = format!("proposal rejected: {error}");
-            }
-            DockOutcome::PaneSelected(pane) => {
-                self.status = format!("Selected pane {}", pane.0);
-            }
-            DockOutcome::ClickMiss(hit) => {
-                self.hit = hit;
-                self.status = String::from("Click did not hit an activatable tile");
-            }
-            DockOutcome::Committed(op) => {
-                self.last_op = op_label(&op);
-                self.status = String::from("Validated interaction proposal committed");
-            }
-            DockOutcome::Rejected(error) => {
-                self.status = format!("validated interaction rejected: {error}");
-            }
-            DockOutcome::Canceled => {
-                self.status = String::from("Pointer interaction canceled");
-            }
-        }
+            DockOutcome::Canceled => "Drag canceled.".into(),
+        };
     }
 }
 
@@ -213,9 +197,6 @@ impl DockModel {
 struct DockView {
     surface: DockSurface,
     status: ElementId,
-    hit: ElementId,
-    frame: ElementId,
-    operation: ElementId,
     split_h: ElementId,
     split_v: ElementId,
     close: ElementId,
@@ -248,165 +229,57 @@ fn build_ui() -> Ui {
 fn build_shell(ui: &mut Ui, root: ElementId) -> DockView {
     ui.with_child(
         root,
-        Panel::column(18.0)
-            .layout(Layout::column(18.0).fill_size())
-            .padding(20.0)
-            .background(Some(brush(color(0x0d, 0x11, 0x16, 0xff)))),
+        Panel::column(12.0)
+            .layout(Layout::column(12.0).fill_size())
+            .padding(24.0)
+            .background(Some(brush(color(0x10, 0x16, 0x20, 0xff)))),
         |shell| {
-            shell.add(
-                Text::new("Dock")
-                    .font_size(34.0)
-                    .foreground(brush(color(0xf4, 0xf7, 0xfb, 0xff)))
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            shell.add(
-                Text::new("A vertical slice over understory_tiling: frames, hits, proposals, validation, and commits.")
-                    .font_size(14.0)
-                    .foreground(brush(color(0xb6, 0xc0, 0xcb, 0xff)))
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-
-            let (workbench, side) = shell.with_child(
-                Panel::row(18.0)
-                    .layout(Layout::row(18.0).fill_size())
-                    .background(Some(brush(color(0x12, 0x18, 0x20, 0xff))))
-                    .border_brush(Some(brush(color(0x2a, 0x35, 0x43, 0xff))))
-                    .border_width(1.0)
-                    .corner_radius(8.0)
-                    .padding(14.0),
-                |row| {
-                    let workbench = build_workbench(row);
-                    let side = build_side(row);
-                    (workbench, side)
+            shell.add(Text::new("Dock workbench").font_size(30.0)
+                .foreground(brush(color(0xf4, 0xf7, 0xfb, 0xff))));
+            shell.add(Text::new("Drag to a pane center to make tabs. Drag to an edge to split. Drag along a tab strip to insert.")
+                .font_size(14.0).foreground(brush(color(0x9d, 0xb2, 0xca, 0xff))));
+            let [split_h, split_v, collapse, close, reopen, zoom, policy, reset] = shell.with_child(
+                Panel::row(8.0).layout(Layout::row(8.0).fill_width()),
+                |toolbar| {
+                    ["Split across", "Split below", "Collapse", "Close", "Reopen", "Zoom / restore", "Toggle lock", "Reset"].map(|label| {
+                        toolbar.add(Button::new(label).font_size(13.0)
+                            .layout(Layout::new().logical_size(120.0, 34.0)))
+                    })
                 },
             );
 
-            DockView {
-                surface: workbench,
-                status: side.status,
-                hit: side.hit,
-                frame: side.frame,
-                operation: side.operation,
-                split_h: side.split_h,
-                split_v: side.split_v,
-                close: side.close,
-                reopen: side.reopen,
-                collapse: side.collapse,
-                zoom: side.zoom,
-                reset: side.reset,
-                policy: side.policy,
-            }
-        },
-    )
-}
-
-fn build_workbench(row: &mut ChildUi<'_>) -> DockSurface {
-    DockSurface::mount(
-        row,
-        Layout::new()
-            .logical_size(CANVAS_WIDTH, CANVAS_HEIGHT)
-            .flex_shrink(0.0),
-    )
-}
-
-#[derive(Debug)]
-struct SideView {
-    status: ElementId,
-    hit: ElementId,
-    frame: ElementId,
-    operation: ElementId,
-    split_h: ElementId,
-    split_v: ElementId,
-    close: ElementId,
-    reopen: ElementId,
-    collapse: ElementId,
-    zoom: ElementId,
-    reset: ElementId,
-    policy: ElementId,
-}
-
-fn build_side(row: &mut ChildUi<'_>) -> SideView {
-    row.with_child(
-        Panel::column(12.0)
-            .layout(
-                Layout::column(12.0)
-                    .size(LayoutSize::new().width(LayoutDimension::Logical(SIDE_WIDTH)))
-                    .flex_shrink(0.0),
-            )
-            .background(Some(brush(color(0x15, 0x1c, 0x25, 0xff))))
-            .border_brush(Some(brush(color(0x2d, 0x3b, 0x4b, 0xff))))
-            .border_width(1.0)
-            .corner_radius(6.0)
-            .padding(12.0),
-        |side| {
-            side.add(
-                Text::new("Controls")
-                    .font_size(18.0)
-                    .foreground(brush(color(0xf3, 0xf7, 0xfa, 0xff)))
-                    .layout(Layout::new().flex_shrink(0.0)),
+            let surface = DockSurface::mount_with_style(
+                shell,
+                Layout::new().logical_size(CANVAS_WIDTH, CANVAS_HEIGHT).flex_shrink(0.0),
+                workbench_style(),
             );
-            let split_h = side.add(Button::new("Split H").font_size(12.0));
-            let split_v = side.add(Button::new("Split V").font_size(12.0));
-            let close = side.add(Button::new("Close selected").font_size(12.0));
-            let reopen = side.add(Button::new("Reopen last closed pane").font_size(12.0));
-            let collapse = side.add(Button::new("Collapse selected tile").font_size(12.0));
-            let zoom = side.add(Button::new("Zoom / restore selected").font_size(12.0));
-            let policy = side.add(Button::new("Toggle policy lock").font_size(12.0));
-            let reset = side.add(Button::new("Reset").font_size(12.0));
-            let status = readout(side, "Status");
-            let hit = readout(side, "Hit");
-            let frame = readout(side, "Frame");
-            let operation = readout(side, "Last op");
-            SideView {
-                status,
-                hit,
-                frame,
-                operation,
-                split_h,
-                split_v,
-                close,
-                reopen,
-                collapse,
-                zoom,
-                reset,
-                policy,
-            }
+            let status = shell.add(Text::new("").font_size(14.0)
+                .foreground(brush(color(0x62, 0xe6, 0xd3, 0xff)))
+                .layout(Layout::new().flex_shrink(0.0)));
+            DockView { surface, status, split_h, split_v, close, reopen, collapse, zoom, reset, policy }
         },
     )
 }
 
-fn readout(side: &mut ChildUi<'_>, label: &str) -> ElementId {
-    side.with_child(
-        Panel::column(4.0)
-            .layout(Layout::column(4.0).fill_width().flex_shrink(0.0))
-            .background(Some(brush(color(0x10, 0x16, 0x1e, 0xff))))
-            .border_brush(Some(brush(color(0x2a, 0x36, 0x45, 0xff))))
-            .border_width(1.0)
-            .corner_radius(4.0)
-            .padding(8.0),
-        |card| {
-            card.add(
-                Text::new(label)
-                    .font_size(11.0)
-                    .foreground(brush(color(0x7f, 0x92, 0xa7, 0xff)))
-                    .layout(Layout::new().flex_shrink(0.0)),
-            );
-            card.add(
-                Text::new("")
-                    .font_size(12.0)
-                    .wrap()
-                    .foreground(brush(color(0xe7, 0xed, 0xf5, 0xff)))
-                    .layout(
-                        Layout::new()
-                            .size(
-                                LayoutSize::new()
-                                    .width(LayoutDimension::Logical(SIDE_WIDTH - 48.0)),
-                            )
-                            .flex_shrink(0.0),
-                    ),
-            )
-        },
-    )
+fn workbench_style() -> DockSurfaceStyle {
+    let mut style = DockSurfaceStyle::default();
+    let accent = color(0x62, 0xe6, 0xd3, 0xff);
+    let none = color(0, 0, 0, 0);
+    let quiet = DockPaint::new(none, none, 0.0);
+    let pane = color(0x19, 0x23, 0x32, 0xff);
+    let border = color(0x34, 0x45, 0x5a, 0xff);
+    style.pane = DockPaint::new(pane, border, 1.0);
+    style.selected_pane = DockPaint::new(pane, border, 1.0);
+    style.tab = DockPaint::new(color(0x10, 0x16, 0x20, 0xff), border, 1.0);
+    style.active_tab = DockPaint::new(color(0x23, 0x37, 0x46, 0xff), accent, 1.0);
+    style.split_handle = DockPaint::new(border, border, 0.0);
+    style.preview = DockPaint::new(color(0x62, 0xe6, 0xd3, 0x32), accent, 2.0);
+    style.accepted_target = quiet;
+    style.rejected_target = quiet;
+    style.active_target_border = none;
+    style.dragged = quiet;
+    style.pane_padding = 16.0;
+    style
 }
 
 fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
@@ -485,15 +358,24 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
     let down_view = view.clone();
     ui.events(view.surface.root())
         .pointer(PointerEventKind::Down, move |ui, event| {
-            let Some(position) = event.position else {
+            let Some(position) = event.position.filter(|_| !event.phase().is_bubble()) else {
                 return;
             };
-            let point = down_view.surface.local_point(ui, position);
             let mut model = down_state.borrow_mut();
-            if let Err(error) = down_view.surface.apply_tab_geometry(ui, &mut model.dock) {
-                model.status = format!("tab geometry rejected: {error}");
+            let mut geometry = down_view.surface.apply_tab_geometry(ui, &mut model.dock);
+            if matches!(geometry, Err(DockGeometryError::PendingLayout)) {
+                // A hover style can dirty layout in the same input batch as
+                // pointer-down. Refresh the arranged strip before picking a tab.
+                let viewport = ui.effective_bounds(ui.root()).size();
+                let _ = ui.compute_layout(viewport);
+                geometry = down_view.surface.apply_tab_geometry(ui, &mut model.dock);
+            }
+            if geometry.is_err() {
+                model.status = String::from("The layout is updating. Try the drag again.");
+                set_text(ui, down_view.status, model.status.clone());
                 return;
             }
+            let point = down_view.surface.local_point(ui, position);
             model.begin_pointer(point);
             drop(model);
             let _ = ui.capture_pointer(down_view.surface.root());
@@ -505,6 +387,9 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
     let move_view = view.clone();
     ui.events(view.surface.root())
         .pointer(PointerEventKind::Move, move |ui, event| {
+            if ui.pointer_capture() != Some(move_view.surface.root()) || event.phase().is_bubble() {
+                return;
+            }
             let Some(position) = event.position else {
                 return;
             };
@@ -518,6 +403,9 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
     let up_view = view.clone();
     ui.events(view.surface.root())
         .pointer(PointerEventKind::Up, move |ui, event| {
+            if ui.pointer_capture() != Some(up_view.surface.root()) || event.phase().is_bubble() {
+                return;
+            }
             let Some(position) = event.position else {
                 return;
             };
@@ -532,6 +420,10 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
     let cancel_view = view.clone();
     ui.events(view.surface.root())
         .pointer(PointerEventKind::Cancel, move |ui, event| {
+            if ui.pointer_capture() != Some(cancel_view.surface.root()) || event.phase().is_bubble()
+            {
+                return;
+            }
             cancel_state.borrow_mut().cancel_pointer();
             let _ = ui.release_pointer_capture(cancel_view.surface.root());
             render(ui, &cancel_view, &cancel_state.borrow());
@@ -540,29 +432,35 @@ fn wire(ui: &mut Ui, view: DockView, state: Rc<RefCell<DockModel>>) {
 }
 
 fn render(ui: &mut Ui, view: &DockView, model: &DockModel) {
-    let frame = model.display_frame();
-    view.surface
-        .sync(ui, &model.dock, build_pane_content, pane_title);
+    if matches!(model.dock.interaction(), InteractionState::Drag(_)) {
+        // Draw prospective placement over the current panes. The actual
+        // contents and hit geometry stay steady until the user releases.
+        view.surface.sync_overlay(ui, model.dock.overlay());
+    } else {
+        view.surface
+            .sync(ui, &model.dock, build_pane_content, pane_title);
+    }
     set_text(ui, view.status, model.status.clone());
-    set_text(ui, view.hit, hit_summary(model.hit));
-    set_text(
-        ui,
-        view.frame,
-        frame_summary(frame, model.dock.is_policy_locked()),
-    );
-    set_text(ui, view.operation, model.last_op.clone());
 }
 
 fn build_pane_content(pane: PaneId, ui: &mut ChildUi<'_>) {
     ui.add(
         Text::new(pane_title(pane))
-            .font_size(15.0)
+            .font_size(20.0)
             .foreground(brush(color(0xf2, 0xf6, 0xfa, 0xff)))
             .layout(Layout::new().flex_shrink(0.0)),
     );
+    let description = match pane.0 {
+        1 => "Workspace document",
+        2 => "Rendered output",
+        3 => "Document structure",
+        4 => "Selection properties",
+        5 => "Drag a pane here to make tabs",
+        _ => "Workspace pane",
+    };
     ui.add(
-        Text::new(format!("Application content for pane {}", pane.0))
-            .font_size(12.0)
+        Text::new(description)
+            .font_size(13.0)
             .foreground(brush(color(0x96, 0xa6, 0xb7, 0xff)))
             .layout(Layout::new().flex_shrink(0.0)),
     );
@@ -604,22 +502,6 @@ fn axis_position(point: Point, axis: Axis) -> f64 {
     }
 }
 
-fn interaction_started_label(kind: DockInteractionKind) -> String {
-    match kind {
-        DockInteractionKind::PendingDrag => String::from("Pointer gesture pending click or drag"),
-        DockInteractionKind::Drag => String::from("Drag session started"),
-        DockInteractionKind::Resize => String::from("Resize session started"),
-    }
-}
-
-fn no_proposal_label(kind: DockInteractionKind) -> String {
-    match kind {
-        DockInteractionKind::PendingDrag => String::from("Pointer gesture pending click or drag"),
-        DockInteractionKind::Drag => String::from("Drag session has no accepting proposal"),
-        DockInteractionKind::Resize => String::from("Resize session has no proposal"),
-    }
-}
-
 fn pane_title(pane: PaneId) -> String {
     match pane.0 {
         1 => String::from("Editor.rs"),
@@ -631,86 +513,53 @@ fn pane_title(pane: PaneId) -> String {
     }
 }
 
-fn hit_summary(hit: Option<HitKind>) -> String {
-    match hit {
-        Some(HitKind::Pane { pane }) => format!("pane {}", pane.0),
-        Some(HitKind::Tab { group, pane }) => format!("tab pane {} in group {}", pane.0, group.0),
-        Some(HitKind::TabBar { group }) => format!("tab bar group {}", group.0),
-        Some(HitKind::SplitHandle { split, handle }) => {
-            format!("split {} handle {}", split.0, handle)
-        }
-        Some(HitKind::CollapsedTile { tile }) => format!("collapsed tile {}", tile.0),
-        Some(HitKind::Empty) => String::from("empty"),
-        None => String::from("none"),
-    }
-}
-
-fn frame_summary(frame: &LayoutFrame, policy_locked: bool) -> String {
-    format!(
-        "revision {}\npanes {} tabs {} bars {} handles {}\nfocus {}\npaint {}\nprojection {}\npolicy {}",
-        frame.revision().0,
-        frame.panes().len(),
-        frame.tabs().len(),
-        frame.tab_bars().len(),
-        frame.split_handles().len(),
-        pane_list(frame.focus_order()),
-        paint_list(frame.paint_order()),
-        frame.projection().map_or_else(
-            || String::from("none"),
-            |projection| { format!("zoom pane {}", projection.focus.0) }
-        ),
-        if policy_locked { "locked" } else { "open" }
-    )
-}
-
-fn pane_list(panes: &[PaneId]) -> String {
-    panes
-        .iter()
-        .map(|pane| pane.0.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn paint_list(items: &[FrameItemId]) -> String {
-    items
-        .iter()
-        .take(8)
-        .map(|item| match item {
-            FrameItemId::Pane(pane) => format!("P{}", pane.0),
-            FrameItemId::CollapsedTile(tile) => format!("R{}", tile.0),
-            FrameItemId::Tab { pane, .. } => format!("T{}", pane.0),
-            FrameItemId::TabBar(group) => format!("B{}", group.0),
-            FrameItemId::SplitChild { split, child } => format!("C{}:{}", split.0, child.0),
-            FrameItemId::SplitHandle { split, handle } => format!("H{}:{}", split.0, handle),
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn op_label(op: &TileOp) -> String {
-    match op {
-        TileOp::ActivatePane { pane } => format!("activate pane {}", pane.0),
-        TileOp::ClosePane { pane } => format!("close pane {}", pane.0),
-        TileOp::SplitPane {
-            pane,
-            axis,
-            new_pane,
-            ..
-        } => format!("split pane {} {:?} -> {}", pane.0, axis, new_pane.0),
-        TileOp::MovePane { pane, target } => format!("move pane {} to {:?}", pane.0, target),
-        TileOp::MoveTabGroup { group, target } => {
-            format!("move tab group {} to {:?}", group.0, target)
-        }
-        TileOp::ReorderTab { group, pane, index } => {
-            format!("reorder pane {} in group {} to {}", pane.0, group.0, index)
-        }
-        TileOp::SetCollapsed { tile, extent } => {
-            format!("set tile {} collapsed extent {:?}", tile.0, extent)
-        }
-        TileOp::SetSplitShares { split, shares } => {
-            format!("set split {} shares {:?}", split.0, shares)
-        }
-    }
+fn placement_label(op: &TileOp, committed: bool) -> String {
+    let text = match (op, committed) {
+        (
+            TileOp::MovePane {
+                target: DockTarget::TabWith { .. },
+                ..
+            },
+            false,
+        ) => "Release to create a tab group.",
+        (
+            TileOp::MovePane {
+                target: DockTarget::TabWith { .. },
+                ..
+            },
+            true,
+        ) => "Created a tab group.",
+        (
+            TileOp::MovePane {
+                target: DockTarget::TabInto { index: Some(_), .. },
+                ..
+            }
+            | TileOp::ReorderTab { .. },
+            false,
+        ) => "Release to insert at the marker.",
+        (
+            TileOp::MovePane {
+                target: DockTarget::TabInto { .. },
+                ..
+            },
+            false,
+        ) => "Release to add a tab.",
+        (
+            TileOp::MovePane {
+                target: DockTarget::TabInto { .. },
+                ..
+            }
+            | TileOp::ReorderTab { .. },
+            true,
+        ) => "Tab placed.",
+        (TileOp::SetSplitShares { .. }, false) => "Resizing split",
+        (TileOp::SetSplitShares { .. }, true) => "Split resized.",
+        (TileOp::SetCollapsed { extent: None, .. }, true) => "Tile expanded.",
+        (TileOp::ActivatePane { pane }, true) => return format!("Selected {}.", pane_title(*pane)),
+        (_, false) => "Release to dock in the highlighted area.",
+        (_, true) => "Pane docked.",
+    };
+    String::from(text)
 }
 
 fn set_text(ui: &mut Ui, id: ElementId, text: String) {
@@ -728,7 +577,106 @@ fn color(r: u8, g: u8, b: u8, a: u8) -> Color {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use overstory_docking::tiling::{DockProposal, InteractionState, SplitHandleFrame};
+    use overstory_docking::tiling::{DockProposal, LayoutFrame, SplitHandleFrame};
+
+    #[test]
+    fn routed_tab_drag_creates_a_group_and_retains_layout_during_hover() {
+        use ui_events::pointer::{
+            PointerButton, PointerButtonEvent, PointerButtons, PointerEvent, PointerId,
+            PointerInfo, PointerState, PointerType, PointerUpdate,
+        };
+
+        fn pointer_state(point: Point, time: u64, pressed: bool) -> PointerState {
+            let mut buttons = PointerButtons::new();
+            if pressed {
+                buttons.insert(PointerButton::Primary);
+            }
+            let mut state = PointerState {
+                time,
+                buttons,
+                count: 1,
+                ..PointerState::default()
+            };
+            state.position.x = point.x;
+            state.position.y = point.y;
+            state
+        }
+
+        let mut ui = Ui::new();
+        let root = ui.root();
+        ui.set_layout(root, Layout::column(0.0).fill_size());
+        let view = build_shell(&mut ui, root);
+        let model = Rc::new(RefCell::new(DockModel::new()));
+        render(&mut ui, &view, &model.borrow());
+        wire(&mut ui, view.clone(), Rc::clone(&model));
+        let viewport = Size::new(f64::from(INITIAL_WIDTH), f64::from(INITIAL_HEIGHT));
+        ui.compute_layout(viewport);
+        let geometry = view
+            .surface
+            .tab_group_geometry(&ui, &model.borrow().dock)
+            .unwrap();
+        let tab = geometry
+            .iter()
+            .flat_map(|group| &group.tabs)
+            .find(|tab| tab.pane == PaneId(2))
+            .unwrap();
+        let search = model
+            .borrow()
+            .dock
+            .frame()
+            .panes()
+            .iter()
+            .find(|pane| pane.pane == PaneId(5))
+            .copied()
+            .unwrap();
+        let bounds = ui.effective_bounds(view.surface.pane_element(PaneId(5)).unwrap());
+        let offset = -view.surface.local_point(&ui, Point::ORIGIN).to_vec2();
+        let from = tab.interaction_regions[0].center() + offset;
+        let to = search.rect.center() + offset;
+        let pointer = PointerInfo {
+            pointer_id: Some(PointerId::PRIMARY),
+            persistent_device_id: None,
+            pointer_type: PointerType::Mouse,
+        };
+        // Exercise pointer-down while a preceding style/layout change is pending.
+        ui.set_layout(view.status, Layout::new().logical_size(600.0, 24.0));
+        assert!(ui.has_pending_layout());
+        ui.dispatch_pointer_event(&PointerEvent::Down(PointerButtonEvent {
+            pointer,
+            button: Some(PointerButton::Primary),
+            state: pointer_state(from, 1, true),
+        }));
+        assert_eq!(ui.pointer_capture(), Some(view.surface.root()));
+        ui.dispatch_pointer_event(&PointerEvent::Move(PointerUpdate {
+            pointer,
+            current: pointer_state(to, 2, true),
+            coalesced: vec![],
+            predicted: vec![],
+        }));
+        ui.compute_layout(viewport);
+        assert_eq!(
+            ui.effective_bounds(view.surface.pane_element(PaneId(5)).unwrap()),
+            bounds
+        );
+        assert_eq!(model.borrow().status, "Release to create a tab group.");
+        ui.dispatch_pointer_event(&PointerEvent::Up(PointerButtonEvent {
+            pointer,
+            button: Some(PointerButton::Primary),
+            state: pointer_state(to, 3, false),
+        }));
+        assert_eq!(ui.pointer_capture(), None);
+        let model = model.borrow();
+        assert_eq!(model.status, "Created a tab group.");
+        let tabs = model
+            .dock
+            .frame()
+            .tabs()
+            .iter()
+            .filter(|tab| tab.group == search.tile)
+            .map(|tab| tab.pane)
+            .collect::<Vec<_>>();
+        assert_eq!(tabs, [PaneId(5), PaneId(2)]);
+    }
 
     #[test]
     fn arranged_demo_geometry_allows_resize_and_tab_click() {
@@ -753,7 +701,7 @@ mod tests {
 
         let handle = model.dock.frame().split_handles()[0];
         model.begin_pointer(handle.rect.center());
-        assert_eq!(model.status, "Resize session started");
+        assert_eq!(model.status, "Resizing split");
         model.cancel_pointer();
 
         let pane_two = geometry

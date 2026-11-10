@@ -422,6 +422,11 @@ impl DockSurfaceInner {
 
     fn ghost_paint(&self, frame: &GhostFrame) -> DockPaint {
         match frame.kind {
+            GhostKind::PreviewPane | GhostKind::PreviewGroup
+                if frame.rect.width() <= 2.0 || frame.rect.height() <= 2.0 =>
+            {
+                DockPaint::new(self.style.preview.border, self.style.preview.border, 0.0)
+            }
             GhostKind::PreviewPane | GhostKind::PreviewGroup => self.style.preview,
             GhostKind::Invalid => self.style.invalid_preview,
         }

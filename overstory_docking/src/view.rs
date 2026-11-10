@@ -180,6 +180,14 @@ impl DockSurface {
         apply_paint(ui, inner.dragged, style.dragged);
     }
 
+    /// Updates only interaction feedback, retaining the currently realized panes and tabs.
+    ///
+    /// Use this while dragging when the host wants to draw a proposed
+    /// placement over the committed layout. Call [`Self::sync`] when the drag ends.
+    pub fn sync_overlay(&self, ui: &mut Ui, overlay: &understory_tiling::OverlayFrame) {
+        self.inner.borrow_mut().sync_overlay(ui, overlay);
+    }
+
     /// Reconciles retained elements with the state's display frame and overlay.
     ///
     /// `build_pane` runs only when a pane id first appears (or reappears after

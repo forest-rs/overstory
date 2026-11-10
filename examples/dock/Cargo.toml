@@ -19,5 +19,8 @@ overstory_app = { default-features = false, workspace = true }
 overstory_docking = { features = ["std"], workspace = true }
 peniko.workspace = true
 
+[dev-dependencies]
+ui-events.workspace = true
+
 [lints]
 workspace = true

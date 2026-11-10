@@ -859,6 +859,7 @@ dependencies = [
  "overstory_app",
  "overstory_docking",
  "peniko",
+ "ui-events",
 ]
 
 [[package]]
@@ -3877,7 +3878,7 @@ dependencies = [
 [[package]]
 name = "understory_tiling"
 version = "0.1.0"
-source = "git+https://github.com/forest-rs/understory.git?rev=13a3c8d151e14292f95c9c6058d2ec79ce396598#13a3c8d151e14292f95c9c6058d2ec79ce396598"
+source = "git+https://github.com/forest-rs/understory.git?rev=89029518567a9f05a175257fdca2fce52cde094c#89029518567a9f05a175257fdca2fce52cde094c"
 dependencies = [
  "kurbo",
 ]
